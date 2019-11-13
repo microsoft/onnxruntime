@@ -67,7 +67,7 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
-Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger* logger) const {
+Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

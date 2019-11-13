@@ -271,7 +271,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
     }
 #endif
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    session_logger_);
+                                    *session_logger_);
   };
 
   common::Status st = Load(loader, "model_loading_uri");
@@ -298,7 +298,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
     }
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    session_logger_);
+                                    *session_logger_);
   };
 
   return Load(loader, "model_loading_proto");
@@ -313,7 +313,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
     }
 #endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
 
   return Load(loader, "model_loading_proto");
@@ -336,7 +336,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
     }
 #endif
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    session_logger_);
+                                    *session_logger_);
   };
 
   return Load(loader, "model_loading_istream");
@@ -359,7 +359,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 #endif
 
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    session_logger_);
+                                    *session_logger_);
   };
 
   return Load(loader, "model_loading_array");
@@ -379,7 +379,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // 5. insert cast nodes.
 
   // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
-  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
 #ifdef USE_DML
   // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
@@ -394,7 +394,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
     Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
 
     bool modified = false;
-    dml_transformer.Apply(graph, modified, session_logger_);
+    dml_transformer.Apply(graph, modified, *session_logger_);
   }
 #endif
 
@@ -405,12 +405,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
   for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), session_logger_));
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
   bool modified = false;
   // Insert cast node/s.
-  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
 
   // Now every node should be already assigned to an execution provider
   std::unordered_map<std::string, std::vector<std::string>> node_placements;
@@ -459,7 +459,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // Insert copy node/s.
   MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
-  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
 
   return common::Status::OK();
 }

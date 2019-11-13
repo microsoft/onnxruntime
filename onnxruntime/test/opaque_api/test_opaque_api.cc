@@ -162,7 +162,7 @@ namespace test {
 std::string CreateModel() {
   RegisterCustomKernel();
 
-  Model model("ModelWithOpaque", false);
+  Model model("ModelWithOpaque", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;

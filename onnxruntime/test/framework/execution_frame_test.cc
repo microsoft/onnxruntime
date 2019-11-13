@@ -42,7 +42,7 @@ class ExecutionFrameTest : public ::testing::Test {
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
-  onnxruntime::Model model("test");
+  onnxruntime::Model model("test", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -112,7 +112,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
   onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                           std::unordered_map<std::string, int>{{"", 10}});
+                           std::unordered_map<std::string, int>{{"", 10}}, {},
+                           ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);

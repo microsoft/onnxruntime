@@ -99,7 +99,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger* logger) const override {
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
 
     auto output_args = graph.GetOutputs();
@@ -195,7 +195,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 };
 
-Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger* logger) const {
+Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
 

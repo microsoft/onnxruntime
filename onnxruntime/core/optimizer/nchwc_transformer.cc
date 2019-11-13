@@ -727,7 +727,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
   }
 }
 
-Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger* logger) const {
+Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   NchwcTransformerImpl impl(graph);
   GraphViewer graph_viewer(graph);
 

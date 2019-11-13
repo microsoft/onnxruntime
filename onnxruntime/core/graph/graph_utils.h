@@ -108,7 +108,7 @@ Conditions:
  Subgraph rules:
  - Removing the node won't break a subgraph that consumes the node's output
 */
-bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger* logger);
+bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& logger);
 
 /** Removes the given Node from the Graph.
 See CanRemoveNode for the conditions that must be satisfied in order to remove the node.
@@ -129,7 +129,7 @@ Conditions:
  - Removing the node won't break a subgraph that consumes the node's output
 */
 bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
-                                   const logging::Logger* logger);
+                                   const logging::Logger& logger);
 
 /** Remove a node and replace its output with the provided NodeArg for an initializer.
 See CanReplaceNodeWithInitializer for the conditions that must be satisfied in order to remove the node.*/

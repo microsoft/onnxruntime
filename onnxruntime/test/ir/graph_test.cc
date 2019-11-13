@@ -121,7 +121,7 @@ static const bool kSchemasRegistered = RegisterCustomSchemas();
 TEST(GraphTraversalTest, ReverseDFS) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph_1");
+  Model model("graph_1", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.

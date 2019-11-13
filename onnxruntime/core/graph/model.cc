@@ -32,7 +32,7 @@ Model::Model(const std::string& graph_name,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions,
-             const logging::Logger* logger) {
+             const logging::Logger& logger) {
   model_proto_ = onnxruntime::make_unique<ModelProto>();
   model_proto_->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_->mutable_graph()->set_name(graph_name);
@@ -75,12 +75,12 @@ Model::Model(const std::string& graph_name,
 }
 
 Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-             const logging::Logger* logger)
+             const logging::Logger& logger)
     : Model(onnxruntime::make_unique<ModelProto>(model_proto), local_registries, logger) {
 }
 
 Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-             const logging::Logger* logger) {
+             const logging::Logger& logger) {
   if (!model_proto) {
     throw std::invalid_argument("ModelProto was null.");
   }
@@ -112,10 +112,10 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     const auto& domain = opSet.domain();
     const auto version = opSet.version();
     // empty domain and 'ai.onnx' are equivalent
-    if ((domain.empty() || domain == kOnnxDomainAlias) && version < 7 && logger != nullptr) {
+    if ((domain.empty() || domain == kOnnxDomainAlias) && version < 7) {
       // TODO: Check if we can upgrade all the current opset 6 models that are being tested
       // in CI to opset 7 or above
-      LOGS(*logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
+      LOGS(logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
                                 "with opset version 7 or above for opset domain 'ai.onnx'. "
                                 "Please upgrade your model to opset 7 or higher. "
                                 "For now, this opset "
@@ -244,7 +244,7 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
 
 Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger* logger) {
+                   const logging::Logger& logger) {
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -265,7 +265,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
 
 Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger* logger) {
+                   const logging::Logger& logger) {
   // we expect a graph to be present
   if (!utils::HasGraph(*p_model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -287,7 +287,7 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
 template <typename T>
 static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                        const logging::Logger* logger) {
+                        const logging::Logger& logger) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -348,7 +348,7 @@ GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the i
 GSL_SUPPRESS(r .35)
 Status Model::Load(const std::basic_string<ORTCHAR_T>& file_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger* logger) {
+                   const logging::Logger& logger) {
   return LoadModel(file_path, p_model, local_registries, logger);
 }
 
@@ -357,7 +357,7 @@ Status Model::Save(Model& model, const std::string& file_path) {
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
-                            const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger* logger) {
+                            const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
   std::unique_ptr<ModelProto> modelProto = onnxruntime::make_unique<ModelProto>();
   const bool result = modelProto->ParseFromArray(p_bytes, count);
   if (!result) {
@@ -376,7 +376,7 @@ using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
 
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger* logger) {
+                   const logging::Logger& logger) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }

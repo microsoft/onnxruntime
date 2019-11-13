@@ -59,7 +59,7 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto_Tensor& source, TypeProto_Tensor& target,
-                             bool strict, const logging::Logger* logger) {
+                             bool strict, const logging::Logger& logger) {
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
@@ -70,11 +70,10 @@ static Status MergeShapeInfo(const std::string& output_name,
       // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
-      if (logger != nullptr) {
-        LOGS(*logger, WARNING) << "Error merging shape info for output. '" << output_name
+      LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
                                << "' source:" << source.shape() << " target:" << target.shape()
                                << ". Falling back to lenient merge.";
-      }
+
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
@@ -209,7 +208,7 @@ void NodeArg::ClearShape() {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, const logging::Logger* logger) {
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -276,7 +275,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict, const logging::Logger* logger) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict, const logging::Logger& logger) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
@@ -700,13 +699,13 @@ Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const logging::Logger* logger,
+             const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, model_functions) {}
 
 Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const logging::Logger* logger,
+             const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : graph_proto_(graph_proto),
       schema_registry_(schema_registry),
@@ -1789,8 +1788,9 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *model_function_proto);
-      function_container_.emplace_back(std::move(model_func_ptr));
+      function_container_.emplace_back(onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(),
+                                                                                           *model_function_proto,
+                                                                                           logger_));
       node.SetFunctionBody(*function_container_.back());
     }
 
@@ -1810,7 +1810,8 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto);
+        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto,
+            logger_);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }
@@ -2407,14 +2408,12 @@ void Graph::CleanUnusedInitializers() {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-      if (logger_ != nullptr) {
         if (num_resolves_ == 0) {
-          LOGS(*logger_, WARNING) << "Removing initializer '"
+          LOGS(logger_, WARNING) << "Removing initializer '"
                                   << name << "'. It is not used by any node and should be removed from the model.";
         } else {
-          LOGS(*logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+          LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
         }
-      }
 
       erase_list.push_back(name);
     }
@@ -2711,7 +2710,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
-  function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph)));
+  function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph), logger_));
   fused_node.SetFunctionBody(*function_container_.back());
 
   // Remove nodes fused above.

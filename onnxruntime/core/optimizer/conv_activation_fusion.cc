@@ -72,7 +72,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
 
 }  // namespace
 
-Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger* logger) const {
+Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 

@@ -21,7 +21,7 @@ class GraphTransformerManager {
   common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
 
   // Apply all transformers registered for the given level on the given graph
-  common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger* logger) const;
+  common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);  

@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger*) const {
+Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   if (graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
@@ -18,7 +18,7 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
   return Status::OK();
 }
 
-bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger* logger) const {
+bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   return graph_utils::CanRemoveNode(graph, node, logger);
 }
 

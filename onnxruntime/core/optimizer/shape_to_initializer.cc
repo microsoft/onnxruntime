@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger*) const {
+Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   // Store the statically inferred shape of the input to the Shape operator.
   const ONNX_NAMESPACE::TensorShapeProto* input_shape_proto = node.InputDefs()[0]->Shape();
   std::vector<int64_t> input_dims;
@@ -49,7 +49,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   return Status::OK();
 }
 
-bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger* logger) const {
+bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1})) {
     return false;
   }

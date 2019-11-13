@@ -37,11 +37,11 @@ class GraphTransformer {
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  common::Status Apply(Graph& graph, bool& modified, const logging::Logger* logger) const;
+  common::Status Apply(Graph& graph, bool& modified, const logging::Logger& logger) const;
 
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
-  common::Status Recurse(Node& node, bool& modified, int graph_level, const logging::Logger* logger) const {
+  common::Status Recurse(Node& node, bool& modified, int graph_level, const logging::Logger& logger) const {
     int subgraph_level = ++graph_level;
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& subgraph = *entry.second;
@@ -61,7 +61,7 @@ class GraphTransformer {
   // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases
   // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
   // completes (if 'modified' is true) should suffice.
-  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger* logger)
+  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger)
       const = 0;
 
   const std::string name_;

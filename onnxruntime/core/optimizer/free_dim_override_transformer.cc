@@ -28,7 +28,7 @@ static std::string ToLower(std::string s) {
   }
 }
 
-Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger* logger) const {
+Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
   for (const onnxruntime::NodeArg* graph_input : graph.GetInputs()) {
     // Get the current input's type and shape
     const auto* input_type = graph_input->TypeAsProto();
@@ -59,8 +59,7 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
         // If this dimension actually has a value but it doesn't match the override value, return an
         // error.
         if (dimension.has_dim_value() && dimension.dim_value() != dimension_override) {
-          if (logger != nullptr)
-            LOGS(*logger, ERROR) << "The model has input '" << graph_input->Name() << "' "
+            LOGS(logger, ERROR) << "The model has input '" << graph_input->Name() << "' "
                                 << "with a fixed dimension denotation '" << dimension.denotation() << "' "
                                 << "but the size of this dimension " << dimension.dim_value() << " "
                                 << "does not equal the specified override of" << dimension_override << ".";
