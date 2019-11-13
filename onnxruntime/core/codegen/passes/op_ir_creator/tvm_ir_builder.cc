@@ -70,7 +70,7 @@ Status TVMIRBuilder::Evaluate(
 
 // BEGIN: Generic IR creator classes
 #define ADD_OP_ITEM(name) \
-  op_ir_registry->Register(std::move(onnxruntime::make_unique<GENERIC_OP_IR_CREATOR_CLASS(name)>()));
+  op_ir_registry->Register(onnxruntime::make_unique<GENERIC_OP_IR_CREATOR_CLASS(name)>());
 
 #define BINARY_OP(name) ADD_OP_ITEM(name)
 #define BINARY_CMP_OP(name) ADD_OP_ITEM(name)
