@@ -28,7 +28,7 @@ bool HandleConstantScalar(tvm::Expr& scalar, size_t i, const Node& node, CodeGen
     return false;  // return if not constant or not scalar
 
 #define ASSIGN_TVM_SCALAR(tvm_type, tensor_type)                      \
-  if (utils::IsPrimitiveDataType<tensor_type>(tensor->DataType())) {  \
+  if (tensor->IsDataType<tensor_type>()) {                            \
     scalar = tvm::make_const(tvm_type, *tensor->Data<tensor_type>()); \
   }
 
