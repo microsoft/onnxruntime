@@ -12,6 +12,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace {
@@ -39,7 +40,7 @@ TEST(MemcpyTest, copy1) {
   const bool result = mp.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ASSERT_TRUE(result);
 
-  Model model(mp, nullptr, nullptr);
+  Model model(mp, nullptr, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   st = model.MainGraph().Resolve();
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);

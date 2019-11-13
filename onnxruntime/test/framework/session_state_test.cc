@@ -14,6 +14,7 @@
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "gtest/gtest.h"
+#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;
@@ -42,7 +43,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   ExecutionProviders execution_providers;
   SessionState s{execution_providers, true, &tp, nullptr};
 
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -98,7 +99,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   oss << ORT_TSTR("testdata/optional_inputs_ir") << param.ir_version << ORT_TSTR(".onnx");
   Status status;
   std::shared_ptr<Model> model;
-  ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, nullptr)).IsOK()) << status;
+  ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger())).IsOK()) << status;
   Graph& graph = model->MainGraph();
   // take a copy as this gets cleared during session state initialization
   InitializedTensorSet initializers = graph.GetAllInitializedTensors();

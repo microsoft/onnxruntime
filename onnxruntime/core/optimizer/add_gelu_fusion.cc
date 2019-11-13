@@ -10,7 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -21,7 +21,7 @@ Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
 
     auto& node = *node_ptr;
 
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||

@@ -147,7 +147,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
   bool include_dim_values = options.include_dim_values_in_subgraph;
   bool sym_dim_zero = options.symbolic_dim_value_in_main_graph == 0;
 
-  Model model(then_branch ? "If_then" : "If_else");
+  Model model(then_branch ? "If_then" : "If_else", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;

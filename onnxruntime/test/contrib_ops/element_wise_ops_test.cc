@@ -58,7 +58,7 @@ std::vector<float> Add_Simple(const std::vector<float>& input_a_data, const std:
   const std::vector<float>& input_small_size = input_a_data.size() < input_b_data.size() ? input_a_data : input_b_data;
 
   std::vector<float> output(input_large_size.size());
-  for (int iter = 0; iter < input_large_size.size() / input_small_size.size(); iter++) {
+  for (size_t iter = 0; iter < input_large_size.size() / input_small_size.size(); iter++) {
     std::transform(input_large_size.begin() + iter * input_small_size.size(),
                    input_large_size.begin() + (iter + 1) * input_small_size.size(),
                    input_small_size.begin(),

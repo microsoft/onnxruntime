@@ -37,7 +37,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -133,16 +132,19 @@ class InferenceSessionGetGraphWrapper : public InferenceSession {
 namespace test {
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
-static const std::string MODEL_URI = "testdata/mul_1.onnx";
-static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.noopset.onnx";
+static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
+static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
 //static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
+  Model t(ORT_TSTR("test"), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+          domain_to_version, {}, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   // Generate the input & output def lists
-  p_model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                         domain_to_version);
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  onnxruntime::make_unique<Model>(ORT_TSTR("test"), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                                  domain_to_version, model_specific_functions, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -1023,7 +1025,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -1110,7 +1112,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 }
 
 TEST(ExecutionProviderTest, FunctionInlineTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
 
   ONNX_NAMESPACE::FunctionProto fc_proto;
   fc_proto.set_name("FC");
