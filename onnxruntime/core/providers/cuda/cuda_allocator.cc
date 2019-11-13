@@ -22,7 +22,7 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
   // if it's expected to change, call cudaSetDevice instead of the check
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
-  if (cuda_err == CUDA_SUCCESS) {
+  if (cuda_err == cudaSuccess) {
     ORT_ENFORCE(current_device == info_.id);
   } else if (throw_when_fail) {
     CUDA_CALL_THROW(cuda_err);
