@@ -11,8 +11,6 @@
 #include "PheonixSingleton.h"
 #include "TelemetryEvent.h"
 
-#include "LotusEnvironment.h"
-
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
@@ -26,7 +24,7 @@ WINML_CATCH_ALL
 
 LearningModel::LearningModel(
     const std::string& path,
-    const winml::ILearningModelOperatorProvider operator_provider) try : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()),
+    const winml::ILearningModelOperatorProvider operator_provider) try : lotus_environment_(PheonixSingleton<_winmla::LotusEnvironment>()),
                                                                          operator_provider_(operator_provider) {
   _winmlt::PerformanceTelemetryEvent kLoadModel_event(
       WinMLRuntimePerf::kLoadModel);
@@ -43,7 +41,7 @@ WINML_CATCH_ALL
 
 LearningModel::LearningModel(
     const wss::IRandomAccessStreamReference stream,
-    const winml::ILearningModelOperatorProvider operator_provider) try : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()),
+    const winml::ILearningModelOperatorProvider operator_provider) try : lotus_environment_(PheonixSingleton<_winmla::LotusEnvironment>()),
                                                                          operator_provider_(operator_provider) {
   _winmlt::PerformanceTelemetryEvent kLoadModel_event(
       WinMLRuntimePerf::kLoadModel);

@@ -7,7 +7,6 @@
 #include "WinMLAdapter.h"
 
     namespace Windows::AI::MachineLearning {
-  class LotusEnvironment;
   class ModelInfo;
 }  // namespace Windows::AI::MachineLearning
 
@@ -125,8 +124,8 @@ struct LearningModel : LearningModelT<LearningModel> {
   OverrideShapeInferenceMethods();
 
  private:
-  std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
-  std::unique_ptr<WinML::Adapter::ModelProto> model_proto_;
+  std::shared_ptr<_winmla::LotusEnvironment> lotus_environment_;
+  std::unique_ptr<_winmla::ModelProto> model_proto_;
   std::unique_ptr<WinML::ModelInfo> model_info_;
   ILearningModelOperatorProvider operator_provider_;
 };

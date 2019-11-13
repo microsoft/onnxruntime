@@ -6,7 +6,7 @@
 #include "inc/CustomRegistryHelper.h"
 #include "inc/LotusEnvironment.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
-
+#include "PheonixSingleton.h"
 #include "LearningModelDevice.h"
 #include "TensorFeatureDescriptor.h"
 #include "ImageFeatureDescriptor.h"
@@ -179,5 +179,17 @@ onnxruntime::Tensor* STDMETHODCALLTYPE CreateTensor(
       provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault));
   return pTensor;
 }
+
+WinML::LotusEnvironment* STDMETHODCALLTYPE CreateLotusEnvironment()
+{
+  return PheonixSingleton<WinML::LotusEnvironment>().get();
+}
+
+void __stdcall ReleaseLotusEnvironment(WinML::LotusEnvironment* lotusEnvironment)
+{
+  delete lotusEnvironment;
+}
+
+
 
 }  // namespace Windows::AI::MachineLearning::Adapter
