@@ -113,7 +113,6 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
   auto* p = per_thread_context_map_.get();
   if (p->count(this) == 0) {
     std::lock_guard<OrtMutex> lock(context_pool_mutex_);
-    unsigned int tid = logging::GetThreadId();
     std::shared_ptr<PerThreadContext> ptc;
     if (retired_context_pool_.empty()) {
       ptc = std::make_shared<PerThreadContext>(device_id_);
