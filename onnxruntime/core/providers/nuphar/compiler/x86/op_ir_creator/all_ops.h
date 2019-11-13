@@ -41,7 +41,8 @@ namespace nuphar {
 #define LIST_REDUCE_V_OPS() \
   REDUCE_V_OP(ReduceMax)    \
   REDUCE_V_OP(ReduceMin)    \
-  REDUCE_V_OP(ReduceSum)
+  REDUCE_V_OP(ReduceSum)    \
+  REDUCE_V_OP(ReduceMean)
 
 #define LIST_ALL_X86_OPS()     \
   LIST_REDUCE_V_OPS()          \
