@@ -147,387 +147,118 @@ public final class ONNXUtil {
     }
 
     /**
+     * Reshapes a boolean array into the desired n-dimensional array assuming the boolean array is stored in n-dimensional row-major order.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
+     * @param input The boolean array.
+     * @param shape The desired shape.
+     * @return An n-dimensional boolean array.
+     */
+    public static Object reshape(boolean[] input, long[] shape) {
+        Object output = ONNXUtil.newBooleanArray(shape);
+        reshape(input,output,0);
+        return output;
+    }
+
+    /**
+     * Reshapes a byte array into the desired n-dimensional array assuming the byte array is stored in n-dimensional row-major order.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
+     * @param input The byte array.
+     * @param shape The desired shape.
+     * @return An n-dimensional byte array.
+     */
+    public static Object reshape(byte[] input, long[] shape) {
+        Object output = ONNXUtil.newByteArray(shape);
+        reshape(input,output,0);
+        return output;
+    }
+
+    /**
+     * Reshapes a short array into the desired n-dimensional array assuming the short array is stored in n-dimensional row-major order.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
+     * @param input The short array.
+     * @param shape The desired shape.
+     * @return An n-dimensional short array.
+     */
+    public static Object reshape(short[] input, long[] shape) {
+        Object output = ONNXUtil.newShortArray(shape);
+        reshape(input,output,0);
+        return output;
+    }
+
+    /**
      * Reshapes an int array into the desired n-dimensional array, assuming the int array is stored in n-dimensional row-major order.
-     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
      * @param input The int array.
      * @param shape The desired shape.
      * @return An n-dimensional int array.
      */
     public static Object reshape(int[] input, long[] shape) {
-        long elementCount = elementCount(shape);
-        // This check implicitly checks if it's a valid Java array, as otherwise it won't be comparable to input.length.
-        if (elementCount != input.length) {
-            throw new IllegalArgumentException("Expected " + elementCount + " elements to fill this shape, received " + input.length);
-        }
-
-        // This could be further optimised with use of System.arraycopy.
-        switch (shape.length) {
-            case 1: {
-                return Arrays.copyOf(input,input.length);
-            }
-            case 2: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int[][] output = new int[dimOne][dimTwo];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        output[i][j] = input[count];
-                        count++;
-                    }
-                }
-
-                return output;
-            }
-            case 3: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int[][][] output = new int[dimOne][dimTwo][dimThree];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            output[i][j][k] = input[count];
-                            count++;
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 4: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int[][][][] output = new int[dimOne][dimTwo][dimThree][dimFour];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                output[i][j][k][l] = input[count];
-                                count++;
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 5: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int[][][][][] output = new int[dimOne][dimTwo][dimThree][dimFour][dimFive];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    output[i][j][k][l][m] = input[count];
-                                    count++;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 6: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int dimSix = (int) shape[5];
-                int[][][][][][] output = new int[dimOne][dimTwo][dimThree][dimFour][dimFive][dimSix];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    for (int n = 0; n < dimSix; n++) {
-                                        output[i][j][k][l][m][n] = input[count];
-                                        count++;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 7: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int dimSix = (int) shape[5];
-                int dimSeven = (int) shape[6];
-                int[][][][][][][] output = new int[dimOne][dimTwo][dimThree][dimFour][dimFive][dimSix][dimSeven];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    for (int n = 0; n < dimSix; n++) {
-                                        for (int o = 0; o < dimSeven; o++) {
-                                            output[i][j][k][l][m][n][o] = input[count];
-                                            count++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 8: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int dimSix = (int) shape[5];
-                int dimSeven = (int) shape[6];
-                int dimEight = (int) shape[7];
-                int[][][][][][][][] output = new int[dimOne][dimTwo][dimThree][dimFour][dimFive][dimSix][dimSeven][dimEight];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    for (int n = 0; n < dimSix; n++) {
-                                        for (int o = 0; o < dimSeven; o++) {
-                                            for (int p = 0; p < dimEight; p++) {
-                                                output[i][j][k][l][m][n][o][p] = input[count];
-                                                count++;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        Object output = ONNXUtil.newIntArray(shape);
+        reshape(input,output,0);
+        return output;
     }
 
     /**
-     * Reshapes a float array into the desired n-dimensional array.
-     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input.
+     * Reshapes a long array into the desired n-dimensional array, assuming the long array is stored in n-dimensional row-major order.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
+     * @param input The long array.
+     * @param shape The desired shape.
+     * @return An n-dimensional long array.
+     */
+    public static Object reshape(long[] input, long[] shape) {
+        Object output = ONNXUtil.newLongArray(shape);
+        reshape(input,output,0);
+        return output;
+    }
+
+    /**
+     * Reshapes a float array into the desired n-dimensional array assuming the float array is stored in n-dimensional row-major order.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
      * @param input The float array.
      * @param shape The desired shape.
      * @return An n-dimensional float array.
      */
     public static Object reshape(float[] input, long[] shape) {
-        long elementCount = elementCount(shape);
-        // This check implicitly checks if it's a valid Java array, as otherwise it won't be comparable to input.length.
-        if (elementCount != input.length) {
-            throw new IllegalArgumentException("Expected " + elementCount + " elements to fill this shape, received " + input.length);
+        Object output = ONNXUtil.newFloatArray(shape);
+        reshape(input,output,0);
+        return output;
+    }
+
+    /**
+     * Reshapes a double array into the desired n-dimensional array assuming the double array is stored in n-dimensional row-major order.
+     * Throws {@link IllegalArgumentException} if the number of elements doesn't match between the shape and the input or the shape is invalid.
+     * @param input The double array.
+     * @param shape The desired shape.
+     * @return An n-dimensional double array.
+     */
+    public static Object reshape(double[] input, long[] shape) {
+        Object output = ONNXUtil.newDoubleArray(shape);
+        reshape(input,output,0);
+        return output;
+    }
+
+    private static int reshape(Object input, Object output, int position) {
+        if (output.getClass().isArray()) {
+            Object[] outputArray = (Object[]) output;
+            for (Object outputElement : outputArray) {
+                Class<?> outputElementClass = outputElement.getClass();
+                if (outputElementClass.isArray()) {
+                    if (outputElementClass.getComponentType().isPrimitive()) {
+                        int length = Array.getLength(outputElement);
+                        System.arraycopy(input,position,outputElement,0,length);
+                        position += length;
+                    } else {
+                        position = reshape(input,outputElement,position);
+                    }
+                } else {
+                    throw new IllegalStateException("Found element type when expecting an array. Class " + outputElementClass);
+                }
+            }
+        } else {
+            throw new IllegalStateException("Found element type when expecting an array. Class " + output.getClass());
         }
 
-        // This could be further optimised with use of System.arraycopy.
-        switch (shape.length) {
-            case 1: {
-                return Arrays.copyOf(input,input.length);
-            }
-            case 2: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                float[][] output = new float[dimOne][dimTwo];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        output[i][j] = input[count];
-                        count++;
-                    }
-                }
-
-                return output;
-            }
-            case 3: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                float[][][] output = new float[dimOne][dimTwo][dimThree];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            output[i][j][k] = input[count];
-                            count++;
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 4: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                float[][][][] output = new float[dimOne][dimTwo][dimThree][dimFour];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                output[i][j][k][l] = input[count];
-                                count++;
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 5: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                float[][][][][] output = new float[dimOne][dimTwo][dimThree][dimFour][dimFive];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    output[i][j][k][l][m] = input[count];
-                                    count++;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 6: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int dimSix = (int) shape[5];
-                float[][][][][][] output = new float[dimOne][dimTwo][dimThree][dimFour][dimFive][dimSix];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    for (int n = 0; n < dimSix; n++) {
-                                        output[i][j][k][l][m][n] = input[count];
-                                        count++;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 7: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int dimSix = (int) shape[5];
-                int dimSeven = (int) shape[6];
-                float[][][][][][][] output = new float[dimOne][dimTwo][dimThree][dimFour][dimFive][dimSix][dimSeven];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    for (int n = 0; n < dimSix; n++) {
-                                        for (int o = 0; o < dimSeven; o++) {
-                                            output[i][j][k][l][m][n][o] = input[count];
-                                            count++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            case 8: {
-                int dimOne = (int) shape[0];
-                int dimTwo = (int) shape[1];
-                int dimThree = (int) shape[2];
-                int dimFour = (int) shape[3];
-                int dimFive = (int) shape[4];
-                int dimSix = (int) shape[5];
-                int dimSeven = (int) shape[6];
-                int dimEight = (int) shape[7];
-                float[][][][][][][][] output = new float[dimOne][dimTwo][dimThree][dimFour][dimFive][dimSix][dimSeven][dimEight];
-
-                int count = 0;
-                for (int i = 0; i < dimOne; i++) {
-                    for (int j = 0; j < dimTwo; j++) {
-                        for (int k = 0; k < dimThree; k++) {
-                            for (int l = 0; l < dimFour; l++) {
-                                for (int m = 0; m < dimFive; m++) {
-                                    for (int n = 0; n < dimSix; n++) {
-                                        for (int o = 0; o < dimSeven; o++) {
-                                            for (int p = 0; p < dimEight; p++) {
-                                                output[i][j][k][l][m][n][o][p] = input[count];
-                                                count++;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return output;
-            }
-            default:
-                throw new IllegalArgumentException("Arrays with less than 1 and more than 8 dimensions are not supported.");
-        }
+        return position;
     }
 
     /**
@@ -564,6 +295,12 @@ public final class ONNXUtil {
         return valid && shape.length <= TensorInfo.MAX_DIMENSIONS;
     }
 
+    /**
+     * Flatten a multidimensional String array into a single dimensional String array, reading
+     * it in a multidimensional row-major order.
+     * @param o A multidimensional String array.
+     * @return A single dimensional String array.
+     */
     public static String[] flattenString(Object o) {
         List<String> output = new ArrayList<>();
 
@@ -572,7 +309,7 @@ public final class ONNXUtil {
         return output.toArray(new String[0]);
     }
 
-    private static void flattenString(Object[] input, List output) {
+    private static void flattenString(Object[] input, List<String> output) {
         for (Object i : input) {
             Class<?> iClazz = i.getClass();
             if (iClazz.isArray()) {

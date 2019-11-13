@@ -4,7 +4,6 @@
  */
 package ai.onnxruntime;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -231,76 +230,6 @@ class TestHelpers {
 
     static void flattenStringBase(String[] input, List<String> output) {
         output.addAll(Arrays.asList(input));
-    }
-
-    public static Object reshape(boolean[] input, long[] shape) {
-        Object output = ONNXUtil.newBooleanArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    public static Object reshape(byte[] input, long[] shape) {
-        Object output = ONNXUtil.newByteArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    public static Object reshape(short[] input, long[] shape) {
-        Object output = ONNXUtil.newShortArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    public static Object reshape(int[] input, long[] shape) {
-        Object output = ONNXUtil.newIntArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    public static Object reshape(long[] input, long[] shape) {
-        Object output = ONNXUtil.newLongArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    public static Object reshape(float[] input, long[] shape) {
-        Object output = ONNXUtil.newFloatArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    public static Object reshape(double[] input, long[] shape) {
-        Object output = ONNXUtil.newDoubleArray(shape);
-        reshape(input,output,0);
-        return output;
-    }
-
-    static int reshape(Object input, Object output, int position) {
-        if (output.getClass().isArray()) {
-            Object[] outputArray = (Object[]) output;
-            for (Object i : outputArray) {
-                Class<?> iClazz = i.getClass();
-                if (iClazz.isArray()) {
-                    if (iClazz.getComponentType().isPrimitive()) {
-                        int length = Array.getLength(i);
-                        System.arraycopy(input,position,i,0,length);
-                        position += length;
-                    } else {
-                        position += reshape(input,i,position);
-                    }
-                } else {
-                    throw new IllegalStateException("Found element type when expecting an array. Class " + iClazz);
-                }
-            }
-        } else {
-            throw new IllegalStateException("Found element type when expecting an array. Class " + output.getClass());
-        }
-
-        return position;
-    }
-
-    static void writeBase(double[] input, int position, double[] output) {
-        System.arraycopy(input, position, output, 0, output.length);
     }
 
 }

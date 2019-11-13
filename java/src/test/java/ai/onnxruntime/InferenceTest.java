@@ -393,7 +393,7 @@ public class InferenceTest {
              ONNXSession session = env.createSession(modelPath, allocator, options)) {
             List<ONNXTensor> container = new ArrayList<>();
             boolean[] flatInput = new boolean[] { true, false, true, false, true };
-            Object tensorIn = TestHelpers.reshape(flatInput, new long[] { 1, 5 });
+            Object tensorIn = ONNXUtil.reshape(flatInput, new long[] { 1, 5 });
             ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
             List<ONNXValue> res = session.run(container);
@@ -415,7 +415,7 @@ public class InferenceTest {
              ONNXSession session = env.createSession(modelPath, allocator, options)) {
             List<ONNXTensor> container = new ArrayList<>();
             int[] flatInput = new int[] { 1, -2, -3, Integer.MIN_VALUE, Integer.MAX_VALUE };
-            Object tensorIn = TestHelpers.reshape(flatInput, new long[] { 1, 5 });
+            Object tensorIn = ONNXUtil.reshape(flatInput, new long[] { 1, 5 });
             ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
             List<ONNXValue> res = session.run(container);
@@ -437,7 +437,7 @@ public class InferenceTest {
              ONNXSession session = env.createSession(modelPath, allocator, options)) {
             List<ONNXTensor> container = new ArrayList<>();
             double[] flatInput = new double[] { 1.0, 2.0, -3.0, 5, 5 };
-            Object tensorIn = TestHelpers.reshape(flatInput, new long[] { 1, 5 });
+            Object tensorIn = ONNXUtil.reshape(flatInput, new long[] { 1, 5 });
             ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
             List<ONNXValue> res = session.run(container);
@@ -460,7 +460,7 @@ public class InferenceTest {
              ONNXSession session = env.createSession(modelPath, allocator, options)) {
             List<ONNXTensor> container = new ArrayList<>();
             byte[] flatInput = new byte[] { 1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE };
-            Object tensorIn = TestHelpers.reshape(flatInput, new long[] { 1, 5 });
+            Object tensorIn = ONNXUtil.reshape(flatInput, new long[] { 1, 5 });
             ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
             List<ONNXValue> res = session.run(container);
@@ -482,7 +482,7 @@ public class InferenceTest {
              ONNXSession session = env.createSession(modelPath, allocator, options)) {
             List<ONNXTensor> container = new ArrayList<>();
             short[] flatInput = new short[] { 1, 2, 3, Short.MIN_VALUE, Short.MAX_VALUE };
-            Object tensorIn = TestHelpers.reshape(flatInput, new long[] { 1, 5 });
+            Object tensorIn = ONNXUtil.reshape(flatInput, new long[] { 1, 5 });
             ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
             List<ONNXValue> res = session.run(container);
@@ -504,7 +504,7 @@ public class InferenceTest {
              ONNXSession session = env.createSession(modelPath, allocator, options)) {
             List<ONNXTensor> container = new ArrayList<>();
             long[] flatInput = new long[] { 1, 2, -3, Long.MIN_VALUE, Long.MAX_VALUE };
-            Object tensorIn = TestHelpers.reshape(flatInput, new long[] { 1, 5 });
+            Object tensorIn = ONNXUtil.reshape(flatInput, new long[] { 1, 5 });
             ONNXTensor ov = allocator.createTensor(tensorIn);
             container.add(ov);
             List<ONNXValue> res = session.run(container);
