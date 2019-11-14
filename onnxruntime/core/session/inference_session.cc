@@ -186,11 +186,22 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     : insert_cast_transformer_("CastFloat16Transformer") {
   if (session_options == nullptr) {
     SessionOptions default_session_options;
-    session_options = &default_session_options;
-    // FinalizeSessionOptions();
-  }
 
-  ConstructorCommon(*session_options, logging_manager);
+    ModelProto model_proto;
+
+    google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
+    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+    if (!result) {
+      ORT_THROW(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                "Failed to load model because protobuf parsing failed.");
+    }
+
+    FinalizeSessionOptions(default_session_options, model_proto);
+
+    ConstructorCommon(default_session_options, logging_manager);
+  } else {
+    ConstructorCommon(*session_options, logging_manager);
+  }
 
   Load(model_istream);
 }
@@ -202,11 +213,21 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     : insert_cast_transformer_("CastFloat16Transformer") {
   if (session_options == nullptr) {
     SessionOptions default_session_options;
-    session_options = &default_session_options;
-    // FinalizeSessionOptions();
-  }
 
-  ConstructorCommon(*session_options, logging_manager);
+    ModelProto model_proto;
+
+    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    if (!result) {
+      ORT_THROW(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
+                "Failed to load model because protobuf parsing failed.");
+    }
+
+    FinalizeSessionOptions(default_session_options, model_proto);
+
+    ConstructorCommon(default_session_options, logging_manager);
+  } else {
+    ConstructorCommon(*session_options, logging_manager);
+  }
 
   Load(model_data, model_data_len);
 }

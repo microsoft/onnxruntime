@@ -350,14 +350,6 @@ class InferenceSession {
     */
   common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
 
-  /**
-    * Used to finalize session options that will be associated with this session
-    * The finalized session options MIGHT BE different from the options this session was initialized with.
-    * Must be called only after model has loaded
-    * @return OK if success.
-    */
-  common::Status FinalizeSessionOptions(onnxruntime::Model& model);
-
   common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
