@@ -86,8 +86,6 @@ class InferenceSession {
   /**
     Create a new InferenceSession
     @param session_options Session options.
-    @param is_non_default_session_options 
-    Flag indicating if the provided Session options (session_options) is non-default (i.e.) user provided or not.
     @param logging_manager
     Optional logging manager instance that will enable per session logger output using
     session_options.session_logid as the logger id in messages.
@@ -96,6 +94,61 @@ class InferenceSession {
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     */
   explicit InferenceSession(const SessionOptions& session_options,
+                            logging::LoggingManager* logging_manager = nullptr);
+
+  /**
+    Create a new InferenceSession
+    @param session_options - Pointer to session options. If nullptr, will look in the model for session options,
+    if none found in the model, will create and use default SessionOptions instance.
+    @param model_uri absolute path of the model file.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    */
+  explicit InferenceSession(const SessionOptions* session_options,
+                            const std::string& model_uri,
+                            logging::LoggingManager* logging_manager = nullptr);
+#ifdef _WIN32
+  explicit InferenceSession(const SessionOptions* session_options,
+                            const std::wstring& model_uri,
+                            logging::LoggingManager* logging_manager = nullptr);
+#endif
+
+  /**
+    Create a new InferenceSession
+    @param session_options - Pointer to session options. If nullptr, will look in the model for session options,
+    if none found in the model, will create and use default SessionOptions instance.
+    @param istream object of the model.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    */
+  explicit InferenceSession(const SessionOptions* session_options,
+                            std::istream& model_istream,
+                            logging::LoggingManager* logging_manager = nullptr);
+
+  /**
+    Create a new InferenceSession
+    @param session_options - Pointer to session options. If nullptr, will look in the model for session options,
+    if none found in the model, will create and use default SessionOptions instance.
+    @param model_data Model data buffer.
+    @param model_data_len Model data buffer size.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    */
+  explicit InferenceSession(const SessionOptions* session_options,
+                            const void* model_data,
+                            int model_data_len,
                             logging::LoggingManager* logging_manager = nullptr);
 
   virtual ~InferenceSession();
@@ -323,8 +376,18 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  std::unique_ptr<SessionState> session_state_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
+                                                  ONNX_NAMESPACE::ModelProto model_proto);
+
+  void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
+                                           logging::LoggingManager* logging_manager);
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
@@ -379,7 +442,7 @@ class InferenceSession {
 
   bool is_non_default_session_options_;
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
   // will be run regardless of the level set.
@@ -398,17 +461,10 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
- private:
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
- protected:
-  // Immutable state for each op in the model. Shared by all executors.
-  // It has a dependency on execution_providers_.
-  SessionState session_state_;
-
- private:
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 
