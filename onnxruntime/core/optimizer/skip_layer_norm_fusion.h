@@ -18,10 +18,10 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class SkipLayerNormFusion : public GraphTransformer {
  public:
-  SkipLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  explicit SkipLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("SkipLayerNormFusion", compatible_execution_providers) {}
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

@@ -478,7 +478,7 @@ endif()
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 if(WIN32)
-    target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456")
+    target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100")
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
