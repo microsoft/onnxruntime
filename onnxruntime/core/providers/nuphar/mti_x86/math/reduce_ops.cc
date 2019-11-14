@@ -314,10 +314,16 @@ tvm::Tensor ReduceMean(const tvm::Tensor& X,
   tvm::Tensor sum = ReduceValue(X, tvm::sum, axes, keep_dims,
                                 X->dtype.max(), vector_size, last_dim_aligned, fuse_dim, name);
 
-  tvm::Expr count = tvm::make_const(HalideIR::Int(32), 1);
-  for (auto ax : axes) {
-    ax = tvm_codegen::HandleNegativeAxis(ax, X->shape.size());
-    count = count * X->shape[ax];
+  tvm::Expr count;
+  if (axes.size() > 0) {
+    count = tvm::make_const(HalideIR::Int(32), 1);
+    for (auto ax : axes) {
+      ax = tvm_codegen::HandleNegativeAxis(ax, X->shape.size());
+      count = count * X->shape[ax];
+    }
+  } else {
+    // by default, reduce over all axes
+    count = tvm_codegen::SizeFromDimension(X->shape, 0);
   }
   return topi::divide(sum, tvm::cast(X->dtype, count));
 }
