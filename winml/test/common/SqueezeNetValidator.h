@@ -11,14 +11,14 @@ enum OutputBindingStrategy { Bound, Unbound, Empty };
 namespace WinML::Engine::Test::ModelValidator
 {
     void FnsCandy16(
-        WEX::Common::String instance,
+        std::string instance,
         winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind,
         OutputBindingStrategy outputBindingStrategy,
         bool bindInputsAsIInspectable,
         float dataTolerance = false);
 
     void SqueezeNet(
-        WEX::Common::String instance,
+        std::string instance,
         winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind,
         float dataTolerance,
         bool bindAsImage = false,

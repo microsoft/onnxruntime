@@ -32,10 +32,10 @@ namespace FileHelpers
     std::wstring GetWinMLPath()
     {
         bool inboxDll = false;
-        if (SUCCEEDED(WEX::TestExecution::RuntimeParameters::TryGetValue(L"inbox", inboxDll)) && inboxDll)
-        {
-            return L"";
-        }
+        // if (SUCCEEDED(WEX::TestExecution::RuntimeParameters::TryGetValue(L"inbox", inboxDll)) && inboxDll)
+        // {
+        //     return L"";
+        // }
         return GetModulePath();
     }
 

@@ -30,22 +30,12 @@
 // WinML
 #include "Windows.AI.MachineLearning.Native.h"
 
-#define GPUTEST                                                                                            \
-{                                                                                                          \
-    bool noGPUTests;                                                                                       \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"noGPUtests", noGPUTests)) && noGPUTests)                \
-    {                                                                                                      \
-        Log::Result(TestResults::Skipped, L"This test is disabled by the noGPUTests runtime parameter.");  \
-        return;                                                                                            \
-    }                                                                                                      \
-}
-
-#define SKIP_EDGECORE                                                                                      \
-{                                                                                                          \
-    bool edgeCoreRun;                                                                                      \
-    if (SUCCEEDED(RuntimeParameters::TryGetValue(L"EdgeCore", edgeCoreRun)) && edgeCoreRun)                \
-    {                                                                                                      \
-        Log::Result(TestResults::Skipped, L"This test is disabled by the EdgeCore runtime parameter.");    \
-        return;                                                                                            \
-    }                                                                                                      \
-}
+#define EXPECT_THROW_SPECIFIC(statement, exception, condition)  \
+    EXPECT_THROW(                                               \
+        try {                                                   \
+            statement;                                          \
+        } catch (const exception& e) {                          \
+            EXPECT_TRUE(condition(e));                          \
+            throw;                                              \
+        }                                                       \
+    , exception);

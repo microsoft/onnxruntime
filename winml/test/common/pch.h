@@ -9,6 +9,6 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
-#include <wil/result.h>
+#include <gtest/gtest.h>
 
 #include "fileHelpers.h"

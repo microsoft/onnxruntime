@@ -1,10 +1,10 @@
 ﻿// LotusRT
 #include "core/framework/allocatormgr.h"
-#include "core/session/inference_session.h"
+// #include "core/session/inference_session.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 
-#include "std.h"
+#include "pch.h"
 #include "protobufHelpers.h"
 #include "onnx/onnx-ml.pb.h"
 #include <fstream>
@@ -14,7 +14,6 @@
 using namespace winrt::Windows::Storage::Streams;
 using namespace winrt::Windows::AI::MachineLearning;
 using namespace winrt::Windows::Foundation::Collections;
-using namespace WEX::Logging;
 
 // Copy and pasted from LOTUS as is.    temporary code to load tensors from protobufs
 int FdOpen(const std::string& name)
@@ -74,7 +73,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(onnx::TensorProto tensorProto
     {
         std::vector<DataType> tensorData;
         auto& values = tensorProto.raw_data();
-        VERIFY_ARE_EQUAL(elementCount, values.size() / sizeof(DataType), L"TensorProto elementcount should match raw data buffer size in elements.");
+        EXPECT_EQ(elementCount, values.size() / sizeof(DataType), L"TensorProto elementcount should match raw data buffer size in elements.");
 
         tensorData = std::vector<DataType>(elementCount);
         memcpy(tensorData.data(), values.data(), values.size());
@@ -91,7 +90,7 @@ std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
     onnx::TensorProto tensorProto,
     int elementCount)
 {
-    VERIFY_ARE_EQUAL(tensorProto.string_data_size(), elementCount);
+    EXPECT_EQ(tensorProto.string_data_size(), elementCount);
     auto& values = tensorProto.string_data();
     auto returnVector = std::vector<winrt::hstring>(elementCount);
     std::transform(std::begin(values), std::end(values), std::begin(returnVector),
@@ -112,7 +111,7 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
 
         if (!tensorProto.has_data_type())
         {
-            Log::Warning(L"WARNING: Loading unknown TensorProto datatype.\n");
+            std::cerr << "WARNING: Loading unknown TensorProto datatype.\n";
         }
         if (isFp16)
         {
@@ -129,7 +128,7 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
         case(onnx::TensorProto::DataType::TensorProto_DataType_STRING):
             return TensorString::CreateFromIterable(tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount));
         default:
-            VERIFY_FAIL(L"Tensor type for creating tensor from protobuf file not supported.");
+            ADD_FAILURE() << L"Tensor type for creating tensor from protobuf file not supported.";
             break;
         }
     }
@@ -145,11 +144,11 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
     {
         if (tensorProto.has_data_type())
         {
-            VERIFY_ARE_EQUAL(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16, tensorProto.data_type());
+            EXPECT_EQ(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16, tensorProto.data_type());
         }
         else
         {
-            Log::Warning(L"Loading unknown TensorProto datatype as TensorFloat16Bit.\n");
+            std::cerr << "Loading unknown TensorProto datatype as TensorFloat16Bit.\n";
         }
 
         auto shape = winrt::single_threaded_vector<int64_t>(std::vector<int64_t>(tensorProto.dims().begin(), tensorProto.dims().end()));
@@ -161,7 +160,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
         uint32_t sizeInBytes;
         spTensorValueNative->GetBuffer(reinterpret_cast<BYTE**>(&data), &sizeInBytes);
 
-        VERIFY_IS_TRUE(tensorProto.has_raw_data(), L"Float16 tensor proto buffers are expected to contain raw data.");
+        EXPECT_TRUE(tensorProto.has_raw_data(), L"Float16 tensor proto buffers are expected to contain raw data.");
 
         auto& raw_data = tensorProto.raw_data();
         auto buff = raw_data.c_str();

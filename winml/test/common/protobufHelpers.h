@@ -7,7 +7,7 @@
 #pragma once
 namespace ProtobufHelpers
 {
-    // LoadTensorFromProtobufFile take a path to a FP32 data file and loads it into a 32bit array or 
+    // LoadTensorFromProtobufFile take a path to a FP32 data file and loads it into a 32bit array or
     // 16bit array based on isFp16
     winrt::Windows::AI::MachineLearning::ITensor LoadTensorFromProtobufFile(const std::wstring& filePath, bool isFp16);
     // LoadTensorFloat16FromProtobufFile takes a path to a FP16 data file and loads it into a 16bit array
