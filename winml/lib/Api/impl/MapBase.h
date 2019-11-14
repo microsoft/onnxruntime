@@ -123,6 +123,20 @@ struct MapBase : winrt::implements<
     return lotusMap;
   }
 
+  template <typename TLotusType>
+  static onnxruntime::MLDataType GetLotusType() {
+      static_assert(false, "Someone tried to use a LotusType that has not been specialized");
+  }
+
+  template <>
+  static onnxruntime::MLDataType
+      GetLotusType<AbiMapStringToFloat>() {
+      winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+      return adapter->GetVectorMapType(winml::TensorKind::String, winml::TensorKind::Float);
+  }
+
+
   STDMETHOD(GetOrtValue)
   (WinML::BindingContext& context, OrtValue* mlValue) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
@@ -130,11 +144,12 @@ struct MapBase : winrt::implements<
     // Create a copy of the map
     auto map = context.type == WinML::BindingType::kInput ? std::make_unique<LotusMap>(ConvertToLotusMap(m_data)) : std::make_unique<LotusMap>();
 
+    auto lotus_type = GetLotusType<TKey, TValue>();
     OrtValue value;
     value.Init(
         map.release(),
-        onnxruntime::DataTypeImpl::GetType<LotusMap>(),
-        onnxruntime::DataTypeImpl::GetType<LotusMap>()->GetDeleteFunc());
+        lotus_type,
+        lotus_type->GetDeleteFunc());
 
     *mlValue = value;
     return S_OK;

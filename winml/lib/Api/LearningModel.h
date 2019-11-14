@@ -102,10 +102,10 @@ struct LearningModel : LearningModelT<LearningModel> {
   IMLOperatorRegistry*
   GetOperatorRegistry();
 
-  std::unique_ptr<_winmla::ModelProto>
+  _winmla::IModelProto*
   DetachModelProto();
 
-  std::unique_ptr<_winmla::ModelProto>
+  _winmla::IModelProto*
   CopyModelProto();
 
  private:
@@ -126,7 +126,7 @@ struct LearningModel : LearningModelT<LearningModel> {
 
  private:
   std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
-  std::unique_ptr<WinML::Adapter::ModelProto> model_proto_;
+  com_ptr<_winmla::IModelProto> model_proto_;
   std::unique_ptr<WinML::ModelInfo> model_info_;
   ILearningModelOperatorProvider operator_provider_;
 };

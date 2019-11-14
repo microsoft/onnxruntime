@@ -51,7 +51,7 @@ LearningModelSession::LearningModelSession(
 }
 WINML_CATCH_ALL
 
-std::unique_ptr<_winmla::ModelProto>
+_winmla::IModelProto*
 LearningModelSession::GetOptimizedModel() {
   // Get the model proto
 
@@ -62,9 +62,9 @@ LearningModelSession::GetOptimizedModel() {
   return GetOptimizedModel(should_close_model);
 }
 
-std::unique_ptr<_winmla::ModelProto>
+_winmla::IModelProto*
 LearningModelSession::GetOptimizedModel(bool should_close_model) {
-  std::unique_ptr<_winmla::ModelProto> model_proto;
+  com_ptr<_winmla::IModelProto> model_proto;
 
   {
     // Lock the model detach/copy since multiple threads can access concurrently
@@ -76,15 +76,17 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
     WINML_THROW_HR_IF_TRUE_MSG(E_INVALIDARG, model->IsDisposed(),
                                "The model has been disposed.");
 
-    model_proto = should_close_model
+    model_proto.attach(should_close_model
                       ? model->DetachModelProto()
-                      : model->CopyModelProto();
+                      : model->CopyModelProto());
   }
 
   // Ensure that the model is runnable on the device
-  WINML_THROW_IF_FAILED(_winmla::EnsureModelDeviceCompatibility(model_, model_proto.get()->get(), device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported()));
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  WINML_THROW_IF_FAILED(adapter->EnsureModelDeviceCompatibility(model_, model_proto.get(), device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported()));
 
-  return model_proto;
+  return model_proto.detach();
 }
 
 void LearningModelSession::Initialize() {
@@ -93,13 +95,20 @@ void LearningModelSession::Initialize() {
       _winmlt::EventCategory::kSessionCreation);
 
   // Get the optimized model proto from the learning model
-  auto model_proto = GetOptimizedModel();
+  com_ptr<_winmla::IModelProto> model_proto; 
+  model_proto.attach(GetOptimizedModel());
 
   // Create the session builder
   auto device_impl = device_.as<winmlp::LearningModelDevice>();
-  auto session_builder = WinML::CreateOrtSessionBuilder(
+
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+
+  com_ptr<_winmla::IOrtSessionBuilder> session_builder;
+  WINML_THROW_IF_FAILED(adapter->CreateOrtSessionBuilder(
       device_impl->GetD3DDevice(), 
-      device_impl->GetDeviceQueue());
+      device_impl->GetDeviceQueue(),
+      session_builder.put()));
 
   onnxruntime::SessionOptions options = {};
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options));
@@ -113,10 +122,9 @@ void LearningModelSession::Initialize() {
     options.free_dimension_overrides.emplace_back(overrideOption);
   }
 
-  _winmla::InferenceSession* sessionptr = nullptr;
+  com_ptr<_winmla::IInferenceSession> session;
   WINML_THROW_IF_FAILED(session_builder->CreateSession(
-      options, &sessionptr, &cached_execution_provider_));
-  auto session = std::unique_ptr<_winmla::InferenceSession>(sessionptr);
+      options, session.put(), &cached_execution_provider_));
 
   // Register the custom operator registry
   auto model = model_.as<winmlp::LearningModel>();
@@ -127,15 +135,15 @@ void LearningModelSession::Initialize() {
   session->RegisterGraphTransformers(registerLotusTransformers);
 
   // Load the model into the session
-  WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()->get()));
+  WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()));
   // the session owns the model_proto now
-  model_proto.release();
+  model_proto = nullptr;
 
   // Initialize the session
   session_builder->Initialize(session.get(), cached_execution_provider_);
 
   // Cache the constructed session
-  inference_session_ = std::move(session);
+  inference_session_ = session;
 
   telemetry_helper.LogSessionCreation(
       WinML::Strings::UTF8FromHString(model_.Name()),
@@ -192,13 +200,14 @@ LearningModelSession::EvaluateFeaturesAsync(
   return EvaluateAsync(binding, correlation_id);
 }
 
-static _winmla::IOBinding&
+static _winmla::IIOBinding*
 GetIOBinding(
     winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
     winml::LearningModel& model) {
   // Get the IOBinding Collection, and bound outputs
-  auto& io_binding = binding_impl->BindingCollection();
-  auto& bound_output_names = io_binding.GetOutputNames();
+    com_ptr<_winmla::IIOBinding> io_binding;
+    io_binding.attach(binding_impl->BindingCollection());
+  auto& bound_output_names = io_binding->GetOutputNames();
   std::unordered_set<std::string> bound_output_names_set(
       bound_output_names.begin(),
       bound_output_names.end());
@@ -236,10 +245,10 @@ GetIOBinding(
   // Add all unbound outputs to the iobinding collection
   for (const auto& unbound_output : unbound_output_names) {
     OrtValue value = {};
-    WINML_THROW_IF_FAILED(io_binding.BindOutput(unbound_output, value));
+    WINML_THROW_IF_FAILED(io_binding->BindOutput(unbound_output, value));
   }
 
-  return io_binding;
+  return io_binding.detach();
 }
 
 uint64_t
@@ -251,7 +260,8 @@ LearningModelSession::Run(
   // TODO : set the run_options
   onnxruntime::RunOptions run_options;
 
-  auto& io_binding = GetIOBinding(binding_impl, model_);
+  com_ptr<_winmla::IIOBinding> io_binding;
+  io_binding.attach(GetIOBinding(binding_impl, model_));
 
   // Invoke run on the ORT session.
   WINML_THROW_IF_FAILED(inference_session_->Run(&run_options, io_binding.get()));
@@ -399,22 +409,24 @@ LearningModelSession::Evaluate(
 WINML_CATCH_ALL
 
 void LearningModelSession::Close() {
-  inference_session_.reset();
+    inference_session_ = nullptr;
 }
 
-_winmla::IOBinding*
+_winmla::IIOBinding*
 LearningModelSession::CreateSessionBinding() {
   CheckClosed();
-  _winmla::IOBinding* binding;
-  WINML_THROW_IF_FAILED(inference_session_->NewIOBinding(&binding));
-  return binding;
+  com_ptr<_winmla::IIOBinding> binding;
+  WINML_THROW_IF_FAILED(inference_session_->NewIOBinding(binding.put()));
+  return binding.detach();
 }
 
 void LearningModelSession::ApplyEvaluationProperties() try {
   if (evaluation_properties_) {
     auto is_debug_output_enabled = evaluation_properties_.HasKey(c_enable_debug_output);
-    if (is_debug_output_enabled) {
-      _winmla::EnableDebugOutput();
+    if (is_debug_output_enabled) {        
+        com_ptr<_winmla::IWinMLAdapter> adapter;
+        WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+        adapter->EnableDebugOutput();
     }
   }
 }

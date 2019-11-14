@@ -24,6 +24,10 @@
 
 using namespace Windows::AI::MachineLearning;
 
+CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
+
+}
+
 HRESULT
 CpuOrtSessionBuilder::CreateSessionOptions(
     onnxruntime::SessionOptions* p_options) {
@@ -44,7 +48,7 @@ CpuOrtSessionBuilder::CreateSessionOptions(
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
     const onnxruntime::SessionOptions& options,
-    _winmla::InferenceSession** p_session,
+    _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
@@ -67,14 +71,15 @@ CpuOrtSessionBuilder::CreateSession(
   ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(cpu_provider)));
 
   // assign the session to the out parameter
-  *p_session = new _winmla::InferenceSession(session.release());
+  auto sessionptr = wil::MakeOrThrow<_winmla::InferenceSession>(session.release());
+  RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(_winmla::IInferenceSession), (void**)p_session));
 
   return S_OK;
 }
 
 HRESULT
 CpuOrtSessionBuilder::Initialize(
-    _winmla::InferenceSession* p_session,
+    _winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* /*p_provider*/
 ) {
     ORT_THROW_IF_ERROR(p_session->get()->Initialize());

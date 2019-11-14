@@ -68,17 +68,17 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   onnxruntime::IExecutionProvider*
   GetExecutionProvider();
 
-  _winmla::IOBinding*
+  _winmla::IIOBinding*
   CreateSessionBinding();
 
  private:
   void
   Initialize();
 
-  std::unique_ptr<_winmla::ModelProto>
+  _winmla::IModelProto*
   GetOptimizedModel();
 
-  std::unique_ptr<_winmla::ModelProto>
+  _winmla::IModelProto*
   GetOptimizedModel(bool should_close_model);
 
   uint64_t
@@ -101,7 +101,7 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   CheckClosed();
 
  private:
-  std::unique_ptr<_winmla::InferenceSession> inference_session_;
+  com_ptr<_winmla::IInferenceSession> inference_session_;
 
   // reference to the active execution provider. weak
   onnxruntime::IExecutionProvider* cached_execution_provider_ = nullptr;

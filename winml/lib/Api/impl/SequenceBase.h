@@ -6,6 +6,7 @@
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
+#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 
@@ -163,6 +164,27 @@ struct SequenceBase : public winrt::implements<
     return lotus_sequence;
   }
 
+  template <typename TLotusType>
+  static onnxruntime::MLDataType GetLotusType() {
+      static_assert(false, "Someone tried to use a LotusType that has not been specialized");
+  }
+
+  template <>
+  static onnxruntime::MLDataType
+    GetLotusType<AbiMapStringToFloat>() {
+      winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+      return adapter->GetVectorMapType(winml::TensorKind::String, winml::TensorKind::Float);
+  }
+  
+  template <>
+  static onnxruntime::MLDataType
+    GetLotusType<AbiMapInt64BitToFloat>() {
+      winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+      return adapter->GetVectorMapType(winml::TensorKind::Int64, winml::TensorKind::Float);
+  }
+
   STDMETHOD(GetOrtValue)
   (
       WinML::BindingContext& context,
@@ -174,11 +196,12 @@ struct SequenceBase : public winrt::implements<
                         ? std::make_unique<LotusSequence>(ConvertToLotusSequence(data_))
                         : std::make_unique<LotusSequence>();
 
+    auto lotus_type = GetLotusType<T>();
     OrtValue value;
     value.Init(
         sequence.release(),
-        onnxruntime::DataTypeImpl::GetType<LotusSequence>(),
-        onnxruntime::DataTypeImpl::GetType<LotusSequence>()->GetDeleteFunc());
+        lotus_type,
+        lotus_type->GetDeleteFunc());
 
     *ml_value = value;
 

@@ -346,8 +346,11 @@ static void GPUTensorize(
     com_ptr<LearningModelSession> spSession,
     void* pAllocatedResource,
     WinML::BindingContext& context) {
+    com_ptr<_winmla::IWinMLAdapter> adapter;
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+
   auto d3dResource =
-      _winmla::GetD3D12ResourceFromAllocation(
+      adapter->GetD3D12ResourceFromAllocation(
           spSession->GetExecutionProvider(),
           pAllocatedResource);
   auto spDevice = spSession->Device().as<LearningModelDevice>();
@@ -391,7 +394,10 @@ static void GPUTensorize(
 static OrtValue CreateMLValue(
     com_ptr<LearningModelSession> spSession,
     const ImageTensorDescription& tensorDescriptor) {
-  auto pTensor = _winmla::CreateTensor(
+    com_ptr<_winmla::IWinMLAdapter> adapter;
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+
+  auto pTensor = adapter->CreateTensor(
       tensorDescriptor.dataType == kImageTensorDataTypeFloat32 ? TensorKind::Float : TensorKind::Float16,
       &(tensorDescriptor.sizes[0]),
       sizeof(tensorDescriptor.sizes) / sizeof(tensorDescriptor.sizes[0]),
@@ -588,7 +594,9 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
     auto pProvider = spSession->GetExecutionProvider();
-    auto d3dResource = _winmla::GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
+    com_ptr<_winmla::IWinMLAdapter> adapter;
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    auto d3dResource = adapter->GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
 
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);

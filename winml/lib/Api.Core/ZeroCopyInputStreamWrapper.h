@@ -15,7 +15,7 @@ class ZeroCopyInputStreamWrapper : public google::protobuf::io::ZeroCopyInputStr
   ZeroCopyInputStreamWrapper() = delete;
 
   ZeroCopyInputStreamWrapper(
-      wss::IRandomAccessStreamReference stream);
+      ABI::Windows::Storage::Streams::IRandomAccessStreamReference* stream);
 
   // ModelProto load only uses "Next" method
   bool

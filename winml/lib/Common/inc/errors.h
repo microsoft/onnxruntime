@@ -5,15 +5,11 @@
 
 #include "core/common/status.h"
 
-namespace Dml {
-HRESULT MapLotusErrorToHRESULT(onnxruntime::common::Status status);
-}
-
 #define WINML_THROW_IF_NOT_OK(status)                                                                 \
   do {                                                                                                \
     auto _status = status;                                                                            \
     if (!_status.IsOK()) {                                                                            \
-      HRESULT hresult = Dml::MapLotusErrorToHRESULT(_status);                                         \
+      HRESULT hresult = StatusCodeToHRESULT(static_cast<StatusCode>(_status.Code()));                 \
       telemetry_helper.LogRuntimeError(hresult, _status.ErrorMessage(), __FILE__, __FUNCTION__, __LINE__); \
       winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(_status.ErrorMessage()));           \
       throw winrt::hresult_error(hresult, errorMessage);                                              \

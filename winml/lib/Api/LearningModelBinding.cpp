@@ -14,7 +14,8 @@ using namespace WinML;
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
     Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
-    m_lotusBinding = std::unique_ptr<_winmla::IOBinding>(session.as<LearningModelSession>()->CreateSessionBinding());
+    m_lotusBinding.attach(session.as<LearningModelSession>()->CreateSessionBinding());
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
 }
 WINML_CATCH_ALL
 
@@ -158,10 +159,10 @@ void LearningModelBinding::Bind(
 
   switch (bindingType) {
     case BindingType::kInput:
-      WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindInput(bindingName, bindingValue));
+      WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue));
       break;
     case BindingType::kOutput:
-      WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindOutput(bindingName, bindingValue));
+      WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue));
       break;
     default:
       FAIL_FAST();
@@ -170,7 +171,7 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
-  m_lotusBinding = std::unique_ptr<_winmla::IOBinding>(m_session.as<LearningModelSession>()->CreateSessionBinding());
+  m_lotusBinding.attach(m_session.as<LearningModelSession>()->CreateSessionBinding());
   m_providers.clear();
 }
 WINML_CATCH_ALL
@@ -215,27 +216,31 @@ void LearningModelBinding::Split(
   throw hresult_not_implemented();
 }
 
-_winmla::IOBinding& LearningModelBinding::BindingCollection() {
-  return *m_lotusBinding;
+_winmla::IIOBinding* LearningModelBinding::BindingCollection() {
+    _winmla::IIOBinding* p;
+    m_lotusBinding.copy_to(&p);
+    return p;
 }
 
-template <typename T>
-static bool IsOfType(const OrtValue& mlValue) {
-  return mlValue.Type() == onnxruntime::DataTypeImpl::GetType<T>();
+bool LearningModelBinding::IsOfMapType(const OrtValue& mlValue, TensorKind key_kind, TensorKind value_kind) {
+  return mlValue.Type() == adapter_->GetMapType(key_kind, value_kind);
 };
 
-template <typename T>
-static bool IsOfTensorType(const onnxruntime::Tensor& tensorValue) {
-  return tensorValue.DataType() == onnxruntime::DataTypeImpl::GetType<T>();
+bool LearningModelBinding::IsOfVectorMapType(const OrtValue& mlValue, TensorKind key_kind, TensorKind value_kind) {
+    return mlValue.Type() == adapter_->GetVectorMapType(key_kind, value_kind);
 };
 
-static ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
+bool LearningModelBinding::IsOfTensorType(const onnxruntime::Tensor& tensorValue, TensorKind kind) {
+  return tensorValue.DataType() == adapter_->GetTensorType(kind);
+};
+
+ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
     OrtValue& mlValue,
     ILearningModelFeatureDescriptor& descriptor) {
   if (mlValue.IsTensor()) {
     const onnxruntime::Tensor& tensorValue = mlValue.Get<onnxruntime::Tensor>();
 
-    if (IsOfTensorType<float>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Float)) {
       if (descriptor.Kind() == LearningModelFeatureKind::Image) {
         using namespace Windows::Graphics::Imaging;
         // TODO: this format for unbound ouput needs more discussion
@@ -248,65 +253,65 @@ static ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
         return implementation::TensorFloat::Create();
       }
     }
-    if (IsOfTensorType<double>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Double)) {
       return implementation::TensorDouble::Create();
     }
-    if (IsOfTensorType<std::string>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::String)) {
       return implementation::TensorString::Create();
     }
-    if (IsOfTensorType<uint8_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::UInt8)) {
       return implementation::TensorUInt8Bit::Create();
     }
-    if (IsOfTensorType<int8_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Int8)) {
       return implementation::TensorInt8Bit::Create();
     }
-    if (IsOfTensorType<uint16_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::UInt16)) {
       return implementation::TensorUInt16Bit::Create();
     }
-    if (IsOfTensorType<int16_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Int16)) {
       return implementation::TensorInt16Bit::Create();
     }
-    if (IsOfTensorType<uint32_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::UInt32)) {
       return implementation::TensorUInt32Bit::Create();
     }
-    if (IsOfTensorType<int32_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Int32)) {
       return implementation::TensorInt32Bit::Create();
     }
-    if (IsOfTensorType<uint64_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::UInt64)) {
       return implementation::TensorUInt64Bit::Create();
     }
-    if (IsOfTensorType<int64_t>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Int64)) {
       return implementation::TensorInt64Bit::Create();
     }
-    if (IsOfTensorType<bool>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Boolean)) {
       return implementation::TensorBoolean::Create();
     }
-    if (IsOfTensorType<onnxruntime::MLFloat16>(tensorValue)) {
+    if (IsOfTensorType(tensorValue, TensorKind::Float16)) {
       return implementation::TensorFloat16Bit::Create();
     }
   }
   // Maps
-  else if (IsOfType<onnxruntime::MapStringToString>(mlValue)) {
+  else if (IsOfMapType(mlValue, TensorKind::String, TensorKind::String)) {
     return implementation::MapStringToString::Create();
-  } else if (IsOfType<onnxruntime::MapStringToInt64>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::String, TensorKind::Int64)) {
     return implementation::MapStringToInt64Bit::Create();
-  } else if (IsOfType<onnxruntime::MapStringToFloat>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::String, TensorKind::Float)) {
     return implementation::MapStringToFloat::Create();
-  } else if (IsOfType<onnxruntime::MapStringToDouble>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::String, TensorKind::Double)) {
     return implementation::MapStringToDouble::Create();
-  } else if (IsOfType<onnxruntime::MapInt64ToString>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::Int64, TensorKind::String)) {
     return implementation::MapInt64BitToString::Create();
-  } else if (IsOfType<onnxruntime::MapInt64ToInt64>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::Int64, TensorKind::Int64)) {
     return implementation::MapInt64BitToInt64Bit::Create();
-  } else if (IsOfType<onnxruntime::MapInt64ToFloat>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::Int64, TensorKind::Float)) {
     return implementation::MapInt64BitToFloat::Create();
-  } else if (IsOfType<onnxruntime::MapInt64ToDouble>(mlValue)) {
+  } else if (IsOfMapType(mlValue, TensorKind::Int64, TensorKind::Double)) {
     return implementation::MapInt64BitToDouble::Create();
   }
   // Sequences
-  else if (IsOfType<onnxruntime::VectorMapStringToFloat>(mlValue)) {
+  else if (IsOfVectorMapType(mlValue, TensorKind::String, TensorKind::Float)) {
     return implementation::SequenceMapStringFloat::Create();
-  } else if (IsOfType<onnxruntime::VectorMapInt64ToFloat>(mlValue)) {
+  } else if (IsOfVectorMapType(mlValue, TensorKind::Int64, TensorKind::Float)) {
     return implementation::SequenceMapInt64BitFloat::Create();
   }
 
@@ -375,8 +380,8 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
 std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModelBinding::UpdateProviders() {
   std::unordered_map<std::string, Windows::Foundation::IInspectable> outputs;
 
-  auto& outputNames = m_lotusBinding->get()->GetOutputNames();
-  auto& outputMLValues = m_lotusBinding->get()->GetOutputs();
+  auto& outputNames = m_lotusBinding->GetOutputNames();
+  auto& outputMLValues = m_lotusBinding->GetOutputs();
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
       outputNames.size() == outputMLValues.size(),
@@ -434,10 +439,10 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindInput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_NOT_OK(m_lotusBinding->get()->BindOutput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue));
         break;
       default:
         FAIL_FAST();

@@ -3,23 +3,28 @@
 
 #pragma once
 
-#include "inc/IOrtSessionBuilder.h"
+#include "inc/WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 
-class CpuOrtSessionBuilder : public IOrtSessionBuilder {
+class CpuOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    _winmla::IOrtSessionBuilder> {
+
  public:
-  HRESULT __stdcall CreateSessionOptions(
-      onnxruntime::SessionOptions* p_options);
+     CpuOrtSessionBuilder();
 
-  HRESULT __stdcall CreateSession(
+  HRESULT STDMETHODCALLTYPE CreateSessionOptions(
+      onnxruntime::SessionOptions* p_options) override;
+
+  HRESULT STDMETHODCALLTYPE CreateSession(
       const onnxruntime::SessionOptions& options,
-      _winmla::InferenceSession** p_session,
-      onnxruntime::IExecutionProvider** pp_provider);
+      _winmla::IInferenceSession** p_session,
+      onnxruntime::IExecutionProvider** pp_provider) override;
 
-  HRESULT __stdcall Initialize(
-      _winmla::InferenceSession* p_session,
-      onnxruntime::IExecutionProvider* p_provider);
+  HRESULT STDMETHODCALLTYPE Initialize(
+      _winmla::IInferenceSession* p_session,
+      onnxruntime::IExecutionProvider* p_provider) override;
 };
 
 }  // namespace Windows::AI::MachineLearning
