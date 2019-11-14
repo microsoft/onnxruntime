@@ -12,11 +12,13 @@ namespace onnxruntime {
 OpKernelContext::OpKernelContext(IExecutionFrame* frame,
                                  const OpKernel* kernel,
                                  concurrency::ThreadPool* threadpool,
-                                 const logging::Logger& logger)
+                                 const logging::Logger& logger,
+                                 profiling::Profiler* profiler)
     : execution_frame_(frame),
       kernel_(kernel),
       threadpool_(threadpool),
-      logger_(&logger) {
+      logger_(&logger),
+      profiler_(profiler) {
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 

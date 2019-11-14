@@ -8,6 +8,7 @@
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
+#include "core/common/profiler.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/ml_value.h"
@@ -67,7 +68,8 @@ class OpKernelContext {
   explicit OpKernelContext(IExecutionFrame* frame,
                            const OpKernel* kernel,
                            concurrency::ThreadPool* threadpool,
-                           const logging::Logger& logger);
+                           const logging::Logger& logger,
+                           profiling::Profiler* profiler = nullptr);
 
   virtual ~OpKernelContext() = default;
 
@@ -115,6 +117,10 @@ class OpKernelContext {
 
   const logging::Logger& Logger() const {
     return *logger_;
+  }
+
+  profiling::Profiler* Profiler() const {
+    return profiler_;
   }
 
   // always >= 0
@@ -197,6 +203,7 @@ class OpKernelContext {
   const OpKernel* kernel_{nullptr};
   concurrency::ThreadPool* threadpool_{nullptr};
   const logging::Logger* logger_{nullptr};
+  profiling::Profiler* profiler_{nullptr};
 
   // The argument starting index in ExecutionFrame.
   int node_input_start_index_{-1};
