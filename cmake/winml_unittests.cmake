@@ -29,6 +29,7 @@ function(AddWinMLTest)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
 
   set_target_properties(${_UT_TARGET} PROPERTIES
+    FOLDER "WinMLTest"
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
@@ -60,4 +61,5 @@ AddWinMLTest(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
 )
-install(DIRECTORY "${WINML_TEST_SRC_DIR}/api/models/" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)  # TODO test properly
+install(DIRECTORY "${WINML_TEST_SRC_DIR}/collateral/images/" "${WINML_TEST_SRC_DIR}/collateral/models/" "${WINML_TEST_SRC_DIR}/collateral/ModelSubdirectory" "${WINML_TEST_SRC_DIR}/api/models/" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)  # TODO test properly
+install(FILES "${WINML_TEST_SRC_DIR}/collateral/metaDataTestTable.xml" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)
