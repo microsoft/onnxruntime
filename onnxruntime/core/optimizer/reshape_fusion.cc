@@ -36,7 +36,7 @@ static bool GetConstantInput(const Graph& graph, const NodeArg& input_arg, std::
   return true;
 }
 
-/*
+/**
 Apply Reshape Fusion. The fowllowing are subgraphs before and after fusion:
 
 Before fusion:
@@ -95,17 +95,16 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
     }
 
     // path 1: [Root] --> Shape --> Gather(indices=0) --> Unsqueeze (axes=0) --> Concat [input 0]
-    std::vector<graph_utils::MatchEdgeInfo> parent_path {
+    std::vector<graph_utils::MatchEdgeInfo> parent_path{
         {0, "Unsqueeze", {1}, kOnnxDomain},
         {0, "Gather", {1}, kOnnxDomain},
-        {0, "Shape", {1}, kOnnxDomain}
-    };
+        {0, "Shape", {1}, kOnnxDomain}};
 
     std::vector<const Node::EdgeEnd*> edges;
     if (!graph_utils::FindParentPath(concat, parent_path, edges)) {
       continue;
     }
-    
+
     const Node& unsqueeze_1 = edges[0]->GetNode();
     const Node& gather_1 = edges[1]->GetNode();
     const Node& shape_1 = edges[2]->GetNode();
