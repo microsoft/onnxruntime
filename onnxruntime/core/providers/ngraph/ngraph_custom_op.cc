@@ -58,7 +58,7 @@ NGRAPHCustomOp::~NGRAPHCustomOp() {
 }
 
 //This method gets called in critical path of execution: Optimize
-Status NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const {
+Status NGRAPHCustomOp::Initialize(const OrtApi* api, OrtKernelContext* context) const {
   Ort::CustomOpApi ort{*api};
 
   size_t num_inputs = ort.KernelContext_GetInputCount(context);
@@ -176,7 +176,7 @@ Status NGRAPHCustomOp::Initialize(const OrtCustomOpApi* api, OrtKernelContext* c
 }
 
 //This method gets called in critical path of execution: Optimize
-Status NGRAPHCustomOp::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
+Status NGRAPHCustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const {
   Ort::CustomOpApi ort{*api};
 
   // Initialize nGraph function if it is not already initialized.
