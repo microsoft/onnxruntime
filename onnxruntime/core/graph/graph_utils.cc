@@ -704,7 +704,7 @@ FindParentPath(const Node& node, const std::vector<MatchEdgeInfo>& match_edges, 
 
     const Node::EdgeEnd* edge = nullptr;
     if (match_edge.dst_arg_index < 0) {
-      // When arg index not specified, just find the first input edge that matched.
+      // When arg index is not specified, just find the first input edge that matched.
       // This is a limitation of this utility function: by design to reduce complexity.
       edge = FindFirstInputEdge(*current_node, match_edge.op_type, match_edge.versions, match_edge.domain);
     } else {

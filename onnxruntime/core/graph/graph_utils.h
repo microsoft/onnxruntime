@@ -223,6 +223,21 @@ Find a path that matches the specified edge information.
 For example, the first is input edge for current node, and the second one is for the parent node.
 @param result stores edges that are found.
 @returns true when all edges are found.
+@remarks one limitation of this function is that it will not look at all possible paths when dst_arg_index=-1 is used.
+This is by design to reduce the complexity (Otherwise, recursive or stack is needed to enumerate all possible paths).
+Here is an example graph with two paths:
+      Add      Sub
+       |        |
+     Shape    Shape
+        \      /
+         Concat (current node)
+When you use [{dst_arg_index=1, op_type="Shape"}, {dst_arg_index=0, op_type="Sub"}], it will find the correct path.
+When you use [{dst_arg_index=-1, op_type="Shape"}, {dst_arg_index=0, op_type="Sub"}], it will report that path is not found.
+During mathing "Shape" for dst_arg_index=-1, it will get the edge of the first Shape node (with smaller node index).
+On the other hand, dst_arg_index=-1 is useful when inputs have different node types and allowed switching positions like
+      Sub   Add             Sub  Add
+        \    /               \   /
+         Add                  Add
 */
 bool FindParentPath(const Node& node, const std::vector<MatchEdgeInfo>& match_edges, std::vector<const Node::EdgeEnd*>& result);
 
