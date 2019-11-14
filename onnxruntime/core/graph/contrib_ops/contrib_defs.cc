@@ -193,7 +193,6 @@ void RegisterNchwcSchemas() {
 }
 
 void RegisterBertSchemas() {
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -314,6 +313,17 @@ void RegisterBertSchemas() {
         updateOutputShape(ctx, 1, mask_index_shape);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Gelu")
+      .Input(0, "X", "input tensor", "T")
+      .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
+      .Output(0, "Y", "output tensor", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -326,7 +336,6 @@ void RegisterBertSchemas() {
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
 }
 
 void RegisterContribSchemas() {
@@ -1915,11 +1924,18 @@ Example 4:
     RegisterNchwcSchemas();
   }
 
+  static const char* Gelu_ver1_doc =
+      R"DOC(Gaussian Error Linear Unit.
+A high-performing neural network activation function.The GELU nonlinearity is
+the expected transformation of a stochastic regularizer which randomly applies
+the identity or zero map to a neuron's input. The GELU nonlinearity weights 
+inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gelu")
+      .SetDoc(Gelu_ver1_doc)
       .Input(0, "X", "The input data as Tensor.", "T")
       .Output(0, "Y", "The output.", "T")
       .TypeConstraint(
@@ -1927,6 +1943,29 @@ Example 4:
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AddGeluFusion)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("AddGeluFusion fuses Add+Gelu. The fused Add op is the parent node of the fused Gelu.")
+      .Input(0, "A", "The input data as Tensor that is the first input of fused Add.", "T")
+      .Input(1, "B", "The input data as Tensor that is the second input of fused Add.", "T")
+      .Output(0, "C", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (hasNInputShapes(ctx, 2)) {
+          bidirectionalBroadcastShapeInference(
+              ctx.getInputType(0)->tensor_type().shape(),
+              ctx.getInputType(1)->tensor_type().shape(),
+              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+        }
+      });
 
   RegisterBertSchemas();
 

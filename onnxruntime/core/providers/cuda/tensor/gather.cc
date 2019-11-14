@@ -21,10 +21,10 @@ ONNX_OPERATOR_KERNEL_EX(
     Gather);
 
 #define TYPED_FUNCTION_CALL(T)                                                  \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                   \
+  if (utils::IsPrimitiveDataType<T>(T_type)) {                                  \
     T* output_data = p.output_tensor->template MutableData<T>();                \
     const T* input_data = p.input_tensor->template Data<T>();                   \
-    if (Tin_type == DataTypeImpl::GetType<int32_t>()) {                         \
+    if (utils::IsPrimitiveDataType<int32_t>(Tin_type)) {                        \
       if (p.output_tensor->Shape().Size() > 0) {                                \
         GatherImpl(                                                             \
             input_block_size,                                                   \
@@ -37,7 +37,7 @@ ONNX_OPERATOR_KERNEL_EX(
       }                                                                         \
       return Status::OK();                                                      \
     }                                                                           \
-    if (Tin_type == DataTypeImpl::GetType<int64_t>()) {                         \
+    if (utils::IsPrimitiveDataType<int64_t>(Tin_type)) {                        \
       if (p.output_tensor->Shape().Size() > 0) {                                \
         GatherImpl(                                                             \
             input_block_size,                                                   \

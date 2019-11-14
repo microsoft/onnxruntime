@@ -365,7 +365,7 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
     const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
-    ORT_ENFORCE(pads_tensor.DataType() == DataTypeImpl::GetType<int64_t>(),
+    ORT_ENFORCE(utils::IsPrimitiveDataType<int64_t>(pads_tensor.DataType()),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
                 "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
@@ -393,7 +393,7 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
     T value = 0;
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
-      ORT_ENFORCE(value_tensor->DataType() == DataTypeImpl::GetType<T>() &&
+      ORT_ENFORCE(utils::IsPrimitiveDataType<T>(value_tensor->DataType()) &&
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
       value = value_tensor->template Data<T>()[0];
