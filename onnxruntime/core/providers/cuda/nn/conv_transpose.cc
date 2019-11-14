@@ -7,10 +7,18 @@ namespace onnxruntime {
 namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      ConvTranspose,                                                            \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      ConvTranspose<T>);                                                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       ConvTranspose,                                                            \
       kOnnxDomain,                                                              \
-      1,                                                                        \
+      11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
