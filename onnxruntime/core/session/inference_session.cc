@@ -152,7 +152,11 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::string& model_uri,
                                    logging::LoggingManager* logging_manager = nullptr)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // TODO: Add logic to freeze SessionOptions
+  if (session_options == nullptr) {
+    SessionOptions default_session_options;
+    session_options = &default_session_options;
+    // FinalizeSessionOptions();
+  }
 
   ConstructorCommon(*session_options, logging_manager);
 
@@ -164,7 +168,11 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::wstring& model_uri,
                                    logging::LoggingManager* logging_manager = nullptr)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // TODO: Add logic to freeze SessionOptions
+  if (session_options == nullptr) {
+    SessionOptions default_session_options;
+    session_options = &default_session_options;
+    // FinalizeSessionOptions();
+  }
 
   ConstructorCommon(*session_options, logging_manager);
 
@@ -176,7 +184,11 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    std::istream& model_istream,
                                    logging::LoggingManager* logging_manager = nullptr)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // TODO: Add logic to freeze SessionOptions
+  if (session_options == nullptr) {
+    SessionOptions default_session_options;
+    session_options = &default_session_options;
+    // FinalizeSessionOptions();
+  }
 
   ConstructorCommon(*session_options, logging_manager);
 
@@ -188,7 +200,11 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    int model_data_len,
                                    logging::LoggingManager* logging_manager = nullptr)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // TODO: Add logic to freeze SessionOptions
+  if (session_options == nullptr) {
+    SessionOptions default_session_options;
+    session_options = &default_session_options;
+    // FinalizeSessionOptions();
+  }
 
   ConstructorCommon(*session_options, logging_manager);
 
