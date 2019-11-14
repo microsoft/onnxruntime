@@ -74,7 +74,7 @@ CREATE_INITIALIZER_FUNC(int64_t, TensorProto_DataType_INT64, add_int64_data)
 // TO DO: Figure out a way to enable it again
 TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test",
-                                                                                           nullptr,
+                                                                                           false,
                                                                                            DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
