@@ -72,15 +72,18 @@ Status Transpose::DoTranspose(const Transpose& kernel,
 
   auto element_type = input.GetElementType();
   if (element_type == utils::GetONNXTensorElementDataType<float>() ||
-      element_type == utils::GetONNXTensorElementDataType<double>()) {
+      element_type == utils::GetONNXTensorElementDataType<double>() ||
+      element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
     auto mn = TryTransposeWithCublas(permutations, input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
         return TransposeWithCublas<float>(kernel.CublasHandle(), input, output, M, N);
-      } else {
+      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
         return TransposeWithCublas<double>(kernel.CublasHandle(), input, output, M, N);
+      } else {
+        return TransposeWithCublas<MLFloat16>(kernel.CublasHandle(), input, output, M, N);
       }
     }
   }
