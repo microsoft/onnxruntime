@@ -154,7 +154,10 @@ bool IsUnsupportedOp(std::string name){
     "HardSigmoid",
     "GlobalLpPool",
     "Sign",
-    "Erf"
+    "Erf",
+    "Add", //disabled temporarily
+    "MaxPool", //disabled temporarily
+    "AveragePool" //disabled temporarily
   };
 
   auto iter = unsupported_ops.find(name);
