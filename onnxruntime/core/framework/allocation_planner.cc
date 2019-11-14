@@ -291,9 +291,10 @@ class PlannerImpl {
 
     // sizeof(std::string) = sizeof(double) on gcc 4.8.x on CentOS. This causes the allocation planner to reuse
     // a tensor of type double. This won't work for string tensors since they need to be placement new'ed.
-    // The XOR logic ensures that if one of the tensors in question is a string tensor and the other is not,
-    // we don't treat them the same when doing planning.
-    return !(is_type1_string ^ is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
+    // If either of the tensors is a string, don't treat them the same. Moreover, reusing a string tensor for a string
+    // tensor without releasing the previous memory can cause memory leaks; hence we don't allow reuse across string
+    // tensors as well.
+    return !(is_type1_string || is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
 
     /* TODO: we can improve this if the concrete shapes are known for both as below.
        Unclear whether this is worthwhile though.
