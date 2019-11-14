@@ -154,6 +154,29 @@ void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchem
   registries.push_front(registry);
 }
 
+static int GetActualLastSupportedOpSet(
+    const std::string& domain,
+    const int op_set_version) {
+  // ONNX runtime may not support as recent of an opset as ONNX. So this function clamps
+  // the opset to whatever ORT actually supports.
+  const std::pair<const char*, int> supported_versions[] = {
+    {kOnnxDomain, kMaximumAiOnnxVersionSupported},
+    {kOnnxDomainAlias, kMaximumAiOnnxVersionSupported},
+    {kMLDomain, kMaximumAiMlOnnxVersionSupported},
+    {kMSDomain, kMaximumComMicrosoftVersionSupported},
+  };
+
+  for (const auto& supported_version : supported_versions) {
+    if (domain == supported_version.first && op_set_version > supported_version.second) {
+      // Clamp to the actual value.
+      return supported_version.second;
+    }
+  }
+
+  // Either all known domains were within range, or the domains were unknown.
+  return op_set_version;
+}
+
 DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_only) const {
   DomainToVersionMap domain_version_map;
 
@@ -182,37 +205,19 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   for (const auto& domain : onnx_domain_version_map) {
     if (is_onnx_only && domain.first.compare(kOnnxDomain) != 0)
       continue;
+
+    int lastSupportedOpSet = GetActualLastSupportedOpSet(domain.first, domain.second.second);
     auto it = domain_version_map.find(domain.first);
+
     if (it == domain_version_map.end()) {
       GSL_SUPPRESS(es .84)
-      domain_version_map.insert(std::make_pair(domain.first, domain.second.second));
+      domain_version_map.insert(std::make_pair(domain.first, lastSupportedOpSet));
     } else {
-      it->second = std::max(it->second, domain.second.second);
+      it->second = std::max(it->second, lastSupportedOpSet);
     }
   }
 
   return domain_version_map;
-}
-
-static bool IsDomainVersionBeyondSupportedRange(
-    const std::string& domain,
-    const int op_set_version) {
-  // List of maximum supported versions ORT officially supports in the static registrations.
-  // It's perfectly okay for custom registrations to support beyond these limits.
-  const std::pair<const char*, int> supported_versions[] = {
-    {kOnnxDomain, kMaximumAiOnnxVersionSupported},
-    {kOnnxDomainAlias, kMaximumAiOnnxVersionSupported},
-    {kMLDomain, kMaximumAiMlOnnxVersionSupported},
-  };
-
-  for (const auto& supported_version : supported_versions) {
-    if (domain == supported_version.first && op_set_version > supported_version.second) {
-      return true;
-    }
-  }
-
-  // Either all ONNX domains were within range, or the domains were not ONNX.
-  return false;
 }
 
 // Return the schema with biggest version, which is not greater than specified
@@ -261,7 +266,7 @@ void SchemaRegistryManager::GetSchemaAndHistory(
 
   // Reject versions greater than what is actually supported.
   *latest_schema = nullptr;
-  if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
+  if (version <= GetActualLastSupportedOpSet(domain, version)) {
     // if not found in registered custom schema registry, search in ONNX schema registry
     *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
     if (*latest_schema != nullptr) {
