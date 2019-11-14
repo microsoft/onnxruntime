@@ -96,6 +96,8 @@ template struct
     TensorElementTypeSetter<uint64_t>;
 template struct
     TensorElementTypeSetter<BFloat16>;
+template struct
+    TensorElementTypeSetter<DateTime>;
 
 void CopyMutableMapValue(const ONNX_NAMESPACE::TypeProto& value_proto,
                          ONNX_NAMESPACE::TypeProto& map_proto) {
@@ -471,6 +473,7 @@ ORT_REGISTER_TENSOR_TYPE(uint32_t);
 ORT_REGISTER_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_TENSOR_TYPE(BFloat16);
+ORT_REGISTER_TENSOR_TYPE(DateTime);
 
 ORT_REGISTER_SPARSE_TENSOR_TYPE(int32_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(float);
@@ -486,6 +489,7 @@ ORT_REGISTER_SPARSE_TENSOR_TYPE(uint32_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(BFloat16);
+ORT_REGISTER_SPARSE_TENSOR_TYPE(DateTime);
 
 ORT_REGISTER_MAP(MapStringToString);
 ORT_REGISTER_MAP(MapStringToInt64);
@@ -512,6 +516,7 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(uint32_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
+ORT_REGISTER_SEQ_TENSOR_TYPE(DateTime);
 
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
@@ -612,57 +617,47 @@ MLDataType DataTypeImpl::GetDataType(const std::string& data_type) {
 }
 
 const char* DataTypeImpl::ToString(MLDataType type) {
-  if (type == DataTypeImpl::GetTensorType<float>()) {
-    return "tensor(float)";
+  auto prim_type = type->AsPrimitiveDataType();
+  if (prim_type == nullptr) {
+    return "unknown";
   }
-  if (type == DataTypeImpl::GetTensorType<bool>()) {
+  switch (prim_type->GetDataType()) {
+  case TensorProto_DataType_FLOAT:
+      return "tensor(float)";
+  case TensorProto_DataType_BOOL:
     return "tensor(bool)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<int32_t>()) {
-    return "tensor(int32)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<double>()) {
+  case TensorProto_DataType_DOUBLE:
     return "tensor(double)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<std::string>()) {
+  case TensorProto_DataType_STRING:
     return "tensor(string)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint8_t>()) {
+  case TensorProto_DataType_INT8:
+    return "tensor(int8)";
+  case TensorProto_DataType_UINT8:
     return "tensor(uint8)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint16_t>()) {
-    return "tensor(uint16)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<int16_t>()) {
+  case TensorProto_DataType_INT16:
     return "tensor(int16)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<int64_t>()) {
-    return "tensor(int64)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint32_t>()) {
+  case TensorProto_DataType_UINT16:
+    return "tensor(uint16)";
+  case TensorProto_DataType_INT32:
+    return "tensor(int32)";
+  case TensorProto_DataType_UINT32:
     return "tensor(uint32)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<uint64_t>()) {
+  case TensorProto_DataType_INT64:
+    return "tensor(int64)";
+  case TensorProto_DataType_UINT64:
     return "tensor(uint64)";
-  }
-
-  if (type == DataTypeImpl::GetTensorType<MLFloat16>()) {
-    return "tensor(MLFloat16)";
-  }
-  if (type == DataTypeImpl::GetTensorType<BFloat16>()) {
+  case TensorProto_DataType_FLOAT16:
+    return "tensor(float16)";
+  case TensorProto_DataType_BFLOAT16:
     return "tensor(bfloat16)";
+  case TensorProto_DataType_POSIX_DATETIME:
+    return "tensor(posix_datetime)";
+  default:
+    break;
   }
   return "unknown";
 }
+
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
@@ -693,6 +688,8 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
+    case TensorProto_DataType_POSIX_DATETIME:
+      return DataTypeImpl::GetTensorType<DateTime>()->AsTensorType();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }
@@ -728,6 +725,8 @@ const NonTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) 
       return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsNonTensorTypeBase();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsNonTensorTypeBase();
+    case TensorProto_DataType_POSIX_DATETIME:
+      return DataTypeImpl::GetSequenceTensorType<DateTime>()->AsNonTensorTypeBase();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }
@@ -763,6 +762,8 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
       return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<MLFloat16>());
     case TensorProto_DataType_BFLOAT16:
       return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<BFloat16>());
+    case TensorProto_DataType_POSIX_DATETIME:
+      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<DateTime>());
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }
@@ -912,6 +913,7 @@ ORT_REGISTER_PRIM_TYPE(uint32_t);
 ORT_REGISTER_PRIM_TYPE(uint64_t);
 ORT_REGISTER_PRIM_TYPE(MLFloat16);
 ORT_REGISTER_PRIM_TYPE(BFloat16);
+ORT_REGISTER_PRIM_TYPE(DateTime);
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorExceptHalfTypes() {
   static std::vector<MLDataType> all_fixed_size_tensor_types =
@@ -925,6 +927,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorExceptHalfTypes()
        DataTypeImpl::GetTensorType<uint16_t>(),
        DataTypeImpl::GetTensorType<int8_t>(),
        DataTypeImpl::GetTensorType<uint8_t>(),
+       DataTypeImpl::GetTensorType<DateTime>(),
        DataTypeImpl::GetTensorType<bool>()};
 
   return all_fixed_size_tensor_types;
@@ -961,6 +964,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
        DataTypeImpl::GetTensorType<uint8_t>(),
        DataTypeImpl::GetTensorType<MLFloat16>(),
        DataTypeImpl::GetTensorType<BFloat16>(),
+       DataTypeImpl::GetTensorType<DateTime>(),
        DataTypeImpl::GetTensorType<bool>()};
 
   return all_fixed_size_tensor_types;
@@ -980,6 +984,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorTypes() {
        DataTypeImpl::GetTensorType<uint8_t>(),
        DataTypeImpl::GetTensorType<MLFloat16>(),
        DataTypeImpl::GetTensorType<BFloat16>(),
+       DataTypeImpl::GetTensorType<DateTime>(),
        DataTypeImpl::GetTensorType<bool>(),
        DataTypeImpl::GetTensorType<std::string>()};
 
@@ -1000,6 +1005,7 @@ const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypes() {
        DataTypeImpl::GetSequenceTensorType<uint8_t>(),
        DataTypeImpl::GetSequenceTensorType<MLFloat16>(),
        DataTypeImpl::GetSequenceTensorType<BFloat16>(),
+       DataTypeImpl::GetSequenceTensorType<DateTime>(),
        DataTypeImpl::GetSequenceTensorType<bool>(),
        DataTypeImpl::GetSequenceTensorType<std::string>()};
 

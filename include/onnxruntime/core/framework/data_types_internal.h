@@ -11,7 +11,6 @@
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
 
-
 namespace onnxruntime {
 namespace utils {
 
@@ -74,18 +73,22 @@ template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16>() {
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 };
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<DateTime>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_POSIX_DATETIME;
+};
 
-// The following primitives are strongly recommended for switching on tensor input datatypes for
-// kernel implementations.
-//
-//  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
-//     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
-//  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
-//     if you have a standalone MLDatatType with a sequence of if/else statements.
-//  3) For something in between, we suggest to use CallDispatcher pattern.
-//
-// Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
-// Every primitive type carries with it an integer constant that can be used for quick switching on types.
+  // The following primitives are strongly recommended for switching on tensor input datatypes for
+  // kernel implementations.
+  //
+  //  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
+  //     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
+  //  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
+  //     if you have a standalone MLDatatType with a sequence of if/else statements.
+  //  3) For something in between, we suggest to use CallDispatcher pattern.
+  //
+  // Invoking DataTypeImpl::GetType<T>() for switching on input types is discouraged and should be avoided.
+  // Every primitive type carries with it an integer constant that can be used for quick switching on types.
 
 #define DispatchOnTensorType(tensor_type, function, ...)          \
   switch (tensor_type->AsPrimitiveDataType()->GetDataType()) {    \
@@ -130,6 +133,9 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
       break;                                                      \
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:           \
       function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_POSIX_DATETIME:     \
+      function<DateTime>(__VA_ARGS__);                            \
       break;                                                      \
     default:                                                      \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
@@ -178,6 +184,9 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
       break;                                                               \
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:                    \
       retval = function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_POSIX_DATETIME:              \
+      retval = function<DateTime>(__VA_ARGS__);                            \
       break;                                                               \
     default:                                                               \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \

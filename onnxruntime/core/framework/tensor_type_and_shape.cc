@@ -18,6 +18,7 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
+using onnxruntime::DateTime;
 using onnxruntime::SparseTensor;
 using onnxruntime::Tensor;
 
@@ -123,6 +124,9 @@ ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(
       break;
     case o::TensorProto_DataType_BOOL:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+      break;
+    case o::TensorProto_DataType_POSIX_DATETIME:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_POSIX_DATETIME;
       break;
     default:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;

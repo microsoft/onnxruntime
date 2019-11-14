@@ -84,12 +84,13 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,  // maps to c++ type std::string
   ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,      // maps to c type double
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,      // maps to c type uint32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,      // maps to c type uint64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,          // maps to c type double
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,          // maps to c type uint32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,          // maps to c type uint64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,       // complex with float32 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,      // complex with float64 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,        // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_POSIX_DATETIME,  // POSIX time represented as int64_t
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof

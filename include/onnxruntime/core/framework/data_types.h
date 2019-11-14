@@ -119,6 +119,25 @@ inline bool operator<(const BFloat16& left, const BFloat16& right) {
   return left.val < right.val;
 }
 
+struct DateTime {
+  int64_t val;
+  DateTime() : val(0) {}
+  DateTime(int64_t val) : val(val) {}
+};
+
+inline bool operator==(const DateTime& left, const DateTime& right) {
+  return left.val == right.val;
+}
+
+inline bool operator!=(const DateTime& left, const DateTime& right) {
+  return left.val != right.val;
+}
+
+inline bool operator<(const DateTime& left, const DateTime& right) {
+  return left.val < right.val;
+}
+
+
 // DataTypeImpl pointer as unique DataTypeImpl identifier.
 using MLDataType = const DataTypeImpl*;
 // be used with class MLValue
@@ -268,7 +287,8 @@ struct IsAnyOf<T, H, Tail...> {
 template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t, BFloat16> {
+                                              double, uint32_t, uint64_t, BFloat16,
+                                              DateTime> {
 };
 
 /// Use "IsSparseTensorContainedType<T>::value" to test if a type T
@@ -277,7 +297,8 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
 template <typename T>
 struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                                     int32_t, int64_t, bool, MLFloat16,
-                                                    double, uint32_t, uint64_t, BFloat16> {
+                                                    double, uint32_t, uint64_t, BFloat16,
+                                                    DateTime> {
 };
 
 /// This template's Get() returns a corresponding MLDataType

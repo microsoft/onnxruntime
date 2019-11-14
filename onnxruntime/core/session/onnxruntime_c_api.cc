@@ -31,6 +31,7 @@
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
+using onnxruntime::DateTime;
 using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
@@ -186,8 +187,7 @@ OrtStatus* CreateTensorImplForSeq(const int64_t* shape, size_t shape_len,
  *
  * this function will create a copy of the allocator info
  */
-template <typename T>
-OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
+OrtStatus* CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
                             void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
@@ -197,7 +197,7 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtMem
   }
 
   size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArray(sizeof(T), elem_count, &size_to_allocate)) {
+  if (!IAllocator::CalcMemSizeForArray(ml_type->Size(), elem_count, &size_to_allocate)) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "size overflow");
   }
   if (size_to_allocate > p_data_len) {
@@ -205,15 +205,38 @@ OrtStatus* CreateTensorImpl(const int64_t* shape, size_t shape_len, const OrtMem
     oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
-  *out = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(), onnxruntime::TensorShape(shapes), p_data, *info);
+  *out = onnxruntime::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), p_data, *info);
   return nullptr;
 }
+
+namespace c_api_internal {
+struct CreateTensorUnsupportedType {
+  OrtStatus* operator()(int32_t dt_type) const {
+    std::ostringstream oss;
+    oss << "type " << dt_type << " is not supported in this function";
+    std::string errmsg = oss.str();
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
+  }
+};
+
+template <class T>
+struct CreateTensorWithDataAsOrtvalueImpl {
+  OrtStatus* operator()(const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
+                        void* p_data, size_t p_data_len, std::unique_ptr<Tensor>* out) {
+    auto ml_value = DataTypeImpl::GetType<T>();
+    return CreateTensorImpl(ml_value, shape, shape_len, info, p_data, p_data_len, out);
+  }
+};
+
+}  // namespace c_api_internal
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info,
                     _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out) {
   API_IMPL_BEGIN
   std::unique_ptr<Tensor> tensor;
+  utils::MLTypeCallDispatcherRet<OrtStatus*, c_api_internal::CreateTensorWithDataAsOrtvalueImpl, float, uint8_t, int8_t, uint16_t, int16_t,
+                                 uint32_t, int32_t, uint64_t, int64_t, std::string, bool, MLFloat16, BFloat16, DateTime>(type);
   switch (type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<float>(shape, shape_len, info, p_data, p_data_len, &tensor));
@@ -256,6 +279,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint64_t>(shape, shape_len, info, p_data, p_data_len, &tensor));
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_POSIX_DATETIME:
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<DateTime>(shape, shape_len, info, p_data, p_data_len, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
@@ -323,6 +349,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
       ORT_API_RETURN_IF_ERROR(CreateTensorImpl<uint64_t>(shape, shape_len, allocator, &tensor));
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_POSIX_DATETIME:
+      ORT_API_RETURN_IF_ERROR(CreateTensorImpl<DateTime>(shape, shape_len, allocator, &tensor));
       break;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
@@ -982,9 +1011,10 @@ static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, size
   }
   // create OrtValue with this vector
   auto value = onnxruntime::make_unique<OrtValue>();
+  auto ml_type = DataTypeImpl::GetType<SeqType>();
   value->Init(seq_ptr.release(),
-              DataTypeImpl::GetType<SeqType>(),
-              DataTypeImpl::GetType<SeqType>()->GetDeleteFunc());
+              ml_type,
+              ml_type->GetDeleteFunc());
   *out = value.release();
   return nullptr;
 }
@@ -1048,7 +1078,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
 
     OrtStatus* st{};
     utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double,
-                                   MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+                                   MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t, DateTime>
         t_disp(one_tensor.GetElementType());
 
     st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, seq_ptr->tensors[idx]);
@@ -1059,9 +1089,10 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   }
   // create OrtValue with this vector
   auto value = onnxruntime::make_unique<OrtValue>();
+  auto ml_type = DataTypeImpl::GetType<TensorSeq>();
   value->Init(seq_ptr.release(),
-              DataTypeImpl::GetType<TensorSeq>(),
-              DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc());
+              ml_type,
+              ml_type->GetDeleteFunc());
   *out = value.release();
   return nullptr;
 }
@@ -1127,9 +1158,10 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
   }
   // create ort_value with this map
   auto value = onnxruntime::make_unique<OrtValue>();
-  value->Init(map_ptr.release(),
-              DataTypeImpl::GetType<MapType>(),
-              DataTypeImpl::GetType<MapType>()->GetDeleteFunc());
+  auto ml_type = DataTypeImpl::GetType<MapType>()
+                     value->Init(map_ptr.release(),
+                                 ml_type,
+                                 ml_type->GetDeleteFunc());
   *out = value.release();
   return nullptr;
 }
@@ -1171,7 +1203,6 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_va
   const OrtValue* ort_keys = in[0];
   auto p_key_ml_value = reinterpret_cast<const OrtValue*>(ort_keys);
   auto& key_tensor = p_key_ml_value->Get<Tensor>();
-  auto key_type = key_tensor.DataType();
 
   const OrtValue* ort_values = in[1];
   auto p_value_ml_value = reinterpret_cast<const OrtValue*>(ort_values);
@@ -1187,10 +1218,10 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_va
     return OrtApis::CreateStatus(ORT_FAIL, "Key and value tensors have unequal number of elements.");
   }
 
-  if (utils::IsDataTypeString(key_type)) {
+  if (key_tensor.IsDataTypeString()) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, out);
   }
-  if (utils::IsPrimitiveDataType<int64_t>(key_type)) {
+  if (key_tensor.IsDataType<int64_t>()) {
     return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
   }
   return OrtApis::CreateStatus(ORT_FAIL, "Key type is not supported yet.");

@@ -123,6 +123,11 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<BFloat16>() {
 }
 
 template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<DateTime>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_POSIX_DATETIME;
+}
+
+template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int8_t>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
 }
@@ -161,6 +166,8 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
 }
+
+int32_t ONNXTensorElementDataTypeToTensorType(ONNXTensorElementDataType);
 
 }  // namespace utils
 }  // namespace onnxruntime
