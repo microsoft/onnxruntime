@@ -199,11 +199,13 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     FinalizeSessionOptions(default_session_options, model_proto);
 
     ConstructorCommon(default_session_options, logging_manager);
+
+    Load(model_proto);
   } else {
     ConstructorCommon(*session_options, logging_manager);
-  }
 
-  Load(model_istream);
+    Load(model_istream);
+  }
 }
 
 InferenceSession::InferenceSession(const SessionOptions* session_options,
@@ -225,11 +227,13 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     FinalizeSessionOptions(default_session_options, model_proto);
 
     ConstructorCommon(default_session_options, logging_manager);
+
+    Load(model_proto);
   } else {
     ConstructorCommon(*session_options, logging_manager);
-  }
 
-  Load(model_data, model_data_len);
+    Load(model_data, model_data_len);
+  }
 }
 
 InferenceSession::~InferenceSession() {
