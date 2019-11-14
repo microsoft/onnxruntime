@@ -1542,7 +1542,10 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
 #endif
 
-TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerBug) {
+// The model being tested here triggers a case where the allocation planner (AP) tries to reuse a tensor of type
+// double for a string tensor. The reuse logic of AP works correctly on Windows and Ubuntu 16.x
+// since there the sizeof(double) != sizeof(std::string). However, on CentOS (gcc 4.8.x), the 2 sizes are equal.
+TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTensorForStringTensor) {
   SessionOptions so;
 
   so.session_logid = "InferenceSessionTests.ModelThatTriggersAllocationPlannerBug";

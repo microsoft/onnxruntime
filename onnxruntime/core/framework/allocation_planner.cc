@@ -289,7 +289,7 @@ class PlannerImpl {
     bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
     bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
 
-    // size(std::string) = sizeof(double) on gcc 4.8.x on CentOS. This causes the allocation planner to reuse
+    // sizeof(std::string) = sizeof(double) on gcc 4.8.x on CentOS. This causes the allocation planner to reuse
     // a tensor of type double. This won't work for string tensors since they need to be placement new'ed.
     // The XOR logic ensures that if one of the tensors in question is a string tensor and the other is not,
     // we don't treat them the same when doing planning.
