@@ -181,5 +181,45 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 */
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
 
+
+/*
+Find the first input edge of a node that the source node's operator type, version, and domain match the given values.
+@returns nullptr when not found.
+*/
+const Node::EdgeEnd*
+FindFirstInputEdge(
+    const Node& node,
+    const std::string& op_type,
+    const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+    const std::string& domain);
+
+/*
+Find the input edge of a node for a specified input index.
+@returns nullptr when not found.
+*/
+const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
+
+/*
+Find the source node of an input edge for a specified input index.
+@returns nullptr when not found.
+*/
+const Node* GetInputNode(const Node& node, int arg_index);
+
+struct MatchEdgeInfo {
+  int dst_arg_index;
+  std::string op_type;
+  std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions;
+  std::string domain;
+};
+
+/*
+Find a path that matches the specified edge information.
+@param match_edges has information of a sequence of edges in the path.
+For example, the first is input edge for current node, and the second one is for the parent node.
+@param result stores edges that are found.
+@returns true when all edges are found.
+*/
+bool FindParentPath(const Node& node, const std::vector<MatchEdgeInfo>& match_edges, std::vector<const Node::EdgeEnd*>& result);
+
 }  // namespace graph_utils
 }  // namespace onnxruntime

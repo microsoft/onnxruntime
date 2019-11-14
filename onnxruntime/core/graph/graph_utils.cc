@@ -641,5 +641,70 @@ void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<N
   }
 }
 
+const Node::EdgeEnd*
+FindFirstInputEdge(
+    const Node& node,
+    const std::string& op_type,
+    const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
+    const std::string& domain) {
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    const Node& parent = it->GetNode();
+    if (parent.OpType() == op_type && MatchesOpSinceVersion(parent, versions) && MatchesOpSetDomain(parent, domain)) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+const Node::EdgeEnd*
+GetInputEdge(const Node& node, int arg_index) {
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (arg_index == it->GetDstArgIndex()) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+const Node* GetInputNode(const Node& node, int arg_index) {
+  const Node::EdgeEnd* edge = GetInputEdge(node, arg_index);
+  if (nullptr == edge) {
+    return nullptr;
+  }
+  return &(edge->GetNode());
+}
+
+bool
+FindParentPath(const Node& node, const std::vector<MatchEdgeInfo>& match_edges, std::vector<const Node::EdgeEnd*>& result) {
+  result.clear();
+  result.reserve(match_edges.size());
+
+  const Node* current_node = &node;
+  for (size_t i = 0; i < match_edges.size(); i++) {
+    const MatchEdgeInfo& match_edge = match_edges[i];
+
+    const Node::EdgeEnd* edge = nullptr;
+    if (match_edge.dst_arg_index < 0) {
+      // When arg index not specified, just find the first input edge that matched.
+      // This is a limitation of this utility function: by design to reduce complexity.
+      edge = FindFirstInputEdge(*current_node, match_edge.op_type, match_edge.versions, match_edge.domain);
+    } else {
+      const Node::EdgeEnd* input_edge = GetInputEdge(*current_node, match_edge.dst_arg_index);
+      if (nullptr != input_edge && IsSupportedOptypeVersionAndDomain(input_edge->GetNode(), match_edge.op_type, match_edge.versions, match_edge.domain)) {
+        edge = input_edge;
+      }
+    }
+
+    if (nullptr != edge) {
+      result.push_back(edge);
+      current_node = &(edge->GetNode());
+    } else {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 }  // namespace graph_utils
 }  // namespace onnxruntime

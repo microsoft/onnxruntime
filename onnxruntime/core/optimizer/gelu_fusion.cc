@@ -3,6 +3,7 @@
 
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
@@ -10,49 +11,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
-
-static bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expected_value) {
-  auto shape = input_arg.Shape();
-  if (shape == nullptr) {
-    // shape inferencing wasn't able to populate shape information for this NodeArg
-    return false;
-  }
-
-  auto dim_size = shape->dim_size();
-  if (dim_size != 0) {
-    // only check scalar.
-    return false;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
-  if (tensor_proto == nullptr) {
-    return false;
-  }
-
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
-  const auto data_type = tensor_proto->data_type();
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    float* val = init_const->data<float>();
-    float diff = std::abs(val[0] - static_cast<float>(expected_value));
-    if (diff > FLT_EPSILON) {
-      return false;
-    }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-    double* val = init_const->data<double>();
-    double diff = std::abs(val[0] - static_cast<double>(expected_value));
-    if (diff > DBL_EPSILON) {
-      return false;
-    }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    MLFloat16* val = init_const->data<MLFloat16>();
-    float diff = std::abs(math::halfToFloat(val[0].val) - static_cast<float>(expected_value));
-    if (diff > FLT_EPSILON) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 // Gelu supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
@@ -87,7 +45,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
     }
 
     // Check second input is sqrt(2)
-    if (!CheckConstantInput(graph, *(div.MutableInputDefs()[1]), static_cast<float>(M_SQRT2))) {
+    if (!optimizer_utils::CheckConstantInput(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2))) {
       continue;
     }
 
@@ -114,7 +72,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
       add_const_input_index = 1;
     }
     const auto& add_const_input_arg = add_node.InputDefs()[add_const_input_index];
-    if (!CheckConstantInput(graph, *add_const_input_arg, 1.0f)) {
+    if (!optimizer_utils::CheckConstantInput(graph, *add_const_input_arg, 1.0f)) {
       continue;
     }
 
@@ -153,7 +111,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
     }
 
     const auto& mul_const_input_arg = mul2_node.InputDefs()[mul_const_input_index];
-    if (!CheckConstantInput(graph, *mul_const_input_arg, 0.5f)) {
+    if (!optimizer_utils::CheckConstantInput(graph, *mul_const_input_arg, 0.5f)) {
       continue;
     }
 
