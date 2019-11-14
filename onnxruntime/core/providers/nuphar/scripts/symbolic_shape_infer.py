@@ -48,6 +48,14 @@ def as_scalar(x):
     else:
         return x
 
+def as_list(x):
+    if type(x) == list:
+        return x
+    elif type(x) == np.ndarray:
+        return list(x)
+    else:
+        return [x]
+
 def sympy_reduce_product(x):
     if type(x) == list:
         value = sympy.Integer(1)
@@ -809,14 +817,16 @@ class SymbolicShapeInference:
             ends = get_attribute(node, 'ends')
             steps = [1]*len(axes)
         else:
-            starts = self._try_get_value(node, 1)
-            ends = self._try_get_value(node, 2)
+            starts = as_list(self._try_get_value(node, 1))
+            ends = as_list(self._try_get_value(node, 2))
             axes = self._try_get_value(node, 3)
             steps = self._try_get_value(node, 4)
             if axes is None and not (starts is None and ends is None):
                 axes = list(range(0, len(starts if starts is not None else ends)))
             if steps is None and not (starts is None and ends is None):
                 steps = [1]*len(starts if starts is not None else ends)
+            axes = as_list(axes)
+            steps = as_list(steps)
 
         new_sympy_shape = self._get_sympy_shape(node, 0)
         if starts is None or ends is None:
