@@ -286,10 +286,8 @@ class PlannerImpl {
     const auto& ptype2 = arg2.Type();
     auto type1_size = GetElementSize(ptype1);
     auto type2_size = GetElementSize(ptype2);
-    static const char* onnx_str_type_repr = DataTypeImpl::ToString(
-        DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_STRING));
-    bool is_type1_string = strcmp(ptype1->c_str(), onnx_str_type_repr) == 0;
-    bool is_type2_string = strcmp(ptype2->c_str(), onnx_str_type_repr) == 0;
+    bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
 
     // size(std::string) = sizeof(double) on gcc 4.8.x on CentOS. This causes the allocation planner to reuse
     // a tensor of type double. This won't work for string tensors since they need to be placement new'ed.
