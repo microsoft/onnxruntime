@@ -240,6 +240,10 @@ public:
         }
     }
 
+    onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType() override {
+        return onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>();
+    }
+
     onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType(winml::TensorKind kind) override {
         if (kind == TensorKind::Float) {
             return onnxruntime::DataTypeImpl::GetType<float>();

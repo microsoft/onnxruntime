@@ -64,8 +64,10 @@ class Tensor {
     // Get the shape
     onnxruntime::TensorShape shape(m_shape);
     // Get the data type
-    auto type = onnxruntime::DataTypeImpl::GetType<T>();
-
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    auto type = adapter->GetTensorType(TensorKindFrom<T>::Type);
+    // create the ml value
     return MLValueHelpers::CreateMLValue(shape, type, buffer().second);
   }
 

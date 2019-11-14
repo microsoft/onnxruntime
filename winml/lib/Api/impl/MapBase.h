@@ -123,19 +123,12 @@ struct MapBase : winrt::implements<
     return lotusMap;
   }
 
-  template <typename TLotusType>
+  template <typename TLotusKey, typename TLotusValue>
   static onnxruntime::MLDataType GetLotusType() {
-      static_assert(false, "Someone tried to use a LotusType that has not been specialized");
-  }
-
-  template <>
-  static onnxruntime::MLDataType
-      GetLotusType<AbiMapStringToFloat>() {
       winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
       WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-      return adapter->GetVectorMapType(winml::TensorKind::String, winml::TensorKind::Float);
+      return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
   }
-
 
   STDMETHOD(GetOrtValue)
   (WinML::BindingContext& context, OrtValue* mlValue) {

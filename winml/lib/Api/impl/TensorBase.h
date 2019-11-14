@@ -93,7 +93,10 @@ struct TensorBase : TBase {
 
   OrtValue CreateGPUMLValue(std::shared_ptr<DMLResource>& resource, BindingContext& context) {
     auto shape = onnxruntime::TensorShape(m_shape);
-    auto type = onnxruntime::DataTypeImpl::GetType<T>();
+    // Get the data type
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    auto type = adapter->GetTensorType(TensorKindFrom<T>::Type);
     return TensorBaseHelpers::CreateGPUMLValue(resource, context, shape, type);
   }
 

@@ -57,6 +57,10 @@ template <>
 struct TensorKindFrom<float> { static const winml::TensorKind Type = winml::TensorKind::Float; };
 template <>
 struct TensorKindFrom<winrt::hstring> { static const winml::TensorKind Type = winml::TensorKind::String; };
+template <>
+struct TensorKindFrom<std::string> { static const winml::TensorKind Type = winml::TensorKind::String; };
+template <>
+struct TensorKindFrom<onnxruntime::MLFloat16> { static const winml::TensorKind Type = winml::TensorKind::Float16; };
 
 template <typename T>
 struct TensorFeatureDescriptorFrom {

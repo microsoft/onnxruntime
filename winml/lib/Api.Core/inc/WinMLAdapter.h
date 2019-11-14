@@ -91,6 +91,7 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     virtual HRESULT STDMETHODCALLTYPE CreateModelProto(IModelProto * model_proto_in, IModelProto** model_proto) = 0;
 
     // Data types
+    virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType() = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType(winml::TensorKind kind) = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;

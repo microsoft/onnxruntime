@@ -403,10 +403,11 @@ static OrtValue CreateMLValue(
       sizeof(tensorDescriptor.sizes) / sizeof(tensorDescriptor.sizes[0]),
       spSession->GetExecutionProvider());
 
+  auto lotus_type = adapter->GetTensorType();
   OrtValue ort_value;
   ort_value.Init(pTensor,
-                 onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                 onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
+      lotus_type,
+      lotus_type->GetDeleteFunc());
 
   return ort_value;
 }

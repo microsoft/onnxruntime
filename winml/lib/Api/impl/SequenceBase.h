@@ -29,9 +29,17 @@ struct SequenceBase : public winrt::implements<
   template <typename T>
   struct ValidLotusType { using Type = T; };
   template <>
-  struct ValidLotusType<AbiMapStringToFloat> { using Type = std::map<std::string, float>; };
+  struct ValidLotusType<AbiMapStringToFloat> { 
+      using Type = std::map<std::string, float>; 
+      using TKey = std::string;
+      using TValue = float;
+  };
   template <>
-  struct ValidLotusType<AbiMapInt64BitToFloat> { using Type = std::map<int64_t, float>; };
+  struct ValidLotusType<AbiMapInt64BitToFloat> { 
+      using Type = std::map<int64_t, float>; 
+      using TKey = int64_t;
+      using TValue = float;
+  };
 
   template <typename TElement>
   void
@@ -164,27 +172,6 @@ struct SequenceBase : public winrt::implements<
     return lotus_sequence;
   }
 
-  template <typename TLotusType>
-  static onnxruntime::MLDataType GetLotusType() {
-      static_assert(false, "Someone tried to use a LotusType that has not been specialized");
-  }
-
-  template <>
-  static onnxruntime::MLDataType
-    GetLotusType<AbiMapStringToFloat>() {
-      winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
-      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-      return adapter->GetVectorMapType(winml::TensorKind::String, winml::TensorKind::Float);
-  }
-  
-  template <>
-  static onnxruntime::MLDataType
-    GetLotusType<AbiMapInt64BitToFloat>() {
-      winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
-      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-      return adapter->GetVectorMapType(winml::TensorKind::Int64, winml::TensorKind::Float);
-  }
-
   STDMETHOD(GetOrtValue)
   (
       WinML::BindingContext& context,
@@ -196,7 +183,12 @@ struct SequenceBase : public winrt::implements<
                         ? std::make_unique<LotusSequence>(ConvertToLotusSequence(data_))
                         : std::make_unique<LotusSequence>();
 
-    auto lotus_type = GetLotusType<T>();
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    auto lotus_type = adapter->GetVectorMapType(
+        TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
+        TensorKindFrom<ValidLotusType<T>::TValue>::Type);
+
     OrtValue value;
     value.Init(
         sequence.release(),
