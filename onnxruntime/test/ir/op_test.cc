@@ -32,7 +32,7 @@ TEST(FormalParamTest, Success) {
 }
 
 TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
-  Model model("traditionalMl", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  Model model("traditionalMl", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   // Case: A traditional ml graph.

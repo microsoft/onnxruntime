@@ -1023,7 +1023,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  onnxruntime::Model model("graph_1", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -1110,7 +1110,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 }
 
 TEST(ExecutionProviderTest, FunctionInlineTest) {
-  onnxruntime::Model model("graph_1", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
 
   ONNX_NAMESPACE::FunctionProto fc_proto;
   fc_proto.set_name("FC");

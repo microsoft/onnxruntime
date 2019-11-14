@@ -22,7 +22,8 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
 
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   
   // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider
@@ -46,7 +47,7 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   graph_transformation_mgr.Register(std::move(graph_transformer1), TransformerLevel::Level2);
 
   graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                             DefaultLoggingManager().DefaultLogger());
 
   // Validate transformer registered with CUDA as compatible provider is not called.
   ASSERT_FALSE(dummy_rule_ptr->IsRewriteRuleInvoked());

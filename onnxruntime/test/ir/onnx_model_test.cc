@@ -49,7 +49,7 @@ static void TestResolve(onnxruntime::Graph& graph) {
 TEST(ONNXModelsTest, squeeze_net) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_squeezenet/model.onnx"), model, nullptr, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_squeezenet/model.onnx"), model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   TestResolve(model->MainGraph());
 }
 #endif
@@ -58,7 +58,7 @@ TEST(ONNXModelsTest, non_existing_model) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
   common::Status st = Model::Load(ORT_TSTR("./testdata/non_existing_model_XXXXXX/model.onnx"), model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                  DefaultLoggingManager().DefaultLogger());
   ASSERT_FALSE(st.IsOK());
   ASSERT_EQ(st.Code(), common::NO_SUCHFILE);
 }
@@ -84,7 +84,8 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
 
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx"), model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
 
   // Check the graph input/output/value_info should have the same size as specified in the model file.
   EXPECT_EQ(model_proto.graph().value_info_size(), model->MainGraph().GetValueInfo().size());
@@ -108,7 +109,8 @@ class ONNXModelsTest : public ::testing::TestWithParam<const ORTCHAR_T*> {
 TEST_P(ONNXModelsTest, LoadFromFile) {
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(GetModelFileName(), model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   TestResolve(model->MainGraph());
 }
 
@@ -131,7 +133,8 @@ TEST_P(ONNXModelsTest, LoadFromProtobuf) {
   ASSERT_TRUE(Env::Default().FileClose(fd).IsOK());
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(std::move(model_proto), model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   TestResolve(model->MainGraph());
 }
 
@@ -154,7 +157,8 @@ INSTANTIATE_TEST_CASE_P(ONNXModelsTests,
 TEST(ONNXModelsTest, TestIRv4NonInputInitializers) {
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(ORT_TSTR("testdata/subgraph_implicit_input_from_initializer.onnx"), model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   EXPECT_TRUE(model->MainGraph().Resolve().IsOK());
 }
 
@@ -166,7 +170,7 @@ TEST(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   std::shared_ptr<Model> model;
 
   auto status = Model::Load(ORT_TSTR("testdata/model_containing_op_with_function_body.onnx"), model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                            DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status;
 
   status = model->MainGraph().Resolve();

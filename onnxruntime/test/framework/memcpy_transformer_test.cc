@@ -76,7 +76,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
                                                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                                    DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -113,7 +113,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -131,7 +131,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
                                                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                                    DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -168,7 +168,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -208,7 +208,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
                                                     ModelMetaData(),
                                                     IOnnxRuntimeOpSchemaRegistryList(),
                                                     domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                    ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                                    DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TensorProto parent_constant(value_tensor);
@@ -226,7 +226,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
                                                         ModelMetaData(),
                                                         IOnnxRuntimeOpSchemaRegistryList(),
                                                         subgraph_domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
-                                                        ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                                        DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& subgraph = sub_model->MainGraph();
 
   TensorProto local_constant(value_tensor);
@@ -283,7 +283,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 }

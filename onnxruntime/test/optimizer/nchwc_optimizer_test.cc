@@ -171,7 +171,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
   Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-              {}, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+              {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());

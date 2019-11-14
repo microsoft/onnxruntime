@@ -401,7 +401,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
                                                               custom_schema_registries_,
                                                               domain_to_version,
                                                               std::vector<ONNX_NAMESPACE::FunctionProto>{},
-                                                              ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                                              DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 

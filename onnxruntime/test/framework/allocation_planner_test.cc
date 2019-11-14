@@ -163,8 +163,10 @@ class PlannerTest : public ::testing::Test {
 
  public:
   PlannerTest()
-      : model_("test", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()),
-      graph_(model_.MainGraph()), tp_("test", 1), state_(execution_providers_, false, &tp_, nullptr) {
+      : model_("test", false, DefaultLoggingManager().DefaultLogger()),
+        graph_(model_.MainGraph()),
+        tp_("test", 1),
+        state_(execution_providers_, false, &tp_, nullptr) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();

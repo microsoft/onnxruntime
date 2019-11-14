@@ -22,7 +22,8 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
 
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()).IsOK());
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
 
   // The model's input shape has two free dimensions, which have the denotation of DATA_BATCH
@@ -40,7 +41,7 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1);
 
   graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
-      ::onnxruntime::test::DefaultLoggingManager().DefaultLogger());
+                                             DefaultLoggingManager().DefaultLogger());
 
   // Verify that the shape of the input graph has the correct values
 

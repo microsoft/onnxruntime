@@ -24,7 +24,7 @@ class ShapeInferenceTest : public ::testing::Test {
   std::unordered_map<string, std::unique_ptr<onnxruntime::NodeArg>> name_to_arg_;
 
  public:
-  ShapeInferenceTest() : model_("Test", false, ::onnxruntime::test::DefaultLoggingManager().DefaultLogger()), node_count_(0) {}
+  ShapeInferenceTest() : model_("Test", false, DefaultLoggingManager().DefaultLogger()), node_count_(0) {}
 
   void Input(const std::string& name, const Type& type) {
     name_to_arg_[name] = onnxruntime::make_unique<onnxruntime::NodeArg>(name, &type.value);
