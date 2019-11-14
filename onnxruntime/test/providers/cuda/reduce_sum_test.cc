@@ -19,7 +19,8 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
   test.AddAttribute("keepdims", int64_t(keepdims));
 
   // create rand inputs
-  std::vector<float> X_data = UniformRandom<float>(X_dims, -10.0f, 10.0f);
+  RandomValueGenerator random{};
+  std::vector<float> X_data = random.Uniform<float>(X_dims, -10.0f, 10.0f);
   test.AddInput<float>("X", X_dims, X_data);
 
   std::vector<float> Y_data = FillZeros<float>(Y_dims);
@@ -66,7 +67,7 @@ TEST(CudaKernelTest, ReduceSum_LargeTensor) {
   std::vector<int64_t> axes{0, 1};
   bool keepdims = false;
   double per_sample_tolerance = 1e-4;
-  double relative_per_sample_tolerance = 5e-3;
+  double relative_per_sample_tolerance = 5e-2;
   TestReduceSum(X_dims, Y_dims, axes, keepdims, per_sample_tolerance, relative_per_sample_tolerance);
 }
 

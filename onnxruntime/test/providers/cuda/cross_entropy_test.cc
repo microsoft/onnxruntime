@@ -18,14 +18,15 @@ static void TestSparseSoftmaxCrossEntropy(const std::vector<int64_t>* X_dims,
   test.AddAttribute("reduction", reduction);
 
   // create rand inputs
-  std::vector<float> X_data = UniformRandom<float>(*X_dims, -10.0f, 10.0f);
-  std::vector<int64_t> index_data = UniformRandom<int64_t>(*index_dims, 0.0f, static_cast<float>(X_dims->back()));
+  RandomValueGenerator random{};
+  std::vector<float> X_data = random.Uniform<float>(*X_dims, -10.0f, 10.0f);
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(*index_dims, 0.0f, static_cast<float>(X_dims->back()));
 
   test.AddInput<float>("X", *X_dims, X_data);
   test.AddInput<int64_t>("index", *index_dims, index_data);
 
   if (weight_dims) {
-    std::vector<float> weight_data = UniformRandom<float>(*weight_dims, 0.0f, 1.0f);
+    std::vector<float> weight_data = random.Uniform<float>(*weight_dims, 0.0f, 1.0f);
     test.AddInput<float>("weight", *weight_dims, weight_data);
   }
 
@@ -83,9 +84,10 @@ static void TestSparseSoftmaxCrossEntropyGrad(const std::vector<int64_t>& dY_dim
   test.AddAttribute("reduction", reduction);
 
   // create rand inputs
-  std::vector<float> dY_data = UniformRandom<float>(dY_dims, -10.0f, 10.0f);
-  std::vector<float> prob_data = UniformRandom<float>(prob_dims, -10.0f, 10.0f);
-  std::vector<int64_t> index_data = UniformRandom<int64_t>(index_dims, 0.0f, static_cast<float>(dX_dims.back()));
+  RandomValueGenerator random{};
+  std::vector<float> dY_data = random.Uniform<float>(dY_dims, -10.0f, 10.0f);
+  std::vector<float> prob_data = random.Uniform<float>(prob_dims, -10.0f, 10.0f);
+  std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0.0f, static_cast<float>(dX_dims.back()));
 
   test.AddInput<float>("dY", dY_dims, dY_data);
   test.AddInput<float>("prob", prob_dims, prob_data);

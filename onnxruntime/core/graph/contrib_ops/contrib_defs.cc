@@ -2125,7 +2125,7 @@ Example 4:
       .TypeConstraint(
           "U",
           {"tensor(float)"},
-          "Constrain mean and inv_std_var to be float tensors.")
+          "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2145,11 +2145,10 @@ Example 4:
           axis += input_ndim;
         }
         for (int i = 0; i < input_ndim; ++i) {
-          if (i != axis) {
-            auto dim = saved_mean_shape->add_dim();
+          auto dim = saved_mean_shape->add_dim();
+          if (i < axis) {
             dim->CopyFrom(input_shape.dim(i));
           } else {
-            auto dim = saved_mean_shape->add_dim();
             dim->set_dim_value(1);
           }
         }
@@ -2180,7 +2179,7 @@ Example 4:
       .TypeConstraint(
           "U",
           {"tensor(float)"},
-          "Constrain except mean and inv_std_var to float tensors.");
+          "Constrain mean and inv_std_var to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormalizationGrad)
       .SetDomain(kOnnxDomain)
