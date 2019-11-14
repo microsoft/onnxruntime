@@ -539,7 +539,7 @@ if (onnxruntime_USE_NGRAPH)
   add_definitions(-DUSE_NGRAPH=1)
   include(ngraph)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
