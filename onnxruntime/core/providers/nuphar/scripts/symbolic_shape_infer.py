@@ -48,6 +48,14 @@ def as_scalar(x):
     else:
         return x
 
+def as_list(x):
+    if type(x) == list:
+        return x
+    elif type(x) == np.ndarray:
+        return list(x)
+    else:
+        return [x]
+
 def sympy_reduce_product(x):
     if type(x) == list:
         value = sympy.Integer(1)
@@ -109,7 +117,7 @@ class SymbolicShapeInference:
         self.verbose_ = verbose
         self.int_max_ = int_max
 
-    def _add_suggested_merge(self, symbols):
+    def _add_suggested_merge(self, symbols, apply=False):
         assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])
         symbols = set(symbols)
         for k,v in self.suggested_merge_.items():
@@ -142,11 +150,13 @@ class SymbolicShapeInference:
             for k,v in self.suggested_merge_.items():
                 if v == s:
                     self.suggested_merge_[k] = map_to
+        if apply and self.auto_merge_:
+            self._apply_suggested_merge()
 
-    def _apply_suggested_merge_to_graph_input(self):
+    def _apply_suggested_merge(self, graph_input_only=False):
         if not self.suggested_merge_:
             return
-        for i in self.out_mp_.graph.input:
+        for i in list(self.out_mp_.graph.input) + ([] if graph_input_only else list(self.out_mp_.graph.value_info)):
             for d in i.type.tensor_type.shape.dim:
                 if d.dim_param in self.suggested_merge_:
                     v = self.suggested_merge_[d.dim_param]
@@ -478,7 +488,7 @@ class SymbolicShapeInference:
         # record inconsistent reduce dim as suggested merge
         if lhs_shape[lhs_reduce_dim] != rhs_shape[rhs_reduce_dim]:
             merge_dims = [lhs_shape[lhs_reduce_dim], rhs_shape[rhs_reduce_dim]]
-            self._add_suggested_merge(merge_dims)
+            self._add_suggested_merge(merge_dims, apply=True)
         if output_dtype is None:
             # infer output_dtype from input type when not specified
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
@@ -807,14 +817,16 @@ class SymbolicShapeInference:
             ends = get_attribute(node, 'ends')
             steps = [1]*len(axes)
         else:
-            starts = self._try_get_value(node, 1)
-            ends = self._try_get_value(node, 2)
+            starts = as_list(self._try_get_value(node, 1))
+            ends = as_list(self._try_get_value(node, 2))
             axes = self._try_get_value(node, 3)
             steps = self._try_get_value(node, 4)
             if axes is None and not (starts is None and ends is None):
                 axes = list(range(0, len(starts if starts is not None else ends)))
             if steps is None and not (starts is None and ends is None):
                 steps = [1]*len(starts if starts is not None else ends)
+            axes = as_list(axes)
+            steps = as_list(steps)
 
         new_sympy_shape = self._get_sympy_shape(node, 0)
         if starts is None or ends is None:
@@ -954,7 +966,7 @@ class SymbolicShapeInference:
     def _infer_impl(self, in_mp):
         self.sympy_data_ = {}
         self.out_mp_.graph.ClearField('value_info')
-        self._apply_suggested_merge_to_graph_input()
+        self._apply_suggested_merge(graph_input_only=True)
         input_symbols = set()
         for i in self.out_mp_.graph.input:
             input_symbols.update([d for d in get_shape_from_type_proto(i.type) if type(d) == str])

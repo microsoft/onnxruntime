@@ -3,54 +3,12 @@
 
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
+#include "core/codegen/passes/op_ir_creator/math/unary_funcs.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/nuphar/mti_x86/math/unary_ops.h"
 
 namespace onnxruntime {
 namespace nuphar {
-
-// helper class for unary_ops with alpha
-class FuncWithAlpha {
- public:
-  FuncWithAlpha(const Node& node) {
-    ProtoHelperNodeContext ctx(node);
-    OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
-    ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha_).IsOK());
-  }
-
- protected:
-  float alpha_;
-};
-
-// helper class for unary_ops with alpha and beta
-class FuncWithAlphaBeta {
- public:
-  FuncWithAlphaBeta(const Node& node) {
-    ProtoHelperNodeContext ctx(node);
-    OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
-    ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(attrs.GetAttr<float>("beta", &beta_).IsOK());
-  }
-
- protected:
-  float alpha_;
-  float beta_;
-};
-
-// helper class for unary_ops with alpha and gamma
-class FuncWithAlphaGamma {
- public:
-  FuncWithAlphaGamma(const Node& node) {
-    ProtoHelperNodeContext ctx(node);
-    OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
-    ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(attrs.GetAttr<float>("gamma", &gamma_).IsOK());
-  }
-
- protected:
-  float alpha_;
-  float gamma_;
-};
 
 // helper macro declares unary_ops helper class without attribute
 #define FuncClass(name)                                  \
@@ -64,7 +22,7 @@ class FuncWithAlphaGamma {
 
 // helper macro declares unary_ops helper class with alpha
 #define FuncClassAlpha(name)                              \
-  class Func##name : public FuncWithAlpha {               \
+  class Func##name : public tvm_codegen::FuncWithAlpha {  \
    public:                                                \
     Func##name(const Node& node) : FuncWithAlpha(node) {} \
     tvm::Tensor operator()(const tvm::Tensor& X) const {  \
@@ -74,7 +32,7 @@ class FuncWithAlphaGamma {
 
 // helper macro declares unary_ops helper class with alpha and beta
 #define FuncClassAlphaBeta(name)                              \
-  class Func##name : public FuncWithAlphaBeta {               \
+  class Func##name : public tvm_codegen::FuncWithAlphaBeta {  \
    public:                                                    \
     Func##name(const Node& node) : FuncWithAlphaBeta(node) {} \
     tvm::Tensor operator()(const tvm::Tensor& X) const {      \
@@ -84,7 +42,7 @@ class FuncWithAlphaGamma {
 
 // helper macro declares unary_ops helper class with alpha and gamma
 #define FuncClassAlphaGamma(name)                              \
-  class Func##name : public FuncWithAlphaGamma {               \
+  class Func##name : public tvm_codegen::FuncWithAlphaGamma {  \
    public:                                                     \
     Func##name(const Node& node) : FuncWithAlphaGamma(node) {} \
     tvm::Tensor operator()(const tvm::Tensor& X) const {       \
