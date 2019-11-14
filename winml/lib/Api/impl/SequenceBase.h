@@ -250,8 +250,14 @@ struct SequenceBase : public winrt::implements<
     auto writable_vector = data_.as<wfc::IVector<T>>();
 
     writable_vector.Clear();
+    
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-    const auto& sequence = ml_value.Get<LotusSequence>();
+    const LotusSequence& sequence = *static_cast<LotusSequence*>(adapter->GetVectorData(
+        &ml_value, 
+        TensorKindFrom<ValidLotusType<T>::TKey>::Type,
+        TensorKindFrom<ValidLotusType<T>::TValue>::Type));
 
     for (const auto& element : sequence) {
       writable_vector.Append(ConvertToABIType<T>(element));

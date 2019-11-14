@@ -159,7 +159,13 @@ struct MapBase : winrt::implements<
   (BindingContext& context, OrtValue& mlValue) {
     m_data.Clear();
 
-    const auto& map = mlValue.Get<LotusMap>();
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+
+    const LotusMap& map = *static_cast<LotusMap*>(adapter->GetMapData(
+        &mlValue,
+        TensorKindFrom<TKey>::Type,
+        TensorKindFrom<TValue>::Type));
 
     for (const auto& pair : map) {
       auto key = ConvertToABIType<TKey>(pair.first);

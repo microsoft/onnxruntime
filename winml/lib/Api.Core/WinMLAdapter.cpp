@@ -332,6 +332,16 @@ public:
         }
         return nullptr;
     }
+
+    void * STDMETHODCALLTYPE GetTensorData(OrtValue * ort_Value) override {
+        return nullptr;
+    }
+    void * STDMETHODCALLTYPE GetMapData(OrtValue * ort_Value, winml::TensorKind key_kind, winml::TensorKind value_kind) override {
+        return nullptr;
+    }
+    void * STDMETHODCALLTYPE GetVectorData(OrtValue * ort_Value, winml::TensorKind key_kind, winml::TensorKind value_kind) override {
+        return nullptr;
+    }
 };
 
 extern "C"

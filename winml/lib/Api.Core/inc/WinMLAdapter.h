@@ -95,6 +95,11 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType(winml::TensorKind kind) = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
+
+    // Data getter
+    virtual void * STDMETHODCALLTYPE GetTensorData(OrtValue * ort_Value) = 0;
+    virtual void * STDMETHODCALLTYPE GetMapData(OrtValue * ort_Value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
+    virtual void * STDMETHODCALLTYPE GetVectorData(OrtValue * ort_Value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
 };
 
 extern "C"
