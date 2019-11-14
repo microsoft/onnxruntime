@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Win_GPU
 
-  timeoutInMinutes: 80
+  timeoutInMinutes: 90
 
   strategy:
     maxParallel: 2
