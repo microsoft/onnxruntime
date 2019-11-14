@@ -59,7 +59,7 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto_Tensor& source, TypeProto_Tensor& target,
-                             bool strict) {
+                             bool strict, const logging::Logger& logger) {
   try {
     ONNX_NAMESPACE::mergeInShapeInfo(source, target);
   } catch (const ONNX_NAMESPACE::InferenceError& ex) {
@@ -70,9 +70,10 @@ static Status MergeShapeInfo(const std::string& output_name,
       // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
-      LOGS_DEFAULT(WARNING) << "Error merging shape info for output. '" << output_name
-                            << "' source:" << source.shape() << " target:" << target.shape()
-                            << ". Falling back to lenient merge.";
+      LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
+                               << "' source:" << source.shape() << " target:" << target.shape()
+                               << ". Falling back to lenient merge.";
+
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
@@ -207,7 +208,7 @@ void NodeArg::ClearShape() {
   }
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict) {
+common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
     *node_arg_info_.mutable_type() = input_type;
     type_ = DataTypeUtils::ToType(node_arg_info_.type());
@@ -236,7 +237,7 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       if (utils::HasShape(input_tensor_type)) {
         auto& current_tensor_type = *current_type.mutable_tensor_type();
         if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict));
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict, logger));
         } else {
           current_tensor_type = input_tensor_type;
         }
@@ -274,11 +275,11 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
   return Status::OK();
 }
 
-common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict) {
+common::Status NodeArg::UpdateTypeAndShape(const NodeArg& node_arg, bool strict, const logging::Logger& logger) {
   auto status = Status::OK();
 
   if (utils::HasType(node_arg.node_arg_info_))
-    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict);
+    status = UpdateTypeAndShape(node_arg.node_arg_info_.type(), strict, logger);
 
   return status;
 }
@@ -698,11 +699,13 @@ Graph::Graph(GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+             const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions) {}
+    : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, model_functions) {}
 
 Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
+             const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
     : graph_proto_(graph_proto),
       schema_registry_(schema_registry),
@@ -712,7 +715,8 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       ir_version_(ir_version),
       using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
-      parent_node_(parent_node) {
+      parent_node_(parent_node),
+      logger_(logger) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
 
@@ -769,7 +773,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
       // so we prefer the shape from the initializer
       name_to_type_map[tensor.name()] = t;
       if (matching_graph_input != nullptr) {
-        ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t));
+        ORT_THROW_IF_ERROR(matching_graph_input->UpdateTypeAndShape(t, true, logger));
       }
     } else {
       // v4 and later allows a constant initializer with no matching graph input. create a NodeArg for these.
@@ -805,7 +809,7 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
     : Graph(&subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node) {
+            &parent_node, parent_graph.logger_) {
 }
 
 Status Graph::VerifyNoDuplicateName() {
@@ -1456,7 +1460,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
     const auto& subgraph_input = *subgraph_inputs->at(i);
 
     NodeArg* mutable_nodearg = subgraph.GetNodeArg(subgraph_input.Name());
-    status = mutable_nodearg->UpdateTypeAndShape(input_type);
+    status = mutable_nodearg->UpdateTypeAndShape(input_type, true, subgraph.logger_);
     if (!status.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
@@ -1477,7 +1481,7 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
     if (!subgraph_nodearg)
       continue;
 
-    status = subgraph_nodearg->UpdateTypeAndShape(*implicit_node_arg);
+    status = subgraph_nodearg->UpdateTypeAndShape(*implicit_node_arg, true, subgraph.logger_);
     if (!status.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
@@ -1666,7 +1670,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op) {
           // that have no values.
           TypeProto_Tensor merge_target;
           (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_);
+          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_, logger_);
           if (!status.IsOK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
           }
@@ -1784,8 +1788,9 @@ Status Graph::VerifyNodeAndOpMatch() {
     auto iter = model_functions_.find(node.OpType());
     if (iter != model_functions_.end()) {
       const ONNX_NAMESPACE::FunctionProto* model_function_proto = iter->second;
-      auto model_func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *model_function_proto);
-      function_container_.emplace_back(std::move(model_func_ptr));
+      function_container_.emplace_back(onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(),
+                                                                                           *model_function_proto,
+                                                                                           logger_));
       node.SetFunctionBody(*function_container_.back());
     }
 
@@ -1805,7 +1810,8 @@ Status Graph::VerifyNodeAndOpMatch() {
 
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
-        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto);
+        auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto,
+            logger_);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }
@@ -2402,12 +2408,12 @@ void Graph::CleanUnusedInitializers() {
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-      if (num_resolves_ == 0) {
-        LOGS_DEFAULT(WARNING) << "Removing initializer '"
-                              << name << "'. It is not used by any node and should be removed from the model.";
-      } else {
-        LOGS_DEFAULT(INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
-      }
+        if (num_resolves_ == 0) {
+          LOGS(logger_, WARNING) << "Removing initializer '"
+                                  << name << "'. It is not used by any node and should be removed from the model.";
+        } else {
+          LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+        }
 
       erase_list.push_back(name);
     }
@@ -2704,7 +2710,7 @@ Node& Graph::FuseSubGraph(std::unique_ptr<::onnxruntime::IndexedSubGraph> sub_gr
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
-  function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph)));
+  function_container_.emplace_back(MakeFunction(*this, std::move(sub_graph), logger_));
   fused_node.SetFunctionBody(*function_container_.back());
 
   // Remove nodes fused above.
