@@ -13,7 +13,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --use-winml --use-dml'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -27,7 +27,7 @@ jobs:
   parameters:
     AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --x86 --use-winml --use-dml'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
