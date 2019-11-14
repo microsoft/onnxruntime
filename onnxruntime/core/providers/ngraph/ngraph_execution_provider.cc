@@ -534,7 +534,8 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   const Graph& node_subgraph = node_function->Body();
   onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap()};
+                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
+                           std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger()};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);

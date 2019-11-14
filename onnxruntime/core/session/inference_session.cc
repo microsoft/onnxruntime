@@ -173,9 +173,9 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
       return st;
     }
   }
-  execution_providers_.Add(provider_type, std::move(p_exec_provider));
 
-  return Status::OK();
+  p_exec_provider->SetLogger(session_logger_);
+  return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
 
 common::Status InferenceSession::RegisterGraphTransformer(
