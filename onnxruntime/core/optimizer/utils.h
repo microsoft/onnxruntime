@@ -20,7 +20,7 @@ bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 */
 bool CheckConstantInput(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float expected_value);
 
-    /* Check a input is constant with expected integer value.
+/* Check a input is constant with expected integer value.
 @remarks only support int32 and int64 scalar.
 */
 bool CheckConstantInput(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, int expected_value);

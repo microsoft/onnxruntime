@@ -36,6 +36,30 @@ static bool GetConstantInput(const Graph& graph, const NodeArg& input_arg, std::
   return true;
 }
 
+/*
+Apply Reshape Fusion. The fowllowing are subgraphs before and after fusion:
+
+Before fusion:
+   [Sub-graph  Root  Node ]
+    |        /            \
+    |    Shape            Shape
+    |       |              |                   (one or two int64[] constant initializers)
+    |    Gather(indice=0)  Gather(indice=1)    a[]        b[] (optional)
+    |       \              |                   /          /
+    |   Unsqueeze      Unsqueeze              /          /
+    |         \       /  ____________________/          /
+    |          \     /  / _____________________________/
+    |           \   /  / /
+     \            Concat
+      \          /
+         Reshape
+
+After fusion:
+    [Sub-graph Root Node]   (Constant Initializers, b is optional)
+                  \         [0, 0, a, b]
+                   \        /
+                    Reshape
+*/
 Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
