@@ -45,7 +45,12 @@ struct Global {
 };
 
 template <typename T>
-const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+const OrtApi& Global<T>::api_ =
+#ifdef EXCLUDE_REFERENCE_TO_ORT_DLL
+    *((OrtApi*)(nullptr));
+#else
+    *OrtGetApiBase()->GetApi(ORT_API_VERSION);
+#endif
 
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
 inline const OrtApi& GetApi() { return Global<void>::api_; }

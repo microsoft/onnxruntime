@@ -49,7 +49,7 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   size_t total_len = type_info.GetElementCount();
   ASSERT_EQ(values_y.size(), total_len);
 
-  float* f = output_tensor->GetTensorMutableData<float>();
+  OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != total_len; ++i) {
     ASSERT_EQ(values_y[i], f[i]);
   }
@@ -97,7 +97,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (custom_op_library_filename){
     void* library_handle = nullptr; // leak this, there is no way to free this in C-API for now. ideally this should be tied to SessionOptions lifecycle
-    g_ort->RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
+    Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
   }
 
   Ort::Session session(env, model_uri, session_options);
