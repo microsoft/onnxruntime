@@ -292,8 +292,9 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
                                                      shape,
                                                      allocator);
 
-  return OrtValue{new_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  return OrtValue{new_tensor.release(), ml_tensor,
+                  ml_tensor->GetDeleteFunc()};
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,

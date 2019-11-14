@@ -543,6 +543,25 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
   return true;
 }
 
+const Node* FirstChildByType(Node& node, const std::string& child_type) {
+  for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+    if ((*it).OpType().compare(child_type) == 0) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+const Node* FirstParentByType(Node& node, const std::string& parent_type) {
+  for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
+    if ((*it).OpType().compare(parent_type) == 0) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;

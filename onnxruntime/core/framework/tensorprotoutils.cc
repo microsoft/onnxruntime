@@ -294,7 +294,7 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
     for (size_t i = 0, n = tensor_size; i < n; ++i) {
       new (ptr + i) std::string();
     }
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
   return nullptr;
@@ -479,8 +479,10 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   TensorShape tensor_shape{tensor_shape_vec};
-  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), ml_tensor,
+             ml_tensor->GetDeleteFunc());
   return Status::OK();
 }
 
@@ -513,40 +515,6 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
-}
-
-TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
-  auto tensor_type = tensor.DataType();
-  TensorProto::DataType dtype = TensorProto_DataType_UNDEFINED;
-
-  if (tensor_type == DataTypeImpl::GetType<float>())
-    dtype = TensorProto_DataType_FLOAT;
-  else if (tensor_type == DataTypeImpl::GetType<double>())
-    dtype = TensorProto_DataType_DOUBLE;
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())
-    dtype = TensorProto_DataType_INT8;
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())
-    dtype = TensorProto_DataType_INT16;
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())
-    dtype = TensorProto_DataType_INT32;
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())
-    dtype = TensorProto_DataType_INT64;
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())
-    dtype = TensorProto_DataType_UINT8;
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())
-    dtype = TensorProto_DataType_UINT16;
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())
-    dtype = TensorProto_DataType_UINT32;
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())
-    dtype = TensorProto_DataType_UINT64;
-  else if (tensor_type == DataTypeImpl::GetType<bool>())
-    dtype = TensorProto_DataType_BOOL;
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())
-    dtype = TensorProto_DataType_FLOAT16;
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())
-    dtype = TensorProto_DataType_BFLOAT16;
-
-  return dtype;
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,

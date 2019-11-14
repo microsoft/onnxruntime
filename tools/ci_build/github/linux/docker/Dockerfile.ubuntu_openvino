@@ -2,7 +2,7 @@ ARG OS_VERSION=16.04
 FROM ubuntu:${OS_VERSION}
 
 ARG PYTHON_VERSION=3.5
-ARG OPENVINO_VERSION=2019_R1.1
+ARG OPENVINO_VERSION=2019_R3.1
 
 ADD scripts /tmp/scripts
 ENV PATH="/opt/cmake/bin:${PATH}"
@@ -17,8 +17,9 @@ RUN /tmp/scripts/install_openvino.sh -o ${OPENVINO_VERSION} && \
 
 WORKDIR /root
 
-ENV INTEL_CVSDK_DIR /data/dldt/openvino_2019.1.144
-ENV INTEL_OPENVINO_DIR /data/dldt/openvino_2019.1.144
+ENV INTEL_CVSDK_DIR /data/dldt/openvino_2019.3.376
+ENV INTEL_OPENVINO_DIR /data/dldt/openvino_2019.3.376
+ENV InferenceEngine_DIR /data/dldt/openvino_2019.3.376/deployment_tools/inference_engine/build
 
 ENV LD_LIBRARY_PATH $INTEL_CVSDK_DIR/deployment_tools/inference_engine/lib/intel64:$INTEL_CVSDK_DIR/deployment_tools/inference_engine/temp/omp/lib:$INTEL_CVSDK_DIR/deployment_tools/inference_engine/external/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 

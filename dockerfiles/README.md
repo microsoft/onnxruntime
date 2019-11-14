@@ -19,14 +19,16 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 **Example**: Run `docker pull mcr.microsoft.com/azureml/onnxruntime:latest-cuda` to pull the latest released docker image with ONNX Runtime GPU, CUDA, and CUDNN support.
 
-| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags                   | Latest                  |
-|-------------------|---------------------------------------|--------------------------------------------------|-------------------------|
-| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0                                 | :latest                 |
-| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7 | :latest-cuda            |
-| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06     | :latest-tensorrt        |
-| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm                       | :latest-openvino-vadm   |
-| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad                     | :latest-openvino-myriad |
-| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0                                 | :latest                 |
+| Build Flavor      | Base Image                            | ONNX Runtime Docker Image tags        | Latest                  |
+|-------------------|---------------------------------------|---------------------------------------|-------------------------|
+| Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0, v0.5.1, :v1.0.0     | :latest                 |
+| CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7, v0.5.1-cuda10.1-cudnn7, :v1.0.0-cuda10.1-cudnn7 | :latest-cuda            |
+| TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06, v1.0.0-tensorrt19.09 | :latest-tensorrt        |
+| OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm            | :latest-openvino-vadm   |
+| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad | :latest-openvino-myriad |
+| OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu             | :latest-openvino-cpu    |
+| nGraph            | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-ngraph-v0.26.0                | :latest-ngraph          |
+| Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0, v0.5.1, v1.0.0      | :latest                 |
 
 ---
 

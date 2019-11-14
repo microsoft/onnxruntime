@@ -68,9 +68,23 @@ jobs:
           
     - template: templates/clean-agent-build-directory-step.yml
 
-
-- job: Windows_Packaging_CPU_x64
+- job: Windows_Packaging_CPU
   pool: 'Win-CPU'
+  strategy:
+    maxParallel: 2
+    matrix: 
+      x86:
+        EnvSetupScript: setup_env_x86.bat
+        buildArch: x86
+        msbuildArch: x86
+        msbuildPlatform: Win32
+        buildparameter: --x86
+      x64:
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        msbuildArch: amd64
+        msbuildPlatform: x64
+        buildparameter:
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
@@ -82,15 +96,15 @@ jobs:
 
     - template: templates/windows-build-tools-setup-steps.yml
       parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
+        EnvSetupScript: $(EnvSetupScript)
+        buildArch: $(msbuildArch)
         setVcvars: false
 
     - template: templates/windows-build-and-test-steps.yml
       parameters:
-        buildAdditionalParams: ' --use_openmp '
+        buildAdditionalParams: ' --use_openmp $(buildparameter)'
         buildArch: $(buildArch)
-        msbuildPlatform: $(buildArch)
+        msbuildPlatform: $(msbuildPlatform)
         buildConfig: $(buildConfig)
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
@@ -99,42 +113,9 @@ jobs:
         artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
-
-
-- job: Windows_Packaging_CPU_x86
-  pool: 'Win-CPU'
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildConfig: 'RelWithDebInfo'
-    buildArch: 'x86'
-
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-    - template: templates/set-version-number-variables-step.yml
-
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
-        setVcVars: false
-
-    - template: templates/windows-build-and-test-steps.yml
-      parameters:
-        buildAdditionalParams: ' --use_openmp --x86 '
-        buildArch: $(buildArch)
-        msbuildPlatform: 'Win32'
-        buildConfig: $(buildConfig)
-
-    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
-      parameters:
-        buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
-        commitId: $(OnnxRuntimeGitCommitHash)
-    - template: templates/clean-agent-build-directory-step.yml
-
 
 - job: Windows_Packaging_GPU_x64
-  pool: 'Win-GPU'
+  pool: 'Win-GPU-CUDA10'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     buildConfig: 'RelWithDebInfo'
@@ -154,7 +135,7 @@ jobs:
       displayName: 'Build and Test OnnxRuntime'
       inputs:
         script: |
-          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --use_cuda --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
+          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --use_cuda --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml

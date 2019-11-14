@@ -20,6 +20,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "test/providers/provider_test_utils.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -1061,6 +1062,15 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
 
   validate_proto(graph_proto_from_const_graph);
   validate_proto(graph_proto_from_graph);
+
+  // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused. 
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0);
+  
+  ONNX_NAMESPACE::GraphProto graph_proto_from_resolved_graph = graph.ToGraphProto();
+  auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
+  ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
+                                 << num_initializers << " remain.";
 }
 }  // namespace test
 }  // namespace onnxruntime

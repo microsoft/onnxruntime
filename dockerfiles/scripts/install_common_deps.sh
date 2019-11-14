@@ -1,6 +1,6 @@
 #!/bin/bash
 DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends \
+apt-get update && apt-get install -y --no-install-recommends \
         wget \
         zip \
         ca-certificates \

@@ -463,7 +463,7 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   // Get input buffer ptr
   auto X = ctx->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-  if (X->DataType() != DataTypeImpl::GetType<std::string>()) {
+  if (!utils::IsDataTypeString(X->DataType())) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "tensor(string) expected as input");
   }
