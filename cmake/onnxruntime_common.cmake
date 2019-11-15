@@ -21,10 +21,6 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
 )
 
-if (use_telemetry)
-  set_target_properties(onnxruntime_common_src_patterns PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_ROOT}/core/platform/windows/TraceLoggingConfigPrivate.h")
-endif()
-
 if(WIN32)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/windows/*.h"
@@ -55,6 +51,10 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
+
+if (use_telemetry)
+  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+endif()
 
 if (onnxruntime_USE_MIMALLOC)
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
