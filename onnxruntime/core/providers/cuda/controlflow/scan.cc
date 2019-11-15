@@ -12,35 +12,6 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
-                                  kOnnxDomain,
-                                  8, 8,
-                                  kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'sequence_lens' needs to be on CPU
-                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                                  Scan<8>);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
-                                  kOnnxDomain,
-                                  9, 10,
-                                  kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                                  Scan<9>);
-
-// Opset 11 starts to support Neg Axis.
-ONNX_OPERATOR_KERNEL_EX(Scan,
-                        kOnnxDomain,
-                        11,
-                        kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                        Scan<9>);
-
 template <>
 Scan<8>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<8>(info) {
   scan::detail::DeviceHelpers helpers;
@@ -90,6 +61,35 @@ Status Scan<9>::Compute(OpKernelContext* ctx) const {
   auto status = onnxruntime::Scan<9>::Compute(ctx);
   return status;
 }
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  8, 8,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder()
+                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'sequence_lens' needs to be on CPU
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                  Scan<8>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  9, 10,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder()
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                  Scan<9>);
+
+// Opset 11 starts to support Neg Axis.
+ONNX_OPERATOR_KERNEL_EX(Scan,
+                        kOnnxDomain,
+                        11,
+                        kCudaExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                        Scan<9>);
 
 }  // namespace cuda
 }  // namespace onnxruntime
