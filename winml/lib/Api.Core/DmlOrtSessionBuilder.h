@@ -5,7 +5,7 @@
 
 #include "inc/WinMLAdapter.h"
 
-namespace Windows::AI::MachineLearning {
+namespace Windows::AI::MachineLearning::Adapter {
 
 class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -31,4 +31,4 @@ class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
   winrt::com_ptr<ID3D12CommandQueue> queue_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace Windows::AI::MachineLearning::Adapter

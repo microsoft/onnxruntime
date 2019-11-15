@@ -172,10 +172,9 @@ struct SequenceBase : public winrt::implements<
     return lotus_sequence;
   }
 
-  STDMETHOD(GetOrtValue)
-  (
+  STDMETHOD(GetOrtValue)(
       WinML::BindingContext& context,
-      OrtValue* ml_value) {
+      _winmla::IOrtValue** ml_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // Create a copy of the sequence
@@ -189,14 +188,10 @@ struct SequenceBase : public winrt::implements<
         TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
         TensorKindFrom<ValidLotusType<T>::TValue>::Type);
 
-    OrtValue value;
-    value.Init(
-        sequence.release(),
-        lotus_type,
-        lotus_type->GetDeleteFunc());
+    winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
+    adapter->CreateOrtValue(sequence.release(), lotus_type, ml_value_out.put());
 
-    *ml_value = value;
-
+    *ml_value = ml_value_out.detach();
     return S_OK;
   }
 
@@ -243,10 +238,9 @@ struct SequenceBase : public winrt::implements<
         std::move(lotus_value));
   }
 
-  STDMETHOD(UpdateSourceResourceData)
-  (
+  STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
-      OrtValue& ml_value) {
+      _winmla::IOrtValue* ml_value) {
     auto writable_vector = data_.as<wfc::IVector<T>>();
 
     writable_vector.Clear();
@@ -255,7 +249,7 @@ struct SequenceBase : public winrt::implements<
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
     const LotusSequence& sequence = *static_cast<LotusSequence*>(adapter->GetVectorData(
-        &ml_value, 
+        ml_value, 
         TensorKindFrom<ValidLotusType<T>::TKey>::Type,
         TensorKindFrom<ValidLotusType<T>::TValue>::Type));
 

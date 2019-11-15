@@ -57,7 +57,7 @@ void LearningModelBinding::CacheProvider(
   m_providers[name] = providerInfo;
 }
 
-std::tuple<std::string, OrtValue, BindingType> LearningModelBinding::CreateBinding(
+std::tuple<std::string, _winmla::IOrtValue*, BindingType> LearningModelBinding::CreateBinding(
     const std::string& name,
     const Windows::Foundation::IInspectable& inspectable,
     Windows::Foundation::Collections::IPropertySet const& properties) {
@@ -96,7 +96,7 @@ std::tuple<std::string, OrtValue, BindingType> LearningModelBinding::CreateBindi
   };
 
   // Get the bound tensor
-  OrtValue value = {};
+  winrt::com_ptr<_winmla::IOrtValue> value;
 
   // Get the native ORT interface for the given bind value
   auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
@@ -119,7 +119,7 @@ std::tuple<std::string, OrtValue, BindingType> LearningModelBinding::CreateBindi
   if (!isPlaceHolder || shouldAlwaysTensorize) {
     // If not a placeholder, attempt to get the underlying resource
     WINML_THROW_IF_FAILED_MSG(
-        spLotusValueProvider->GetOrtValue(context, &value),
+        spLotusValueProvider->GetOrtValue(context, value.put()),
         "The model variable %s failed tensorization.",
         name.c_str());
   } else {
@@ -134,7 +134,7 @@ std::tuple<std::string, OrtValue, BindingType> LearningModelBinding::CreateBindi
   auto providerInfo = ProviderInfo{inspectable, spLotusValueProvider, context};
   CacheProvider(name, providerInfo);
 
-  return std::make_tuple(name, value, bindingType);
+  return std::make_tuple(name, value.detach(), bindingType);
 }
 
 void LearningModelBinding::Bind(
@@ -152,17 +152,19 @@ void LearningModelBinding::Bind(
 
   BindingType bindingType;
   std::string bindingName;
-  OrtValue bindingValue;
+  _winmla::IOrtValue* bindingValuePtr;
+  winrt::com_ptr<_winmla::IOrtValue> bindingValue;
 
   auto featureName = WinML::Strings::UTF8FromHString(name);
-  std::tie(bindingName, bindingValue, bindingType) = CreateBinding(featureName, value, properties);
+  std::tie(bindingName, bindingValuePtr, bindingType) = CreateBinding(featureName, value, properties);
+  bindingValue.attach(bindingValuePtr);
 
   switch (bindingType) {
     case BindingType::kInput:
-      WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue));
+      WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue.get()));
       break;
     case BindingType::kOutput:
-      WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue));
+      WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue.get()));
       break;
     default:
       FAIL_FAST();
@@ -222,71 +224,72 @@ _winmla::IIOBinding* LearningModelBinding::BindingCollection() {
     return p;
 }
 
-bool LearningModelBinding::IsOfMapType(const OrtValue& mlValue, TensorKind key_kind, TensorKind value_kind) {
-  return mlValue.Type() == adapter_->GetMapType(key_kind, value_kind);
+bool LearningModelBinding::IsOfMapType(_winmla::IOrtValue* mlValue, TensorKind key_kind, TensorKind value_kind) {
+  return mlValue->Type() == adapter_->GetMapType(key_kind, value_kind);
 };
 
-bool LearningModelBinding::IsOfVectorMapType(const OrtValue& mlValue, TensorKind key_kind, TensorKind value_kind) {
-    return mlValue.Type() == adapter_->GetVectorMapType(key_kind, value_kind);
+bool LearningModelBinding::IsOfVectorMapType(_winmla::IOrtValue* mlValue, TensorKind key_kind, TensorKind value_kind) {
+    return mlValue->Type() == adapter_->GetVectorMapType(key_kind, value_kind);
 };
 
-bool LearningModelBinding::IsOfTensorType(const onnxruntime::Tensor& tensorValue, TensorKind kind) {
-  return tensorValue.DataType() == adapter_->GetTensorType(kind);
+bool LearningModelBinding::IsOfTensorType(_winmla::ITensor* tensorValue, TensorKind kind) {
+  return tensorValue->DataType() == adapter_->GetTensorType(kind);
 };
 
 ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
-    OrtValue& mlValue,
+    _winmla::IOrtValue* mlValue,
     ILearningModelFeatureDescriptor& descriptor) {
-  if (mlValue.IsTensor()) {
-    const onnxruntime::Tensor& tensorValue = mlValue.Get<onnxruntime::Tensor>();
+  if (mlValue->IsTensor()) {
+      winrt::com_ptr<_winmla::ITensor> tensorValue;
+      mlValue->GetTensor(tensorValue.put());
 
-    if (IsOfTensorType(tensorValue, TensorKind::Float)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Float)) {
       if (descriptor.Kind() == LearningModelFeatureKind::Image) {
         using namespace Windows::Graphics::Imaging;
         // TODO: this format for unbound ouput needs more discussion
         BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
-        uint32_t width = static_cast<uint32_t>(tensorValue.Shape()[3]);
-        uint32_t height = static_cast<uint32_t>(tensorValue.Shape()[2]);
-        uint32_t batchSize = static_cast<uint32_t>(tensorValue.Shape()[0]);
+        uint32_t width = static_cast<uint32_t>(tensorValue->ShapeGetDims()[3]);
+        uint32_t height = static_cast<uint32_t>(tensorValue->ShapeGetDims()[2]);
+        uint32_t batchSize = static_cast<uint32_t>(tensorValue->ShapeGetDims()[0]);
         return implementation::ImageFeatureValue::Create(batchSize, format, width, height);
       } else {
         return implementation::TensorFloat::Create();
       }
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Double)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Double)) {
       return implementation::TensorDouble::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::String)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::String)) {
       return implementation::TensorString::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::UInt8)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::UInt8)) {
       return implementation::TensorUInt8Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Int8)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Int8)) {
       return implementation::TensorInt8Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::UInt16)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::UInt16)) {
       return implementation::TensorUInt16Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Int16)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Int16)) {
       return implementation::TensorInt16Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::UInt32)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::UInt32)) {
       return implementation::TensorUInt32Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Int32)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Int32)) {
       return implementation::TensorInt32Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::UInt64)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::UInt64)) {
       return implementation::TensorUInt64Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Int64)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Int64)) {
       return implementation::TensorInt64Bit::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Boolean)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Boolean)) {
       return implementation::TensorBoolean::Create();
     }
-    if (IsOfTensorType(tensorValue, TensorKind::Float16)) {
+    if (IsOfTensorType(tensorValue.get(), TensorKind::Float16)) {
       return implementation::TensorFloat16Bit::Create();
     }
   }
@@ -327,7 +330,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 
 Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
-    OrtValue& mlValue) {
+    _winmla::IOrtValue* mlValue) {
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
@@ -427,7 +430,8 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     BindingType bindingType;
     std::string bindingName;
-    OrtValue bindingValue;
+    _winmla::IOrtValue* bindingValuePtr;
+    winrt::com_ptr<_winmla::IOrtValue> bindingValue;
 
     winrt::Windows::Foundation::IInspectable to;
     RETURN_IF_FAILED(value->QueryInterface(
@@ -435,14 +439,15 @@ STDMETHODIMP LearningModelBinding::Bind(
         reinterpret_cast<void**>(winrt::put_abi(to))));
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
-    std::tie(bindingName, bindingValue, bindingType) = CreateBinding(featureName, to, nullptr);
+    std::tie(bindingName, bindingValuePtr, bindingType) = CreateBinding(featureName, to, nullptr);
+    bindingValue.attach(bindingValuePtr);
 
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue.get()));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue.get()));
         break;
       default:
         FAIL_FAST();

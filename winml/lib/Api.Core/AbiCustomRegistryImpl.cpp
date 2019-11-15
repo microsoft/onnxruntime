@@ -4,7 +4,7 @@
 #include "pch.h"
 #include "inc/AbiCustomRegistryImpl.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace Windows::AI::MachineLearning::Adapter {
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorSetSchema(
     const MLOperatorSetId* opSetId,
@@ -79,4 +79,4 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
 }
 CATCH_RETURN();
 
-}  // namespace winrt::Windows::AI::MachineLearning::implementation
+}  // namespace Windows::AI::MachineLearning::Adapter

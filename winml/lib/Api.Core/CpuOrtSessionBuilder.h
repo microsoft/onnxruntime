@@ -5,7 +5,7 @@
 
 #include "inc/WinMLAdapter.h"
 
-namespace Windows::AI::MachineLearning {
+namespace Windows::AI::MachineLearning::Adapter {
 
 class CpuOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -27,4 +27,4 @@ class CpuOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
       onnxruntime::IExecutionProvider* p_provider) override;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace Windows::AI::MachineLearning::Adapter

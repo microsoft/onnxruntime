@@ -244,8 +244,7 @@ GetIOBinding(
 
   // Add all unbound outputs to the iobinding collection
   for (const auto& unbound_output : unbound_output_names) {
-    OrtValue value = {};
-    WINML_THROW_IF_FAILED(io_binding->BindOutput(unbound_output, value));
+    WINML_THROW_IF_FAILED(io_binding->BindOutput(unbound_output, nullptr));
   }
 
   return io_binding.detach();

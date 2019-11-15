@@ -24,6 +24,8 @@
 
 using namespace Windows::AI::MachineLearning;
 
+namespace Windows::AI::MachineLearning::Adapter {
+
 CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
 
 }
@@ -85,3 +87,5 @@ CpuOrtSessionBuilder::Initialize(
     ORT_THROW_IF_ERROR(p_session->get()->Initialize());
   return S_OK;
 }
+
+} // Windows::AI::MachineLearning::Adapter

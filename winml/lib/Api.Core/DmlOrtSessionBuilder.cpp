@@ -28,6 +28,8 @@
 
 using namespace Windows::AI::MachineLearning;
 
+namespace Windows::AI::MachineLearning::Adapter {
+
 DmlOrtSessionBuilder::DmlOrtSessionBuilder(
     ID3D12Device* device, 
     ID3D12CommandQueue* queue){
@@ -145,3 +147,5 @@ HRESULT DmlOrtSessionBuilder::Initialize(
 
   return S_OK;
 }
+
+} // Windows::AI::MachineLearning::Adapter
