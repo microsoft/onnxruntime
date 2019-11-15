@@ -61,6 +61,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include "core/training/optimizer_config.h"
+#include "core/training/mpi_setup.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -210,7 +211,6 @@ static std::string GetDeviceName(const OrtDevice& device) {
 
 struct TrainingParameters {
   std::string loss_output_name;
-  bool enable_mix_precision;
   std::unordered_set<std::string> weights_to_train;
   onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
   std::vector<std::string> weights_not_to_train;
@@ -218,12 +218,14 @@ struct TrainingParameters {
   // optimizer
   std::string training_optimizer_name;
   std::string loss_scale_input_name;
+  std::string scaled_loss_output_name;
   std::string lr_params_feed_name = "Learning_Rate";
   std::unordered_map<std::string, float> optimizer_attributes;
   bool use_fp16_moments = false;
 
   bool use_mixed_precision = false;
-  int world_rank = 0;
+  float loss_scale = 0.0f;
+  int world_rank = -1;
   int world_size = 1;
   int gradient_accumulation_steps = 1;
 };
@@ -270,7 +272,8 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
       nullptr,
       lr_params_feed_name,
       optimizer_attributes,
-      use_fp16_moments
+      use_fp16_moments,
+      loss_scale_input_name
       };
 
   opt_configs.reserve(weights_to_train.size());
@@ -306,7 +309,7 @@ void SetupAndBuildOptimizer(onnxruntime::training::TrainingSession* sess,
   auto status = SetupOptimizerParams(
       weights_to_train,
       fp16_weights_map,
-      parameters.loss_scale_input_name,     // "loss"
+      parameters.loss_scale_input_name,
       parameters.training_optimizer_name,
       parameters.lr_params_feed_name,
       parameters.optimizer_attributes,
@@ -321,6 +324,16 @@ void SetupAndBuildOptimizer(onnxruntime::training::TrainingSession* sess,
   status = sess->BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs);
   if (!status.IsOK())
     throw std::runtime_error(status.ToString().c_str());
+  
+#ifdef USE_HOROVOD
+  if (parameters.world_size > 1)
+  {
+    auto mpi_context = setup_horovod();
+    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
+    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
+    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+  }
+#endif  
 }
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
@@ -625,16 +638,17 @@ void addObjectMethods(py::module& m) {
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())
       .def_readwrite("loss_output_name", &TrainingParameters::loss_output_name)
-      .def_readwrite("enable_mix_precision", &TrainingParameters::enable_mix_precision)
       .def_readwrite("immutable_weights", &TrainingParameters::immutable_weights)
       .def_readwrite("weights_not_to_train", &TrainingParameters::weights_not_to_train)
       .def_readwrite("weights_to_train", &TrainingParameters::weights_to_train)
       .def_readwrite("loss_scale_input_name", &TrainingParameters::loss_scale_input_name)
+      .def_readwrite("scaled_loss_output_name", &TrainingParameters::scaled_loss_output_name)
       .def_readwrite("training_optimizer_name", &TrainingParameters::training_optimizer_name)
       .def_readwrite("lr_params_feed_name", &TrainingParameters::lr_params_feed_name)
       .def_readwrite("optimizer_attributes", &TrainingParameters::optimizer_attributes)
       .def_readwrite("use_fp16_moments", &TrainingParameters::use_fp16_moments)
       .def_readwrite("use_mixed_precision", &TrainingParameters::use_mixed_precision)
+      .def_readwrite("loss_scale", &TrainingParameters::loss_scale)
       .def_readwrite("world_rank", &TrainingParameters::world_rank)
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps);
@@ -922,14 +936,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
 
         // Add gradient graph
-        status = sess->BuildGradientGraph(weights_to_train, parameters.loss_output_name, true);
+        std::string actual_loss_name = parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+        status = sess->BuildGradientGraph(weights_to_train, actual_loss_name, true);
 
         if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
 
         std::unordered_map<std::string, NodeArg*> fp16_weights_map;
-        if (parameters.enable_mix_precision) {
+        if (parameters.use_mixed_precision) {
           status = sess->EnableMixedPrecision(weights_to_train, false, fp16_weights_map);
           if (!status.IsOK()) {
             throw std::runtime_error(status.ToString().c_str());
@@ -967,13 +982,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
 
         // Add gradient graph
-        status = sess->BuildGradientGraph(weights_to_train, parameters.loss_output_name, true);
+        std::string actual_loss_name = parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+        status = sess->BuildGradientGraph(weights_to_train, actual_loss_name, true);
         if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
 
         std::unordered_map<std::string, NodeArg*> fp16_weights_map;
-        if (parameters.enable_mix_precision) {
+        if (parameters.use_mixed_precision) {
           status = sess->EnableMixedPrecision(weights_to_train, false, fp16_weights_map);
           if (!status.IsOK()) {
             throw std::runtime_error(status.ToString().c_str());
@@ -982,7 +998,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         if (!parameters.training_optimizer_name.empty()) {
           SetupAndBuildOptimizer(sess, weights_to_train, fp16_weights_map, parameters);
-        } else if (parameters.gradient_accumulation_steps) {
+        } else if (parameters.gradient_accumulation_steps > 1) {
           status = sess->BuildAccumulationNode(weights_to_train);
           if (!status.IsOK()) {
             throw std::runtime_error(status.ToString().c_str());

@@ -74,15 +74,15 @@ Status AdamOptimizerBuilder::Build(
     // When mixed precision is enabled by using FP16 initializer, optimizer consumes fp32 weight tensor and its fp16 copy.
     // Thus, each optimizer will get one extra input and one extra output.
     if (opt_configs[i].fp16_weight_arg != nullptr) {
-      num_inputs += 1;
       num_outputs += 1;
     }
 
-    if (!opt_configs[i].loss_scale_input_name.empty()) {
-      num_inputs += 1;
-    }
-
     if (do_update_argdef) {
+      num_inputs += 3;
+    } else if (!opt_configs[i].loss_scale_input_name.empty())
+    {
+      num_inputs += 2;
+    } else if (opt_configs[i].fp16_weight_arg != nullptr) {
       num_inputs += 1;
     }
 
