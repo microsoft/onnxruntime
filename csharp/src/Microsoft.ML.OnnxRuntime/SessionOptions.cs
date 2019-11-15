@@ -145,7 +145,8 @@ namespace Microsoft.ML.OnnxRuntime
         #region Public Methods
         public void RegisterCustomOpLibrary(string libraryPath)
         {
-
+            IntPtr libraryHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(_nativePtr, libraryPath, out libraryHandle));
         }
 
         #endregion
