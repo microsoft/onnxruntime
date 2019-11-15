@@ -22,7 +22,7 @@ set(onnxruntime_common_src_patterns
 )
 
 if (use_telemetry)
-  set_target_properties(winml_lib_telemetry PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_ROOT}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  set_target_properties(onnxruntime_common_src_patterns PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_ROOT}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
 
 if(WIN32)
