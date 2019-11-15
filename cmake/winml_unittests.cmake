@@ -7,7 +7,6 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/lib/Api.Image/inc
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
-  # ${REPO_ROOT}/cmake/external/onnx
   ${REPO_ROOT}/cmake/external/protobuf/src
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
