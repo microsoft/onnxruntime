@@ -4,8 +4,21 @@
 #pragma once
 
 #include "IOrtSessionBuilder.h"
+#include "ModelInfo.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
+
+MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
+    // model metadata
+    virtual std::string STDMETHODCALLTYPE author() = 0;
+    virtual std::string STDMETHODCALLTYPE name() = 0;
+    virtual std::string STDMETHODCALLTYPE domain() = 0;
+    virtual std::string STDMETHODCALLTYPE description() = 0;
+    virtual int64_t STDMETHODCALLTYPE version() = 0;
+    virtual std::unordered_map<std::string, std::string> STDMETHODCALLTYPE model_metadata() = 0;
+    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE input_features() = 0;
+    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE output_features() = 0;
+};
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") ITensor : IUnknown{
     // these all return weak pointers
@@ -25,11 +38,12 @@ MIDL_INTERFACE("72aa5eee-100c-4146-9008-4643d3b8af23") IOrtValue : IUnknown{
     virtual OrtValue& STDMETHODCALLTYPE get() = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE Type() = 0;
     virtual bool STDMETHODCALLTYPE IsTensor() = 0;
-// end
+    // end
     virtual HRESULT STDMETHODCALLTYPE GetTensor(ITensor ** tensor) = 0;
 };
 
 MIDL_INTERFACE("438e7719-554a-4058-84d9-eb6226c34887") IIOBinding : IUnknown{
+    // this returns a weak ref
     virtual onnxruntime::IOBinding* STDMETHODCALLTYPE get() = 0;
     virtual HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, IOrtValue * ml_value) = 0;
     virtual HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, IOrtValue * ml_value) = 0;
@@ -92,14 +106,11 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
             ID3D12CommandQueue* queue,
             IOrtSessionBuilder** session_builder) = 0;
 
-    // factory methods for creating an ort model from a path
+    // factory methods for creating model protos
     virtual HRESULT STDMETHODCALLTYPE CreateModelProto(const char* path, IModelProto** model_proto) = 0;
-
-    // factory methods for creating an ort model from a stream
     virtual HRESULT STDMETHODCALLTYPE CreateModelProto(ABI::Windows::Storage::Streams::IRandomAccessStreamReference* stream_reference, IModelProto** model_proto) = 0;
-
-    // factory methods for creating an ort model from a model_proto
     virtual HRESULT STDMETHODCALLTYPE CreateModelProto(IModelProto * model_proto_in, IModelProto** model_proto) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateModelInfo(IModelProto * model_proto, IModelInfo ** model_info) = 0;
 
     // Data types
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType() = 0;
@@ -142,7 +153,8 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
         onnxruntime::MLDataType data_type,
         IOrtValue ** ort_value) = 0;
 
-
+    // schema overrides (dml does this for us)
+    virtual HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() = 0;
 };
 
 extern "C"

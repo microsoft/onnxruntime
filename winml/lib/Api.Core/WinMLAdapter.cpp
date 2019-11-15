@@ -4,10 +4,12 @@
 #include "pch.h"
 #include "inc/WinMLAdapter.h"
 #include "inc/CustomRegistryHelper.h"
+#include "PheonixSingleton.h"
 #include "inc/LotusEnvironment.h"
 #include "inc/AbiCustomRegistryImpl.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
+#include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
 
 #include "LearningModelDevice.h"
 #include "TensorFeatureDescriptor.h"
@@ -24,6 +26,8 @@
 
 #include "ZeroCopyInputStreamWrapper.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+
+#include "FeatureDescriptorFactory.h"
 
 
 using namespace winrt::Windows::AI::MachineLearning;
@@ -111,7 +115,7 @@ public:
         *tensor = tensor_outer.Detach();
         return S_OK;
     }
-};
+};  // class AbiSafeOrtValue
 
 class ModelProto : public Microsoft::WRL::RuntimeClass<
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -128,12 +132,178 @@ public:
 
 private:
     std::shared_ptr<onnx::ModelProto> model_proto_;
-};
+}; // class ModelProto
+
+
+class ModelInfo : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    IModelInfo> {
+
+private:
+    std::string author_;
+    std::string name_;
+    std::string domain_;
+    std::string description_;
+    int64_t version_;
+    std::unordered_map<std::string, std::string> model_metadata_;
+    wfc::IVector<winml::ILearningModelFeatureDescriptor> input_features_;
+    wfc::IVector<winml::ILearningModelFeatureDescriptor> output_features_;
+
+public:
+
+    ModelInfo(const onnx::ModelProto* model_proto) {
+        Initialize(model_proto);
+    }
+
+    std::string STDMETHODCALLTYPE author() override {
+        return author_;
+    }
+    std::string STDMETHODCALLTYPE name() override {
+        return name_;
+    }
+    std::string STDMETHODCALLTYPE domain() override {
+        return domain_;
+    }
+    std::string STDMETHODCALLTYPE description() override {
+        return description_;
+    }
+    int64_t STDMETHODCALLTYPE version()  override {
+        return version_;
+    }
+    std::unordered_map<std::string, std::string> STDMETHODCALLTYPE model_metadata()  override {
+        return model_metadata_;
+    }
+    wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE input_features()  override {
+        return input_features_;
+    }
+    wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE output_features()  override {
+        return output_features_;
+    }
+
+    static std::vector<const char*>
+        GetAllNodeOutputs(const onnx::ModelProto& model_proto) {
+        std::vector<const char*> nodes_outputs;
+        auto& graph = model_proto.graph();
+        auto& nodes = graph.node();
+        for (auto& node : nodes) {
+            for (auto& node_output : node.output()) {
+                nodes_outputs.push_back(node_output.c_str());
+            }
+        }
+        return nodes_outputs;
+    }
+
+    static std::vector<const char*>
+        GetInitializers(const onnx::ModelProto& model_proto) {
+        std::vector<const char*> initializers;
+        auto& graph = model_proto.graph();
+        auto& graph_initializers = graph.initializer();
+        for (auto& initializer : graph_initializers) {
+            initializers.push_back(initializer.name().c_str());
+        }
+        return initializers;
+    }
+
+    static std::vector<const onnx::ValueInfoProto*>
+        GetInputsWithoutInitializers(const onnx::ModelProto& model_proto) {
+        auto initializers = GetInitializers(model_proto);
+
+        std::vector<const onnx::ValueInfoProto*> inputs_without_initializers;
+        auto& graph = model_proto.graph();
+        auto& inputs = graph.input();
+        for (auto& input : inputs) {
+            if (input.has_name() && input.has_type()) {
+                auto found_it = std::find_if(
+                    std::begin(initializers),
+                    std::end(initializers),
+                    [&](auto& initializer) {
+                    return std::strcmp(initializer, input.name().c_str()) == 0;
+                });
+
+                auto is_initializer = found_it != std::end(initializers);
+                if (!is_initializer) {
+                    inputs_without_initializers.push_back(&input);
+                }
+            }
+        }
+        return inputs_without_initializers;
+    }
+
+    static 
+    std::vector<const onnx::ValueInfoProto*> GetOutputs(const onnx::ModelProto& model_proto) {
+        std::vector<const onnx::ValueInfoProto*> outputs_with_name;
+        auto& graph = model_proto.graph();
+        auto& outputs = graph.output();
+        for (auto& output : outputs) {
+            if (output.has_name() && output.has_type()) {
+                outputs_with_name.push_back(&output);
+            }
+        }
+        return outputs_with_name;
+    }
+
+private:
+    void Initialize(const onnx::ModelProto* model_proto) {
+        // metadata
+        for (auto& prop : model_proto->metadata_props()) {
+            model_metadata_[prop.key()] = prop.value();
+        }
+
+        WinML::FeatureDescriptorFactory builder(model_metadata_);
+
+        // Create inputs
+        auto inputs = GetInputsWithoutInitializers(*model_proto);
+        input_features_ = builder.CreateDescriptorsFromValueInfoProtos(inputs);
+
+        // Create outputs
+        auto outputs = GetOutputs(*model_proto);
+        output_features_ = builder.CreateDescriptorsFromValueInfoProtos(outputs);
+
+        // author
+        auto has_producer_name = model_proto->has_producer_name();
+        author_ = has_producer_name
+            ? model_proto->producer_name()
+            : "";
+
+        // domain
+        auto has_domain = model_proto->has_domain();
+        domain_ = has_domain
+            ? model_proto->domain()
+            : "";
+
+        // name
+        auto has_graph = model_proto->has_graph();
+        auto graph_has_name = model_proto->graph().has_name();
+        auto is_name_available = has_graph && graph_has_name;
+        name_ = is_name_available
+            ? model_proto->graph().name()
+            : "";
+
+        // description
+        auto has_description = model_proto->has_doc_string();
+        description_ = has_description
+            ? model_proto->doc_string()
+            : "";
+
+        // version
+        auto has_version = model_proto->has_model_version();
+        version_ = has_version
+            ? model_proto->model_version()
+            : 0;
+    }
+};  // class ModelInfo 
 
 class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
-    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, 
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
     IWinMLAdapter> {
+private:
+    std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
+
 public:
+    WinMLAdapter() : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()) {
+
+    }
+
     // factory methods for creating an ort model from a path
     HRESULT STDMETHODCALLTYPE CreateModelProto(
             const char* path,
@@ -187,6 +357,12 @@ public:
         auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
         return model_proto_outer.CopyTo(__uuidof(IModelProto), (void**)model_proto);
     }
+
+    HRESULT STDMETHODCALLTYPE CreateModelInfo(IModelProto * model_proto, IModelInfo ** model_info) override {
+        auto model_info_outer = wil::MakeOrThrow<ModelInfo>(model_proto->get());
+        return model_info_outer.CopyTo(__uuidof(IModelInfo), (void**)model_info);
+    }
+
 
     void STDMETHODCALLTYPE EnableDebugOutput() override {
         WinML::CWinMLLogSink::EnableDebugOutput();
@@ -513,6 +689,19 @@ public:
             data_type->GetDeleteFunc());
 
         *ort_value = ort_value_out.Detach();
+        return S_OK;
+    }
+
+    // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
+    // and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
+    // deferred until first evaluation.  It also prevents a situation where inference functions in externally
+    // registered schema are reachable only after upstream schema have been revised in a later OS release,
+    // which would be a compatibility risk.
+    HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
+        static std::once_flag schema_override_once_flag;
+        std::call_once(schema_override_once_flag, []() {
+            SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
+        });
         return S_OK;
     }
 
