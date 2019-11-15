@@ -255,7 +255,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -441,7 +441,7 @@ if(WIN32)
     list(APPEND onnx_test_libs mkldnn)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
+      COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
       )
   endif()
   if (onnxruntime_USE_MKLML)

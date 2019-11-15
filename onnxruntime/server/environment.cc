@@ -7,7 +7,7 @@
 
 #ifdef USE_DNNL
 
-#include "core/providers/mkldnn/mkldnn_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
 
 #endif
 
