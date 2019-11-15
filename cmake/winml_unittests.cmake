@@ -38,8 +38,7 @@ function(AddWinMLTest)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif(_UT_DEPENDS)
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp onnx ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # FIXME
-  # target_link_libraries(b a)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image onnx ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # FIXME
   target_include_directories(${_UT_TARGET} PRIVATE ${WINML_TEST_INC_DIR})
 #   target_precompiled_header(${_UT_TARGET} ${REPO_ROOT}/winml/test/common/pch.h)
 
@@ -61,5 +60,5 @@ AddWinMLTest(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
 )
-install(DIRECTORY "${WINML_TEST_SRC_DIR}/collateral/images/" "${WINML_TEST_SRC_DIR}/collateral/models/" "${WINML_TEST_SRC_DIR}/collateral/ModelSubdirectory" "${WINML_TEST_SRC_DIR}/api/models/" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)  # TODO test properly
+install(DIRECTORY "${WINML_TEST_SRC_DIR}/collateral/images/" "${WINML_TEST_SRC_DIR}/collateral/models/" "${WINML_TEST_SRC_DIR}/collateral/ModelSubdirectory" "${WINML_TEST_SRC_DIR}/api/models/" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)
 install(FILES "${WINML_TEST_SRC_DIR}/collateral/metaDataTestTable.xml" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)
