@@ -28,8 +28,11 @@
 
 using namespace Windows::AI::MachineLearning;
 
+namespace Windows::AI::MachineLearning::Adapter {
+
 DmlOrtSessionBuilder::DmlOrtSessionBuilder(
-    ID3D12Device* device, ID3D12CommandQueue* queue){
+    ID3D12Device* device, 
+    ID3D12CommandQueue* queue){
   device_.copy_from(device);
   queue_.copy_from(queue);
 }
@@ -98,7 +101,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 
 HRESULT DmlOrtSessionBuilder::CreateSession(
     const onnxruntime::SessionOptions& options,
-    std::unique_ptr<onnxruntime::InferenceSession>* p_session,
+    _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
@@ -117,14 +120,15 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
 
   ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(gpu_provider)));
 
-  // return the session
-  *p_session = std::move(session);
+  // assign the session to the out parameter
+  auto sessionptr = wil::MakeOrThrow<_winmla::InferenceSession>(session.release());
+  RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(_winmla::IInferenceSession), (void**)p_session));
 
   return S_OK;
 }
 
 HRESULT DmlOrtSessionBuilder::Initialize(
-    onnxruntime::InferenceSession* p_session,
+    _winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* p_provider) {
   RETURN_HR_IF_NULL(E_INVALIDARG, p_session);
   RETURN_HR_IF_NULL(E_INVALIDARG, p_provider);
@@ -134,7 +138,7 @@ HRESULT DmlOrtSessionBuilder::Initialize(
   // lifetime and can be large, so shouldn't be rounded.
   Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Disabled);
 
-  ORT_THROW_IF_ERROR(p_session->Initialize());
+  ORT_THROW_IF_ERROR(p_session->get()->Initialize());
 
   Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Enabled);
 
@@ -143,3 +147,5 @@ HRESULT DmlOrtSessionBuilder::Initialize(
 
   return S_OK;
 }
+
+} // Windows::AI::MachineLearning::Adapter

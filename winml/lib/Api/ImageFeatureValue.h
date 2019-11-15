@@ -33,11 +33,11 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, WinML::ILotusVa
 
   // ILotusValueProviderPrivate implementation
   STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue* mlValue);
+  (WinML::BindingContext& context, _winmla::IOrtValue** mlValue);
   STDMETHOD(IsPlaceholder)
   (bool* pIsPlaceHolder);
   STDMETHOD(UpdateSourceResourceData)
-  (WinML::BindingContext& context, OrtValue& mlValue);
+  (WinML::BindingContext& context, _winmla::IOrtValue* mlValue);
   STDMETHOD(AbiRepresentation)
   (winrt::Windows::Foundation::IInspectable& abiRepresentation);
 

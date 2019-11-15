@@ -12,6 +12,7 @@
 #define ERROR 0
 
 #include "CpuOrtSessionBuilder.h"
+#include "inc/WinMLAdapter.h"
 
 // winml includes
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -22,6 +23,12 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 
 using namespace Windows::AI::MachineLearning;
+
+namespace Windows::AI::MachineLearning::Adapter {
+
+CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
+
+}
 
 HRESULT
 CpuOrtSessionBuilder::CreateSessionOptions(
@@ -43,7 +50,7 @@ CpuOrtSessionBuilder::CreateSessionOptions(
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
     const onnxruntime::SessionOptions& options,
-    std::unique_ptr<onnxruntime::InferenceSession>* p_session,
+    _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
@@ -66,16 +73,19 @@ CpuOrtSessionBuilder::CreateSession(
   ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(cpu_provider)));
 
   // assign the session to the out parameter
-  *p_session = std::move(session);
+  auto sessionptr = wil::MakeOrThrow<_winmla::InferenceSession>(session.release());
+  RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(_winmla::IInferenceSession), (void**)p_session));
 
   return S_OK;
 }
 
 HRESULT
 CpuOrtSessionBuilder::Initialize(
-    onnxruntime::InferenceSession* p_session,
+    _winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* /*p_provider*/
 ) {
-    ORT_THROW_IF_ERROR(p_session->Initialize());
+    ORT_THROW_IF_ERROR(p_session->get()->Initialize());
   return S_OK;
 }
+
+} // Windows::AI::MachineLearning::Adapter

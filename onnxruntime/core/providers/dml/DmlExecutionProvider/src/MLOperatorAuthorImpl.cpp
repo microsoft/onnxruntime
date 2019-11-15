@@ -13,7 +13,7 @@
 
 using namespace Microsoft::WRL;
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 {
 
 size_t AttributeValue::ElementCount() const
@@ -98,7 +98,7 @@ bool IsAllocationInterface(const ::OrtMemoryInfo& info)
 // the ABI. The translation is determined by the provider and based on options with which the 
 // kernels are registered.
 void TranslateAllocationDataToAbi(
-    winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider* winmlProvider, 
+    IWinmlExecutionProvider* winmlProvider, 
     bool isInternalOperator, 
     const ::OrtMemoryInfo& allocInfo,
     IUnknown* allocation, 
@@ -1901,7 +1901,8 @@ void AbiOpKernel::InferAndVerifyOutputSizes(
     const EdgeShapes* inputShapes, 
     EdgeShapes& outputShapes) const
 {
-    winrt::Windows::AI::MachineLearning::implementation::InferAndVerifyOutputSizes(
+    // call the non member function (below)
+    Windows::AI::MachineLearning::Adapter::InferAndVerifyOutputSizes(
         Node(),
         m_defaultAttributes, 
         m_shapeInferrer.Get(), 

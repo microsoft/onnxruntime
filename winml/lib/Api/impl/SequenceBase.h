@@ -6,6 +6,7 @@
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
+#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 
@@ -28,9 +29,17 @@ struct SequenceBase : public winrt::implements<
   template <typename T>
   struct ValidLotusType { using Type = T; };
   template <>
-  struct ValidLotusType<AbiMapStringToFloat> { using Type = std::map<std::string, float>; };
+  struct ValidLotusType<AbiMapStringToFloat> { 
+      using Type = std::map<std::string, float>; 
+      using TKey = std::string;
+      using TValue = float;
+  };
   template <>
-  struct ValidLotusType<AbiMapInt64BitToFloat> { using Type = std::map<int64_t, float>; };
+  struct ValidLotusType<AbiMapInt64BitToFloat> { 
+      using Type = std::map<int64_t, float>; 
+      using TKey = int64_t;
+      using TValue = float;
+  };
 
   template <typename TElement>
   void
@@ -163,10 +172,9 @@ struct SequenceBase : public winrt::implements<
     return lotus_sequence;
   }
 
-  STDMETHOD(GetOrtValue)
-  (
+  STDMETHOD(GetOrtValue)(
       WinML::BindingContext& context,
-      OrtValue* ml_value) {
+      _winmla::IOrtValue** ml_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // Create a copy of the sequence
@@ -174,14 +182,16 @@ struct SequenceBase : public winrt::implements<
                         ? std::make_unique<LotusSequence>(ConvertToLotusSequence(data_))
                         : std::make_unique<LotusSequence>();
 
-    OrtValue value;
-    value.Init(
-        sequence.release(),
-        onnxruntime::DataTypeImpl::GetType<LotusSequence>(),
-        onnxruntime::DataTypeImpl::GetType<LotusSequence>()->GetDeleteFunc());
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    auto lotus_type = adapter->GetVectorMapType(
+        TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
+        TensorKindFrom<ValidLotusType<T>::TValue>::Type);
 
-    *ml_value = value;
+    winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
+    adapter->CreateOrtValue(sequence.release(), lotus_type, ml_value_out.put());
 
+    *ml_value = ml_value_out.detach();
     return S_OK;
   }
 
@@ -228,15 +238,20 @@ struct SequenceBase : public winrt::implements<
         std::move(lotus_value));
   }
 
-  STDMETHOD(UpdateSourceResourceData)
-  (
+  STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
-      OrtValue& ml_value) {
+      _winmla::IOrtValue* ml_value) {
     auto writable_vector = data_.as<wfc::IVector<T>>();
 
     writable_vector.Clear();
+    
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-    const auto& sequence = ml_value.Get<LotusSequence>();
+    const LotusSequence& sequence = *static_cast<LotusSequence*>(adapter->GetVectorData(
+        ml_value, 
+        TensorKindFrom<ValidLotusType<T>::TKey>::Type,
+        TensorKindFrom<ValidLotusType<T>::TValue>::Type));
 
     for (const auto& element : sequence) {
       writable_vector.Append(ConvertToABIType<T>(element));

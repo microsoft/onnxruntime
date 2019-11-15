@@ -33,7 +33,9 @@ LearningModel::LearningModel(
 
   OverrideShapeInferenceMethods();
 
-  model_proto_ = std::make_unique<_winmla::ModelProto>(WinML::CreateModelProto(path.c_str()));
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  WINML_THROW_IF_FAILED(adapter->CreateModelProto(path.c_str(), model_proto_.put()));
 
   Initialize();
 
@@ -50,8 +52,12 @@ LearningModel::LearningModel(
 
   OverrideShapeInferenceMethods();
 
-  model_proto_ = std::make_unique<_winmla::ModelProto>(WinML::CreateModelProto(stream));
-
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  WINML_THROW_IF_FAILED(adapter->CreateModelProto(
+      static_cast<ABI::Windows::Storage::Streams::IRandomAccessStreamReference*>(winrt::get_abi(stream)), 
+      model_proto_.put()));
+  
   Initialize();
 
   LogCreationEvent(true);
@@ -60,7 +66,7 @@ WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
   model_info_ = std::make_unique<WinML::ModelInfo>(
-      model_proto_.get()->p_);
+      model_proto_.get()->get());
 }
 
 void LearningModel::LogCreationEvent(bool fromStream) {
@@ -189,7 +195,7 @@ WINML_CATCH_ALL
 
 void LearningModel::Close() try {
   // close the model
-  model_proto_.reset();
+  model_proto_ = nullptr;
 }
 WINML_CATCH_ALL
 
@@ -255,25 +261,30 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
-std::unique_ptr<_winmla::ModelProto>
+_winmla::IModelProto*
 LearningModel::DetachModelProto() {
-  std::unique_ptr<_winmla::ModelProto> detached_model_proto;
+  com_ptr<_winmla::IModelProto> detached_model_proto;
   if (model_proto_ != nullptr) {
-    detached_model_proto = std::move(model_proto_);
+    detached_model_proto.attach(model_proto_.detach());
 
     // Close the model since we now own the model proto
     Close();
   }
-  return detached_model_proto;
+  return detached_model_proto.detach();
 }
 
-std::unique_ptr<_winmla::ModelProto>
+_winmla::IModelProto*
 LearningModel::CopyModelProto() {
   if (model_proto_ == nullptr) {
     return nullptr;
   }
 
-  return std::make_unique<_winmla::ModelProto>(*model_proto_);
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  com_ptr<_winmla::IModelProto> model_proto;
+  WINML_THROW_IF_FAILED(adapter->CreateModelProto(model_proto_.get(), model_proto.put()));
+
+  return model_proto.detach();
 }
 
 static std::once_flag g_schema_override_once_flag;
