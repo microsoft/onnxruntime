@@ -195,7 +195,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     }
 
     params.use_mixed_precision = flags["use_mixed_precision"].as<bool>();
-    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>();
+    params.allreduce_in_fp16 = flags["allreduce_in_fp16"].as<bool>() && params.use_mixed_precision;
     if (params.use_mixed_precision) {
       printf("Mixed precision training is enabled.\n");
     }
