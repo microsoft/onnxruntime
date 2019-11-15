@@ -9,6 +9,8 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Op Set 11 for Conv only update document to clearify default dilations and strides value.
+// which are already implemented in previous versoin, so simply add declaration.
 #define REGISTER_KERNEL_TYPED(T)                                                \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       Conv,                                                                     \
