@@ -203,6 +203,7 @@ static bool IsDomainVersionBeyondSupportedRange(
     {kOnnxDomain, kMaximumAiOnnxVersionSupported},
     {kOnnxDomainAlias, kMaximumAiOnnxVersionSupported},
     {kMLDomain, kMaximumAiMlOnnxVersionSupported},
+    {kMSDomain, kMaximumComMicrosoftVersionSupported},
   };
 
   for (const auto& supported_version : supported_versions) {
