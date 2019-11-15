@@ -38,11 +38,12 @@ MIDL_INTERFACE("72aa5eee-100c-4146-9008-4643d3b8af23") IOrtValue : IUnknown{
     virtual OrtValue& STDMETHODCALLTYPE get() = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE Type() = 0;
     virtual bool STDMETHODCALLTYPE IsTensor() = 0;
-// end
+    // end
     virtual HRESULT STDMETHODCALLTYPE GetTensor(ITensor ** tensor) = 0;
 };
 
 MIDL_INTERFACE("438e7719-554a-4058-84d9-eb6226c34887") IIOBinding : IUnknown{
+    // this returns a weak ref
     virtual onnxruntime::IOBinding* STDMETHODCALLTYPE get() = 0;
     virtual HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, IOrtValue * ml_value) = 0;
     virtual HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, IOrtValue * ml_value) = 0;
