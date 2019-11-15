@@ -11,7 +11,6 @@
 #include "LearningModelSession.h"
 #include "TensorKindFrom.h"
 #include "TensorMemoryBufferReference.h"
-#include "TensorBaseHelpers.h"
 
 #include "core/session/onnxruntime_c_api.h"
 
@@ -20,6 +19,8 @@ namespace Windows::AI::MachineLearning {
 //
 // This is the base class for all data based Tensor types. It exposes array and IVectorView
 // based getter and setters.
+//    
+// Look in FeatureValue.h to see where all of them actually get created with CREATE_TENSOR()
 //
 // Supported derived classes:
 //    Float, Int8, UInt8, UInt16, Int16, Int32, Int64, Boolean, Double, UInt32, UInt64
@@ -68,20 +69,25 @@ struct TensorBase : TBase {
   ///  3) use provided backing gpu memory
   ///    a) TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource)
   TensorBase() : m_resources(std::make_shared<TensorResources<T>>()) {
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
+
   }
 
   TensorBase(winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape) : m_shape(begin(shape), end(shape)),
                                                                                          m_resources(std::make_shared<TensorResources<T>>()) {
-    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(m_shape);
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
+    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), m_shape);
   }
 
   TensorBase(std::vector<int64_t> const& shape) : m_shape(shape),
                                                   m_resources(std::make_shared<TensorResources<T>>()) {
-    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(m_shape);
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
+    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), m_shape);
   }
 
   TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource) : m_shape(shape),
                                                                              m_resources(std::make_shared<TensorResources<T>>()) {
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
     // This Api is not supported for TensorString
     WINML_THROW_HR_IF_TRUE_MSG(
         E_ILLEGAL_METHOD_CALL,
@@ -91,15 +97,21 @@ struct TensorBase : TBase {
     GetGpuResource() = std::make_shared<DMLResource>(pResource);
   }
 
-  OrtValue CreateGPUMLValue(std::shared_ptr<DMLResource>& resource, BindingContext& context) {
-    auto shape = onnxruntime::TensorShape(m_shape);
-    auto type = onnxruntime::DataTypeImpl::GetType<T>();
-    return TensorBaseHelpers::CreateGPUMLValue(resource, context, shape, type);
+  _winmla::IOrtValue* CreateGPUMLValue(std::shared_ptr<DMLResource>& resource, BindingContext& context) {
+    THROW_HR_IF_NULL(E_INVALIDARG, resource);
+    THROW_HR_IF_NULL(E_UNEXPECTED, resource->ExecutionProviderAllocatedResource);
+    // Get the data type
+    auto type = adapter_->GetTensorType(TensorKindFrom<T>::Type);
+    auto session_impl = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto provider = session_impl->GetExecutionProvider();
+    winrt::com_ptr<_winmla::IOrtValue> value;
+    WINML_THROW_IF_FAILED(adapter_->CreateGPUMLValue(resource->ExecutionProviderAllocatedResource, provider, &m_shape, type, value.put()));
+    return value.detach();
   }
 
-  OrtValue CPUTensorize(WinML::BindingContext& context) {
+  _winmla::IOrtValue* CPUTensorize(WinML::BindingContext& context) {
     if (GetCpuResource() != nullptr) {
-      return GetCpuResource()->MLValue();
+      return GetCpuResource()->GetValue();
     }
 
     // If there is no matching cpu resource, then fallback to a gpu resource
@@ -110,21 +122,21 @@ struct TensorBase : TBase {
     WINML_THROW_HR(WINML_ERR_INVALID_BINDING);
   }
 
-  OrtValue GPUTensorize(WinML::BindingContext& context) {
+  _winmla::IOrtValue* GPUTensorize(WinML::BindingContext& context) {
     if (GetGpuResource() != nullptr) {
       return CreateGPUMLValue(GetGpuResource(), context);
     }
 
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (GetCpuResource() != nullptr) {
-      return GetCpuResource()->MLValue();
+      return GetCpuResource()->GetValue();
     }
 
     if (TensorKind() == winrt::Windows::AI::MachineLearning::TensorKind::String) {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
-      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(m_shape);
-      return GetCpuResource()->MLValue();
+      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), m_shape);
+      return GetCpuResource()->GetValue();
     } else {
       // Try to allocate the backing memory for the caller
       auto bufferSize = std::accumulate(std::begin(m_shape), std::end(m_shape), static_cast<int64_t>(1), std::multiplies<int64_t>());
@@ -182,8 +194,7 @@ struct TensorBase : TBase {
   }
 
   // ILotusValueProviderPrivate::GetOrtValue
-  STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue* mlValue) {
+  STDMETHOD(GetOrtValue)(WinML::BindingContext& context, _winmla::IOrtValue** mlValue) {
     RETURN_HR_IF_NULL_MSG(
         WINML_ERR_INVALID_BINDING,
         m_resources,
@@ -203,26 +214,26 @@ struct TensorBase : TBase {
   }
 
   // ILotusValueProviderPrivate::UpdateSourceResourceData
-  STDMETHOD(UpdateSourceResourceData)
-  (BindingContext& context, OrtValue& mlValue) {
+  STDMETHOD(UpdateSourceResourceData)(BindingContext& context, _winmla::IOrtValue* mlValue) {
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
         m_resources,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
     auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    auto& tensor = mlValue.Get<onnxruntime::Tensor>();
-    auto pResource = const_cast<void*>(tensor.DataRaw());
+    winrt::com_ptr<_winmla::ITensor> tensor;
+    RETURN_IF_FAILED(mlValue->GetTensor(tensor.put()));
+    auto pResource = const_cast<void*>(tensor->DataRaw());
 
-    m_shape = tensor.Shape().GetDims();
+    m_shape = tensor->ShapeGetDims();
 
     if (GetCpuResource() == nullptr) {
-      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(m_shape);
+      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), m_shape);
     }
 
-    if (!strcmp(tensor.Location().name, onnxruntime::CPU) ||
-        tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput ||
-        tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput) {
+    if (!strcmp(tensor->LocationName(), onnxruntime::CPU) ||
+        tensor->LocationMemType() == ::OrtMemType::OrtMemTypeCPUOutput ||
+        tensor->LocationMemType() == ::OrtMemType::OrtMemTypeCPUInput) {
       // Get the data pointer and size
       T* pData;
       uint32_t pSize;
@@ -232,16 +243,17 @@ struct TensorBase : TBase {
         // Only copy the data if the source and destination are not the same!
         // The engine provided buffer will not match the tensor buffer when
         // the tensor is created as a placeholder output, or as an unbound output.
-        GetCpuResource()->set(static_cast<uint32_t>(tensor.Shape().Size()), reinterpret_cast<T*>(pResource));
+        GetCpuResource()->set(static_cast<uint32_t>(tensor->ShapeSize()), reinterpret_cast<T*>(pResource));
       }
     } else {
       // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
       // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
       // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
       // and was updated in place.
-      auto cpuValue = GetCpuResource()->MLValue();
-      auto& cpuLotusTensor = const_cast<onnxruntime::Tensor&>(cpuValue.Get<onnxruntime::Tensor>());
-      RETURN_HR_IF(E_FAIL, !Dml::CopyTensor(spSession->GetExecutionProvider(), tensor, cpuLotusTensor).IsOK());
+      auto cpuValue = GetCpuResource()->GetValue();
+      winrt::com_ptr<_winmla::ITensor> cpuLotusTensor;
+      RETURN_IF_FAILED(cpuValue->GetTensor(cpuLotusTensor.put()));
+      RETURN_IF_FAILED(adapter_->CopyTensor(spSession->GetExecutionProvider(), tensor.get(), cpuLotusTensor.get()));
     }
 
     return S_OK;
@@ -329,7 +341,7 @@ struct TensorBase : TBase {
     typename TBase::class_type tensorValue = winrt::make<TDerived>();
     auto tensorValueImpl = tensorValue.as<TDerived>();
     tensorValueImpl->m_shape = vecShape;
-    tensorValueImpl->GetCpuResource() = std::make_shared<WinML::Tensor<T>>(vecShape, buffer);
+    tensorValueImpl->GetCpuResource() = std::make_shared<WinML::Tensor<T>>(tensorValueImpl->adapter_.get(), vecShape, buffer);
     return tensorValue;
   }
   WINML_CATCH_ALL
@@ -799,6 +811,7 @@ struct TensorBase : TBase {
   std::shared_ptr<TensorResources<T>> m_resources;
   std::vector<winrt::weak_ref<TensorMemoryBufferReference<T>>> m_outstandingReferences;
   bool m_isClosed = false;
+  winrt::com_ptr<_winmla::IWinMLAdapter> adapter_;
 };
 
 }  // namespace Windows::AI::MachineLearning

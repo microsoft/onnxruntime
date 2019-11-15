@@ -7,8 +7,6 @@
 #include "WinMLProfiler.h"
 
 #include "LearningModelDevice.h"
-#include "AbiCustomRegistryImpl.h"
-#include "core/framework/customregistry.h"
 
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 
@@ -69,11 +67,9 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
 
 extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegistry** registry) try {
   *registry = nullptr;
-
-  auto operatorRegistry = wil::MakeOrThrow<winrt::Windows::AI::MachineLearning::implementation::AbiCustomRegistryImpl>();
-
-  *registry = operatorRegistry.Detach();
-  return S_OK;
+  winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  return adapter->GetCustomRegistry(registry);
 }
 CATCH_RETURN();
 

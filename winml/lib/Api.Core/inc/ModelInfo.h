@@ -26,10 +26,4 @@ class ModelInfo {
   void Initialize(const onnx::ModelProto* model_proto);
 };
 
-// factory methods for creating an ort model from a path
-onnx::ModelProto* CreateModelProto(const char* path);
-
-// factory methods for creating an ort model from a stream
-onnx::ModelProto* CreateModelProto(const wss::IRandomAccessStreamReference& stream_reference);
-
 }  // namespace Windows::AI::MachineLearning

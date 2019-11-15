@@ -3,29 +3,32 @@
 
 #pragma once
 
-#include "inc/IOrtSessionBuilder.h"
+#include "inc/WinMLAdapter.h"
 
-namespace Windows::AI::MachineLearning {
+namespace Windows::AI::MachineLearning::Adapter {
 
-class DmlOrtSessionBuilder : public IOrtSessionBuilder {
+class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    _winmla::IOrtSessionBuilder> {
+
  public:
   DmlOrtSessionBuilder(ID3D12Device* device, ID3D12CommandQueue*  queue);
 
-  HRESULT __stdcall CreateSessionOptions(
-      onnxruntime::SessionOptions* p_options);
+  HRESULT STDMETHODCALLTYPE CreateSessionOptions(
+      onnxruntime::SessionOptions* p_options) override;
 
-  HRESULT __stdcall CreateSession(
+  HRESULT STDMETHODCALLTYPE CreateSession(
       const onnxruntime::SessionOptions& options,
-      std::unique_ptr<onnxruntime::InferenceSession>* p_session,
-      onnxruntime::IExecutionProvider** pp_provider);
+      _winmla::IInferenceSession** p_session,
+      onnxruntime::IExecutionProvider** pp_provider) override;
 
-  HRESULT __stdcall Initialize(
-      onnxruntime::InferenceSession* p_session,
-      onnxruntime::IExecutionProvider* p_provider);
+  HRESULT STDMETHODCALLTYPE Initialize(
+      _winmla::IInferenceSession* p_session,
+      onnxruntime::IExecutionProvider* p_provider) override;
 
  private:
   winrt::com_ptr<ID3D12Device> device_;
   winrt::com_ptr<ID3D12CommandQueue> queue_;
 };
 
-}  // namespace Windows::AI::MachineLearning
+}  // namespace Windows::AI::MachineLearning::Adapter

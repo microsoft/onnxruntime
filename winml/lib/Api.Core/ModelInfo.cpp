@@ -5,13 +5,8 @@
 
 #include "inc/ModelInfo.h"
 
-#include <io.h>
-#include <fcntl.h>
 
 #include "FeatureDescriptorFactory.h"
-#include "ZeroCopyInputStreamWrapper.h"
-
-#include "google/protobuf/io/zero_copy_stream_impl.h"
 
 using namespace Windows::AI::MachineLearning;
 
@@ -132,46 +127,4 @@ void ModelInfo::Initialize(
                  : 0;
 }
 
-// factory methods for creating an ort model from a path
-onnx::ModelProto*
-WinML::CreateModelProto(
-    const char* path) {
-  int file_descriptor;
-  _sopen_s(
-      &file_descriptor,
-      path,
-      O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
-      _SH_DENYWR,
-      _S_IREAD | _S_IWRITE);
 
-  THROW_HR_IF_MSG(
-      E_FAIL,
-      0 > file_descriptor,
-      "Failed");  //errno
-
-  auto stream = google::protobuf::io::FileInputStream(file_descriptor);
-  stream.SetCloseOnDelete(true);
-
-  auto model_proto = new onnx::ModelProto();
-  THROW_HR_IF_MSG(
-      E_INVALIDARG,
-      !model_proto->ParseFromZeroCopyStream(&stream) == false,
-      "The stream failed to parse.");
-
-  return model_proto;
-}
-
-// factory methods for creating an ort model from a stream
-onnx::ModelProto*
-WinML::CreateModelProto(
-  const wss::IRandomAccessStreamReference& stream_reference) {
-  ZeroCopyInputStreamWrapper wrapper(stream_reference);
-
-  auto model_proto = new onnx::ModelProto();
-  THROW_HR_IF_MSG(
-      E_INVALIDARG,
-      model_proto->ParseFromZeroCopyStream(&wrapper) == false,
-      "The stream failed to parse.");
-
-  return model_proto;
-}

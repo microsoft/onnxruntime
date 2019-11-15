@@ -6,6 +6,7 @@
 #include "LearningModelBinding.g.h"
 
 #include "inc/ILotusValueProviderPrivate.h"
+#include "WinMLAdapter.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -35,12 +36,12 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second);
 
-  std::tuple<std::string, OrtValue, WinML::BindingType> CreateBinding(
+  std::tuple<std::string, _winmla::IOrtValue*, WinML::BindingType> CreateBinding(
       const std::string& name,
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
 
-  onnxruntime::IOBinding& BindingCollection();
+  _winmla::IIOBinding* BindingCollection();
   std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
 
   const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
@@ -53,14 +54,22 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
-  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, OrtValue& mlValue);
+  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, _winmla::IOrtValue* mlValue);
+  ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
+      _winmla::IOrtValue* mlValue,
+      ILearningModelFeatureDescriptor& descriptor);
+  bool IsOfTensorType(_winmla::ITensor* tensorValue, TensorKind kind);
+  bool IsOfMapType(_winmla::IOrtValue* mlValue, TensorKind key_kind, TensorKind value_kind);
+  bool IsOfVectorMapType(_winmla::IOrtValue* mlValue, TensorKind key_kind, TensorKind value_kind);
+
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  std::unique_ptr<onnxruntime::IOBinding> m_lotusBinding;
+  com_ptr<_winmla::IIOBinding> m_lotusBinding;
+  com_ptr<_winmla::IWinMLAdapter> adapter_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 

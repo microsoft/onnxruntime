@@ -123,20 +123,26 @@ struct MapBase : winrt::implements<
     return lotusMap;
   }
 
-  STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue* mlValue) {
+  template <typename TLotusKey, typename TLotusValue>
+  static onnxruntime::MLDataType GetLotusType(_winmla::IWinMLAdapter* adapter) {
+      return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
+  }
+
+  STDMETHOD(GetOrtValue)(WinML::BindingContext& context, _winmla::IOrtValue** mlValue) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // Create a copy of the map
     auto map = context.type == WinML::BindingType::kInput ? std::make_unique<LotusMap>(ConvertToLotusMap(m_data)) : std::make_unique<LotusMap>();
 
-    OrtValue value;
-    value.Init(
-        map.release(),
-        onnxruntime::DataTypeImpl::GetType<LotusMap>(),
-        onnxruntime::DataTypeImpl::GetType<LotusMap>()->GetDeleteFunc());
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-    *mlValue = value;
+    auto lotus_type = GetLotusType<TKey, TValue>(adapter.get());
+
+    winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
+    adapter->CreateOrtValue(map.release(), lotus_type, ml_value_out.put());
+
+    *mlValue = ml_value_out.detach();
     return S_OK;
   }
 
@@ -147,11 +153,16 @@ struct MapBase : winrt::implements<
     return S_OK;
   }
 
-  STDMETHOD(UpdateSourceResourceData)
-  (BindingContext& context, OrtValue& mlValue) {
+  STDMETHOD(UpdateSourceResourceData)(BindingContext& context, _winmla::IOrtValue* mlValue) {
     m_data.Clear();
 
-    const auto& map = mlValue.Get<LotusMap>();
+    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+
+    const LotusMap& map = *static_cast<LotusMap*>(adapter->GetMapData(
+        mlValue,
+        TensorKindFrom<TKey>::Type,
+        TensorKindFrom<TValue>::Type));
 
     for (const auto& pair : map) {
       auto key = ConvertToABIType<TKey>(pair.first);

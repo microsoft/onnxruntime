@@ -11,7 +11,8 @@ using namespace Windows::AI::MachineLearning;
 
 // ZeroCopyInputStreamWrapper
 ZeroCopyInputStreamWrapper::ZeroCopyInputStreamWrapper(
-    wss::IRandomAccessStreamReference stream) : stream_(stream) {
+    ABI::Windows::Storage::Streams::IRandomAccessStreamReference* stream) {
+    winrt::copy_from_abi(stream_, (void*)stream);
 }
 
 bool ZeroCopyInputStreamWrapper::Next(

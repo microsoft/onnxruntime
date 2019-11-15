@@ -19,7 +19,7 @@ namespace onnxruntime
     class Node;
 }
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 {
     interface __declspec(uuid("5b19a18a-5ed5-4df2-a363-21b89380a698"))
     IWinmlExecutionProvider : public IUnknown
