@@ -10,12 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__device__ T Gelu(T x) {
-  const T sqrt_param = 0.79788456080286535587989211986876;
-  const T mul_param = 0.044715;
-  const T half = 0.5;
-  const T one = 1.0;
-  return x * half * (one + _Tanh(sqrt_param * (x + mul_param * x * x * x)));
+__device__ __inline__ T Gelu(T x) {
+  return x * _Normcdf(x);
 }
 
 #define OP(name, expr)                                   \
