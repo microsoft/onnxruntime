@@ -122,7 +122,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
       continue;
     }
 
-    if (!optimizer_utils::CheckConstantInput(graph, *(gather_1.InputDefs()[1]), int(0))) {
+    if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *(gather_1.InputDefs()[1]), int64_t(0))) {
       continue;
     }
 
@@ -148,7 +148,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
       continue;
     }
 
-    if (!optimizer_utils::CheckConstantInput(graph, *(gather_2.InputDefs()[1]), int(1))) {
+    if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *(gather_2.InputDefs()[1]), int64_t(1))) {
       continue;
     }
 

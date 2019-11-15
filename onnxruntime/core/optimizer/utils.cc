@@ -29,16 +29,11 @@ inline bool IsScalar(const NodeArg& input_arg) {
   }
 
   auto dim_size = shape->dim_size();
-  if (dim_size != 0) {
-    // only check scalar.
-    return false;
-  }
-
-  return true;
+  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
 
 // Check whether input is a constant scalar with expected float value.
-bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expected_value) {
+bool IsInputConstantWithExpectedValue(const Graph& graph, const NodeArg& input_arg, float expected_value) {
   if (!IsScalar(input_arg)) {
     return false;
   }
@@ -77,7 +72,7 @@ bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, float expe
 }
 
 // Check whether input is a constant scalar with expected intger value.
-bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, int expected_value) {
+bool IsInputConstantWithExpectedValue(const Graph& graph, const NodeArg& input_arg, int64_t expected_value) {
   if (!IsScalar(input_arg)) {
     return false;
   }
@@ -91,12 +86,12 @@ bool CheckConstantInput(const Graph& graph, const NodeArg& input_arg, int expect
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     const int64_t* val = init_const->data<int64_t>();
-    if (val[0] != static_cast<int64_t>(expected_value)) {
+    if (val[0] != expected_value) {
       return false;
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     const int32_t* val = init_const->data<int32_t>();
-    if (val[0] != static_cast<int32_t>(expected_value)) {
+    if (static_cast<int64_t>(val[0]) != expected_value) {
       return false;
     }
   } else {
