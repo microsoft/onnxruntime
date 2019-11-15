@@ -26,7 +26,7 @@ static bool IsSupportedDataType(const Node& node) {
 /**
 Skip Layer Normalization will fuse Add + LayerNormalization into one node.
 */
-Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -37,7 +37,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       continue;  // we removed the node as part of an earlier fusion.
 
     Node& add_node = *p_add;
-    ORT_RETURN_IF_ERROR(Recurse(add_node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(add_node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
         !graph_utils::IsSupportedProvider(add_node, GetCompatibleExecutionProviders()) ||

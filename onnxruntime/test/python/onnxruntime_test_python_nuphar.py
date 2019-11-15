@@ -90,6 +90,34 @@ class TestNuphar(unittest.TestCase):
         sess.run([], feed)
 
 
+    def test_bert_squad(self):
+        # download BERT_squad model
+        cwd = os.getcwd()
+        bert_squad_url = 'https://onnxzoo.blob.core.windows.net/models/opset_10/bert_squad/download_sample_10.tar.gz'
+        cache_dir = os.path.join(os.path.expanduser("~"), '.cache','onnxruntime')
+        os.makedirs(cache_dir, exist_ok=True)
+        bert_squad_local = os.path.join(cache_dir, 'bert_squad.tar.gz')
+        if not os.path.exists(bert_squad_local):
+            urllib.request.urlretrieve(bert_squad_url, bert_squad_local)
+        with tarfile.open(bert_squad_local, 'r') as f:
+            f.extractall(cwd)
+
+        # run symbolic shape inference on this model
+        # set int_max to 1,000,000 to simplify symbol computes for things like min(1000000, seq_len) -> seq_len
+        bert_squad_dir = os.path.join(cwd, 'download_sample_10')
+        bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
+        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input', bert_squad_model, '--output', bert_squad_model, '--auto_merge', '--int_max=1000000'], check=True, cwd=cwd)
+
+        # run onnx_test_runner to verify results
+        onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
+
+        # run onnxruntime_perf_test
+        onnx_test_runner = os.path.join(cwd, 'onnxruntime_perf_test')
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'cpu', '-o', '99', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+
+
     def test_rnn_benchmark(self):
         # make sure benchmarking scripts works
         # note: quantized model requires AVX2, otherwise it might be slow
@@ -105,6 +133,7 @@ class TestNuphar(unittest.TestCase):
                                                 input_dim=128, hidden_dim=1024, bidirectional=False,
                                                 layers=3, seq_len=16, batch_size=2,
                                                 min_duration_seconds=1)
+
 
 if __name__ == '__main__':
     unittest.main()
