@@ -194,6 +194,23 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   return domain_version_map;
 }
 
+static bool IsDomainVersionBeyondSupportedRange(
+    const std::string& domain,
+    const int op_set_version) {
+  // check the ONNX schema registry
+  auto& onnx_domain_version_map =
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+
+  auto it = onnx_domain_version_map.find(domain);
+  if (it != onnx_domain_version_map.end() && op_set_version > it->second.second) {
+    // The domain is beyond what is registered.
+    return true;
+  }
+
+  // Either all ONNX domains were within range, or the domains were not ONNX.
+  return false;
+}
+
 // Return the schema with biggest version, which is not greater than specified
 // <op_set_version> in specified domain. The value of earliest_opset_where_unchanged
 // is also set to the earliest version preceding op_set_version where the operator
@@ -238,10 +255,14 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     checked_registry_indices.push_back(index);
   }
 
-  // if not found in registered custom schema registry, search in ONNX schema registry
-  *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
-  if (*latest_schema != nullptr) {
-    *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+  // Reject versions greater than what is actually supported.
+  *latest_schema = nullptr;
+  if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
+    // if not found in registered custom schema registry, search in ONNX schema registry
+    *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
+    if (*latest_schema != nullptr) {
+      *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+    }
   }
 }
 
