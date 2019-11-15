@@ -541,6 +541,10 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   ASSERT_TRUE(op_to_count["Gemm"] == 1);
 }
 
+// Matmul+Add with shape [k]*[k,N]+[N], won't do the fusion
+// We can do the fusion by changing shape to [1,k]*[k,N]+[1,N], then add a reshape [1,N]=>[N]
+// This will bring extra cost. And there's only very limited gain to fuse Matmul+Add to Gemm
+// Since the basic implementation is almost same
 TEST(GraphTransformationTests, MatMulAddFusion_negitive_case) {
   auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/neg_model.onnx";
 
