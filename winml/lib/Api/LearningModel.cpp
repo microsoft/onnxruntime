@@ -5,10 +5,8 @@
 
 #include "LearningModel.h"
 
-#include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
 #include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
 #include "ModelInfo.h"
-#include "PheonixSingleton.h"
 #include "TelemetryEvent.h"
 
 #include "LotusEnvironment.h"
@@ -21,21 +19,19 @@ namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(WinML::Strings::UTF8FromHString(path),
-                                                                                 op_provider) {}
+                                                                   op_provider) {
+}
 WINML_CATCH_ALL
 
 LearningModel::LearningModel(
     const std::string& path,
-    const winml::ILearningModelOperatorProvider operator_provider) try : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()),
-                                                                         operator_provider_(operator_provider) {
+    const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
   _winmlt::PerformanceTelemetryEvent kLoadModel_event(
       WinMLRuntimePerf::kLoadModel);
 
-  OverrideShapeInferenceMethods();
-
-  com_ptr<_winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-  WINML_THROW_IF_FAILED(adapter->CreateModelProto(path.c_str(), model_proto_.put()));
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
+  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
+  WINML_THROW_IF_FAILED(adapter_->CreateModelProto(path.c_str(), model_proto_.put()));
 
   Initialize();
 
@@ -45,19 +41,16 @@ WINML_CATCH_ALL
 
 LearningModel::LearningModel(
     const wss::IRandomAccessStreamReference stream,
-    const winml::ILearningModelOperatorProvider operator_provider) try : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()),
-                                                                         operator_provider_(operator_provider) {
+    const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
   _winmlt::PerformanceTelemetryEvent kLoadModel_event(
       WinMLRuntimePerf::kLoadModel);
 
-  OverrideShapeInferenceMethods();
-
-  com_ptr<_winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-  WINML_THROW_IF_FAILED(adapter->CreateModelProto(
-      static_cast<ABI::Windows::Storage::Streams::IRandomAccessStreamReference*>(winrt::get_abi(stream)), 
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
+  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
+  WINML_THROW_IF_FAILED(adapter_->CreateModelProto(
+      static_cast<ABI::Windows::Storage::Streams::IRandomAccessStreamReference*>(winrt::get_abi(stream)),
       model_proto_.put()));
-  
+
   Initialize();
 
   LogCreationEvent(true);
@@ -65,8 +58,7 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
-  model_info_ = std::make_unique<WinML::ModelInfo>(
-      model_proto_.get()->get());
+    WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
 }
 
 void LearningModel::LogCreationEvent(bool fromStream) {
@@ -80,13 +72,13 @@ void LearningModel::LogCreationEvent(bool fromStream) {
   }
   telemetry_helper.LogModelCreation(
       fromStream,
-      model_info_->author_,
-      model_info_->name_,
-      model_info_->domain_,
-      model_info_->description_,
-      model_info_->version_,
+      model_info_->author(),
+      model_info_->name(),
+      model_info_->domain(),
+      model_info_->description(),
+      model_info_->version(),
       use_fp16,
-      model_info_->model_metadata_);
+      model_info_->model_metadata());
 }
 
 void LearningModel::ModelUseFP16(
@@ -119,41 +111,41 @@ void LearningModel::ModelUseFP16(
 
 hstring
 LearningModel::Author() try {
-  return WinML::Strings::HStringFromUTF8(model_info_->author_);
+  return WinML::Strings::HStringFromUTF8(model_info_->author());
 }
 WINML_CATCH_ALL
 
 hstring
 LearningModel::Name() try {
   return WinML::Strings::HStringFromUTF8(
-      model_info_->name_);
+      model_info_->name());
 }
 WINML_CATCH_ALL
 
 hstring
 LearningModel::Domain() try {
   return WinML::Strings::HStringFromUTF8(
-      model_info_->domain_);
+      model_info_->domain());
 }
 WINML_CATCH_ALL
 
 hstring
 LearningModel::Description() try {
   return WinML::Strings::HStringFromUTF8(
-      model_info_->description_);
+      model_info_->description());
 }
 WINML_CATCH_ALL
 
 int64_t
 LearningModel::Version() try {
-  return model_info_->version_;
+  return model_info_->version();
 }
 WINML_CATCH_ALL
 
 wfc::IMapView<hstring, hstring>
 LearningModel::Metadata() try {
   std::unordered_map<hstring, hstring> map_copy;
-  for (auto& pair : model_info_->model_metadata_) {
+  for (auto& pair : model_info_->model_metadata()) {
     auto key = WinML::Strings::HStringFromUTF8(pair.first);
     auto value = WinML::Strings::HStringFromUTF8(pair.second);
     map_copy.emplace(std::move(key), std::move(value));
@@ -183,13 +175,13 @@ LearningModel::GetOperatorRegistry() {
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::InputFeatures() try {
-  return model_info_->input_features_.GetView();
+  return model_info_->input_features().GetView();
 }
 WINML_CATCH_ALL
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::OutputFeatures() try {
-  return model_info_->output_features_.GetView();
+  return model_info_->output_features().GetView();
 }
 WINML_CATCH_ALL
 
@@ -287,18 +279,6 @@ LearningModel::CopyModelProto() {
   return model_proto.detach();
 }
 
-static std::once_flag g_schema_override_once_flag;
-
-// Override select shape inference functions which are incomplete in ONNX with versions that are complete,
-// and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
-// deferred until first evaluation.  It also prevents a situation where inference functions in externally
-// registered schema are reachable only after upstream schema have been revised in a later OS release,
-// which would be a compatibility risk.
-void LearningModel::OverrideShapeInferenceMethods() {
-  std::call_once(g_schema_override_once_flag, []() {
-    SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
-  });
-}
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 
 namespace winrt::Windows::AI::MachineLearning::factory_implementation {
