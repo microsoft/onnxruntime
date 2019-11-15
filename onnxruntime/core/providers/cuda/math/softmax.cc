@@ -8,11 +8,20 @@
 namespace onnxruntime {
 namespace cuda {
 
+// opset 11 added explicit support for negative axis. implementation already supported it.
 #define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      1,                                                                        \
+      11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -25,7 +34,7 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape& input_shape{X.Shape()};
 
   Tensor* Y = ctx->Output(0, input_shape);
-  // special case when there is a dim value of 0 in the shape.  
+  // special case when there is a dim value of 0 in the shape.
   if (input_shape.Size() == 0)
     return Status::OK();
 
