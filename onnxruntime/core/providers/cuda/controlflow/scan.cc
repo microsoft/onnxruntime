@@ -69,6 +69,7 @@ Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
   SetDeviceHelpers(helpers);
 }
 
+template <>
 Status Scan<8>::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
   // we have this CUDA implementation so the inputs/outputs stay on GPU where possible.
@@ -79,6 +80,7 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
   return status;
 }
 
+template <>
 Status Scan<9>::Compute(OpKernelContext* ctx) const {
   // call the base CPU version.
   // we have this CUDA implementation so the inputs/outputs stay on GPU where possible.
