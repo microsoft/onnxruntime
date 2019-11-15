@@ -68,7 +68,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -201,7 +201,7 @@ add_custom_command(
 if (onnxruntime_USE_DNNL)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH}
+    COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH}
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
   )
 endif()

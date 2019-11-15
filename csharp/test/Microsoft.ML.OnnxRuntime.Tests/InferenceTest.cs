@@ -1040,7 +1040,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             "OrtGetApiBase",
             "OrtSessionOptionsAppendExecutionProvider_CPU"
 #if USE_DNNL
-            ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
+            ,"OrtSessionOptionsAppendExecutionProvider_Dnnl"
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"

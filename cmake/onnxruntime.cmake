@@ -58,7 +58,7 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_DNNL}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_TENSORRT}
