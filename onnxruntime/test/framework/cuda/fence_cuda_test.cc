@@ -73,7 +73,9 @@ CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)
 CREATE_INITIALIZER_FUNC(int64_t, TensorProto_DataType_INT64, add_int64_data)
 // TO DO: Figure out a way to enable it again
 TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test");
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test",
+                                                                                           false,
+                                                                                           DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -135,7 +137,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 }
 
 TEST(CUDAFenceTests, TileWithInitializer) {
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test");
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -189,7 +191,8 @@ TEST(CUDAFenceTests, TileWithInitializer) {
 TEST(CUDAFenceTests, TileWithComputedInput) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  std::unique_ptr<onnxruntime::Model> model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                                                           DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);

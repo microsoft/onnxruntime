@@ -151,8 +151,8 @@ class WindowsEnv : public Env {
   }
 
   Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-      MappedMemoryPtr& mapped_memory) const override {
+      const ORTCHAR_T*, FileOffsetType, size_t,
+      MappedMemoryPtr&) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
