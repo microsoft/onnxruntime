@@ -341,13 +341,6 @@ static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTyp
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
-  // if there is a custom allocator for this ort_value_index, call it to do the allocation
-  auto custom_alloc_entry = custom_allocators_.find(ort_value_index);
-  if (custom_alloc_entry != custom_allocators_.cend()) {
-    ORT_ENFORCE(shape, "We don't expect custom allocators for non-tensor types, so a shape is mandatory here.");
-    return (custom_alloc_entry->second)(*shape, ort_value);
-  }
-
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
@@ -359,6 +352,17 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     return Status(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
+
+  // if there is a custom allocator for this ort_value_index, call it to do the allocation
+  auto custom_alloc_entry = custom_allocators_.find(ort_value_index);
+  if (custom_alloc_entry != custom_allocators_.cend()) {
+    ORT_ENFORCE(shape, "We don't expect custom allocators for non-tensor types, so a shape is mandatory here.");
+    bool allocated = false;
+    // see if custom allocator can handle allocation
+    auto status = (custom_alloc_entry->second)(*shape, alloc_info, ort_value, allocated);
+    if (allocated || !status.IsOK())
+      return status;
+  }
 
   if (!ml_type->IsTensorType()) {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
