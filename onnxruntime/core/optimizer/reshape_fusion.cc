@@ -60,7 +60,7 @@ After fusion:
                    \        /
                     Reshape
 */
-Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -70,7 +70,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
       continue;  // we removed the node as part of an earlier fusion
 
     Node& reshape = *p_reshape;
-    ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(reshape, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reshape, "Reshape", {5}) ||
         !graph_utils::IsSupportedProvider(reshape, GetCompatibleExecutionProviders())) {
@@ -168,7 +168,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
 
     // Create an initializer with the same name as the concat node output, and replace the concat node
     const auto& new_initializer_name = concat.OutputDefs()[0]->Name();
-    if (!graph_utils::CanReplaceNodeWithInitializer(graph, concat, new_initializer_name)) {
+    if (!graph_utils::CanReplaceNodeWithInitializer(graph, concat, new_initializer_name, logger)) {
       continue;
     }
     const auto* shape_def = concat.OutputDefs()[0];
