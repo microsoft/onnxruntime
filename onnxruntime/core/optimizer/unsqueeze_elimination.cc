@@ -11,13 +11,13 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
   NodeArg& input_def = *node.MutableInputDefs()[0];
   const auto& tensor_proto = *graph_utils::GetConstantInitializer(graph, input_def.Name());
 
   auto new_name = graph.GenerateNodeArgName("UnsqueezeElimination_" + input_def.Name());
-  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_name)) {
-    LOGS_DEFAULT(WARNING) << "UnsqueezeElimination cannot remove node " << node.Name();
+  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_name, logger)) {
+      LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node " << node.Name();
     return Status::OK();
   }
 
@@ -68,7 +68,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   return Status::OK();
 }
 
-bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool UnsqueezeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   // Attempt to remove an Unsqueeze operator only if it gets a constant initializer as input.
   return graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name());
 }

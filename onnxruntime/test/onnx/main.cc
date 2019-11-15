@@ -423,6 +423,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
+      {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "1d convtranspose not supported yet"},

@@ -83,6 +83,7 @@ option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in l
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
+option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -91,6 +92,15 @@ set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
 endif()
+
+if(NOT WIN32)
+  #TODO: On Linux we may try https://github.com/microsoft/TraceLogging
+  if(onnxruntime_ENABLE_INSTRUMENT)
+    message(WARNING "Instrument is only supported on Windows now")
+    set(onnxruntime_ENABLE_INSTRUMENT OFF)
+  endif()
+endif()
+
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)
@@ -173,9 +183,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
-  #Disable 4100 globally. Too many this kind errors in protobuf
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100")
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
   if (NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -529,7 +537,7 @@ if (onnxruntime_USE_NGRAPH)
   add_definitions(-DUSE_NGRAPH=1)
   include(ngraph)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
