@@ -68,7 +68,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       bool failed = false;  // TODO: do we need to make memory barrier for this variable?
 
       int n = batch_size * sequence_length;
-      int numThreads = tp->NumThreads();
+      int numThreads = tp->NumThreads() + 1;
 
       tp->ParallelFor(numThreads, [numThreads, n,
                                    &failed,

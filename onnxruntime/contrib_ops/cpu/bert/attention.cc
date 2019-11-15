@@ -11,8 +11,6 @@
 #include "core/providers/cpu/math/softmax.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
-#define ATTENTION_IMPL_B
-
 namespace onnxruntime {
 namespace contrib {
 // These ops are internal-only, so register outside of onnx
@@ -131,73 +129,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     timepoint = context->Profiler()->StartTime();
   }
 
-#if defined(ATTENTION_IMPL_A)
-
-  // STEP.1: gemm_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
-
-  // Use GEMM for fully connection.
-  int m = batch_size * sequence_length;
-  int n = 3 * hidden_size;
-  int k = hidden_size;
-
-  auto gemm_data = allocator->Alloc(batch_size * sequence_length * 3 * hidden_size * element_size);
-  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
-
-  auto gemm_data_mat = EigenMatrixMapRowMajor<T>(reinterpret_cast<T*>(gemm_data), m, n);
-  gemm_data_mat.rowwise() = ConstEigenVectorMap<T>(bias->template Data<T>(), n).transpose();
-
-  if (is_profiler_enabled) {
-    context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_1_of_6_broadcast",
-                                               timepoint);
-    timepoint = context->Profiler()->StartTime();
-  }
-
-  math::Gemm<T>(
-      CblasNoTrans,
-      CblasNoTrans,
-      m,
-      n,
-      k,
-      1.0f,
-      input->template Data<T>(),
-      weights->template Data<T>(),
-      1.0f,
-      reinterpret_cast<T*>(gemm_data),
-      tp);
-
-  if (is_profiler_enabled) {
-    context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_1_of_6_gemm",
-                                               timepoint);
-
-    timepoint = context->Profiler()->StartTime();
-  }
-
-  // STEP.2: gemm_data_transposed(3, B, N, S, H) = transpose gemm_data(B, S, 3, N, H)
-  auto gemm_data_transposed = allocator->Alloc(batch_size * sequence_length * 3 * hidden_size * element_size);
-  BufferUniquePtr gemm_transposed_buffer(gemm_data_transposed, BufferDeleter(allocator));
-
-  Tensor gemm_data_tensor{input->DataType(), TensorShape{batch_size, sequence_length, 3, num_heads_, head_size}, gemm_data, allocator->Info()};
-  Tensor gemm_data_transposed_tensor{input->DataType(), TensorShape{3, batch_size, num_heads_, sequence_length, head_size}, gemm_data_transposed, allocator->Info()};
-
-  static const std::vector<size_t> transpose_permutations{2, 0, 3, 1, 4};
-  ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(transpose_permutations, gemm_data_tensor, gemm_data_transposed_tensor));
-
-  T* Q = reinterpret_cast<T*>(gemm_data_transposed);
-  T* K = Q + (batch_size * hidden_size * sequence_length);
-  T* V = K + (batch_size * hidden_size * sequence_length);
-
-  if (is_profiler_enabled) {
-    context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_2_of_6",
-                                               timepoint);
-
-    timepoint = context->Profiler()->StartTime();
-  }
-
-#elif defined(ATTENTION_IMPL_B)
-
   // STEP.1: gemm_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
   auto gemm_data = allocator->Alloc(batch_size * sequence_length * 3 * hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
@@ -218,7 +149,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   //   int loop_len = 3 * batch_size * num_heads_ * sequence_length;
 
   //   if (tp != nullptr) {
-  //     int numThreads = tp->NumThreads();
+  //     int numThreads = tp->NumThreads() + 1;
   //     int size_per_batch = (loop_len + numThreads - 1) / numThreads;
   //     tp->ParallelFor(numThreads, [numThreads, loop_len, size_per_batch,
   //                                  num_heads = num_heads_,
@@ -363,8 +294,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     timepoint = context->Profiler()->StartTime();
   }
 
-#endif
-
   // STEP.3: scratch(B, N, S, S) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S, H -> B, N, H, S) + 1 x mask_index(B -> B, 1, 1, 1)
   auto scratch_data = allocator->Alloc(batch_size * num_heads_ * sequence_length * sequence_length * element_size);
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
@@ -374,7 +303,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   //   auto mask_data = mask_index->template Data<int>();
   //   int size_n = num_heads_ * sequence_length;
   //   if (tp != nullptr) {
-  //     int numThreads = tp->NumThreads();
+  //     int numThreads = tp->NumThreads() + 1;
   //     int size_per_batch = (batch_size * size_n + numThreads - 1) / numThreads;
   //     tp->ParallelFor(numThreads, [numThreads, n = batch_size * size_n, size_per_batch,
   //                                  mask_data,
@@ -523,7 +452,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     //math::Exp(N * D, reinterpret_cast<T*>(scratch_data), reinterpret_cast<T*>(p_data), tp);
 
     {
-      int numThreads = tp->NumThreads();
+      int numThreads = tp->NumThreads() + 1;
       int size_per_batch = (N * D + numThreads - 1) / numThreads;
       tp->ParallelFor(numThreads, [numThreads, n = N * D, size_per_batch,
                                    input = reinterpret_cast<T*>(scratch_data),
@@ -545,7 +474,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     }
 
     {
-      int numThreads = tp->NumThreads();
+      int numThreads = tp->NumThreads() + 1;
       int size_per_batch = (N + numThreads - 1) / numThreads;
       tp->ParallelFor(numThreads, [numThreads, n = N, size_per_batch, p_data, D](int k) {
         int start = k * size_per_batch;
