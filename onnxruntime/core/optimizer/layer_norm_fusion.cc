@@ -43,7 +43,7 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                     |
 +---------------------+
 */
-Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -54,7 +54,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;  // we removed the node as part of an earlier fusion
 
     Node& reduce_mean_node = *p_reduce_mean;
-    ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1}) ||
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||

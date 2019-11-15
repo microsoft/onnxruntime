@@ -25,7 +25,7 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
-Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -35,7 +35,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) cons
       continue;  // we removed the node as part of an earlier fusion
 
     Node& div = *p_div;
-    ORT_RETURN_IF_ERROR(Recurse(div, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(div, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7}) ||
         !graph_utils::IsSupportedProvider(div, GetCompatibleExecutionProviders()) ||

@@ -270,7 +270,7 @@ static void RunTest_v8(const std::string test_name, int64_t batch_size, int64_t 
                        OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                        const std::string& failure_message = "") {
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
-  Model model(test_name);
+  Model model(test_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   auto& proto = graph.ToGraphProto();
@@ -332,7 +332,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
                        OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                        const std::string& failure_message = "") {
   // create model that will be used to initialize subgraph. currently there's no direct way to create a Graph instance.
-  Model model(test_name);
+  Model model(test_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   CreateSubgraph(graph, options, options.add_bad_shape ? failure_message : "");
   auto& proto = graph.ToGraphProto();
@@ -860,7 +860,7 @@ TEST(Scan9, TransposeOutput) {
 TEST(Scan9, TransposeOutputDim2) {
   // Construct scan body subgraph with 1 scan inputs, 1 scan outputs
   // scan-in-1 => scan-out-1
-  Model model("ScanBody");
+  Model model("ScanBody", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_tensor;
@@ -1028,7 +1028,7 @@ void MixedTypeInputs(bool is_v8) {
   // state-in-2 => scan-out-2
   // scan-in-2 => state-out-2
 
-  Model model("ScanBody");
+  Model model("ScanBody", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_tensor;
@@ -1096,7 +1096,7 @@ TEST_8_AND_9(MixedTypeInputs);
 // create a subgraph that will have unknown dimensions in both the loop state variable and output
 // after shape inferencing.
 void UnknownDimInSubgraphOutput(bool is_v8, bool mixed_execution_providers = false) {
-  Model model("ScanBody");
+  Model model("ScanBody", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_tensor;

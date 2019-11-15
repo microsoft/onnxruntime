@@ -25,7 +25,7 @@ class ConstantFolding : public GraphTransformer {
   const std::unordered_set<std::string> excluded_op_types_ =
       {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   /** Create a TensorProto that has the same value as the given OrtValue
   and the same type and dimensions as the given NodeArg. */
