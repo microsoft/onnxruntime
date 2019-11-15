@@ -39,3 +39,8 @@
             throw;                                              \
         }                                                       \
     , exception);
+
+// For old versions of gtest without GTEST_SKIP, stream the message and return success instead
+#ifndef GTEST_SKIP
+#define GTEST_SKIP(message) return GTEST_MESSAGE_(message, ::testing::TestPartResult::kSuccess)
+#endif

@@ -45,6 +45,9 @@ protected:
     }
 };
 
+class LearningModelAPITestGpu : public APITest
+{};
+
 TEST_F(LearningModelAPITest, CreateModelFromFilePath)
 {
     EXPECT_NO_THROW(LoadModel(L"squeezenet_modifiedforruntimestests.onnx"));
@@ -238,30 +241,25 @@ TEST_F(LearningModelAPITest, CloseModelCheckMetadata)
     EXPECT_EQ(123456, version);
 }
 
-// https://github.com/google/googletest/blob/master/googletest/test/gtest_skip_test.cc
-// https://stackoverflow.com/questions/7208070/googletest-how-to-skip-a-test
+TEST_F(LearningModelAPITestGpu, CloseModelCheckEval)
+{
+    EXPECT_NO_THROW(LoadModel(L"model.onnx"));
+    LearningModelSession session = nullptr;
+    EXPECT_NO_THROW(session = LearningModelSession(m_model));
+    EXPECT_NO_THROW(m_model.Close());
 
-// TEST_F(LearningModelAPITest, CloseModelCheckEval)
-// {
-//     GTEST_SKIP() << "skipping GPU test";  // FIXME
+    std::wstring fullImagePath = FileHelpers::GetModulePath() + L"kitten_224.png";
+    StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
+    IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
+    SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+    VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
 
-//     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
-//     LearningModelSession session = nullptr;
-//     EXPECT_NO_THROW(session = LearningModelSession(m_model));
-//     EXPECT_NO_THROW(m_model.Close());
+    LearningModelBinding binding = nullptr;
+    EXPECT_NO_THROW(binding = LearningModelBinding(session));
+    EXPECT_NO_THROW(binding.Bind(m_model.InputFeatures().First().Current().Name(), frame));
 
-//     std::wstring fullImagePath = FileHelpers::GetModulePath() + L"kitten_224.png";
-//     StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
-//     IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
-//     SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
-//     VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-
-//     LearningModelBinding binding = nullptr;
-//     EXPECT_NO_THROW(binding = LearningModelBinding(session));
-//     EXPECT_NO_THROW(binding.Bind(m_model.InputFeatures().First().Current().Name(), frame));
-
-//     EXPECT_NO_THROW(session.Evaluate(binding, L""));
-// }
+    EXPECT_NO_THROW(session.Evaluate(binding, L""));
+}
 
 TEST_F(LearningModelAPITest, CloseModelNoNewSessions)
 {

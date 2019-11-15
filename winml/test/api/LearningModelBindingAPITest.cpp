@@ -17,6 +17,9 @@ using namespace winrt::Windows::Storage;
 class LearningModelBindingAPITest : public APITest
 {};
 
+class LearningModelBindingAPITestGpu : public LearningModelBindingAPITest
+{};
+
 TEST_F(LearningModelBindingAPITest, CpuSqueezeNet)
 {
     std::string cpuInstance("CPU");
@@ -306,265 +309,257 @@ TEST_F(LearningModelBindingAPITest, ZipMapString)
     EXPECT_TRUE(!iter2.HasCurrent());
 }
 
-// TEST_F(LearningModelBindingAPITest, GpuSqueezeNet)
-// {
-//     GPUTEST;
+TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
+{
 
-//     std::string gpuInstance("GPU");
-//     WinML::Engine::Test::ModelValidator::SqueezeNet(
-//         gpuInstance,
-//         LearningModelDeviceKind::DirectX,
-//         /*dataTolerance*/ 0.00001f);
-// }
+    std::string gpuInstance("GPU");
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+        gpuInstance,
+        LearningModelDeviceKind::DirectX,
+        /*dataTolerance*/ 0.00001f);
+}
 
-// TEST_F(LearningModelBindingAPITest, GpuFnsCandy16)
-// {
-//     GPUTEST;
-//     LearningModelDevice device(LearningModelDeviceKind::DirectX);
-//     if (!DeviceHelpers::IsFloat16Supported(device))
-//     {
-//         GTEST_SKIP() << "The current device does not support FP16";
-//     }
+TEST_F(LearningModelBindingAPITestGpu, GpuFnsCandy16)
+{
+    LearningModelDevice device(LearningModelDeviceKind::DirectX);
+    if (!DeviceHelpers::IsFloat16Supported(device))
+    {
+        GTEST_SKIP("The current device does not support FP16");
+    }
 
-//     std::string gpuInstance("GPU");
-//     WinML::Engine::Test::ModelValidator::FnsCandy16(
-//         gpuInstance,
-//         LearningModelDeviceKind::DirectX,
-//         OutputBindingStrategy::Bound,
-//         true,
-//         /*dataTolerance*/ 0.00001f);
-// }
+    std::string gpuInstance("GPU");
+    WinML::Engine::Test::ModelValidator::FnsCandy16(
+        gpuInstance,
+        LearningModelDeviceKind::DirectX,
+        OutputBindingStrategy::Bound,
+        true,
+        /*dataTolerance*/ 0.00001f);
+}
 
-// TEST_F(LearningModelBindingAPITest, GpuFnsCandy16UnboundOutputs)
-// {
-//     GPUTEST;
+TEST_F(LearningModelBindingAPITestGpu, GpuFnsCandy16UnboundOutputs)
+{
 
-//     LearningModelDevice device(LearningModelDeviceKind::DirectX);
-//     if (!DeviceHelpers::IsFloat16Supported(device))
-//     {
-//         GTEST_SKIP() << "The current device does not support FP16";
-//     }
+    LearningModelDevice device(LearningModelDeviceKind::DirectX);
+    if (!DeviceHelpers::IsFloat16Supported(device))
+    {
+        GTEST_SKIP("The current device does not support FP16");
+    }
 
-//     std::string gpuInstance("GPU");
-//     WinML::Engine::Test::ModelValidator::FnsCandy16(
-//         gpuInstance,
-//         LearningModelDeviceKind::DirectX,
-//         OutputBindingStrategy::Unbound,
-//         true,
-//         /*dataTolerance*/ 0.00001f);
-// }
+    std::string gpuInstance("GPU");
+    WinML::Engine::Test::ModelValidator::FnsCandy16(
+        gpuInstance,
+        LearningModelDeviceKind::DirectX,
+        OutputBindingStrategy::Unbound,
+        true,
+        /*dataTolerance*/ 0.00001f);
+}
 
-// TEST_F(LearningModelBindingAPITest, GpuSqueezeNetEmptyOutputs)
-// {
-//     GPUTEST;
+TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
+{
 
-//     std::string gpuInstance("GPU");
-//     WinML::Engine::Test::ModelValidator::SqueezeNet(
-//         gpuInstance,
-//         LearningModelDeviceKind::DirectX,
-//         /*dataTolerance*/ 0.00001f,
-//         false,
-//         OutputBindingStrategy::Empty);
-// }
+    std::string gpuInstance("GPU");
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+        gpuInstance,
+        LearningModelDeviceKind::DirectX,
+        /*dataTolerance*/ 0.00001f,
+        false,
+        OutputBindingStrategy::Empty);
+}
 
-// TEST_F(LearningModelBindingAPITest, GpuSqueezeNetUnboundOutputs)
-// {
-//     GPUTEST;
+TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
+{
 
-//     std::string gpuInstance("GPU");
-//     WinML::Engine::Test::ModelValidator::SqueezeNet(
-//         gpuInstance,
-//         LearningModelDeviceKind::DirectX,
-//         /*dataTolerance*/ 0.00001f,
-//         false,
-//         OutputBindingStrategy::Unbound);
-// }
+    std::string gpuInstance("GPU");
+    WinML::Engine::Test::ModelValidator::SqueezeNet(
+        gpuInstance,
+        LearningModelDeviceKind::DirectX,
+        /*dataTolerance*/ 0.00001f,
+        false,
+        OutputBindingStrategy::Unbound);
+}
 
 // Validates that when the input image is the same as the model expects, the binding step is executed correctly.
-// TEST_F(LearningModelBindingAPITest, ImageBindingDimensions)
-// {
-//     GPUTEST;
-//     LearningModelBinding m_binding = nullptr;
-//     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
-//     // load a model with expected input size: 224 x 224
-//     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::Default));
-//     EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(filePath));
-//     EXPECT_TRUE(m_model != nullptr);
-//     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-//     EXPECT_NO_THROW(m_binding = LearningModelBinding(m_session));
+TEST_F(LearningModelBindingAPITestGpu, ImageBindingDimensions)
+{
+    LearningModelBinding m_binding = nullptr;
+    std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
+    // load a model with expected input size: 224 x 224
+    EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::Default));
+    EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(filePath));
+    EXPECT_TRUE(m_model != nullptr);
+    EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+    EXPECT_NO_THROW(m_binding = LearningModelBinding(m_session));
 
-//     // Create input images and execute bind
-//     // Test Case 1: both width and height are larger than model expects
-//     VideoFrame inputImage1(BitmapPixelFormat::Rgba8, 1000, 1000);
-//     ImageFeatureValue inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage1);
-//     EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
+    // Create input images and execute bind
+    // Test Case 1: both width and height are larger than model expects
+    VideoFrame inputImage1(BitmapPixelFormat::Rgba8, 1000, 1000);
+    ImageFeatureValue inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage1);
+    EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
 
-//     // Test Case 2: only height is larger, while width is smaller
-//     VideoFrame inputImage2(BitmapPixelFormat::Rgba8, 20, 1000);
-//     inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage2);
-//     EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
+    // Test Case 2: only height is larger, while width is smaller
+    VideoFrame inputImage2(BitmapPixelFormat::Rgba8, 20, 1000);
+    inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage2);
+    EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
 
-//     // Test Case 3: only width is larger, while height is smaller
-//     VideoFrame inputImage3(BitmapPixelFormat::Rgba8, 1000, 20);
-//     inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage3);
-//     EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
+    // Test Case 3: only width is larger, while height is smaller
+    VideoFrame inputImage3(BitmapPixelFormat::Rgba8, 1000, 20);
+    inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage3);
+    EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
 
-//     // Test Case 4: both width and height are smaller than model expects
-//     VideoFrame inputImage4(BitmapPixelFormat::Rgba8, 20, 20);
-//     inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage4);
-//     EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
-// }
+    // Test Case 4: both width and height are smaller than model expects
+    VideoFrame inputImage4(BitmapPixelFormat::Rgba8, 20, 20);
+    inputTensor = ImageFeatureValue::CreateFromVideoFrame(inputImage4);
+    EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
+}
 
-// TEST_F(LearningModelBindingAPITest, VerifyInvalidBindExceptions)
-// {
-//     GPUTEST;
+TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
+{
 
-//     EXPECT_NO_THROW(LoadModel(L"zipmap-int64.onnx"));
+    EXPECT_NO_THROW(LoadModel(L"zipmap-int64.onnx"));
 
-//     LearningModelSession session(m_model);
-//     LearningModelBinding binding(session);
+    LearningModelSession session(m_model);
+    LearningModelBinding binding(session);
 
-//     std::vector<float> inputs = { 0.5f, 0.25f, 0.125f };
-//     std::vector<int64_t> shape = { 1, 3 };
+    std::vector<float> inputs = { 0.5f, 0.25f, 0.125f };
+    std::vector<int64_t> shape = { 1, 3 };
 
-//     auto matchException =
-//         [](const winrt::hresult_error& e, HRESULT hr) -> bool
-//     {
-//         return e.code() == hr;
-//     };
+    auto matchException =
+        [](const winrt::hresult_error& e, HRESULT hr) -> bool
+    {
+        return e.code() == hr;
+    };
 
-//     auto ensureWinmlSizeMismatch = std::bind(matchException, std::placeholders::_1, WINML_ERR_SIZE_MISMATCH);
-//     auto ensureWinmlInvalidBinding = std::bind(matchException, std::placeholders::_1, WINML_ERR_INVALID_BINDING);
+    auto ensureWinmlSizeMismatch = std::bind(matchException, std::placeholders::_1, WINML_ERR_SIZE_MISMATCH);
+    auto ensureWinmlInvalidBinding = std::bind(matchException, std::placeholders::_1, WINML_ERR_INVALID_BINDING);
 
-//     /*
-//         Verify tensor bindings throw correct bind exceptions
-//     */
+    /*
+        Verify tensor bindings throw correct bind exceptions
+    */
 
-//     // Bind invalid image as tensorfloat input
-//     auto image = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
-//     EXPECT_THROW_SPECIFIC(binding.Bind(L"X", image), winrt::hresult_error, ensureWinmlSizeMismatch);
+    // Bind invalid image as tensorfloat input
+    auto image = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"X", image), winrt::hresult_error, ensureWinmlSizeMismatch);
 
-//     // Bind invalid map as tensorfloat input
-//     std::unordered_map<float, float> map;
-//     auto abiMap = winrt::single_threaded_map(std::move(map));
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"X", abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid map as tensorfloat input
+    std::unordered_map<float, float> map;
+    auto abiMap = winrt::single_threaded_map(std::move(map));
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"X", abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid sequence as tensorfloat input
-//     std::vector<uint32_t> sequence;
-//     auto abiSequence = winrt::single_threaded_vector(std::move(sequence));
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"X", abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid sequence as tensorfloat input
+    std::vector<uint32_t> sequence;
+    auto abiSequence = winrt::single_threaded_vector(std::move(sequence));
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"X", abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor size as tensorfloat input
-//     auto tensorBoolean = TensorBoolean::Create();
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"X", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid tensor size as tensorfloat input
+    auto tensorBoolean = TensorBoolean::Create();
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"X", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor shape as tensorfloat input
-//     auto tensorInvalidShape = TensorFloat::Create(std::vector<int64_t> { 2, 3, 4 });
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"X", tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid tensor shape as tensorfloat input
+    auto tensorInvalidShape = TensorFloat::Create(std::vector<int64_t> { 2, 3, 4 });
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"X", tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     /*
-//         Verify sequence bindings throw correct bind exceptions
-//     */
+    /*
+        Verify sequence bindings throw correct bind exceptions
+    */
 
-//     // Bind invalid image as sequence<map<int, float> output
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"Y", image), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid image as sequence<map<int, float> output
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", image), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid map as sequence<map<int, float> output
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"Y", abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid map as sequence<map<int, float> output
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid sequence<int> as sequence<map<int, float> output
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"Y", abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid sequence<int> as sequence<map<int, float> output
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor as sequence<map<int, float> output
-//     VERIFY_THROWS_SPECIFIC(binding.Bind(L"Y", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid tensor as sequence<map<int, float> output
+    EXPECT_THROW_SPECIFIC(binding.Bind(L"Y", tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     /*
-//         Verify image bindings throw correct bind exceptions
-//     */
+    /*
+        Verify image bindings throw correct bind exceptions
+    */
 
-//     EXPECT_NO_THROW(LoadModel(L"fns-candy.onnx"));
+    EXPECT_NO_THROW(LoadModel(L"fns-candy.onnx"));
 
-//     LearningModelSession imageSession(m_model);
-//     LearningModelBinding imageBinding(imageSession);
+    LearningModelSession imageSession(m_model);
+    LearningModelBinding imageBinding(imageSession);
 
-//     auto inputName = m_model.InputFeatures().First().Current().Name();
+    auto inputName = m_model.InputFeatures().First().Current().Name();
 
-//     // Bind invalid map as image input
-//     VERIFY_THROWS_SPECIFIC(imageBinding.Bind(inputName, abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid map as image input
+    EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid sequence as image input
-//     VERIFY_THROWS_SPECIFIC(imageBinding.Bind(inputName, abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid sequence as image input
+    EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor type as image input
-//     VERIFY_THROWS_SPECIFIC(imageBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid tensor type as image input
+    EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor size as image input
-//     auto tensorFloat = TensorFloat::Create(std::vector<int64_t> { 1, 1, 100, 100 });
-//     VERIFY_THROWS_SPECIFIC(imageBinding.Bind(inputName, tensorFloat), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid tensor size as image input
+    auto tensorFloat = TensorFloat::Create(std::vector<int64_t> { 1, 1, 100, 100 });
+    EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorFloat), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor shape as image input
-//     VERIFY_THROWS_SPECIFIC(imageBinding.Bind(inputName, tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid tensor shape as image input
+    EXPECT_THROW_SPECIFIC(imageBinding.Bind(inputName, tensorInvalidShape), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     /*
-//         Verify map bindings throw correct bind exceptions
-//     */
-//     EXPECT_NO_THROW(LoadModel(L"dictvectorizer-int64.onnx"));
+    /*
+        Verify map bindings throw correct bind exceptions
+    */
+    EXPECT_NO_THROW(LoadModel(L"dictvectorizer-int64.onnx"));
 
-//     LearningModelSession mapSession(m_model);
-//     LearningModelBinding mapBinding(mapSession);
+    LearningModelSession mapSession(m_model);
+    LearningModelBinding mapBinding(mapSession);
 
-//     inputName = m_model.InputFeatures().First().Current().Name();
+    inputName = m_model.InputFeatures().First().Current().Name();
 
-//     // Bind invalid image as image input
-//     auto smallImage = FileHelpers::LoadImageFeatureValue(L"doritos_100.png");
-//     VERIFY_THROWS_SPECIFIC(mapBinding.Bind(inputName, smallImage), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid image as image input
+    auto smallImage = FileHelpers::LoadImageFeatureValue(L"doritos_100.png");
+    EXPECT_THROW_SPECIFIC(mapBinding.Bind(inputName, smallImage), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid map as image input
-//     VERIFY_THROWS_SPECIFIC(mapBinding.Bind(inputName, abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid map as image input
+    EXPECT_THROW_SPECIFIC(mapBinding.Bind(inputName, abiMap), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid sequence as image input
-//     VERIFY_THROWS_SPECIFIC(mapBinding.Bind(inputName, abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
+    // Bind invalid sequence as image input
+    EXPECT_THROW_SPECIFIC(mapBinding.Bind(inputName, abiSequence), winrt::hresult_error, ensureWinmlInvalidBinding);
 
-//     // Bind invalid tensor type as image input
-//     VERIFY_THROWS_SPECIFIC(mapBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
-// }
+    // Bind invalid tensor type as image input
+    EXPECT_THROW_SPECIFIC(mapBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding);
+}
 
-// // Verify that it throws an error when binding an invalid name.
-// TEST_F(LearningModelBindingAPITest, BindInvalidInputName)
-// {
-//     GPUTEST;
-//     LearningModelBinding m_binding = nullptr;
-//     std::wstring modelPath = FileHelpers::GetModulePath() + L"Add_ImageNet1920.onnx";
-//     EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(modelPath));
-//     EXPECT_TRUE(m_model != nullptr);
-//     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::Default));
-//     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-//     EXPECT_NO_THROW(m_binding = LearningModelBinding(m_session));
+// Verify that it throws an error when binding an invalid name.
+TEST_F(LearningModelBindingAPITestGpu, BindInvalidInputName)
+{
+    LearningModelBinding m_binding = nullptr;
+    std::wstring modelPath = FileHelpers::GetModulePath() + L"Add_ImageNet1920.onnx";
+    EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(modelPath));
+    EXPECT_TRUE(m_model != nullptr);
+    EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::Default));
+    EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+    EXPECT_NO_THROW(m_binding = LearningModelBinding(m_session));
 
-//     VideoFrame iuputImage(BitmapPixelFormat::Rgba8, 1920, 1080);
-//     ImageFeatureValue inputTensor = ImageFeatureValue::CreateFromVideoFrame(iuputImage);
+    VideoFrame iuputImage(BitmapPixelFormat::Rgba8, 1920, 1080);
+    ImageFeatureValue inputTensor = ImageFeatureValue::CreateFromVideoFrame(iuputImage);
 
-//     auto first = m_model.InputFeatures().First();
-//     std::wstring testInvalidName = L"0";
+    auto first = m_model.InputFeatures().First();
+    std::wstring testInvalidName = L"0";
 
-//     // Verify that testInvalidName is not in model's InputFeatures
-//     while (first.HasCurrent())
-//     {
-//         EXPECT_NE(testInvalidName, first.Current().Name());
-//         first.MoveNext();
-//     }
+    // Verify that testInvalidName is not in model's InputFeatures
+    while (first.HasCurrent())
+    {
+        EXPECT_NE(testInvalidName, first.Current().Name());
+        first.MoveNext();
+    }
 
-//     // Bind inputTensor to a valid input name
-//     EXPECT_NO_THROW(m_binding.Bind(L"input_39:0", inputTensor));
+    // Bind inputTensor to a valid input name
+    EXPECT_NO_THROW(m_binding.Bind(L"input_39:0", inputTensor));
 
-//     // Bind inputTensor to an invalid input name
-//     VERIFY_THROWS_SPECIFIC(m_binding.Bind(testInvalidName, inputTensor),
-//         winrt::hresult_error,
-//         [](const winrt::hresult_error& e) -> bool
-//     {
-//         return e.code() == WINML_ERR_INVALID_BINDING;
-//     });
-// }
+    // Bind inputTensor to an invalid input name
+    EXPECT_THROW_SPECIFIC(m_binding.Bind(testInvalidName, inputTensor),
+        winrt::hresult_error,
+        [](const winrt::hresult_error& e) -> bool
+    {
+        return e.code() == WINML_ERR_INVALID_BINDING;
+    });
+}
 
 TEST_F(LearningModelBindingAPITest, VerifyOutputAfterEvaluateAsyncCalledTwice)
 {

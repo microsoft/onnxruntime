@@ -37,9 +37,9 @@ function(AddWinMLTest)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif(_UT_DEPENDS)
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image onnx ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # FIXME
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image onnx ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # TODO review if all of these are needed
   target_include_directories(${_UT_TARGET} PRIVATE ${WINML_TEST_INC_DIR})
-#   target_precompiled_header(${_UT_TARGET} ${REPO_ROOT}/winml/test/common/pch.h)
+  # target_precompiled_header(${_UT_TARGET} ${WINML_TEST_SRC_DIR}/common/pch.h)  # FIXME doesn't work yet (have to set include directories when compiling the pch)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}

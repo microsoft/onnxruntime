@@ -19,6 +19,12 @@ using winrt::Windows::Foundation::IPropertyValue;
 class LearningModelSessionAPITests : public APITest
 {};
 
+class LearningModelSessionAPITestsGpu : public APITest
+{};  // TODO create a constructor that calls GTEST_SKIP when GPU tests are disabled
+
+class LearningModelSessionAPITestsSkipEdgeCore : public LearningModelSessionAPITestsGpu
+{};  // TODO create a constructor that calls GTEST_SKIP when on EdgeCore
+
 TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDefault)
 {
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -52,78 +58,72 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithModelLoadedFromStream)
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-// TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDirectX)
-// {
-//     GPUTEST;
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
+{
 
-//     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
+    EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
-//     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectX));
-//     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-// }
+    EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectX));
+    EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+}
 
-// TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDirectXHighPerformance)
-// {
-//     GPUTEST;
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
+{
 
-//     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
+    EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
-//     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
-//     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-// }
+    EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
+    EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+}
 
-// TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDirectXMinimumPower)
-// {
-//     GPUTEST;
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
+{
 
-//     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
+    EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
-//     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower));
-//     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-// }
+    EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower));
+    EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+}
 
-// TEST_F(LearningModelSessionAPITests, AdapterIdAndDevice)
-// {
-//     GPUTEST;
-//     SKIP_EDGECORE;
+TEST_F(LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
+{
+    EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
-//     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
+    com_ptr<IDXGIFactory6> factory;
+    EXPECT_HRESULT_SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory6), factory.put_void()));
+    com_ptr<IDXGIAdapter> adapter;
 
-//     com_ptr<IDXGIFactory6> factory;
-//     VERIFY_SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory6), factory.put_void()));
-//     com_ptr<IDXGIAdapter> adapter;
+    m_device = LearningModelDevice(LearningModelDeviceKind::DirectX);
+    EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapters(0, adapter.put()));
+    DXGI_ADAPTER_DESC desc;
+    EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
+    LARGE_INTEGER id;
+    id.QuadPart = GetAdapterIdQuadPart();
+    EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
+    EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
+    EXPECT_FALSE(m_device.Direct3D11Device());
 
-//     m_device = LearningModelDevice(LearningModelDeviceKind::DirectX);
-//     VERIFY_SUCCEEDED(factory->EnumAdapters(0, adapter.put()));
-//     DXGI_ADAPTER_DESC desc;
-//     VERIFY_SUCCEEDED(adapter->GetDesc(&desc));
-//     LARGE_INTEGER id;
-//     id.QuadPart = GetAdapterIdQuadPart();
-//     EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
-//     EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
-//     EXPECT_NE(m_device.Direct3D11Device(), nullptr);
+    m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance);
+    adapter = nullptr;
+    EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof(IDXGIAdapter), adapter.put_void()));
+    EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
+    id.QuadPart = GetAdapterIdQuadPart();
+    EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
+    EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
+    EXPECT_FALSE(m_device.Direct3D11Device());
 
-//     m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance);
-//     adapter = nullptr;
-//     VERIFY_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof(IDXGIAdapter), adapter.put_void()));
-//     VERIFY_SUCCEEDED(adapter->GetDesc(&desc));
-//     id.QuadPart = GetAdapterIdQuadPart();
-//     EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
-//     EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
-//     EXPECT_NE(m_device.Direct3D11Device(), nullptr);
+    adapter = nullptr;
+    m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower);
+    EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER, __uuidof(IDXGIAdapter), adapter.put_void()));
+    EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
+    id.QuadPart = GetAdapterIdQuadPart();
+    EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
+    EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
+    EXPECT_FALSE(m_device.Direct3D11Device());
 
-//     adapter = nullptr;
-//     m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower);
-//     VERIFY_SUCCEEDED(factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER, __uuidof(IDXGIAdapter), adapter.put_void()));
-//     VERIFY_SUCCEEDED(adapter->GetDesc(&desc));
-//     id.QuadPart = GetAdapterIdQuadPart();
-//     EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
-//     EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
-//     EXPECT_NE(m_device.Direct3D11Device(), nullptr);
-
-//     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
-//     EXPECT_EQ(m_session.Device().AdapterId(), m_device.AdapterId());
-// }
+    EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
+    EXPECT_EQ(m_session.Device().AdapterId(), m_device.AdapterId());
+}
 
 TEST_F(LearningModelSessionAPITests, EvaluateFeatures)
 {
@@ -237,14 +237,16 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
     CreateSession(m_model);
 }
 
-// TEST_F(LearningModelSessionAPITests, CreateSessionWithFloat16InitializersInModel)
-// {
-//     GTEST_SKIP() << "https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720: Model fails to resolve due to ORT using incorrect IR version within partition";
-//     // load a model
-//     EXPECT_NO_THROW(LoadModel(L"fp16-initializer.onnx"));
+TEST_F(LearningModelSessionAPITests, DISABLED_CreateSessionWithFloat16InitializersInModel)
+{
+    // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
+    // Model fails to resolve due to ORT using incorrect IR version within partition
 
-//     CreateSession(m_model);
-// }
+    // load a model
+    EXPECT_NO_THROW(LoadModel(L"fp16-initializer.onnx"));
+
+    CreateSession(m_model);
+}
 
 static void EvaluateSessionAndCloseModel(
     LearningModelDeviceKind kind,

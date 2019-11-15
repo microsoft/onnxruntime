@@ -22,9 +22,8 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'windows-latest'
-    # name: ${{ parameters.AgentPool }}
-    # demands: ${{ parameters.AgentDemands }}
+    name: ${{ parameters.AgentPool }}
+    demands: ${{ parameters.AgentDemands }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
