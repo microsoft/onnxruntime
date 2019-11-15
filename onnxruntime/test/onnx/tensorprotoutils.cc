@@ -237,6 +237,48 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
   return;
 }
 
+template <>
+void UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ DateTime* p_data, int64_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int64_data_size();
+    if (size == 0)
+      return;
+
+    throw Ort::Exception("", OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+
+  if (ONNX_NAMESPACE::TensorProto_DataType_POSIX_DATETIME != tensor.data_type()) {
+    throw Ort::Exception("", OrtErrorCode::ORT_INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+    return;
+  }
+
+  if (tensor.int64_data_size() != expected_size)
+    throw Ort::Exception(
+        "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
+
+  int64_t cnt = 0;
+  for (auto v : tensor.int64_data()) {
+    if (cnt >= expected_size) {
+      break;
+    }
+    // POSIX time is positive or invalid
+    if (v < 0) {
+      throw Ort::Exception(
+          "data overflow", OrtErrorCode::ORT_FAIL);
+
+    }
+    *p_data = DateTime(v);
+    ++p_data;
+    ++cnt;
+  }
+}
+
+
 #define CASE_PROTO_TRACE(X, Y)                                                            \
   case onnx::TensorProto_DataType::TensorProto_DataType_##X:                              \
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) { \
@@ -271,6 +313,7 @@ Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_p
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
     CASE_PROTO_TRACE(STRING, std::string);
+    CASE_PROTO_TRACE(POSIX_DATETIME, DateTime);
     default:
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
@@ -343,6 +386,7 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
+    CASE_TYPE(POSIX_DATETIME)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -401,6 +445,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
         CASE_PROTO(UINT64, uint64_t);
         CASE_PROTO(FLOAT16, MLFloat16);
         CASE_PROTO(BFLOAT16, BFloat16);
+        CASE_PROTO(POSIX_DATETIME, DateTime);
         case onnx::TensorProto_DataType::TensorProto_DataType_STRING:
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);

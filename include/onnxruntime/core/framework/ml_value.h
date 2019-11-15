@@ -10,6 +10,10 @@
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
 
+namespace onnxruntime {
+class SparseTensor;
+}
+
 /**
    Represents both tensors and non-tensors.
 */
@@ -47,6 +51,10 @@ struct OrtValue {
     return (type_ != nullptr && type_->IsTensorType());
   }
 
+  bool IsSparseTensor() const noexcept {
+    return (type_ != nullptr && type_->IsSparseTensorType());
+  }
+
   onnxruntime::MLDataType Type() const {
     return type_;
   }
@@ -81,6 +89,17 @@ inline onnxruntime::Tensor* OrtValue::GetMutable<onnxruntime::Tensor>() {
   return static_cast<onnxruntime::Tensor*> (data_.get());
 }
 
+template <>
+inline const onnxruntime::SparseTensor& OrtValue::Get<onnxruntime::SparseTensor>() const {
+  ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return *static_cast<onnxruntime::SparseTensor*>(data_.get());
+}
+
+template <>
+inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor>() {
+  ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return static_cast<onnxruntime::SparseTensor*>(data_.get());
+}
 
 //TODO: remove the following line
 #define MLValue OrtValue

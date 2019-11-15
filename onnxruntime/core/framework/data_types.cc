@@ -563,6 +563,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_TENSOR_PROTO(BFloat16, reg_fn);
+  REGISTER_TENSOR_PROTO(DateTime, reg_fn);
 
   REGISTER_SPARSE_TENSOR_PROTO(int32_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(float, reg_fn);
@@ -578,6 +579,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(BFloat16, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(DateTime, reg_fn);
 
   REGISTER_ONNX_PROTO(MapStringToString, reg_fn);
   REGISTER_ONNX_PROTO(MapStringToInt64, reg_fn);
@@ -602,6 +604,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(DateTime, reg_fn);
 
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
@@ -618,44 +621,47 @@ MLDataType DataTypeImpl::GetDataType(const std::string& data_type) {
 
 const char* DataTypeImpl::ToString(MLDataType type) {
   auto prim_type = type->AsPrimitiveDataType();
-  if (prim_type == nullptr) {
-    return "unknown";
+  if (prim_type != nullptr) {
+    switch (prim_type->GetDataType()) {
+    case TensorProto_DataType_FLOAT:
+        return "tensor(float)";
+    case TensorProto_DataType_BOOL:
+      return "tensor(bool)";
+    case TensorProto_DataType_DOUBLE:
+      return "tensor(double)";
+    case TensorProto_DataType_STRING:
+      return "tensor(string)";
+    case TensorProto_DataType_INT8:
+      return "tensor(int8)";
+    case TensorProto_DataType_UINT8:
+      return "tensor(uint8)";
+    case TensorProto_DataType_INT16:
+      return "tensor(int16)";
+    case TensorProto_DataType_UINT16:
+      return "tensor(uint16)";
+    case TensorProto_DataType_INT32:
+      return "tensor(int32)";
+    case TensorProto_DataType_UINT32:
+      return "tensor(uint32)";
+    case TensorProto_DataType_INT64:
+      return "tensor(int64)";
+    case TensorProto_DataType_UINT64:
+      return "tensor(uint64)";
+    case TensorProto_DataType_FLOAT16:
+      return "tensor(float16)";
+    case TensorProto_DataType_BFLOAT16:
+      return "tensor(bfloat16)";
+    case TensorProto_DataType_POSIX_DATETIME:
+      return "tensor(posix_datetime)";
+    default:
+      break;
+    }
   }
-  switch (prim_type->GetDataType()) {
-  case TensorProto_DataType_FLOAT:
-      return "tensor(float)";
-  case TensorProto_DataType_BOOL:
-    return "tensor(bool)";
-  case TensorProto_DataType_DOUBLE:
-    return "tensor(double)";
-  case TensorProto_DataType_STRING:
-    return "tensor(string)";
-  case TensorProto_DataType_INT8:
-    return "tensor(int8)";
-  case TensorProto_DataType_UINT8:
-    return "tensor(uint8)";
-  case TensorProto_DataType_INT16:
-    return "tensor(int16)";
-  case TensorProto_DataType_UINT16:
-    return "tensor(uint16)";
-  case TensorProto_DataType_INT32:
-    return "tensor(int32)";
-  case TensorProto_DataType_UINT32:
-    return "tensor(uint32)";
-  case TensorProto_DataType_INT64:
-    return "tensor(int64)";
-  case TensorProto_DataType_UINT64:
-    return "tensor(uint64)";
-  case TensorProto_DataType_FLOAT16:
-    return "tensor(float16)";
-  case TensorProto_DataType_BFLOAT16:
-    return "tensor(bfloat16)";
-  case TensorProto_DataType_POSIX_DATETIME:
-    return "tensor(posix_datetime)";
-  default:
-    break;
+  auto type_proto = type->GetTypeProto();
+  if (type_proto != nullptr) {
+    return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)->c_str();
   }
-  return "unknown";
+  return typeid(*type).name();
 }
 
 const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {

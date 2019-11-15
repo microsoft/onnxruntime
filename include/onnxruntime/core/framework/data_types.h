@@ -122,7 +122,7 @@ inline bool operator<(const BFloat16& left, const BFloat16& right) {
 struct DateTime {
   int64_t val;
   DateTime() : val(0) {}
-  DateTime(int64_t val) : val(val) {}
+  explicit DateTime(int64_t val) : val(val) {}
 };
 
 inline bool operator==(const DateTime& left, const DateTime& right) {

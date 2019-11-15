@@ -48,6 +48,8 @@ onnx::TensorProto_DataType MLDataTypeToTensorProtoDataType(ONNXTensorElementData
       return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
       return onnx::TensorProto_DataType::TensorProto_DataType_BFLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_POSIX_DATETIME:
+      return onnx::TensorProto_DataType::TensorProto_DataType_POSIX_DATETIME;
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
     default:
       return onnx::TensorProto_DataType::TensorProto_DataType_UNDEFINED;
