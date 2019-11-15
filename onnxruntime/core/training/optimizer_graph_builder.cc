@@ -71,11 +71,11 @@ const std::string global_barrier_name = "horovod/barrier";
 const std::string global_barrier_ready = "horovod/barrier/ready";
 
 // TODO generate NodeArg names instead of using hardcoded ones
-NodeDef BuildGlobalBarrierNode(const std::vector<std::string>& ready_names, GraphAugmenter::GraphDefs& graph_defs) {
+NodeDef BuildGlobalHorovodBarrierNode(const std::vector<std::string>& ready_names, GraphAugmenter::GraphDefs& graph_defs) {
   std::string barrier_input_name = global_barrier_name + "/input";
   std::string barrier_output_name = global_barrier_name + "/output";
 
-  // Global barrier no-op input.
+  // Global horovod barrier no-op input.
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.add_dims(0);
   tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -89,19 +89,19 @@ NodeDef BuildGlobalBarrierNode(const std::vector<std::string>& ready_names, Grap
   return NodeDef("HorovodBarrier", barrier_inputs, barrier_outputs, NodeAttributes(), global_barrier_name);
 }
 
-NodeDef& GetGlobalBarrierNode(GraphAugmenter::GraphDefs& graph_defs) {
-  // Find the global barrier node.
+NodeDef& GetGlobalHorovodBarrierNode(GraphAugmenter::GraphDefs& graph_defs) {
+  // Find the global horovod barrier node.
   auto& nodes = graph_defs.NodeDefs();
   auto barrier_iter = std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
   if (barrier_iter != nodes.end())
     return *barrier_iter;
 
-  // Create the global barrier.
-  graph_defs.AddNodeDefs({BuildGlobalBarrierNode({}, graph_defs)});
+  // Create the global horovod barrier.
+  graph_defs.AddNodeDefs({BuildGlobalHorovodBarrierNode({}, graph_defs)});
   return *std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
 }
 
-ArgDef BuildAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs) {
+ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs) {
   const std::string& gradient_name = gradient_argdef.name;
   ArgDef reduce_output(gradient_name + "_AllReduce_Out", gradient_argdef.type_proto);
   ArgDef reduce_ready(gradient_name + "_AllReduce_Ready");
@@ -111,18 +111,40 @@ ArgDef BuildAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDe
   // Add horovod all reduce node.
   graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce", {gradient_argdef}, {reduce_output, reduce_ready}, NodeAttributes(), gradient_name + "_AllReduce")});
 
-  // Add ready check to global barrier.
-  NodeDef& global_barrier_node = GetGlobalBarrierNode(graph_defs);
+  // Add ready check to global horovod barrier.
+  NodeDef& global_barrier_node = GetGlobalHorovodBarrierNode(graph_defs);
   global_barrier_node.input_args.push_back(reduce_ready);
 
-  // Add local barrier node.
+  // Add local horovod barrier node.
   graph_defs.AddNodeDefs({NodeDef("HorovodBarrier", {reduce_output, global_barrier_ready}, {local_barrier_output, local_barrier_ready}, NodeAttributes(), gradient_name + "_Barrier")});
 
   return local_barrier_output;
 }
 #else
-ArgDef BuildAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
-  ORT_NOT_IMPLEMENTED("Distributed training is not supported, as Horovod is not enabled in this build.");
+ArgDef BuildHorovodAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
+  ORT_NOT_IMPLEMENTED("Distributed training with Horovod is not supported, as Horovod is not enabled in this build.");
+}
+#endif
+
+#ifdef USE_NCCL
+Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, GraphAugmenter::GraphDefs& graph_defs, bool use_tensor_fusion) {
+  std::vector<ArgDef> reduce_outputs(gradient_argdefs.size());
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    reduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out",
+                               gradient_argdefs[i].type_proto);
+  }
+  // Add NCCL Allreduce node.
+  graph_defs.AddNodeDefs({NodeDef("NcclAllReduce",
+                                  gradient_argdefs,
+                                  reduce_outputs,
+                                  {MakeAttribute("tensor_fusion", static_cast<int64_t>(use_tensor_fusion))},
+                                  "NcclAllReduce")});
+  gradient_argdefs = reduce_outputs;
+  return Status::OK();
+}
+#else
+Status AddNcclAllReduceForGradients(std::vector<ArgDef>& /*gradient_argdefs*/, GraphAugmenter::GraphDefs& /*graph_defs*/, bool /*use_tensor_fusion*/) {
+  ORT_NOT_IMPLEMENTED("Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
 }
 #endif
 
@@ -220,10 +242,10 @@ Status AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator
   return Status::OK();
 }
 
-Status AddAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-                                GraphAugmenter::GraphDefs& graph_defs) {
+Status AddHorovodAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                                       GraphAugmenter::GraphDefs& graph_defs) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildAllReduceNode(gradient_argdefs[i], graph_defs);
+    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs);
   }
   return Status::OK();
 }
@@ -540,7 +562,11 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
 
   // add all-reduce
   if (is_all_reduce_enabled) {
-    ORT_RETURN_IF_ERROR(AddAllReduceForGradients(gradient_argdefs, graph_defs));
+    if (opt_graph_config_.use_nccl) {
+      ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, graph_defs, opt_graph_config_.use_nccl_tensor_fusion));
+    } else {
+      ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs));
+    }
   }
 
   // check if all gradients are finite

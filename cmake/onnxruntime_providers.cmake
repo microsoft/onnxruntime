@@ -116,7 +116,6 @@ set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_HOROVOD)
   target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
-
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -133,6 +132,13 @@ if (onnxruntime_USE_CUDA)
     list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/horovod_kernels.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/ready_event.cc"
+    )
+  endif()
+
+  if (NOT onnxruntime_USE_NCCL)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/nccl_common.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/nccl_kernels.cc"
     )
   endif()
 

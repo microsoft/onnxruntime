@@ -81,6 +81,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
+      ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
+      ("use_nccl_tensor_fusion", "Whether to use NCCL with tensor fusion for distributed training.", cxxopts::value<bool>()->default_value("false"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect.",
         cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
@@ -163,6 +165,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
     params.do_eval = flags["do_eval"].as<bool>();
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
     params.display_loss_steps = flags["display_loss_steps"].as<size_t>();
+
+    params.use_nccl = flags["use_nccl"].as<bool>();
+    params.use_nccl_tensor_fusion = flags["use_nccl_tensor_fusion"].as<bool>();
 
     params.use_profiler = flags.count("use_profiler") > 0;
     params.max_profile_records = flags["max_profile_records"].as<size_t>();

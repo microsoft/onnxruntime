@@ -21,14 +21,6 @@ namespace cuda {
 #define CUSPARSE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
 #define CURAND_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CURAND_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
 #define CUDNN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDNN_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
-#define CUDA_THROW_IF_ERROR(ans) \
-  { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char* file, int line) {
-  if (code != cudaSuccess) {
-    fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-    exit(code);
-  }
-}
 #define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
 
 // -----------------------------------------------------------------------

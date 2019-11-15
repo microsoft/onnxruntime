@@ -526,6 +526,8 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   opt_graph_config.world_size = params_.mpi_context.world_size;
   opt_graph_config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
   opt_graph_config.allreduce_in_fp16 = params_.allreduce_in_fp16;
+  opt_graph_config.use_nccl = params_.use_nccl;
+  opt_graph_config.use_nccl_tensor_fusion = params_.use_nccl_tensor_fusion;
 
   opt_graph_config_result = std::move(opt_graph_config);
 

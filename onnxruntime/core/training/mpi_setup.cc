@@ -7,8 +7,12 @@ MPIContext::MPIContext(int w_rank, int l_rank, int w_size) : world_rank(w_rank),
 MPIContext setup_horovod() {
   using namespace horovod::common;
   // setup MPI amd horovod
-  int provided;
-  MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
+  int is_mpi_initialized = 0;
+  MPI_Initialized(&is_mpi_initialized);
+  if (!is_mpi_initialized) {
+    int mpi_threads_provided = 0;
+    MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &mpi_threads_provided);
+  }
 
   int world_size;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -42,7 +46,12 @@ MPIContext setup_horovod() {
 
 void shutdown_horovod() {
   horovod::common::horovod_shutdown();
-  MPI_Finalize();
+
+  int is_mpi_finalized = 0;
+  MPI_Finalized(&is_mpi_finalized);
+  if (!is_mpi_finalized) {
+    MPI_Finalize();
+  }
 }
 #endif
 }  // namespace training

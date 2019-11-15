@@ -27,6 +27,8 @@ struct OptimizerGraphConfig {
   bool use_mixed_precision{false};
   bool always_do_update{false};
   bool allreduce_in_fp16{false};
+  bool use_nccl{false};
+  bool use_nccl_tensor_fusion{false};
   int gradient_accumulation_steps{1};
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
 };

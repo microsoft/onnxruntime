@@ -45,12 +45,12 @@ ORTReadyEvent::ORTReadyEvent(int device) : device_(device) {
     cuda_event_ = queue.front();
     queue.pop();
   } else {
-    CUDA_THROW_IF_ERROR(cudaEventCreateWithFlags(
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(
         &cuda_event_, cudaEventBlockingSync | cudaEventDisableTiming));
   }
   //We only use default stream, which is nullptr
   cudaStream_t stream = nullptr;
-  CUDA_THROW_IF_ERROR(cudaEventRecord(cuda_event_, stream));
+  CUDA_CALL_THROW(cudaEventRecord(cuda_event_, stream));
 }
 
 ORTReadyEvent::~ORTReadyEvent() {
@@ -66,7 +66,7 @@ bool ORTReadyEvent::Ready() const {
   if (status == cudaErrorNotReady) {
     return false;
   }
-  CUDA_THROW_IF_ERROR(status);
+  CUDA_CALL_THROW(status);
   return true;
 }
 }  //namespace cuda

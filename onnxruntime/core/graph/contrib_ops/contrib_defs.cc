@@ -1701,6 +1701,45 @@ Example 4:
         updateOutputShape(ctx, 1, {});
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Attr("tensor_fusion", "Use tensor fusion for the AllReduce", AttributeProto::INT, int64_t(0))
+      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
+      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Attr("tensor_fusion", "Use tensor fusion for the AllGather", AttributeProto::INT, int64_t(0))
+      .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
+      .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReduceScatter)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Attr("tensor_fusion", "Use tensor fusion for the ReduceScatter", AttributeProto::INT, int64_t(0))
+      .Input(0, "input", "tensors to be reduced and scattered", "T", OpSchema::Variadic)
+      .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseSoftmaxCrossEntropy)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
