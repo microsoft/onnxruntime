@@ -4,6 +4,7 @@
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
+#include "core/platform/threadpool.h"
 #include "layer_norm.h"
 
 namespace onnxruntime {
@@ -31,6 +32,44 @@ LayerNorm<T>::LayerNorm(const OpKernelInfo& op_kernel_info)
 }
 
 template <typename T>
+static void ComputeWithParallelFor(int32_t M, int32_t N, T epsilon, const T* p_input, const T* p_gamma, const T* p_beta, T* p_mean, T* p_stdev, T* p_output, concurrency::ThreadPool& tp) {
+  int32_t task_count = tp.NumThreads() + 1;
+  tp.ParallelFor(task_count, [M,
+                              N,
+                              task_count,
+                              epsilon,
+                              p_input,
+                              p_gamma, p_beta,
+                              p_mean,
+                              p_stdev,
+                              p_output](int t) {
+    int32_t start_idx = t * N / task_count;
+    int32_t end_idx = (t + 1) * N / task_count;
+    for (int i = start_idx; i < end_idx; i++) {
+      const T* start = p_input + i * M;
+      const T* src = start;
+
+      T sum = 0;
+      T sum_square = 0;
+      for (int32_t j = 0; j < M; j++) {
+        T value = *src++;
+        sum += value;
+        sum_square += value * value;
+      }
+
+      p_mean[i] = sum / M;
+      p_stdev[i] = sqrt(sum_square / M - p_mean[i] * p_mean[i] + epsilon);
+
+      T* dest = p_output + i * M;
+      src = start;
+      for (int32_t j = 0; j < M; j++) {
+        *dest++ = (*src++ - p_mean[i]) / p_stdev[i] * p_gamma[j] + p_beta[j];
+      }
+    }
+  });
+}
+
+template <typename T>
 Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   // Inputs
   const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
@@ -44,6 +83,10 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
   auto N = x_shape.SizeToDimension(axis);
   auto M = x_shape.SizeFromDimension(axis);
+
+  // Outputs
+  Tensor* Y = p_op_kernel_context->Output(0, x_shape);
+  auto Y_data = Y->template MutableData<T>();
 
   std::vector<int64_t> mean_inv_std_var_dim;
   mean_inv_std_var_dim.reserve(x_shape.NumDimensions());
@@ -82,8 +125,11 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
     inv_std_var_data = static_cast<T*>(inv_std_var_data_buf_ptr.get());
   }
 
-  std::memset(mean_data, 0, sizeof(T) * N);
-  std::memset(inv_std_var_data, 0, sizeof(T) * N);
+  concurrency::ThreadPool* tp = p_op_kernel_context->GetOperatorThreadPool();
+  if (nullptr != tp) {
+    ComputeWithParallelFor(static_cast<int32_t>(M), static_cast<int32_t>(N), static_cast<T>(epsilon_), X_data, scale_data, bias_data, mean_data, inv_std_var_data, Y_data, *tp);
+    return Status::OK();
+  }
 
   ConstEigenArrayMap<T> X_arr(X_data, M, N);
   for (int i = 0; i < N; ++i) {
@@ -92,8 +138,6 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   }
 
   // Compute Y = ((x - mean) * (inv_var) * scale + bias
-  Tensor* Y = p_op_kernel_context->Output(0, x_shape);
-  auto Y_data = Y->template MutableData<T>();
   EigenArrayMap<T> Y_arr(Y_data, M, N);
 
   ConstEigenVectorArrayMap<T> mean_arr(mean_data, N);
