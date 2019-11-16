@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <gtest/gtest.h>
+
 class APITest : public ::testing::Test
 {
 protected:

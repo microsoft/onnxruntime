@@ -1,12 +1,13 @@
-﻿// LotusRT
+﻿#include "testPch.h"
+// LotusRT
 #include "core/framework/allocatormgr.h"
 // #include "core/session/inference_session.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 
-#include "pch.h"
 #include "protobufHelpers.h"
 #include "onnx/onnx-ml.pb.h"
+#include <gtest/gtest.h>
 #include <fstream>
 
 #include "winrt/Windows.Storage.Streams.h"

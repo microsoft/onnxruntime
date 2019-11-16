@@ -1,4 +1,4 @@
-#include "pch.h"
+#include "testPch.h"
 #include "APITest.h"
 
 #include "winrt/Windows.Storage.h"

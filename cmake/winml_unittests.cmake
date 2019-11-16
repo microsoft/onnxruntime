@@ -14,6 +14,7 @@ set(WINML_TEST_INC_DIR
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
 
 function(AddWinMLTest)
+  # Add a test target and make it discoverable by CTest by calling add_test
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
   if(_UT_LIBS)
     list(REMOVE_DUPLICATES _UT_LIBS)
@@ -37,9 +38,9 @@ function(AddWinMLTest)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif(_UT_DEPENDS)
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image onnx ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # TODO review if all of these are needed
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES})
   target_include_directories(${_UT_TARGET} PRIVATE ${WINML_TEST_INC_DIR})
-  # target_precompiled_header(${_UT_TARGET} ${WINML_TEST_SRC_DIR}/common/pch.h)  # FIXME doesn't work yet (have to set include directories when compiling the pch)
+  target_precompiled_header(${_UT_TARGET} testPch.h)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -50,14 +51,20 @@ endfunction(AddWinMLTest)
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS
   "${WINML_TEST_SRC_DIR}/api/*.cpp"
   "${WINML_TEST_SRC_DIR}/api/*.h"
-  "${WINML_TEST_SRC_DIR}/common/fileHelpers.cpp"  # FIXME move common to a separate project
-  "${WINML_TEST_SRC_DIR}/common/protobufHelpers.cpp"  # FIXME move common to a separate project
-  "${WINML_TEST_SRC_DIR}/common/SqueezeNetValidator.cpp"  # FIXME move common to a separate project
+  # FIXME move common to a separate project to be used by all test classes
+  "${WINML_TEST_SRC_DIR}/common/fileHelpers.cpp"
+  "${WINML_TEST_SRC_DIR}/common/protobufHelpers.cpp"
+  "${WINML_TEST_SRC_DIR}/common/SqueezeNetValidator.cpp"
 )
 
 AddWinMLTest(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
 )
-install(DIRECTORY "${WINML_TEST_SRC_DIR}/collateral/images/" "${WINML_TEST_SRC_DIR}/collateral/models/" "${WINML_TEST_SRC_DIR}/collateral/ModelSubdirectory" "${WINML_TEST_SRC_DIR}/api/models/" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)
+install(DIRECTORY
+  "${WINML_TEST_SRC_DIR}/collateral/images/"
+  "${WINML_TEST_SRC_DIR}/collateral/models/"
+  "${WINML_TEST_SRC_DIR}/collateral/ModelSubdirectory"
+  "${WINML_TEST_SRC_DIR}/api/models/"
+  DESTINATION $<TARGET_FILE_DIR:winml_test_api>)
 install(FILES "${WINML_TEST_SRC_DIR}/collateral/metaDataTestTable.xml" DESTINATION $<TARGET_FILE_DIR:winml_test_api>)

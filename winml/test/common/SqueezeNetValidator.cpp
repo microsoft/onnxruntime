@@ -1,7 +1,9 @@
-#include "pch.h"
+#include "testPch.h"
+
 #include "SqueezeNetValidator.h"
 #include "protobufHelpers.h"
 #include "fileHelpers.h"
+#include <gtest/gtest.h>
 #include <winrt/Windows.Media.h>
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Storage.h>
