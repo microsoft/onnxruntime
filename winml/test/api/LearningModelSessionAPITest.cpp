@@ -19,10 +19,10 @@ using winrt::Windows::Foundation::IPropertyValue;
 class LearningModelSessionAPITests : public APITest
 {};
 
-class LearningModelSessionAPITestsGpu : public APITest
+class DISABLED_LearningModelSessionAPITestsGpu : public APITest
 {};  // TODO create a constructor that calls GTEST_SKIP when GPU tests are disabled
 
-class LearningModelSessionAPITestsSkipEdgeCore : public LearningModelSessionAPITestsGpu
+class DISABLED_LearningModelSessionAPITestsSkipEdgeCore : public DISABLED_LearningModelSessionAPITestsGpu
 {};  // TODO create a constructor that calls GTEST_SKIP when on EdgeCore
 
 TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDefault)
@@ -58,7 +58,7 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithModelLoadedFromStream)
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
+TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
 {
 
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -67,7 +67,7 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
+TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
 {
 
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -76,7 +76,7 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformanc
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
+TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
 {
 
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -85,7 +85,7 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
+TEST_F(DISABLED_LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
 {
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 

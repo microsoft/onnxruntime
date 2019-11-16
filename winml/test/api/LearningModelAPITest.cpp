@@ -14,26 +14,6 @@ using namespace winrt::Windows::Media;
 using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
-namespace
-{
-    // void MetaDataVerifyHelper(
-    //     std::wstring expectedKeyParam,
-    //     std::wstring expectedValueParam,
-    //     IIterator<IKeyValuePair<hstring, hstring>> iter)
-    // {
-    //     std::wstring expectedKey, expectedValue;
-    //     if (FAILED(TestData::TryGetValue(expectedKeyParam, expectedKey))
-    //         || FAILED(TestData::TryGetValue(expectedValueParam, expectedValue)))
-    //     {
-    //         throw_hresult(E_INVALIDARG);
-    //     }
-
-    //     EXPECT_TRUE(iter.HasCurrent());
-    //     EXPECT_EQ(static_cast<const wchar_t*>(expectedKey), std::wstring(iter.Current().Key()));
-    //     EXPECT_EQ(static_cast<const wchar_t*>(expectedValue), std::wstring(iter.Current().Value()));
-    // }
-}
-
 class LearningModelAPITest : public APITest
 {
 protected:
@@ -45,7 +25,7 @@ protected:
     }
 };
 
-class LearningModelAPITestGpu : public APITest
+class LearningModelAPITestGpu : public LearningModelAPITest
 {};
 
 TEST_F(LearningModelAPITest, CreateModelFromFilePath)
@@ -126,36 +106,39 @@ TEST_F(LearningModelAPITest, GetVersion)
     int64_t version(m_model.Version());
 }
 
-// TEST_F(LearningModelAPITest, GetMetaData)
-// {
-//     // only checking cases for metaData counts 0,1,2
-//     // because I can't figure out how to make a string array in the xml data file
-//     String fileName;
-//     int expectedEntries;
-//     if (FAILED(TestData::TryGetValue(L"fileName", fileName)) || FAILED(TestData::TryGetValue(L"expectedEntries", expectedEntries)))
-//     {
-//         throw_hresult(E_INVALIDARG);
-//     }
+typedef std::vector<std::pair<std::wstring, std::wstring>> Metadata;
 
-//     EXPECT_NO_THROW(LoadModel(static_cast<const wchar_t*>(fileName)));
-//     EXPECT_TRUE(m_model != nullptr.Metadata());
-//     EXPECT_EQ(expectedEntries, m_model.Metadata().Size());
+class MetadataTest : public LearningModelAPITest, public testing::WithParamInterface<std::pair<std::wstring, Metadata>>
+{};
 
-//     auto first = m_model.Metadata().First();
-//     if (expectedEntries > 0)
-//     {
-//         MetaDataVerifyHelper(L"expectedKey1", L"expectedValue1", first);
-//         first.MoveNext();
+TEST_P(MetadataTest, GetMetaData)
+{
+    std::wstring fileName;
+    std::vector<std::pair<std::wstring, std::wstring>> keyValuePairs;
 
-//         if (expectedEntries > 1)
-//         {
-//             MetaDataVerifyHelper(L"expectedKey2", L"expectedValue2", first);
-//             first.MoveNext();
-//         }
-//     }
+    tie(fileName, keyValuePairs) = GetParam();
+    EXPECT_NO_THROW(LoadModel(fileName.c_str()));
+    EXPECT_TRUE(m_model.Metadata() != nullptr);
+    EXPECT_EQ(keyValuePairs.size(), m_model.Metadata().Size());
 
-//     EXPECT_FALSE(first.HasCurrent());
-// }
+    auto iter = m_model.Metadata().First();
+    for (auto& keyValue : keyValuePairs)
+    {
+        EXPECT_TRUE(iter.HasCurrent());
+        EXPECT_EQ(keyValue.first, std::wstring(iter.Current().Key()));
+        EXPECT_EQ(keyValue.second, std::wstring(iter.Current().Value()));
+        iter.MoveNext();
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ModelMetadata,
+    MetadataTest,
+    ::testing::Values(
+        std::pair(L"squeezenet_modifiedforruntimestests.onnx", Metadata{}),
+        std::pair(L"modelWithMetaData.onnx", Metadata{{L"thisisalongkey", L"thisisalongvalue"}}),
+        std::pair(L"modelWith2MetaData.onnx", Metadata{{L"thisisalongkey", L"thisisalongvalue"}, {L"key2", L"val2"}})
+));
 
 TEST_F(LearningModelAPITest, EnumerateInputs)
 {

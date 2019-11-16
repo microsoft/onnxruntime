@@ -17,7 +17,7 @@ using namespace winrt::Windows::Storage;
 class LearningModelBindingAPITest : public APITest
 {};
 
-class LearningModelBindingAPITestGpu : public LearningModelBindingAPITest
+class DISABLED_LearningModelBindingAPITestGpu : public LearningModelBindingAPITest
 {};
 
 TEST_F(LearningModelBindingAPITest, CpuSqueezeNet)
@@ -309,7 +309,7 @@ TEST_F(LearningModelBindingAPITest, ZipMapString)
     EXPECT_TRUE(!iter2.HasCurrent());
 }
 
-TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, GpuSqueezeNet)
 {
 
     std::string gpuInstance("GPU");
@@ -319,7 +319,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
         /*dataTolerance*/ 0.00001f);
 }
 
-TEST_F(LearningModelBindingAPITestGpu, GpuFnsCandy16)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, GpuFnsCandy16)
 {
     LearningModelDevice device(LearningModelDeviceKind::DirectX);
     if (!DeviceHelpers::IsFloat16Supported(device))
@@ -336,7 +336,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuFnsCandy16)
         /*dataTolerance*/ 0.00001f);
 }
 
-TEST_F(LearningModelBindingAPITestGpu, GpuFnsCandy16UnboundOutputs)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, GpuFnsCandy16UnboundOutputs)
 {
 
     LearningModelDevice device(LearningModelDeviceKind::DirectX);
@@ -354,7 +354,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuFnsCandy16UnboundOutputs)
         /*dataTolerance*/ 0.00001f);
 }
 
-TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
 {
 
     std::string gpuInstance("GPU");
@@ -366,7 +366,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
         OutputBindingStrategy::Empty);
 }
 
-TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
 {
 
     std::string gpuInstance("GPU");
@@ -379,7 +379,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
 }
 
 // Validates that when the input image is the same as the model expects, the binding step is executed correctly.
-TEST_F(LearningModelBindingAPITestGpu, ImageBindingDimensions)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, ImageBindingDimensions)
 {
     LearningModelBinding m_binding = nullptr;
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -412,7 +412,7 @@ TEST_F(LearningModelBindingAPITestGpu, ImageBindingDimensions)
     EXPECT_NO_THROW(m_binding.Bind(L"data_0", inputTensor));
 }
 
-TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
 {
 
     EXPECT_NO_THROW(LoadModel(L"zipmap-int64.onnx"));
@@ -526,7 +526,7 @@ TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
 }
 
 // Verify that it throws an error when binding an invalid name.
-TEST_F(LearningModelBindingAPITestGpu, BindInvalidInputName)
+TEST_F(DISABLED_LearningModelBindingAPITestGpu, BindInvalidInputName)
 {
     LearningModelBinding m_binding = nullptr;
     std::wstring modelPath = FileHelpers::GetModulePath() + L"Add_ImageNet1920.onnx";

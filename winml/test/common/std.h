@@ -44,3 +44,8 @@
 #ifndef GTEST_SKIP
 #define GTEST_SKIP(message) return GTEST_MESSAGE_(message, ::testing::TestPartResult::kSuccess)
 #endif
+
+#ifndef INSTANTIATE_TEST_SUITE_P
+// Use the old name, removed in newer versions of googletest
+#define INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
+#endif
