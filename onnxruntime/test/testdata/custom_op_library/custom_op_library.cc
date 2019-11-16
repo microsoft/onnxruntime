@@ -87,7 +87,7 @@ struct KernelTwo {
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) {
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) {
     return new KernelOne(api);
   };
 
@@ -102,7 +102,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 } c_CustomOpOne;
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) {
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) {
     return new KernelTwo(api);
   };
 
