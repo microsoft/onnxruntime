@@ -43,23 +43,20 @@ class Gelu : public OpKernel {
     if (nullptr != tp) {
       const T* input = X->template Data<T>();
       T* output = Y->template MutableData<T>();
-      int thread_num = tp->NumThreads();
+      int task_count = tp->NumThreads() + 1;
       int64_t elem_count = X->Shape().Size();
-      if (elem_count > thread_num) {
-        int64_t count_per_thread = elem_count / thread_num;
-        int64_t count_residual = elem_count % thread_num;
-        tp->ParallelFor(thread_num, [input,
+      if (elem_count > task_count) {
+        tp->ParallelFor(task_count, [input,
                                      output,
                                      elem_count,
-                                     count_per_thread,
-                                     count_residual](int32_t i) {
-          int64_t elem_this_thread = i < count_residual ? count_per_thread + 1 : count_per_thread;
-          int64_t elem_inx_start = i * count_per_thread + (i < count_residual ? i : count_residual);
-          for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_start + elem_this_thread; elem_inx++) {
+                                     task_count](int32_t i) {
+          int64_t elem_inx_start = i * elem_count / task_count;
+          int64_t elem_inx_end = (i + 1) * elem_count / task_count;
+          for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
             output[elem_inx] = input[elem_inx] * static_cast<float>(M_SQRT1_2);
           }
-          MlasComputeErf(output + elem_inx_start, output + elem_inx_start, elem_this_thread);
-          for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_start + elem_this_thread; elem_inx++) {
+          MlasComputeErf(output + elem_inx_start, output + elem_inx_start, elem_inx_end - elem_inx_start);
+          for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
             output[elem_inx] = 0.5f * input[elem_inx] * (output[elem_inx] + 1.0f);
           }
         });
