@@ -23,6 +23,10 @@
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
+// #include "ngraph/ngraph.hpp"
+// #include "ngraph/pass/manager.hpp"
+// #include "ngraph/pass/opset1_upgrade.hpp"
+#include <transform/transformations/convert_fp32_to_fp16.hpp>
 #include "intel_graph.h"
 
 namespace onnxruntime {
@@ -336,6 +340,14 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
   ngraph::pass::Manager pass_manager;
   pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
   pass_manager.run_passes(ng_function);
+
+  if (precision_ == InferenceEngine::Precision::FP16)
+  {
+     std::cout << "FP16" << std::endl;
+     //FP16 transformations
+     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
+     ng_function->validate_nodes_and_infer_types();
+  }
 
   //Serializing nGraph function
   std::string json_string_pm = serialize(ng_function, 4);
