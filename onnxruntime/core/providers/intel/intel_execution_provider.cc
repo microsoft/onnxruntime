@@ -137,7 +137,12 @@ bool IsUnsupportedOp(std::string name){
     "ReduceSumSquare",
     "ReduceLogSum",
     "ReduceLogSumExp",
-    "Eyelike",
+    "ReduceMin",
+    "ReduceMax",
+    "ReduceSum",
+    "ReduceMean",
+    "ReduceProd",
+    "EyeLike",
     "ConvTranspose",
     "Shrink",
     "SpaceToDepth",
@@ -147,7 +152,12 @@ bool IsUnsupportedOp(std::string name){
     "Selu",
     "Softplus",
     "HardSigmoid",
-    "GlobalLpPool"
+    "GlobalLpPool",
+    "Sign",
+    "Erf"
+    // "Add", //disabled temporarily
+    // "MaxPool", //disabled temporarily
+    // "AveragePool" //disabled temporarily
   };
 
   auto iter = unsupported_ops.find(name);
@@ -206,6 +216,39 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
+  } else if (optype == "Add") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+	      return true; 
+	  }
+      }
+  } else if (optype == "Sub") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+              return true;
+          }
+      } 
+  } else if (optype == "Mul") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+	      return true;
+	  }
+      }
+  } else if (optype == "Div") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64 ||
+              node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+	      return true;
+          }
+      }	  
+  } else if (optype == "Dropout" || optype == "Identity") {
+      auto graph_inputs = graph_viewer.GetInputs();
+      for (const auto& input : node->InputDefs()) {
+	  auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+	  if (it != graph_inputs.end()) {
+	      return true;
+	  }
+      }		  
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
