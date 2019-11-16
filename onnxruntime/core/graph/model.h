@@ -21,6 +21,7 @@ using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeO
 class Model {
  public:
   static constexpr Version kNoVersion = INT64_MAX;
+  static constexpr Version kMaximumIrVersion = 5; // ONNX 1.5.0
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,

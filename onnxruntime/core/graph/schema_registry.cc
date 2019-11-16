@@ -194,6 +194,28 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
   return domain_version_map;
 }
 
+static bool IsDomainVersionBeyondSupportedRange(
+    const std::string& domain,
+    const int op_set_version) {
+  // List of maximum supported versions ORT officially supports in the static registrations.
+  // It's perfectly okay for custom registrations to support beyond these limits.
+  const std::pair<std::string_view, int> supported_versions[] = {
+    {kOnnxDomain, kMaximumAiOnnxVersionSupported},
+    {kOnnxDomainAlias, kMaximumAiOnnxVersionSupported},
+    {kMLDomain, kMaximumAiMlOnnxVersionSupported},
+    {kMSDomain, kMaximumComMicrosoftVersionSupported},
+  };
+
+  for (const auto& supported_version : supported_versions) {
+    if (domain == supported_version.first && op_set_version > supported_version.second) {
+      return true;
+    }
+  }
+
+  // Either all ONNX domains were within range, or the domains were not ONNX.
+  return false;
+}
+
 // Return the schema with biggest version, which is not greater than specified
 // <op_set_version> in specified domain. The value of earliest_opset_where_unchanged
 // is also set to the earliest version preceding op_set_version where the operator
@@ -238,10 +260,14 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     checked_registry_indices.push_back(index);
   }
 
-  // if not found in registered custom schema registry, search in ONNX schema registry
-  *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
-  if (*latest_schema != nullptr) {
-    *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+  // Reject versions greater than what is actually supported.
+  *latest_schema = nullptr;
+  if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
+    // if not found in registered custom schema registry, search in ONNX schema registry
+    *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
+    if (*latest_schema != nullptr) {
+      *earliest_opset_where_unchanged = (*latest_schema)->SinceVersion();
+    }
   }
 }
 

@@ -26,5 +26,9 @@ constexpr const char* kNGraphExecutionProvider = "NGRAPHExecutionProvider";
 constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
 constexpr const char* kBrainSliceExecutionProvider = "BrainSliceExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+
+constexpr int kMaximumAiOnnxVersionSupported = 10;
+constexpr int kMaximumAiMlOnnxVersionSupported = 2;
+constexpr int kMaximumComMicrosoftVersionSupported = 1;
 }  // namespace onnxruntime
 
