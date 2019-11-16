@@ -52,6 +52,10 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
 
+if (onnxruntime_USE_TELEMETRY)
+  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+endif()
+
 if (onnxruntime_USE_MIMALLOC)
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
         message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")

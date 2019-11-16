@@ -32,6 +32,16 @@ jobs:
     CUDA_VERSION: ${{ parameters.CudaVersion }}
 
   steps:
+    - powershell: |
+        if($env:WINMLTELEMETRYGUID)
+        {
+          $length = $env:WINMLTELEMETRYGUID.length
+          $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
+            TraceLoggingOptionGroup("+$env:WINMLTELEMETRYGUID.substring(1, $length-2)+")"
+          New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+        }
+      displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:

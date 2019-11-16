@@ -89,6 +89,9 @@ add_library(winml_lib_telemetry STATIC
 # Compiler options
 target_compile_features(winml_lib_telemetry PRIVATE cxx_std_17)
 target_compile_options(winml_lib_telemetry PRIVATE /GR- /await /wd4238)
+if (onnxruntime_USE_TELEMETRY)
+  set_target_properties(winml_lib_telemetry PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+endif()
 
 # Compiler flags
 target_compile_definitions(winml_lib_telemetry PRIVATE PLATFORM_WINDOWS)
