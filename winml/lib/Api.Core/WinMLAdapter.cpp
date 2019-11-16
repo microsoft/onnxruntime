@@ -327,7 +327,7 @@ public:
         auto model_proto_inner = new onnx::ModelProto();
         THROW_HR_IF_MSG(
             E_INVALIDARG,
-            !model_proto_inner->ParseFromZeroCopyStream(&stream) == false,
+            model_proto_inner->ParseFromZeroCopyStream(&stream) == false,
             "The stream failed to parse.");
 
         auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
