@@ -687,8 +687,8 @@ bool FindPath(const Node& node, const std::vector<MatchEdgeEnd>& edges_to_match,
   for (const MatchEdgeEnd& edge : edges_to_match) {
     const Node::EdgeEnd* edge_found = nullptr;
 
-    auto edges_beign = edge.is_input_edge ? node.InputEdgesBegin() : node.OutputEdgesBegin();
-    auto edges_end = edge.is_input_edge ? node.InputEdgesEnd() : node.OutputEdgesEnd();
+    auto edges_beign = edge.is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
+    auto edges_end = edge.is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
     for (auto it = edges_beign; it != edges_end; ++it) {
       if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && IsSupportedOptypeVersionAndDomain(it->GetNode(), edge.op_type, edge.versions, edge.domain)) {
         edge_found = &(*it);
