@@ -187,73 +187,48 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
 */
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
 
-
-/*
-Find the first input edge of a node that the source node's operator type, version, and domain match the given values.
-@returns nullptr when not found.
-*/
-const Node::EdgeEnd*
-FindFirstInputEdge(
-    const Node& node,
-    const std::string& op_type,
-    const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
-    const std::string& domain);
-
-/*
-Find the input edge of a node for a specified input index.
+/** Find the input edge of a node for a specified input index.
 @returns nullptr when not found.
 */
 const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 
-/*
-Find the source node of an input edge for a specified input index.
+/** Find the source node of an input edge for a specified input index.
 @returns nullptr when not found.
 */
 const Node* GetInputNode(const Node& node, int arg_index);
 
 
-/*
-Expected edge information for matching.
+/** Expected edge end information for matching input or output edge.
+    For input edge, the node in the edge end refers to the source node, otherwise the destination node.
 */
-struct MatchEdgeInfo {
-  // When dst_arg_index < 0, we will only proceed the first edge that matched, but such greedy approach
-  // might miss a match for the whole path.
-  // Look at comments of FindParentPath function for detail about the limitations for dst_arg_index < 0.
+struct MatchEdgeEnd {
+  // Is it input edge? False for output edge.
+  bool is_input_edge;
+
+  // Source arg index of edge.
+  int src_arg_index;
+
+  // Destination arg index of edge.
   int dst_arg_index;
 
-  // Expected operator type of the source node.
+  // Expected operator type of the node in the edge end.
   std::string op_type;
 
-  // Expected version of the operator of source node
+  // Expected version of the operator of node in the edge end.
   std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions;
 
-  // Expected domain of the operator in source node
+  // Expected domain of the operator of node in the edge end.
   std::string domain;
 };
 
-/*
-Find a path that matches the specified edge information.
-@param match_edges has information of a sequence of edges in the path.
-For example, the first is input edge for current node, and the second one is for the parent node.
+/** Find a path that matches the specified edges.
+    A path is a sequence of adjacent edges, and the result is returned as a list of EdgeEnd items.
+@param node is the current node to start matching.
+@param edges_to_match has information of a sequence of adjacent edges in the path to be matched one by one.
 @param result stores edges that are found.
-@returns true when all edges are found.
-@remarks one limitation of this function is that it will not look at all possible paths when dst_arg_index < 0.
-This is by design to reduce the complexity (Otherwise, recursive or stack is needed to enumerate all possible paths).
-Here is an example graph with two paths:
-      Add      Sub
-       |        |
-     Shape    Shape
-        \      /
-         Concat (current node)
-When you use [{dst_arg_index=1, op_type="Shape"}, {dst_arg_index=0, op_type="Sub"}], it will find the correct path.
-When you use [{dst_arg_index=-1, op_type="Shape"}, {dst_arg_index=0, op_type="Sub"}], it will report that path is not found.
-During matching "Shape" for dst_arg_index < 0, it will get the edge of the first Shape node (with smaller node index).
-On the other hand, dst_arg_index=-1 is useful when inputs have different node types and allowed switching positions like
-      Sub   Add             Sub  Add
-        \    /               \   /
-         Add                  Add
+@returns true when all edges are found, false otherwise.
 */
-bool FindParentPath(const Node& node, const std::vector<MatchEdgeInfo>& match_edges, std::vector<const Node::EdgeEnd*>& result);
+bool FindPath(const Node& node, const std::vector<MatchEdgeEnd>& edges_to_match, std::vector<const Node::EdgeEnd*>& result);
 
 }  // namespace graph_utils
 }  // namespace onnxruntime
