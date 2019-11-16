@@ -375,7 +375,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml and args.use_dml else "OFF"),
-                 "-Donnxruntime_use_telemetry=" + ("ON" if args.use_telemetry else "OFF"),
+                 "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
