@@ -42,10 +42,9 @@ jobs:
         else
         {
           $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
-            TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)"
+            TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)" 
         }
         New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-        cat $(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
 
     - template: set-test-data-variables-step.yml
