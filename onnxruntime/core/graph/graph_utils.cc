@@ -287,6 +287,10 @@ bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NA
   return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
 }
 
+bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+}
+
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
   const auto& node_domain = node.Domain();
   // We do a special check for the ONNX domain, as it has two aliases.
@@ -679,20 +683,31 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return &(edge->GetNode());
 }
 
-bool FindPath(const Node& node, const std::vector<MatchEdgeEnd>& edges_to_match, std::vector<const Node::EdgeEnd*>& result) {
+bool FindPath(const Node& node, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
   result.reserve(edges_to_match.size());
 
   const Node* current_node = &node;
-  for (const MatchEdgeEnd& edge : edges_to_match) {
+  for (const auto& edge : edges_to_match) {
     const Node::EdgeEnd* edge_found = nullptr;
 
-    auto edges_beign = edge.is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
+    auto edges_begin = edge.is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
     auto edges_end = edge.is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
-    for (auto it = edges_beign; it != edges_end; ++it) {
-      if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && IsSupportedOptypeVersionAndDomain(it->GetNode(), edge.op_type, edge.versions, edge.domain)) {
+    for (auto it = edges_begin; it != edges_end; ++it) {
+
+      if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && edge.op_type == it->GetNode().OpType() && MatchesOpSinceVersion(it->GetNode(), edge.versions) && MatchesOpSetDomain(it->GetNode(), edge.domain)) {
+        // For output edge, there could be multiple edges matched.
+        // This function will return failure in such case by design.
+        if (nullptr != edge_found) {
+          LOGS(logger, WARNING) << "Failed since multiple edges matched:" << current_node->OpType() << "->" << edge.op_type;
+          return false;
+        }
         edge_found = &(*it);
-        break;
+
+        // For input edge, each dst_arg_index only accepts one input edge so only there is at most one match.
+        if (edge.is_input_edge) {
+          break;
+        }
       }
     }
 

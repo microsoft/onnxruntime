@@ -18,6 +18,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions);
+bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions);
 
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, const std::string& domain);
@@ -201,7 +202,7 @@ const Node* GetInputNode(const Node& node, int arg_index);
 /** Expected edge end information for matching input or output edge.
     For input edge, the node in the edge end refers to the source node, otherwise the destination node.
 */
-struct MatchEdgeEnd {
+struct EdgeEndToMatch {
   // Is it input edge? False for output edge.
   bool is_input_edge;
 
@@ -215,7 +216,7 @@ struct MatchEdgeEnd {
   std::string op_type;
 
   // Expected version of the operator of node in the edge end.
-  std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions;
+  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions;
 
   // Expected domain of the operator of node in the edge end.
   std::string domain;
@@ -226,9 +227,23 @@ struct MatchEdgeEnd {
 @param node is the current node to start matching.
 @param edges_to_match has information of a sequence of adjacent edges in the path to be matched one by one.
 @param result stores edges that are found.
-@returns true when all edges are found, false otherwise.
+@returns false when one edge has multiple candidates, or not all edges are found.
+@remarks matching an EdgeEndToMatch might get multiple candidates in output edges. 
+    When such case is encountered, this function will return false. This is by design to reduce complexity.
+    Here is an example graph:
+                  Add
+                 /    \
+               Mul     Mul
+                 \    /
+                  Sub
+    For example, you want to match path from top to bottom: Add-->Mul-->Sub. 
+    When matching the first edge Add-->Mul, the algorithm found two matches.
+    Then it returns false, and output a warning log entry.
+
+    It is recommended to match path from bottom to top direction to avoid such issue.
+    It is because each node input (dst_arg_index) only accepts one input edge.
 */
-bool FindPath(const Node& node, const std::vector<MatchEdgeEnd>& edges_to_match, std::vector<const Node::EdgeEnd*>& result);
+bool FindPath(const Node& node, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
 }  // namespace graph_utils
 }  // namespace onnxruntime

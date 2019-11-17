@@ -45,7 +45,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     }
 
     // Check second input is sqrt(2)
-    if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2))) {
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2), true)) {
       continue;
     }
 
@@ -72,7 +72,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
       add_const_input_index = 1;
     }
     const auto& add_const_input_arg = add_node.InputDefs()[add_const_input_index];
-    if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *add_const_input_arg, 1.0f)) {
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *add_const_input_arg, 1.0f, true)) {
       continue;
     }
 
@@ -111,7 +111,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     }
 
     const auto& mul_const_input_arg = mul2_node.InputDefs()[mul_const_input_index];
-    if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *mul_const_input_arg, 0.5f)) {
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *mul_const_input_arg, 0.5f, true)) {
       continue;
     }
 

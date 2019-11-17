@@ -33,12 +33,18 @@ inline bool IsScalar(const NodeArg& input_arg) {
 }
 
 // Check whether input is a constant scalar with expected float value.
-bool IsInputConstantWithExpectedValue(const Graph& graph, const NodeArg& input_arg, float expected_value) {
+bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg, float expected_value, bool is_constant) {
   if (!IsScalar(input_arg)) {
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (is_constant) {
+    tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+    return false;
+  }
+  
   if (tensor_proto == nullptr) {
     return false;
   }
@@ -72,13 +78,15 @@ bool IsInputConstantWithExpectedValue(const Graph& graph, const NodeArg& input_a
 }
 
 // Check whether input is a constant scalar with expected intger value.
-bool IsInputConstantWithExpectedValue(const Graph& graph, const NodeArg& input_arg, int64_t expected_value) {
+bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg, int64_t expected_value, bool is_constant) {
   if (!IsScalar(input_arg)) {
     return false;
   }
 
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
-  if (tensor_proto == nullptr) {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (is_constant) {
+    tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
 

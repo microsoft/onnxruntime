@@ -10,10 +10,10 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-// Get values of an constant integer tensor from input, and append them to a vector.
-static bool GetConstantInput(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
-  if (tensor_proto == nullptr) {
+// Get values of integer tensor from initializer, and append them to a vector.
+static bool LoadIntegerTensor(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
 
@@ -40,6 +40,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  int fused_count = 0;
   for (auto node_index : node_topology_list) {
     auto* p_reshape = graph.GetNode(node_index);
     if (p_reshape == nullptr)
@@ -54,9 +55,12 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     }
 
     if (ReshapeFusion::Fuse_Subgraph1(reshape, graph, logger)) {
+      fused_count++;
+      LOGS(logger, INFO) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
       modified = true;
     }
   }
+  LOGS(logger, INFO) << "Total fused reshape node count: " << fused_count;
 
   return Status::OK();
 }
@@ -104,13 +108,13 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   }
 
   // path 1: [Root] --> Shape --> Gather(indices=0) --> Unsqueeze (axes=0) --> Concat [input 0]
-  std::vector<graph_utils::MatchEdgeEnd> parent_path{
+  std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {true, 0, 0, "Unsqueeze", {1}, kOnnxDomain},
       {true, 0, 0, "Gather", {1}, kOnnxDomain},
       {true, 0, 0, "Shape", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(concat, parent_path, edges)) {
+  if (!graph_utils::FindPath(concat, parent_path, edges, logger)) {
     return false;
   }
 
@@ -130,14 +134,17 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     return false;
   }
 
-  if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *(gather_1.InputDefs()[1]), int64_t(0))) {
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_1.InputDefs()[1]), int64_t(0), false)) {
     return false;
   }
 
   // path 2: [Root] --> Shape --> Gather(indices=1) --> Unsqueeze (axes=0) --> Concat [input 1]
-  parent_path[0].dst_arg_index = 1;
+  std::vector<graph_utils::EdgeEndToMatch> parent_path2 {
+      {true, 0, 1, "Unsqueeze", {1}, kOnnxDomain},
+      {true, 0, 0, "Gather", {1}, kOnnxDomain},
+      {true, 0, 0, "Shape", {1}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(concat, parent_path, edges)) {
+  if (!graph_utils::FindPath(concat, parent_path2, edges, logger)) {
     return false;
   }
 
@@ -156,21 +163,22 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
     return false;
   }
 
-  if (!optimizer_utils::IsInputConstantWithExpectedValue(graph, *(gather_2.InputDefs()[1]), int64_t(1))) {
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_2.InputDefs()[1]), int64_t(1), false)) {
     return false;
   }
 
   // Compose the shape value input for reshape op.
   std::vector<int64_t> shape_value = {0, 0};
 
-  if (!graph_utils::NodeArgIsConstant(graph, *(concat.InputDefs()[2])) ||
-      !GetConstantInput(graph, *(concat.InputDefs()[2]), shape_value)) {
+  // We do not check whether the initializer is constant.
+  // Some model uses constant initializer and some does not.
+  // Here we assume that no one will override the initializer using graph input.
+  if (!LoadIntegerTensor(graph, *(concat.InputDefs()[2]), shape_value)) {
     return false;
   }
 
   if (concat_input_count > 3) {
-    if (!graph_utils::NodeArgIsConstant(graph, *(concat.InputDefs()[3])) ||
-        !GetConstantInput(graph, *(concat.InputDefs()[3]), shape_value)) {
+    if (!LoadIntegerTensor(graph, *(concat.InputDefs()[3]), shape_value)) {
       return false;
     }
   }
@@ -178,6 +186,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   // Create an initializer with the same name as the concat node output, and replace the concat node
   const auto& new_initializer_name = concat.OutputDefs()[0]->Name();
   if (!graph_utils::CanReplaceNodeWithInitializer(graph, concat, new_initializer_name, logger)) {
+    LOGS(logger, WARNING) << "Cannot replace concat node with initializer:" << new_initializer_name;
     return false;
   }
   const auto* shape_def = concat.OutputDefs()[0];
