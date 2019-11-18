@@ -236,7 +236,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
 
-        math::GemmEx(CblasNoTrans,                                        // TransA = no
+        math::GemmEx<float, concurrency::ThreadPool>(CblasNoTrans,                                        // TransA = no
                      CblasNoTrans,                                        // TransB = no
                      sequence_length,                                     // M      = S
                      head_size,                                           // N      = H
@@ -249,7 +249,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                      1.0f,                                                // beta
                      qkv_dest + qkv_offset,                               // C
                      head_size,                                           // ldc
-                     reinterpret_cast<concurrency::ThreadPool*>(nullptr)  // use single-thread
+                     nullptr  // use single-thread
         );
       });
     } else {
@@ -259,7 +259,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         T* qkv_data = QKV[qkv_index];
         for (int batch_index = 0; batch_index < batch_size; batch_index++) {
           for (int head_index = 0; head_index < num_heads_; head_index++) {
-            math::GemmEx(CblasNoTrans,                                        // TransA = no
+            math::GemmEx<float, concurrency::ThreadPool>(CblasNoTrans,                                        // TransA = no
                          CblasNoTrans,                                        // TransB = no
                          sequence_length,                                     // M      = S
                          head_size,                                           // N      = H
@@ -272,7 +272,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                          1.0f,                                                // beta
                          qkv_data,                                            // C
                          head_size,                                           // ldc
-                         reinterpret_cast<concurrency::ThreadPool*>(nullptr)  // use single-thread
+                         nullptr  // use single-thread
             );
 
             weights_data += head_size;
@@ -377,7 +377,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // B: K'             (BxNxSxH)          (B.N.)H x S            H x S
         // C: scratch_data   (BxNxSxS)          (B.N.)S x S            S x S
 
-        math::Gemm<T>(
+        math::Gemm<T, concurrency::ThreadPool>(
             CblasNoTrans,
             CblasTrans,
             sequence_length,
@@ -388,7 +388,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
             K + sequence_length * head_size * i,
             1.0,
             reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
-            reinterpret_cast<concurrency::ThreadPool*>(nullptr));
+            nullptr);
       });
     } else {
       int offset_Q = 0;
@@ -398,7 +398,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
       for (int b_i = 0; b_i < batch_size; b_i++) {
         for (int n_i = 0; n_i < num_heads_; n_i++) {
-          math::Gemm<T>(
+          math::Gemm<T, concurrency::ThreadPool>(
               CblasNoTrans,
               CblasTrans,
               sequence_length,
@@ -409,7 +409,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               K + offset_Q,
               1.0,
               reinterpret_cast<T*>(scratch_data) + offset_scratch,
-              reinterpret_cast<concurrency::ThreadPool*>(nullptr));
+              nullptr);
           offset_Q += offset_Q_increment;
           offset_scratch += offset_scratch_increment;
         }
@@ -550,7 +550,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
             reinterpret_cast<T*>(p_data) + sequence_length * sequence_length * i,
             V + sequence_length * head_size * i,
             reinterpret_cast<T*>(out_tmp_data) + sequence_length * head_size * i,
-            reinterpret_cast<concurrency::ThreadPool*>(nullptr));
+            nullptr);
       });
     } else {
       int offset_p = 0;
@@ -567,7 +567,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               reinterpret_cast<T*>(p_data) + offset_p,
               V + offset_V,
               reinterpret_cast<T*>(out_tmp_data) + offset_V,
-              reinterpret_cast<concurrency::ThreadPool*>(nullptr));
+              nullptr);
           offset_p += offset_p_increment;
           offset_V += offset_V_increment;
         }
