@@ -22,6 +22,7 @@
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/reshape_fusion.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -104,6 +105,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
