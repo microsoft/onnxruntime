@@ -44,8 +44,6 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
   }
 };
 
-
-
 // class AbiSafeTensor
 //
 class AbiSafeTensor : public Microsoft::WRL::RuntimeClass <
@@ -112,8 +110,7 @@ public:
     HRESULT STDMETHODCALLTYPE GetTensor(ITensor ** tensor) override {
         auto tensor_inner = ort_value_.GetMutable<onnxruntime::Tensor>();
         auto tensor_outer = wil::MakeOrThrow<AbiSafeTensor>(tensor_inner, this);
-        *tensor = tensor_outer.Detach();
-        return S_OK;
+        return tensor_outer.CopyTo(__uuidof(ITensor), (void**)tensor);
     }
 };  // class AbiSafeOrtValue
 
@@ -130,8 +127,12 @@ public:
         return model_proto_.get();
     }
 
+    onnx::ModelProto* STDMETHODCALLTYPE detach() override {
+        return model_proto_.release();
+    }
+
 private:
-    std::shared_ptr<onnx::ModelProto> model_proto_;
+    std::unique_ptr<onnx::ModelProto> model_proto_;
 }; // class ModelProto
 
 
@@ -155,28 +156,28 @@ public:
         Initialize(model_proto);
     }
 
-    std::string STDMETHODCALLTYPE author() override {
+    std::string& STDMETHODCALLTYPE author() override {
         return author_;
     }
-    std::string STDMETHODCALLTYPE name() override {
+    std::string& STDMETHODCALLTYPE name() override {
         return name_;
     }
-    std::string STDMETHODCALLTYPE domain() override {
+    std::string& STDMETHODCALLTYPE domain() override {
         return domain_;
     }
-    std::string STDMETHODCALLTYPE description() override {
+    std::string& STDMETHODCALLTYPE description() override {
         return description_;
     }
     int64_t STDMETHODCALLTYPE version()  override {
         return version_;
     }
-    std::unordered_map<std::string, std::string> STDMETHODCALLTYPE model_metadata()  override {
+    std::unordered_map<std::string, std::string>& STDMETHODCALLTYPE model_metadata()  override {
         return model_metadata_;
     }
-    wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE input_features()  override {
+    wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE input_features()  override {
         return input_features_;
     }
-    wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE output_features()  override {
+    wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE output_features()  override {
         return output_features_;
     }
 
@@ -804,7 +805,8 @@ InferenceSession::LoadModel(
         IModelProto* model_proto)  {
     auto session_protected_load_accessor =
         static_cast<InferenceSessionProtectedLoadAccessor*>(session_.get());
-    std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr(model_proto->get());
+    // session's like to have their very own copy of the model_proto, use detach()
+    std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr(model_proto->detach());
     ORT_THROW_IF_ERROR(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
     return S_OK;
 }

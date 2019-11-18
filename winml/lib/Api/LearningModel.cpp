@@ -6,7 +6,6 @@
 #include "LearningModel.h"
 
 #include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
-#include "ModelInfo.h"
 #include "TelemetryEvent.h"
 
 #include "LotusEnvironment.h"

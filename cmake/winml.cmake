@@ -122,10 +122,8 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 add_library(winml_lib_core STATIC
   ${winml_lib_api_core_dir}/inc/AbiCustomRegistryImpl.h
   ${winml_lib_api_core_dir}/inc/CustomRegistryHelper.h
-  ${winml_lib_api_core_dir}/inc/IOrtSessionBuilder.h
   ${winml_lib_api_core_dir}/inc/LotusEnvironment.h
   ${winml_lib_api_core_dir}/inc/MLValueHelpers.h
-  ${winml_lib_api_core_dir}/inc/ModelInfo.h
   ${winml_lib_api_core_dir}/inc/TensorBaseHelpers.h
   ${winml_lib_api_core_dir}/inc/WinMLAdapter.h
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.h
@@ -138,8 +136,6 @@ add_library(winml_lib_core STATIC
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.cpp
   ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
   ${winml_lib_api_core_dir}/LotusEnvironment.cpp
-  ${winml_lib_api_core_dir}/ModelInfo.cpp
-  ${winml_lib_api_core_dir}/OrtSessionBuilder.cpp
   ${winml_lib_api_core_dir}/WinMLAdapter.cpp
   ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.cpp
 )

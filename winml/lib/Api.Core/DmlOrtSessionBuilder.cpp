@@ -39,15 +39,16 @@ DmlOrtSessionBuilder::DmlOrtSessionBuilder(
 
 HRESULT
 DmlOrtSessionBuilder::CreateSessionOptions(
-    onnxruntime::SessionOptions* p_options) {
+    ISessionOptions** p_options) {
   RETURN_HR_IF_NULL(E_POINTER, p_options);
 
-  *p_options = onnxruntime::SessionOptions();
-  
-  p_options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+  auto options = wil::MakeOrThrow<AbiSafeSessionOptions>();
+  options.CopyTo(__uuidof(ISessionOptions), (void**)p_options);
+
+  (*p_options)->get().graph_optimization_level = onnxruntime::TransformerLevel::Level3;
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
-  p_options->enable_mem_pattern = false;
+  (*p_options)->get().enable_mem_pattern = false;
 
   return S_OK;
 }
@@ -100,7 +101,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 }
 
 HRESULT DmlOrtSessionBuilder::CreateSession(
-    const onnxruntime::SessionOptions& options,
+    ISessionOptions* options,
     _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
@@ -113,7 +114,7 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 
   std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
-  auto session = std::make_unique<onnxruntime::InferenceSession>(options);
+  auto session = std::make_unique<onnxruntime::InferenceSession>(options->get());
 
   // Cache the provider's raw pointer
   *pp_provider = gpu_provider.get();
