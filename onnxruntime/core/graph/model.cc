@@ -91,7 +91,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  if (!model_proto->has_ir_version() || model_proto->ir_version() > kMaximumIrVersion) {
+  if (!model_proto->has_ir_version() || model_proto->ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
       throw std::invalid_argument("Unknown model file format version.");
   }
 
