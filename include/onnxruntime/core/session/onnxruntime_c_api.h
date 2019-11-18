@@ -55,7 +55,7 @@ extern "C" {
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
 #else
-#define ORT_TSTR(X) (X)
+#define ORT_TSTR(X) X
 #endif
 #endif
 

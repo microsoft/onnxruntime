@@ -177,7 +177,7 @@ void InternalUseCountAnalysis::Traverse(
       Traverse(ConvertGraphNodesToNodePtrs(func_body.Nodes()), graph_inputs, graph_outputs);
     } else if (IsSoftmaxOp(op_type)) {
       CountSoftmaxOp(*node, graph_inputs, shape_func_, node_use_counts_);
-    } else {
+    } else if (op_type != "Shape") {  //don't count on Shape node input, because of no data dependency
       int use_count = 1;
       node->ForEachWithIndex(
           node->InputDefs(),

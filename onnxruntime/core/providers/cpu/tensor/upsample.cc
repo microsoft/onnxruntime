@@ -287,6 +287,8 @@ void UpsampleBilinear(int64_t batch_size,
                       int64_t num_channels,
                       int64_t input_height,
                       int64_t input_width,
+                      int64_t output_height,
+                      int64_t output_width,
                       float height_scale,
                       float width_scale,
                       const std::vector<float>& roi,
@@ -296,8 +298,6 @@ void UpsampleBilinear(int64_t batch_size,
                       T* Ydata,
                       AllocatorPtr& alloc,
                       GetOriginalCoordinateFunc get_original_coordinate) {
-  auto output_width = static_cast<int64_t>(input_width * width_scale);
-  auto output_height = static_cast<int64_t>(input_height * height_scale);
   std::vector<float> y_original;
   std::vector<float> x_original;
 
@@ -435,7 +435,7 @@ float CubicInterpolation1D(const T* Xdata,
   float result = 0;
   for (int i = 0, j = -1; i < static_cast<int>(CubicModeGridLength); i++, j++) {
     auto orig_data = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
-    result += coeff_array[i]/coeff_sum * orig_data;
+    result += coeff_array[i] / coeff_sum * orig_data;
   }
   cache[grid_start_pos] = result;
 
@@ -448,6 +448,8 @@ void ResizeBiCubic(
     int64_t num_channels,
     int64_t input_height,
     int64_t input_width,
+    int64_t output_height,
+    int64_t output_width,
     float height_scale,
     float width_scale,
     float cubic_coeff_a,
@@ -458,9 +460,6 @@ void ResizeBiCubic(
     const T* Xdata,
     T* Ydata,
     GetOriginalCoordinateFunc get_original_coordinate) {
-  auto output_width = static_cast<int64_t>(input_width * width_scale);
-  auto output_height = static_cast<int64_t>(input_height * height_scale);
-
   std::vector<float> y_original;
   std::vector<float> x_original;
   std::unordered_map<float, std::array<float, CubicModeGridLength>> cubic_coeffs;
@@ -582,11 +581,17 @@ void ResizeBiCubic(
 }
 
 template <typename T>
-Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<float>& scales, const std::vector<float>& roi) const {
+Status Upsample<T>::BaseCompute(OpKernelContext* context,
+                                const std::vector<float>& roi,
+                                const std::vector<float>& scales,
+                                const std::vector<int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
-
   const std::vector<int64_t>& dims = X->Shape().GetDims();
+  ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
+
+  Tensor* Y = context->Output(0, output_dims);
+    
   if (dims.size() != scales.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize ? "Resize: input tensor's dimension does not match the scales."
@@ -597,14 +602,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
   bool no_scale = true;
-  std::vector<int64_t> Y_dims;
-  Y_dims.reserve(dims.size());
-  for (std::size_t i = 0; i < dims.size(); i++) {
-    int64_t dim_y = static_cast<int64_t>(scales[i] * dims[i]);
-    if (no_scale && dim_y != dims[i]) no_scale = false;
-    Y_dims.push_back(dim_y);
+  for (std::size_t i = 0, end = output_dims.size(); i < end; i++) {
+    if (no_scale && output_dims[i] != dims[i]) no_scale = false;
   }
-  Tensor* Y = context->Output(0, Y_dims);
 
   if (no_scale) {
     memcpy(Y->MutableDataRaw(), X->DataRaw(), Y->SizeInBytes());
@@ -632,10 +632,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       const int64_t num_channels = is_2D ? 1 : dims[1];
       const int64_t input_height = is_2D ? dims[0] : dims[2];
       const int64_t input_width = is_2D ? dims[1] : dims[3];
+      const int64_t output_height = is_2D ? output_dims[0] : output_dims[2];
+      const int64_t output_width = is_2D ? output_dims[1] : output_dims[3];
 
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-      UpsampleBilinear(batch_size, num_channels, input_height, input_width,
+      UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                        is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                        use_extrapolation_, extrapolation_value_, X->template Data<T>(),
                        Y->template MutableData<T>(), alloc, get_original_coordinate_);
@@ -647,8 +649,10 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context, const std::vector<floa
       const int64_t num_channels = is_2D ? 1 : dims[1];
       const int64_t input_height = is_2D ? dims[0] : dims[2];
       const int64_t input_width = is_2D ? dims[1] : dims[3];
+      const int64_t output_height = is_2D ? output_dims[0] : output_dims[2];
+      const int64_t output_width = is_2D ? output_dims[1] : output_dims[3];
 
-      ResizeBiCubic(batch_size, num_channels, input_height, input_width,
+      ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
                     is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], cubic_coeff_a_, use_extrapolation_,
                     extrapolation_value_, exclude_outside_, roi, X->template Data<float>(), Y->template MutableData<float>(),
                     get_original_coordinate_);
@@ -664,36 +668,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
-  if (OpKernel::Node().InputDefs().size() == 1) {
-    std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
-    return BaseCompute(context, scales_, roi_array);
-  }
-
-  // Both Roi and Scales are constant inputs
-  if (roi_cached_ && scales_cached_) {
-    return BaseCompute(context, scales_, roi_);
-  }
-
-  // Get scales data
-  std::vector<float> scales_array;
-  const std::vector<float>* scales_ptr = scales_cached_ ? &scales_ : &scales_array;
-
-  if (!scales_cached_) {
-    const auto* scales = context->Input<Tensor>(scales_input_idx_);
-    const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
-    ORT_ENFORCE(scales != nullptr);
-
-    // User must provide either the scales or sizes
-    if (scales->Shape().Size() == 0) {
-      ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
-                  "Either scales input or sizes input must be provided and the number of elements of scales or sizes should be the same as the rank of the input.");
-
-      ParseScalesDataFromSizes(sizes, X->Shape().GetDims(), scales_array);
-    } else {
-      ORT_ENFORCE(sizes == nullptr);
-      ParseScalesData(scales, scales_array);
-    }
-  }
+  std::vector<int64_t> output_dims(X->Shape().GetDims().size());
 
   // Get roi data
   // Initialize the roi array to all zeros as this will be the most common case
@@ -714,6 +689,47 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  return BaseCompute(context, *scales_ptr, *roi_ptr);
+  if (OpKernel::Node().InputDefs().size() == 1) {
+    // Compute output shape from scales and input dims
+    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
+    return BaseCompute(context, *roi_ptr, scales_, output_dims);
+  }
+
+  const auto* scales = context->Input<Tensor>(scales_input_idx_);
+  const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
+  ORT_ENFORCE(scales != nullptr);
+
+  if (scales_cached_) {
+    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+
+    // Compute output shape from scales and input dims
+    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
+    return BaseCompute(context, *roi_ptr, scales_, output_dims);
+  }
+
+  // Get scales data
+  std::vector<float> scales_array(X->Shape().GetDims().size());
+
+  if (scales != nullptr && scales->Shape().Size() != 0) {
+    ORT_ENFORCE(sizes == nullptr,
+                "Only one of scales or sizes must be provided as input.");
+    ParseScalesData(scales, scales_array);
+
+    // Compute output shape from scales and input dims
+    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+  } else {
+    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
+                "Either scales or sizes MUST be provided as input.");
+
+    // When sizes input is available directly populate it into the output_dims array.
+    memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
+
+    ORT_ENFORCE(X->Shape().GetDims().size() == output_dims.size(),
+                "Resize: input tensor's rank does not match the output tensor's rank.");
+
+    ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
+  }
+
+  return BaseCompute(context, *roi_ptr, scales_array, output_dims);
 }
 }  // namespace onnxruntime
