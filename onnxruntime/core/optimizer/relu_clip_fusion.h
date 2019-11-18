@@ -21,9 +21,9 @@ class FuseReluClip : public RewriteRule {
   }
 
  private:
-  bool SatisfyCondition(const Graph& graph, const Node& node) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
 
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

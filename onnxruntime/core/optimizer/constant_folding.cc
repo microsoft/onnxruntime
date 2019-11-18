@@ -11,7 +11,7 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -21,7 +21,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;
     }
 
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     InitializedTensorSet constant_inputs;
 
@@ -52,7 +52,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
 
     std::vector<OrtValue> fetches;
-    frame.GetOutputs(fetches);
+    ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
 
     // Go over all output node args and substitute them with the newly computed tensors, which will be
     // added to the graph as initializers.
@@ -62,8 +62,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       OrtValue& ort_value = fetches[fetch_idx];
 
       if (!ort_value.IsTensor()) {
-        LOGS_DEFAULT(WARNING) << "Unsupported output type of " << ort_value.Type()
-                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+          LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
+                                 << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
         unsupported_output_type = true;
         break;
       }

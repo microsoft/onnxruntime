@@ -19,6 +19,10 @@
 
 #include "core/platform/env.h"
 
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
+#endif
+
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;

@@ -43,7 +43,7 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                     |
 +---------------------+
 */
-Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -54,7 +54,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;  // we removed the node as part of an earlier fusion
 
     Node& reduce_mean_node = *p_reduce_mean;
-    ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1}) ||
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
@@ -218,23 +218,34 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     }
     nodes_to_remove.push_back(last_add_node);
 
-    // Get the inputs for the new LayerNormalization node
+    // Get the inputs for the new LayerNormalization node.
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) || 
           graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-        scale = mul_node.MutableInputDefs()[i];
+        // Scale must be 1d.
+        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
+          scale = mul_node.MutableInputDefs()[i];
+        }
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
       if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
           graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
-        bias = mul_node.MutableInputDefs()[i];
+        // Bias must be 1d.
+        if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
+          bias = last_add_node.MutableInputDefs()[i];
+        }
       }
     }
     if (scale == nullptr || bias == nullptr) {
+      continue;
+    }
+
+    // Scale and bias must have the same dimension. 
+    if (scale->Shape()->dim(0).dim_value() != bias->Shape()->dim(0).dim_value()) {
       continue;
     }
     const std::vector<NodeArg*> layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0], scale, bias};

@@ -25,7 +25,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
 }
 
 TEST(TensorrtExecutionProviderTest, FunctionTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -104,7 +104,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 }
 
 TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
