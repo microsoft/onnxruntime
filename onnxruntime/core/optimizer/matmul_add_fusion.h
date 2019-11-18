@@ -12,7 +12,7 @@ class MatMulAddFusion : public GraphTransformer {
   MatMulAddFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept 
       : GraphTransformer("MatMulAddFusion", compatible_execution_providers) {}
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime
