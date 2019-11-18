@@ -67,8 +67,8 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
 }
 
 void ServerEnvironment::RegisterExecutionProviders(){
-  #ifdef USE_MKLDNN
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(options_, 1));
+  #ifdef USE_DNNL
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(options_, 1));
   #endif
 
   #ifdef USE_NGRAPH
