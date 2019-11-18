@@ -8,22 +8,26 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      Clip,                                                                     \
-      kOnnxDomain,                                                              \
-      6, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Clip_6<T>);                                                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Clip,                                                                     \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Clip,                                                       \
+      kOnnxDomain,                                                \
+      6, 10,                                                      \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Clip_6<T>);                                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Clip,                                                       \
+      kOnnxDomain,                                                \
+      11,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Clip<T>);
 
 template <typename T>
@@ -52,11 +56,11 @@ Status Clip<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto max_val = std::numeric_limits<T>::infinity();
   if (min) {
     ORT_ENFORCE(min->Shape().NumDimensions() == 0, "min should be a scalar.");
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(&min_val, min->template Data<T>(), sizeof(T), cudaMemcpyDeviceToHost));
+    min_val = *(min->template Data<T>());
   }
   if (max) {
     ORT_ENFORCE(max->Shape().NumDimensions() == 0, "max should be a scalar.");
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(&max_val, max->template Data<T>(), sizeof(T), cudaMemcpyDeviceToHost));
+    max_val = *(max->template Data<T>());
   }
   ORT_ENFORCE(min_val <= max_val);
 
