@@ -2533,22 +2533,28 @@ Status Graph::SetGraphInputsOutputs() {
 
     // if something is coming from outer scope, consider it already added
     std::unordered_set<std::string> added_input_names{outer_scope_node_arg_names_};
+    graph_inputs_excluding_initializers_.clear();
     if (!graph_inputs_manually_set_) {
       graph_inputs_including_initializers_.clear();
-      graph_inputs_excluding_initializers_.clear();
     } else {
       // If we've set graph_inputs_including_initializers_ by calling SetInputs,
-      // we copy its elements to graph_inputs_excluding_initializers_.
+      // we copy its non-duplicate elements to graph_inputs_excluding_initializers_.
       // Later, we will erase initializers from graph_inputs_excluding_initializers_
       // if graph_inputs_manually_set_ is true.
-      // We do this because graph_inputs_including_initializers_ populated by SetInputs
-      // may contain implicit inputs which are not of any node's initializers in the graph.
-      // In other words, we can't see these implicit inputs by going through all nodes' inputs,
-      // since they are not part of the initializers. Consequently, these implicit inputs
-      // will *not* be added into graph_inputs_excluding_initializers_.
-      // In contrast, erasing initializers will ensure all implicit inputs to be included
-      // in graph_inputs_excluding_initializers_.
-      graph_inputs_excluding_initializers_ = graph_inputs_including_initializers_;
+      // In this way, we can ensure graph_inputs_excluding_initializers_ is the full
+      // set of inputs less initializers, which could be a graph input used only
+      // by a subgraph and thereby only an implicit input to a node, or a graph input
+      // not used anywhere.
+      // We also make sure graph_inputs_excluding_initializers_ list doesn't have any
+      // duplicate names.
+      std::unordered_set<std::string> existing_names;
+      for (auto arg : graph_inputs_including_initializers_) {
+        const std::string& name = arg->Name();
+        if (existing_names.count(name) == 0) {
+          graph_inputs_excluding_initializers_.push_back(arg);
+          existing_names.insert(name);
+        }
+      }
     }
 
     if (!graph_outputs_manually_set_) {
