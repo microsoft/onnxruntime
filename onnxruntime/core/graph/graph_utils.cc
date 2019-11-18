@@ -683,7 +683,7 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return &(edge->GetNode());
 }
 
-bool FindPath(const Node& node, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
+bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
   result.reserve(edges_to_match.size());
 
@@ -691,8 +691,8 @@ bool FindPath(const Node& node, const std::vector<EdgeEndToMatch>& edges_to_matc
   for (const auto& edge : edges_to_match) {
     const Node::EdgeEnd* edge_found = nullptr;
 
-    auto edges_begin = edge.is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
-    auto edges_end = edge.is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
+    auto edges_begin = is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
+    auto edges_end = is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
     for (auto it = edges_begin; it != edges_end; ++it) {
 
       if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && edge.op_type == it->GetNode().OpType() && MatchesOpSinceVersion(it->GetNode(), edge.versions) && MatchesOpSetDomain(it->GetNode(), edge.domain)) {
@@ -705,7 +705,7 @@ bool FindPath(const Node& node, const std::vector<EdgeEndToMatch>& edges_to_matc
         edge_found = &(*it);
 
         // For input edge, each dst_arg_index only accepts one input edge so only there is at most one match.
-        if (edge.is_input_edge) {
+        if (is_input_edge) {
           break;
         }
       }

@@ -203,9 +203,6 @@ const Node* GetInputNode(const Node& node, int arg_index);
     For input edge, the node in the edge end refers to the source node, otherwise the destination node.
 */
 struct EdgeEndToMatch {
-  // Is it input edge? False for output edge.
-  bool is_input_edge;
-
   // Source arg index of edge.
   int src_arg_index;
 
@@ -225,6 +222,7 @@ struct EdgeEndToMatch {
 /** Find a path that matches the specified edges.
     A path is a sequence of adjacent edges, and the result is returned as a list of EdgeEnd items.
 @param node is the current node to start matching.
+@param is_input_edge is a flag to indicate  whether the edges are input or output edges.
 @param edges_to_match has information of a sequence of adjacent edges in the path to be matched one by one.
 @param result stores edges that are found.
 @returns false when one edge has multiple candidates, or not all edges are found.
@@ -243,7 +241,7 @@ struct EdgeEndToMatch {
     It is recommended to match path from bottom to top direction to avoid such issue.
     It is because each node input (dst_arg_index) only accepts one input edge.
 */
-bool FindPath(const Node& node, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
+bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
 }  // namespace graph_utils
 }  // namespace onnxruntime

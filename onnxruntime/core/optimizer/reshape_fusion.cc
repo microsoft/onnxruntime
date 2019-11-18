@@ -109,12 +109,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
 
   // path 1: [Root] --> Shape --> Gather(indices=0) --> Unsqueeze (axes=0) --> Concat [input 0]
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {true, 0, 0, "Unsqueeze", {1}, kOnnxDomain},
-      {true, 0, 0, "Gather", {1}, kOnnxDomain},
-      {true, 0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, 0, "Unsqueeze", {1}, kOnnxDomain},
+      {0, 0, "Gather", {1}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(concat, parent_path, edges, logger)) {
+  if (!graph_utils::FindPath(concat, true, parent_path, edges, logger)) {
     return false;
   }
 
@@ -140,11 +140,11 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
 
   // path 2: [Root] --> Shape --> Gather(indices=1) --> Unsqueeze (axes=0) --> Concat [input 1]
   std::vector<graph_utils::EdgeEndToMatch> parent_path2 {
-      {true, 0, 1, "Unsqueeze", {1}, kOnnxDomain},
-      {true, 0, 0, "Gather", {1}, kOnnxDomain},
-      {true, 0, 0, "Shape", {1}, kOnnxDomain}};
+      {0, 1, "Unsqueeze", {1}, kOnnxDomain},
+      {0, 0, "Gather", {1}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain}};
 
-  if (!graph_utils::FindPath(concat, parent_path2, edges, logger)) {
+  if (!graph_utils::FindPath(concat, true, parent_path2, edges, logger)) {
     return false;
   }
 
