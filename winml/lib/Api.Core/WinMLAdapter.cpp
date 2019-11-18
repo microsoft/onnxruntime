@@ -110,7 +110,7 @@ public:
     HRESULT STDMETHODCALLTYPE GetTensor(ITensor ** tensor) override {
         auto tensor_inner = ort_value_.GetMutable<onnxruntime::Tensor>();
         auto tensor_outer = wil::MakeOrThrow<AbiSafeTensor>(tensor_inner, this);
-        return tensor_outer.CopyTo(__uuidof(ITensor), (void**)tensor);
+        return tensor_outer.CopyTo(__uuidof(ITensor), reinterpret_cast<void**>(tensor));
     }
 };  // class AbiSafeOrtValue
 
@@ -310,12 +310,21 @@ public:
             const char* path,
             IModelProto** model_proto) override {
         int file_descriptor;
+        _set_errno(0);  // clear errno
         _sopen_s(
             &file_descriptor,
             path,
             O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
             _SH_DENYWR,
             _S_IREAD | _S_IWRITE);
+
+        errno_t err = 0;
+        _get_errno(&err);
+        THROW_HR_IF_MSG(
+            __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND),
+            err == ENOENT,
+            "File not found: %s",
+            path);
 
         THROW_HR_IF_MSG(
             E_FAIL,
@@ -332,7 +341,7 @@ public:
             "The stream failed to parse.");
 
         auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
-        return model_proto_outer.CopyTo(__uuidof(IModelProto), (void**)model_proto);
+        return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
     }
 
     // factory methods for creating an ort model from a stream
@@ -349,19 +358,19 @@ public:
             "The stream failed to parse.");
 
         auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
-        return model_proto_outer.CopyTo(__uuidof(IModelProto), (void**)model_proto);
+        return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
     }
 
     // factory methods for creating an ort model from a model_proto
     HRESULT STDMETHODCALLTYPE CreateModelProto(IModelProto * model_proto_in, IModelProto** model_proto) override {
         auto model_proto_inner = new onnx::ModelProto(*model_proto_in->get());
         auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
-        return model_proto_outer.CopyTo(__uuidof(IModelProto), (void**)model_proto);
+        return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
     }
 
     HRESULT STDMETHODCALLTYPE CreateModelInfo(IModelProto * model_proto, IModelInfo ** model_info) override {
         auto model_info_outer = wil::MakeOrThrow<ModelInfo>(model_proto->get());
-        return model_info_outer.CopyTo(__uuidof(IModelInfo), (void**)model_info);
+        return model_info_outer.CopyTo(__uuidof(IModelInfo), reinterpret_cast<void**>(model_info));
     }
 
 
@@ -471,10 +480,10 @@ public:
 
         if (device == nullptr) {
             auto builder = wil::MakeOrThrow<CpuOrtSessionBuilder>();
-            return builder.CopyTo(__uuidof(IOrtSessionBuilder), (void**)session_builder);
+            return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
         } else {
             auto builder = wil::MakeOrThrow<DmlOrtSessionBuilder>(device, queue);
-            return builder.CopyTo(__uuidof(IOrtSessionBuilder), (void**)session_builder);
+            return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
         }
     }
 
@@ -713,7 +722,7 @@ extern "C"
 HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) {
     // make an adapter instance
     Microsoft::WRL::ComPtr<WinMLAdapter> adapterptr = wil::MakeOrThrow<WinMLAdapter>();
-    return adapterptr.CopyTo(__uuidof(IWinMLAdapter), (void **)adapter);
+    return adapterptr.CopyTo(__uuidof(IWinMLAdapter), reinterpret_cast<void**>(adapter));
 }
 
 
@@ -782,7 +791,7 @@ HRESULT STDMETHODCALLTYPE InferenceSession::NewIOBinding(IIOBinding** io_binding
     std::unique_ptr<onnxruntime::IOBinding> binding;
     ORT_THROW_IF_ERROR(this->session_->NewIOBinding(&binding));
     auto io_binding_outer = wil::MakeOrThrow<IOBinding>(binding.release());
-    return io_binding_outer.CopyTo(__uuidof(IIOBinding), (void**)io_binding);
+    return io_binding_outer.CopyTo(__uuidof(IIOBinding), reinterpret_cast<void**>(io_binding));
 }
 
 HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) {
