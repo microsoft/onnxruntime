@@ -83,7 +83,7 @@ template <typename T>
 class DnnlBatchNorm : public DnnlKernel {
  public:
   explicit DnnlBatchNorm(const MklDnnNode& node,
-                           MKLDNNExecutionProvider* provider,
+                           DNNLExecutionProvider* provider,
                            const NodeAttributes& attributes,
                            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
@@ -138,7 +138,7 @@ class DnnlBatchNorm : public DnnlKernel {
     int num_dimensions = static_cast<int>(x_shape.NumDimensions());
     if (num_dimensions == 3) {
       primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                                  "1D BatchNormalization is not supported in MKLDNN.");
+                                                  "1D BatchNormalization is not supported in DNNL.");
       return;
     }
 
@@ -289,7 +289,7 @@ class DnnlBatchNorm : public DnnlKernel {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
-    // abort as MKLDNN cannot execute this. but
+    // abort as DNNL cannot execute this. but
     // ORT try to delete output_tensor buffer data. allocate memory so that it can delete
     // fix for test_averagepool_1d_default node test
     ORT_RETURN_IF_ERROR(primitive_created_status_);

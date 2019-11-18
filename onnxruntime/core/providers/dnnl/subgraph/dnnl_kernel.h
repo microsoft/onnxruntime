@@ -18,7 +18,7 @@ namespace ort_dnnl {
 class DnnlKernel {
  public:
   DnnlKernel(const MklDnnNode& node,
-               MKLDNNExecutionProvider* provider) {
+               DNNLExecutionProvider* provider) {
     name_ = node.name;
     mklnode_ptr_ = std::make_shared<MklDnnNode>(node);
     provider_ = provider;
@@ -37,10 +37,10 @@ class DnnlKernel {
     ORT_UNUSED_PARAMETER(context);
     ORT_UNUSED_PARAMETER(cpu_engine);
   }
-  virtual void SetProvider(MKLDNNExecutionProvider* provider) {
+  virtual void SetProvider(DNNLExecutionProvider* provider) {
     provider_ = provider;
   }
-  MKLDNNExecutionProvider* GetProvider() {
+  DNNLExecutionProvider* GetProvider() {
     return provider_;
   }
 
@@ -114,7 +114,7 @@ class DnnlKernel {
   // memory used for reorders
   std::unique_ptr<dnnl::memory> reorder_dst_mem_to_;
   AllocatorPtr alloc_;
-  MKLDNNExecutionProvider* provider_;
+  DNNLExecutionProvider* provider_;
 };
 
 }  // namespace ort_dnnl

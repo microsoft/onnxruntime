@@ -14,7 +14,7 @@ template <typename T>
 class DnnlPool : public DnnlKernel {
  public:
   DnnlPool(const MklDnnNode& node,
-             MKLDNNExecutionProvider* provider,
+             DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     op_name_ = node.name;
@@ -78,7 +78,7 @@ class DnnlPool : public DnnlKernel {
 
     if (x_shape_.NumDimensions() <= 3) {
       primitive_created_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                                  "1D Pooling is not supported by MKLDNN.");
+                                                  "1D Pooling is not supported by DNNL.");
     }
 
     if (global_pooling_) {

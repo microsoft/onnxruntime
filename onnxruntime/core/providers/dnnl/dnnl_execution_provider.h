@@ -21,19 +21,19 @@ struct memory;
 namespace onnxruntime {
 
 // Information needed to construct DNNL execution providers.
-struct MKLDNNExecutionProviderInfo {
+struct DNNLExecutionProviderInfo {
   bool create_arena{true};
 
-  explicit MKLDNNExecutionProviderInfo(bool use_arena)
+  explicit DNNLExecutionProviderInfo(bool use_arena)
       : create_arena(use_arena) {}
-  MKLDNNExecutionProviderInfo() = default;
+  DNNLExecutionProviderInfo() = default;
 };
 
 // Logical device representation.
-class MKLDNNExecutionProvider : public IExecutionProvider {
+class DNNLExecutionProvider : public IExecutionProvider {
  public:
-  explicit MKLDNNExecutionProvider(const MKLDNNExecutionProviderInfo& info);
-  virtual ~MKLDNNExecutionProvider();
+  explicit DNNLExecutionProvider(const DNNLExecutionProviderInfo& info);
+  virtual ~DNNLExecutionProvider();
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
