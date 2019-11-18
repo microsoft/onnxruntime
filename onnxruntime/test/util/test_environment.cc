@@ -43,7 +43,7 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
                                                         &default_logger_id);
 
     // make sure default logging manager exists and is working
-    auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+    auto logger = DefaultLoggingManager().DefaultLogger();
     LOGS(logger, VERBOSE) << "Logging manager initialized.";
   }
 
