@@ -32,6 +32,7 @@ namespace FileHelpers
     std::wstring GetWinMLPath()
     {
         bool inboxDll = false;
+        // TODO Add command line parsing
         // if (SUCCEEDED(WEX::TestExecution::RuntimeParameters::TryGetValue(L"inbox", inboxDll)) && inboxDll)
         // {
         //     return L"";

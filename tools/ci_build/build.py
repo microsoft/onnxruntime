@@ -624,10 +624,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_winml_tests():
-    print('WinML tests not implemented')
-    # raise NotImplementedError()
-
 def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -987,14 +983,10 @@ def main():
         build_targets(cmake_path, build_dir, configs, args.parallel)
 
     if args.test :
-        if args.use_winml and not args.skip_winml_tests:
-            run_winml_tests()
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
                               args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt, args.use_ngraph,
                               args.use_dnnlibrary)
-        # if args.use_winml and not args.skip_winml_tests:
-        #     run_winml_tests()
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:
             # directory from ONNX submodule with ONNX test data
