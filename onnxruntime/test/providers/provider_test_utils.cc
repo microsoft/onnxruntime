@@ -623,7 +623,7 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
-          execution_provider = DefaultMkldnnExecutionProvider();
+          execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kNGraphExecutionProvider)
           execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)

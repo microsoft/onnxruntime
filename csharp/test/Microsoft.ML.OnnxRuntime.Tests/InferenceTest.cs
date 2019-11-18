@@ -79,7 +79,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.AppendExecutionProvider_CPU(1);
 #if USE_DNNL
-                opt.AppendExecutionProvider_Mkldnn(0);
+                opt.AppendExecutionProvider_Dnnl(0);
 #endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);

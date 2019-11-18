@@ -36,7 +36,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -151,7 +151,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
             enable_mkl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;

@@ -28,10 +28,10 @@
 #endif
 
 #if USE_DNNL
-#define BACKEND_MKLDNN "-DNNL"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
+#define BACKEND_DNNL "-DNNL"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
 #else
-#define BACKEND_MKLDNN ""
+#define BACKEND_DNNL ""
 #endif
 
 #if USE_MKLML
@@ -78,7 +78,7 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_MKLDNN BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -91,7 +91,7 @@
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
 #ifdef USE_DNNL
-#include "core/providers/mkldnn/mkldnn_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 #ifdef USE_NGRAPH
 #include "core/providers/ngraph/ngraph_provider_factory.h"
@@ -111,7 +111,7 @@ namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
@@ -256,7 +256,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kMklDnnExecutionProvider,
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
                                                    kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
                                                    kBrainSliceExecutionProvider, kCpuExecutionProvider};
   return all_providers;
@@ -272,7 +272,7 @@ const std::vector<std::string>& GetAvailableProviders() {
     available_providers.push_back(kCudaExecutionProvider);
 #endif
 #ifdef USE_DNNL
-    available_providers.push_back(kMklDnnExecutionProvider);
+    available_providers.push_back(kDnnlExecutionProvider);
 #endif
 #ifdef USE_NGRAPH
     available_providers.push_back(kNGraphExecutionProvider);
@@ -305,9 +305,9 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
       // device id??
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
 #endif
-    } else if (type == kMklDnnExecutionProvider) {
+    } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Mkldnn(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kNGraphExecutionProvider) {
 #if USE_NGRAPH
@@ -382,7 +382,7 @@ void addGlobalMethods(py::module& m) {
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
         std::vector<onnxruntime::KernelDef> result;
 
-        // default logger is needed to create the MklDNNExecutionProvider
+        // default logger is needed to create the DnnlExecutionProvider
         std::string default_logger_id{"DefaultLogger"};
         std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
             onnxruntime::make_unique<LoggingManager>(
@@ -399,7 +399,7 @@ void addGlobalMethods(py::module& m) {
             onnxruntime::CreateExecutionProviderFactory_CUDA(0),
 #endif
 #ifdef USE_DNNL
-            onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
+            onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
 #endif
 #ifdef USE_NGRAPH
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),

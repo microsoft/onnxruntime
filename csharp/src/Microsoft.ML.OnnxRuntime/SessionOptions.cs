@@ -82,7 +82,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 #if USE_DNNL
-        public void AppendExecutionProvider_Mkldnn(int useArena)
+        public void AppendExecutionProvider_Dnnl(int useArena)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
         }

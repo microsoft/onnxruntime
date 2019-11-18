@@ -84,7 +84,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
-  // mkldnn weights(filer data) memory blocks from first iteration
+  // dnnl weights(filer data) memory blocks from first iteration
   // saved by weights name
   std::unordered_map<std::string, std::shared_ptr<dnnl::memory>> weights_mem_map_;
   // Save reordered memory buffers in list so that memory is not freed.

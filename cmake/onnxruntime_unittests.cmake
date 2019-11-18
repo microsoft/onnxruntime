@@ -438,7 +438,7 @@ add_custom_command(
   ${TEST_DATA_DES})
 if(WIN32)
   if (onnxruntime_USE_DNNL)
-    list(APPEND onnx_test_libs mkldnn)
+    list(APPEND onnx_test_libs dnnl)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>

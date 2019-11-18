@@ -19,10 +19,10 @@ For build instructions, please see the [BUILD page](../../BUILD.md#mkldnn-and-mk
 
 ## Using the DNNL Execution Provider
 ### C/C++
-The MKLDNNExecutionProvider execution provider needs to be registered with ONNX Runtime to enable in the inference session.
+The DNNLExecutionProvider execution provider needs to be registered with ONNX Runtime to enable in the inference session.
 ```
 InferenceSession session_object{so};
-session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime:: MKLDNNExecutionProvider >());
+session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime:: DNNLExecutionProvider >());
 status = session_object.Load(model_file_name);
 ```
 The C API details are [here](../C_API.md#c-api).

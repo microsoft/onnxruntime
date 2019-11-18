@@ -72,7 +72,7 @@ void TestInference(Ort::Env& env, T model_uri,
   } else if (provider_type == 2) {
 #ifdef USE_DNNL
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
-    std::cout << "Running simple inference with mkldnn provider" << std::endl;
+    std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;
 #endif

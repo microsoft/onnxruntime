@@ -126,7 +126,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
     parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
-    parser.add_argument("--use_dnnl", action='store_true', help="Build with MKLDNN.")
+    parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
     parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
@@ -632,7 +632,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         cmd = []
         if provider:
           cmd += ["-e", provider]
-          if provider == 'mkldnn':
+          if provider == 'dnnl':
              cmd += ['-c', '1']
           if provider == 'openvino':
              cmd += ['-c', '1']
@@ -661,8 +661,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 
-# mkldnn temporary function for running onnx tests and model tests separately.
-def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+# dnnl temporary function for running onnx tests and model tests separately.
+def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -671,7 +671,7 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-e', 'mkldnn', '-c', '1', '-j', '1']
+        cmd_base = ['-e', 'dnnl', '-c', '1', '-j', '1']
         if os.path.exists(onnx_test_data_dir):
           onnxdata_cmd = cmd_base + [onnx_test_data_dir]
           # /data/onnx
@@ -856,7 +856,7 @@ def generate_documentation(source_dir, build_dir, configs):
         print('git diff returned non-zero error code')
     if len(docdiff) > 0:
         # Show warning instead of throwing exception, because it is dependent on build configuration for including execution propviders
-        log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, MKLDNN and CUDA providers enabled.')
+        log.warning('The updated opkernel document file '+str(opkernel_doc_path)+' is different from the checked in version. Consider regenrating the file with CPU, DNNL and CUDA providers enabled.')
         log.debug('diff:\n'+str(docdiff))
 
     docdiff = ''
@@ -1013,7 +1013,7 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)
 
               if args.use_dnnl:
-                mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+                dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
