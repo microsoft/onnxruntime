@@ -20,9 +20,9 @@ struct DnnlProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
-  MKLDNNExecutionProviderInfo info;
+  DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
-  return onnxruntime::make_unique<MKLDNNExecutionProvider>(info);
+  return onnxruntime::make_unique<DNNLExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {

@@ -81,7 +81,7 @@ namespace perftest {
         } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kMklDnnExecutionProvider;
+          test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {

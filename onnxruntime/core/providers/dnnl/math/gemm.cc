@@ -15,7 +15,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Gemm,
     kOnnxDomain,
     7,
-    kMklDnnExecutionProvider,
+    kDnnlExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
 

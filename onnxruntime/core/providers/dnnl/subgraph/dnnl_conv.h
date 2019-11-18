@@ -64,7 +64,7 @@ template <typename T>
 class DnnlConv : public DnnlKernel {
  public:
   DnnlConv(const MklDnnNode& node,
-             MKLDNNExecutionProvider* provider,
+             DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);
@@ -233,7 +233,7 @@ class DnnlConv : public DnnlKernel {
     src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
 
-    // Set the memory descriptors to format::any to allow MKLDNN to decide what the optimal memory layout should be
+    // Set the memory descriptors to format::any to allow DNNL to decide what the optimal memory layout should be
     // for the computation given the input
     filter_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({filter_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));

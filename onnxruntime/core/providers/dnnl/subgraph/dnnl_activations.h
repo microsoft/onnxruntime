@@ -16,7 +16,7 @@ template <typename T>
 class DnnlRelu : public DnnlKernel {
  public:
   DnnlRelu(const MklDnnNode& node,
-             MKLDNNExecutionProvider* provider,
+             DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ORT_UNUSED_PARAMETER(attributes);

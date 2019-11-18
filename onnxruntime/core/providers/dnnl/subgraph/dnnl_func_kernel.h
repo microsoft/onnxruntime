@@ -14,7 +14,7 @@ namespace ort_dnnl {
 namespace {
 struct SubgraphParams {
   NodeAttributes attributes;
-  MKLDNNExecutionProvider* provider;
+  DNNLExecutionProvider* provider;
   std::shared_ptr<Subgraph> subgraph;
   std::string subgraph_id;
   std::string subgraph_key;
@@ -28,7 +28,7 @@ class DnnlFuncKernel {
  public:
   explicit DnnlFuncKernel(const ComputeContext* context,
                             const NodeAttributes& attributes,
-                            MKLDNNExecutionProvider* provider) {
+                            DNNLExecutionProvider* provider) {
     ORT_UNUSED_PARAMETER(context);
 
     params_.provider = provider;

@@ -208,7 +208,7 @@ class SubgraphPrimitive : public PrimitiveBase {
   dnnl::engine& cpu_engine_;
 };
 
-// Pool which allows for reuse of MKLDNN Conv primitives which are expensive to instantiate.
+// Pool which allows for reuse of DNNL Conv primitives which are expensive to instantiate.
 // To address thread safety, the primitives are stored in a map on thread local storage.
 template <typename T>
 class SubgraphPrimitivePool : public PrimitivePool<T> {

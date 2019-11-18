@@ -16,7 +16,7 @@ template <typename T>
 class DnnlLrn : public DnnlKernel {
  public:
   DnnlLrn(const MklDnnNode& node,
-            MKLDNNExecutionProvider* provider,
+            DNNLExecutionProvider* provider,
             const NodeAttributes& attributes,
             const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ReadAttributes(attributes, attributes_prefix);

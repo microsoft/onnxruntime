@@ -469,8 +469,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
   broken_tests.insert({"candy", "result mismatch"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
 #endif
 
 #ifdef USE_OPENVINO
