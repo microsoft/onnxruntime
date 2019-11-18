@@ -31,11 +31,13 @@ DECLARE_TVM_SCHEDULER_CLASS(True, NupharX86PartialResult)
 // utilities
 bool TryVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx);
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched);
 
 bool InputRootScheduleWithVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx);
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched);
 
 }  // namespace nuphar
 }  // namespace onnxruntime
