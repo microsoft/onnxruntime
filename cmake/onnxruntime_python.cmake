@@ -230,6 +230,7 @@ if (onnxruntime_USE_INTEL)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${OPENVINO_NGRAPH_LIB_DIR}/libngraph.so
         ${OPENVINO_LIB_DIR}/libinference_engine.so
+        ${OPENVINO_LIB_DIR}/plugins.xml
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
     )
 endif()
