@@ -204,7 +204,7 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 ---
 
 ### DNNL and MKLML
-See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
+See more information on DNNL and MKL-ML [here](./docs/execution_providers/MKLDNN-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
