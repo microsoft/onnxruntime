@@ -149,14 +149,14 @@ class DNNLExecutionProvider : public IExecutionProvider {
     return supported;
   }
 
-  void CreateOrUpdateMklDnnNode(const Node* node,
+  void CreateOrUpdateDnnlNode(const Node* node,
                                 std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
                                 ort_dnnl::Subgraph::SubgraphVariables& sub_var,
                                 bool fused,
                                 std::map<std::string, size_t>& output_to_source_node_map,
                                 NodeAttributes& subgraph_attributes) const;
 
-  // Create MklDnn node, update inputs, outputs and parent nodes
+  // Create Dnnl node, update inputs, outputs and parent nodes
   // collect attribtes
   void CreateMetaDef(const onnxruntime::GraphViewer& graph_viewer,
                      const NodeAttributes& subgraph_attributes,
@@ -165,14 +165,14 @@ class DNNLExecutionProvider : public IExecutionProvider {
                      std::vector<std::unique_ptr<ComputeCapability>>& result) const;
 
  public:
-  const std::shared_ptr<ort_dnnl::Subgraph> GetMklDnnSubgraph(const std::string& subgraph_id) {
+  const std::shared_ptr<ort_dnnl::Subgraph> GetDnnlSubgraph(const std::string& subgraph_id) {
     return mkl_subgraphs_[subgraph_id];
   }
 
  private:
   mutable int subgraph_index_ = 0;
 
-  // supported MklDnn Operators
+  // supported Dnnl Operators
   std::set<std::string> DNNL_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
                                        "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
 

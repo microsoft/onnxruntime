@@ -14,7 +14,7 @@ namespace ort_dnnl {
 template <typename T>
 class DnnlSum : public DnnlKernel {
  public:
-  explicit DnnlSum(const MklDnnNode& node,
+  explicit DnnlSum(const DnnlNode& node,
                      DNNLExecutionProvider* provider,
                      const NodeAttributes& attributes,
                      const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
@@ -46,7 +46,7 @@ class DnnlSum : public DnnlKernel {
       dnnl::memory::dims src_dims(
           x_shape.GetDims().begin(), x_shape.GetDims().end());
       ort_source_desc_ = dnnl::memory::desc(
-          {src_dims}, MklDnnType<T>(), ort_source_format_);
+          {src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
     } else {
       x_shape = parents_[0].get()->primitive_dst_shape_;
@@ -74,7 +74,7 @@ class DnnlSum : public DnnlKernel {
         x_shape1 = TensorShape(xshape, xdim);
         dnnl::memory::dims src_dims(
             x_shape1.GetDims().begin(), x_shape1.GetDims().end());
-        auto mpd = dnnl::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_);
+        auto mpd = dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_);
         auto src_memory = dnnl::memory(mpd, cpu_engine, nullptr);
         srcs_pd_.push_back(mpd);
         srcs_memory_.push_back(src_memory);
@@ -90,7 +90,7 @@ class DnnlSum : public DnnlKernel {
     }
 
     primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({dst_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
     sum_pd_ = onnxruntime::make_unique<dnnl::sum::primitive_desc>(
         dnnl::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, cpu_engine));
 
@@ -107,7 +107,7 @@ class DnnlSum : public DnnlKernel {
             dnnl::memory(sum_pd_->dst_desc(), cpu_engine, nullptr));
       }
     } else {
-      // Intermediate node. Use mkldnn kernel internal memory for output and
+      // Intermediate node. Use Dnnl kernel internal memory for output and
       // use this as input to next node.
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(sum_pd_->dst_desc(), cpu_engine));
@@ -126,7 +126,7 @@ class DnnlSum : public DnnlKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      dnnl::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = DnnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }

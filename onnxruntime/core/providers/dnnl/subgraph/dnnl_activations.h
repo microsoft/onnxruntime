@@ -15,7 +15,7 @@ namespace ort_dnnl {
 template <typename T>
 class DnnlRelu : public DnnlKernel {
  public:
-  DnnlRelu(const MklDnnNode& node,
+  DnnlRelu(const DnnlNode& node,
              DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
@@ -56,12 +56,12 @@ class DnnlRelu : public DnnlKernel {
           x_shape.GetDims().begin(), x_shape.GetDims().end());
 
       ort_source_desc_ = dnnl::memory::desc(
-          {src_dims}, MklDnnType<T>(), ort_source_format_);
+          {src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-          dnnl::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_));
+          dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
       src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory({{src_dims}, MklDnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
+          dnnl::memory({{src_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
     } else {
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
@@ -95,7 +95,7 @@ class DnnlRelu : public DnnlKernel {
         primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine, nullptr));
       }
     } else {
-      // Intermediate node. Use mkldnn kernel internal memory for output and
+      // Intermediate node. Use dnnl kernel internal memory for output and
       // use this as input to next node.
       primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine));
     }
@@ -111,7 +111,7 @@ class DnnlRelu : public DnnlKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      dnnl::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = DnnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }

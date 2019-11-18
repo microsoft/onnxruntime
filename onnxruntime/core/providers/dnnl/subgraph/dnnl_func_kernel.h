@@ -37,7 +37,7 @@ class DnnlFuncKernel {
     auto sub_it = attributes.find("subgraph_id");
     if (sub_it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING) {
       params_.subgraph_id = sub_it->second.s();
-      params_.subgraph = provider->GetMklDnnSubgraph(params_.subgraph_id);
+      params_.subgraph = provider->GetDnnlSubgraph(params_.subgraph_id);
 
       std::ostringstream key_os;
       key_os << params_.subgraph->graph_name << "_" << params_.subgraph_id << "-";

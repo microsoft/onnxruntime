@@ -82,7 +82,7 @@ class BatchNormHelper {
 template <typename T>
 class DnnlBatchNorm : public DnnlKernel {
  public:
-  explicit DnnlBatchNorm(const MklDnnNode& node,
+  explicit DnnlBatchNorm(const DnnlNode& node,
                            DNNLExecutionProvider* provider,
                            const NodeAttributes& attributes,
                            const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
@@ -122,10 +122,10 @@ class DnnlBatchNorm : public DnnlKernel {
           x_shape.GetDims().begin(), x_shape.GetDims().end());
 
       ort_source_desc_ = dnnl::memory::desc(
-          {src_dims}, MklDnnType<T>(), ort_source_format_);
+          {src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-          dnnl::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_));
+          dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
     } else {
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
@@ -197,13 +197,13 @@ class DnnlBatchNorm : public DnnlKernel {
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
 
     scale_shift_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({2, scale_dims_mkl[0]}, MklDnnType<T>(), dnnl::memory::format_tag::nc));
+        dnnl::memory::desc({2, scale_dims_mkl[0]}, DnnnType<T>(), dnnl::memory::format_tag::nc));
     mean_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({mean_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::x));
+        dnnl::memory::desc({mean_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::x));
     var_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({var_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::x));
+        dnnl::memory::desc({var_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::x));
     primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({dst_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     // scale_shift_mem will allocate 2*C*sizeof(float) buffer
     //
@@ -254,7 +254,7 @@ class DnnlBatchNorm : public DnnlKernel {
     }
 
     if (mklnode_ptr_->output_index >= 0) {
-      // Use mkldnn's internal output buffer
+      // Use Dnnl's internal output buffer
       if (primitive_dst_desc_ != ort_source_desc_) {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(batchnorm_fwd_pd_->dst_desc(), cpu_engine));
@@ -280,7 +280,7 @@ class DnnlBatchNorm : public DnnlKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      dnnl::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = DnnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }

@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-struct MklDnnNode {
+struct DnnlNode {
   std::string name;
   int node_index = -1;
   int input_start_index = -1;  // start index in inputs()
@@ -63,7 +63,7 @@ struct Subgraph {
 
   std::string graph_name;
   std::string subgraph_id;
-  std::vector<MklDnnNode> DNNL_nodes;
+  std::vector<DnnlNode> DNNL_nodes;
 };
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

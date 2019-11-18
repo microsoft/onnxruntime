@@ -17,10 +17,10 @@ namespace ort_dnnl {
 
 class DnnlKernel {
  public:
-  DnnlKernel(const MklDnnNode& node,
+  DnnlKernel(const DnnlNode& node,
                DNNLExecutionProvider* provider) {
     name_ = node.name;
-    mklnode_ptr_ = std::make_shared<MklDnnNode>(node);
+    mklnode_ptr_ = std::make_shared<DnnlNode>(node);
     provider_ = provider;
     alloc_ = provider_->GetAllocator(0, OrtMemTypeDefault);
   }
@@ -107,7 +107,7 @@ class DnnlKernel {
 
  protected:
   // Pointer to MklNode of subgraph IR
-  std::shared_ptr<MklDnnNode> mklnode_ptr_;
+  std::shared_ptr<DnnlNode> mklnode_ptr_;
   // input format expected by primitive object
   dnnl::memory::desc primitive_src_desc_;
 

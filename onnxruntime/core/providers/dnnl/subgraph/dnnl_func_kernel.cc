@@ -194,7 +194,7 @@ class SubgraphPrimitive : public PrimitiveBase {
   };
 
   void Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) {
-    // Propagate mkldnn block format
+    // Propagate Dnnl block format
     // dst format of current node to src format of next node
     for (auto& kernel : context_.kernels) {
       kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);

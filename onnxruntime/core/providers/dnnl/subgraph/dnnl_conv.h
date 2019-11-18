@@ -63,7 +63,7 @@ Status ComputePadAndOutputShape(
 template <typename T>
 class DnnlConv : public DnnlKernel {
  public:
-  DnnlConv(const MklDnnNode& node,
+  DnnlConv(const DnnlNode& node,
              DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
@@ -101,7 +101,7 @@ class DnnlConv : public DnnlKernel {
       ort_source_format_ = dnnl::memory::format_tag::any;
       x_shape = TensorShape(xshape, xdim);
     } else {
-      // get the output of previous node (mkldnn block propagation).
+      // get the output of previous node (Dnnl block propagation).
       // TODO Sourcenode will set src of this node.
       x_shape = parents_[0].get()->primitive_dst_shape_;
       ort_source_format_ = parents_[0].get()->ort_source_format_;
@@ -168,7 +168,7 @@ class DnnlConv : public DnnlKernel {
     TensorShape output_shape = y_shape.Slice(2);
     dnnl::memory::dims dst_dims_mkl(y_dims.begin(), y_dims.end());
     primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({dst_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::memory::dims filter_dims_mkl;
     if (group_mkl == 1) {
@@ -180,7 +180,7 @@ class DnnlConv : public DnnlKernel {
     }
     dnnl::memory::dims strides_mkl(strides.begin(), strides.end());
     dnnl::memory::dims dilations_mkl(dilations.begin(), dilations.end());
-    // mkldnn dilations start from 0 so we need to subtract 1 from each dim.
+    // Dnnl dilations start from 0 so we need to subtract 1 from each dim.
     for (size_t dim = 0; dim < kernel_rank; dim++) {
       dilations_mkl[dim] -= 1;
     }
@@ -226,20 +226,20 @@ class DnnlConv : public DnnlKernel {
     dnnl::memory::dims src_dims_mkl(x_shape.GetDims().begin(), x_shape.GetDims().end());
     if (mklnode_ptr_->parent_nodes.empty()) {
       ort_source_format_ = src_format;
-      ort_source_desc_ = dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
-      source_desc_ = dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format);
+      ort_source_desc_ = dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), src_format);
+      source_desc_ = dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), src_format);
     }
 
     src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     // Set the memory descriptors to format::any to allow DNNL to decide what the optimal memory layout should be
     // for the computation given the input
     filter_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({filter_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({filter_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
     if (!bias_dims_mkl.empty())
       bias_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-          dnnl::memory::desc({bias_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+          dnnl::memory::desc({bias_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::memory::dims conv_zero_padding = {0, 0};
 
@@ -294,7 +294,7 @@ class DnnlConv : public DnnlKernel {
 
     if (primitive_src_desc_ != source_desc_) {
       dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
-      auto pd = dnnl::memory::desc({{src_dims}, MklDnnType<T>(), ort_source_format_});
+      auto pd = dnnl::memory::desc({{src_dims}, DnnnType<T>(), ort_source_format_});
 
       if (mklnode_ptr_->parent_nodes.empty())
         src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
@@ -317,7 +317,7 @@ class DnnlConv : public DnnlKernel {
     }
 
     if (mklnode_ptr_->output_index >= 0) {
-      // Use mkldnn's internal output buffer
+      // Use Dnnl's internal output buffer
       if (primitive_dst_desc_ != ort_source_desc_) {
         primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
             dnnl::memory(conv_fwd_pd_.get()->dst_desc(), cpu_engine));
@@ -352,7 +352,7 @@ class DnnlConv : public DnnlKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      dnnl::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = DnnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }
@@ -388,7 +388,7 @@ class DnnlConv : public DnnlKernel {
       std::shared_ptr<dnnl::memory> filter_dst_mem = provider_->GetWeightsMemoryBuffer(mklnode_ptr_->weight_name);
 
       if (filter_dst_mem == nullptr) {
-        dnnl::memory src = dnnl::memory({{filter_dims_mkl}, MklDnnType<T>(), filter_format_}, cpu_engine, (void*)filter_data);
+        dnnl::memory src = dnnl::memory({{filter_dims_mkl}, DnnnType<T>(), filter_format_}, cpu_engine, (void*)filter_data);
         IAllocatorUniquePtr<void> filter_reorder_buffer =
             IAllocator::MakeUniquePtr<void>(alloc_, filter_size_);
         filter_dst_mem = onnxruntime::make_unique<dnnl::memory>(

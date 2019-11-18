@@ -11,11 +11,11 @@ namespace onnxruntime {
 namespace ort_dnnl {
 
 template <typename T>
-static dnnl::memory::data_type MklDnnType();
+static dnnl::memory::data_type DnnnType();
 
 // Add more types here as needed.
 template <>
-dnnl::memory::data_type MklDnnType<float>() {
+dnnl::memory::data_type DnnnType<float>() {
   return dnnl::memory::data_type::f32;
 }
 

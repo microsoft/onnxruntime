@@ -44,7 +44,7 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 namespace ort_dnnl {
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm);
 
-void RegisterMKLDNNKernels(KernelRegistry& kernel_registry) {
+void RegisterDNNLKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDnnlExecutionProvider, kOnnxDomain, 7, Gemm)>,
   };
@@ -54,21 +54,19 @@ void RegisterMKLDNNKernels(KernelRegistry& kernel_registry) {
   }
 }
 
-std::shared_ptr<KernelRegistry> GetMklDnnKernelRegistry() {
+std::shared_ptr<KernelRegistry> GetDnnlKernelRegistry() {
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterMKLDNNKernels(*kernel_registry);
+  RegisterDNNLKernels(*kernel_registry);
   return kernel_registry;
 }
 }  // namespace ort_dnnl
 
 std::shared_ptr<KernelRegistry> DNNLExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::ort_dnnl::GetMklDnnKernelRegistry();
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::ort_dnnl::GetDnnlKernelRegistry();
   return kernel_registry;
 }
 
 bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_viewer) const {
-  // switch between mkldnn-vanilla and mkldnn-subgraph implementation using
-  // DNNL_SUBGRAPH environment variable
   bool use_subgraph = true;
 
   bool FP16_graph = false;
@@ -113,7 +111,7 @@ bool DNNLExecutionProvider::UseSubgraph(const onnxruntime::GraphViewer& graph_vi
   return use_subgraph;
 }
 
-void DNNLExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
+void DNNLExecutionProvider::CreateOrUpdateDnnlNode(const Node* node,
                                                        std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
                                                        ort_dnnl::Subgraph::SubgraphVariables& sub_var,
                                                        bool fused,
@@ -123,7 +121,7 @@ void DNNLExecutionProvider::CreateOrUpdateMklDnnNode(const Node* node,
   sub_var.outputs.push_back(node->OutputDefs()[0]->Name());
 
   if (!fused) {
-    ort_dnnl::MklDnnNode DNNL_node;
+    ort_dnnl::DnnlNode DNNL_node;
     DNNL_node.name = node->OpType();
     DNNL_node.num_inputs = static_cast<int>(node->InputDefs().size());
     DNNL_node.input_start_index = static_cast<int>(sub_var.inputs.size()) - 1;
@@ -186,8 +184,6 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
     const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
-  // temporary switch to toggle between mkldnn-vanilla and mkldnn-subgraph implementation using
-  // ORT_DNNL_SUBGRAPH environment variable
   if (UseSubgraph(graph_viewer) == false) {
     return IExecutionProvider::GetCapability(graph_viewer, kernel_registries);
   }
@@ -233,7 +229,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
     if (op_it != DNNL_ops_.end()) {
       sub_var.subgraph_node_indexes.push_back(node->Index());
 
-      // can we fuse (at mkldnn level) nodes?
+      // can we fuse (at Dnnl level) nodes?
       bool fused = false;
       if (sub_var.subgraph_node_indexes.size() > 1 && node->OpType() == "BatchNormalization") {
         if (subgraph_ptr->DNNL_nodes.back().name == "Conv") {
@@ -251,12 +247,12 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
       // Create MklDnn node:
       //   Update inputs, outputs and parent nodes
       //   Collect attributes and modify the key to make it unique
-      CreateOrUpdateMklDnnNode(node, subgraph_ptr, sub_var, fused, output_to_source_node_map, subgraph_attributes);
+      CreateOrUpdateDnnlNode(node, subgraph_ptr, sub_var, fused, output_to_source_node_map, subgraph_attributes);
 
       auto temp_index = node_index + 1;
       if (temp_index < graph_viewer.MaxNodeIndex()) {
         if (!sub_var.subgraph_node_indexes.empty()) {
-          // if next node is mkldnn node and if it's input is not output of current node
+          // if next node is Dnnl node and if it's input is not output of current node
           //   if next node input is output of any of the nodes in sub-graph continue
           // else
           //   break and create sub-graph
@@ -290,8 +286,8 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
         if (!sub_var.subgraph_node_indexes.empty()) {
           if (node->GetOutputEdgesCount() > 1) {
             // If current node has branches
-            //    iterate and see if all nodes are mkldnn ops OR
-            //      it ends in node with same number of input edges (mkldnn node or cpu node)
+            //    iterate and see if all nodes are Dnnl ops OR
+            //      it ends in node with same number of input edges (Dnnl node or cpu node)
             //      create sub-graph
             bool create_subgraph = false;
             bool break_loop = false;
@@ -303,11 +299,11 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
                   next_node = graph_viewer.GetNode(temp_index);
                 }
                 if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
-                  // if all nodes in the branch loop are mkldnn nodes
+                  // if all nodes in the branch loop are Dnnl nodes
                   // then continue with adding nodes to sub-graph
                   break_loop = true;
                 }
-                // inner nodes. if inner nodes are not  mkldnn nodes
+                // inner nodes. if inner nodes are not  Dnnl nodes
                 // create subgraph (inception v2)
                 auto sub_it = DNNL_ops_.find(next_node->OpType());
                 if (sub_it == DNNL_ops_.end()) {
@@ -376,7 +372,7 @@ void DNNLExecutionProvider::CreateMetaDef(const onnxruntime::GraphViewer& graph_
 
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->attributes["initializers"] = initializers;
-  meta_def->name = "MkldnnCustomOp" + std::to_string(subgraph_index_);
+  meta_def->name = "DnnlCustomOp" + std::to_string(subgraph_index_);
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;

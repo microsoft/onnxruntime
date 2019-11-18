@@ -13,7 +13,7 @@ namespace ort_dnnl {
 template <typename T>
 class DnnlPool : public DnnlKernel {
  public:
-  DnnlPool(const MklDnnNode& node,
+  DnnlPool(const DnnlNode& node,
              DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
              const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
@@ -42,16 +42,16 @@ class DnnlPool : public DnnlKernel {
       dnnl::memory::dims src_dims_mkl(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
       // ort_source_desc is the format of ONNX Runtime tensor format
-      ort_source_desc_ = dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), ort_source_format_);
+      ort_source_desc_ = dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), ort_source_format_);
       // source_desc is propagating format. input to this op.
-      source_desc_ = dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), ort_source_format_);
+      source_desc_ = dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), ort_source_format_);
 
       // reorder for better performance
       dnnl::memory::format_tag src_format = GetAVXFormat(src_dims_mkl);
       src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-          dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), src_format));
+          dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), src_format));
     } else {
-      // get the output of previous node (mkldnn block propagation).
+      // get the output of previous node (Dnnl block propagation).
       // TODO Sourcenode will set src of this node.
       x_shape_ = parents_[0].get()->primitive_dst_shape_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
@@ -65,7 +65,7 @@ class DnnlPool : public DnnlKernel {
         // reorder for better performance
         dnnl::memory::format_tag fmt = GetAVXFormat(src_dims_mkl);
         src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-            dnnl::memory::desc({src_dims_mkl}, MklDnnType<T>(), fmt));
+            dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), fmt));
       } else {
         src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
             dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
@@ -94,7 +94,7 @@ class DnnlPool : public DnnlKernel {
     dnnl::memory::dims padding_right_mkl(pads_.begin() + (pads_.size() / 2), pads_.end());
 
     primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
-        dnnl::memory::desc({dst_dims_mkl}, MklDnnType<T>(), dnnl::memory::format_tag::any));
+        dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::algorithm algo = dnnl::algorithm::pooling_max;
     if (op_name_ == "AveragePool" || op_name_ == "GlobalAveragePool") {
@@ -165,7 +165,7 @@ class DnnlPool : public DnnlKernel {
             dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
       }
     } else {
-      // Intermediate node. Use mkldnn kernel internal memory for output and
+      // Intermediate node. Use Dnnl kernel internal memory for output and
       // use this as input to next node.
       primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
           dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
@@ -179,7 +179,7 @@ class DnnlPool : public DnnlKernel {
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      dnnl::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = DnnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }
