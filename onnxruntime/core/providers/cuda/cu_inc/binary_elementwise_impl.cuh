@@ -21,7 +21,11 @@ __global__ void _BinaryElementWise(
     T* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
-  CUDA_LONG id = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  T lvalue[NumElementsPerThread];
+  T rvalue[NumElementsPerThread];
+
+  CUDA_LONG id = start;
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
@@ -45,7 +49,18 @@ __global__ void _BinaryElementWise(
         }
         offset = r;
       }
-      output_data[id] = functor(lhs_data[lhs_index], rhs_data[rhs_index]);
+      lvalue[i] = lhs_data[lhs_index];
+      rvalue[i] = rhs_data[rhs_index];
+
+      id += NumThreadsPerBlock;
+    }
+  }
+
+  id = start;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output_data[id] = functor(lvalue[i], rvalue[i]);
 
       id += NumThreadsPerBlock;
     }
@@ -60,11 +75,26 @@ __global__ void _BinaryElementWiseSimple(
     T* output_data,
     const FuncT& func,
     CUDA_LONG N) {
-  CUDA_LONG id = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  T lvalue[NumElementsPerThread];
+  T rvalue[NumElementsPerThread];
+
+  CUDA_LONG id = start;
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output_data[id] = func(lhs_data[IncL ? id : 0], rhs_data[IncR ? id : 0]);
+      lvalue[i] = lhs_data[IncL ? id : 0];
+      rvalue[i] = rhs_data[IncR ? id : 0];
+
+      id += NumThreadsPerBlock;
+    }
+  }
+
+  id = start;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output_data[id] = func(lvalue[i], rvalue[i]);
 
       id += NumThreadsPerBlock;
     }
@@ -80,12 +110,27 @@ __global__ void _BinaryElementWiseRhsPerChannelBatch1(
     T* output_data,
     FuncT func,
     CUDA_LONG N) {
-  CUDA_LONG id = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  T lvalue[NumElementsPerThread];
+  T rvalue[NumElementsPerThread];
+
+  CUDA_LONG id = start;
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       CUDA_LONG rhs_id = fdm_H.div(id);
-      output_data[id] = func(lhs_data[id], rhs_data[rhs_id]);
+      lvalue[i] = lhs_data[id];
+      rvalue[i] = rhs_data[rhs_id];
+
+      id += NumThreadsPerBlock;
+    }
+  }
+
+  id = start;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output_data[id] = func(lvalue[i], rvalue[i]);
 
       id += NumThreadsPerBlock;
     }
@@ -101,7 +146,11 @@ __global__ void _BinaryElementWiseRhsPerChannelBatchN(
     T* output_data,
     FuncT func,
     CUDA_LONG N) {
-  CUDA_LONG id = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  T lvalue[NumElementsPerThread];
+  T rvalue[NumElementsPerThread];
+
+  CUDA_LONG id = start;
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
@@ -109,7 +158,19 @@ __global__ void _BinaryElementWiseRhsPerChannelBatchN(
       int q, r;
       fdm_C.divmod(rhs_id, q, r);
       rhs_id = r;
-      output_data[id] = func(lhs_data[id], rhs_data[rhs_id]);
+
+      lvalue[i] = lhs_data[id];
+      rvalue[i] = rhs_data[rhs_id];
+
+      id += NumThreadsPerBlock;
+    }
+  }
+
+  id = start;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output_data[id] = func(lvalue[i], rvalue[i]);
 
       id += NumThreadsPerBlock;
     }

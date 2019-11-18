@@ -212,6 +212,7 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   // load data from global memory
   acc_t grad_reg[WARP_BATCH][WARP_ITERATIONS];
   acc_t output_reg[WARP_BATCH][WARP_ITERATIONS];
+  acc_t grad_output_reg[WARP_BATCH][WARP_ITERATIONS];
   for (int i = 0; i < WARP_BATCH; ++i) {
     int batch_element_count = (i >= local_batches) ? 0 : element_count;
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
@@ -219,9 +220,11 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
       if (element_index < batch_element_count) {
         grad_reg[i][it] = grad[i * element_count + it * WARP_SIZE];
         output_reg[i][it] = output[i * element_count + it * WARP_SIZE];
+        grad_output_reg[i][it] = grad_reg[i][it] * output_reg[i][it];
       } else {
         grad_reg[i][it] = acc_t(0);
         output_reg[i][it] = acc_t(0);
+        grad_output_reg[i][it] = acc_t(0);
       }
     }
   }
@@ -229,10 +232,10 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   acc_t sum[WARP_BATCH];
 #pragma unroll
   for (int i = 0; i < WARP_BATCH; ++i) {
-    sum[i] = grad_reg[i][0];
+    sum[i] = grad_output_reg[i][0];
 #pragma unroll
     for (int it = 1; it < WARP_ITERATIONS; ++it) {
-      sum[i] += grad_reg[i][it];
+      sum[i] += grad_output_reg[i][it];
     }
   }
   warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
@@ -250,7 +253,7 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
         //if (is_log_softmax) {
         //  gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - std::exp(output_reg[i][it]) * sum[i]);
         //} else {
-          gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - output_reg[i][it] * sum[i]);
+          gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - sum[i] ) * output_reg[i][it];
         //}
       }
     }

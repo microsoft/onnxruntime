@@ -110,11 +110,10 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto Y_data = reinterpret_cast<const CudaT*>(Y->template Data<T>());
   auto dX_data = reinterpret_cast<CudaT*>(ctx->Output(0, input_shape)->template MutableData<T>());
 
-  // TODO: the optimization for grad needs to be disabled now since UT failed.
-  //if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
-  //   dispatch_softmax_backward<CudaT, CudaT, AccType<T>, false>(dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-  //   return Status::OK();
-  // }
+  if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
+    dispatch_softmax_backward<CudaT, CudaT, AccType<T>, false>(dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+    return Status::OK();
+  }
 
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
