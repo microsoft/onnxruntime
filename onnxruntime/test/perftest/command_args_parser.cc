@@ -92,6 +92,7 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("intel"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kIntelExecutionProvider;
+          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {

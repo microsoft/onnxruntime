@@ -293,6 +293,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_intel) {
 #ifdef USE_INTEL
+      sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Intel(sf, "CPU"));
 #else
       fprintf(stderr, "Intel is not supported in this build");
