@@ -5,13 +5,6 @@
 
 #include "core/providers/cuda/cuda_common.h"
 
-//#include "core/framework/framework_common.h"
-//#include "core/framework/op_kernel_context_internal.h"
-//#include "core/framework/session_state.h"
-//#include "core/framework/tensorprotoutils.h"
-//#include "core/framework/utils.h"
-//#include "core/framework/session_options.h"
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -41,10 +34,10 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {
-  // call the base CPU version. 
+  // call the base CPU version.
   // we have this CUDA implementation so the inputs/outputs stay on GPU where possible.
   // the logic to run the subgraph must be on CPU either way.
-  // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug 
+  // technically we don't need this override of Compute, but it will be optimized out and it's easier to debug
   // that this implementation is being called with it.
   auto status = onnxruntime::If::Compute(ctx);
   return status;
