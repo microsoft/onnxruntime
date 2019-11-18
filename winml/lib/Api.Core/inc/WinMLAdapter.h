@@ -3,21 +3,18 @@
 
 #pragma once
 
-#include "IOrtSessionBuilder.h"
-#include "ModelInfo.h"
-
 namespace Windows::AI::MachineLearning::Adapter {
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
     // model metadata
-    virtual std::string STDMETHODCALLTYPE author() = 0;
-    virtual std::string STDMETHODCALLTYPE name() = 0;
-    virtual std::string STDMETHODCALLTYPE domain() = 0;
-    virtual std::string STDMETHODCALLTYPE description() = 0;
+    virtual std::string& STDMETHODCALLTYPE author() = 0;
+    virtual std::string& STDMETHODCALLTYPE name() = 0;
+    virtual std::string& STDMETHODCALLTYPE domain() = 0;
+    virtual std::string& STDMETHODCALLTYPE description() = 0;
     virtual int64_t STDMETHODCALLTYPE version() = 0;
-    virtual std::unordered_map<std::string, std::string> STDMETHODCALLTYPE model_metadata() = 0;
-    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE input_features() = 0;
-    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor> STDMETHODCALLTYPE output_features() = 0;
+    virtual std::unordered_map<std::string, std::string>& STDMETHODCALLTYPE model_metadata() = 0;
+    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE input_features() = 0;
+    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE output_features() = 0;
 };
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") ITensor : IUnknown{
@@ -53,7 +50,10 @@ MIDL_INTERFACE("438e7719-554a-4058-84d9-eb6226c34887") IIOBinding : IUnknown{
 };
 
 MIDL_INTERFACE("a848faf6-5a2e-4a7f-b622-cc036f71e28a") IModelProto : IUnknown{
+    // this returns a weak ref
     virtual onnx::ModelProto* STDMETHODCALLTYPE get() = 0;
+    // this returns the ownership without touching the reference and forgets about the object
+    virtual onnx::ModelProto* STDMETHODCALLTYPE detach() = 0;
 };
 
 MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnknown {
@@ -70,15 +70,22 @@ MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnkn
     virtual void STDMETHODCALLTYPE ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) = 0;
 };
 
+MIDL_INTERFACE("55a956a7-c20e-440d-b2d2-a77acf35de10") ISessionOptions : IUnknown{
+    // this returns a weak ref
+    virtual onnxruntime::SessionOptions& STDMETHODCALLTYPE get() = 0;
+    // end
+    virtual void STDMETHODCALLTYPE SetBatchOverride(uint32_t batch_size) = 0;
+};
+
 // The IOrtSessionBuilder offers an abstraction over the creation of
 // InferenceSession, that enables the creation of the session based on a device (CPU/DML).
 MIDL_INTERFACE("2746f03a-7e08-4564-b5d0-c670fef116ee") IOrtSessionBuilder : IUnknown {
 
   virtual HRESULT STDMETHODCALLTYPE CreateSessionOptions(
-      onnxruntime::SessionOptions* options) = 0;
+      ISessionOptions** options) = 0;
 
   virtual HRESULT STDMETHODCALLTYPE CreateSession(
-      const onnxruntime::SessionOptions& options,
+      ISessionOptions* options,
       IInferenceSession** session,
       onnxruntime::IExecutionProvider** provider) = 0;
 
@@ -184,6 +191,22 @@ private:
     std::shared_ptr<onnxruntime::InferenceSession> session_;
 };
 
+class AbiSafeSessionOptions : public Microsoft::WRL::RuntimeClass <
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+    ISessionOptions> {
+private:
+    onnxruntime::SessionOptions options_;
+public:
+    virtual onnxruntime::SessionOptions& STDMETHODCALLTYPE get() override {
+        return options_;
+    }
+    virtual void STDMETHODCALLTYPE SetBatchOverride(uint32_t batch_size) override {
+        onnxruntime::FreeDimensionOverride overrideOption = {};
+        overrideOption.dimension_denotation = onnx::DATA_BATCH;
+        overrideOption.dimension_override = batch_size;
+        options_.free_dimension_overrides.emplace_back(overrideOption);
+    }
+};
 
 // header only code to enable smart pointers on abstract ort objects
 template <typename T>

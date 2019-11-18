@@ -15,10 +15,10 @@ class CpuOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
      CpuOrtSessionBuilder();
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
-      onnxruntime::SessionOptions* p_options) override;
+      ISessionOptions** p_options) override;
 
   HRESULT STDMETHODCALLTYPE CreateSession(
-      const onnxruntime::SessionOptions& options,
+      ISessionOptions* options,
       _winmla::IInferenceSession** p_session,
       onnxruntime::IExecutionProvider** pp_provider) override;
 

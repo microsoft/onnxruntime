@@ -6,7 +6,6 @@
 #include "LearningModelSession.h"
 
 #include "ImageFeatureDescriptor.h"
-#include "IOrtSessionBuilder.h"
 #include "WinMLAdapter.h"
 #include "LearningModel.h"
 #include "LearningModelBinding.h"
@@ -110,21 +109,18 @@ void LearningModelSession::Initialize() {
       device_impl->GetDeviceQueue(),
       session_builder.put()));
 
-  onnxruntime::SessionOptions options = {};
-  WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options));
+  com_ptr<_winmla::ISessionOptions> options;
+  WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(options.put()));
 
   // Make onnxruntime apply the batch size override, if any
   if (session_options_ && session_options_.BatchSizeOverride() != 0)
   {
-    onnxruntime::FreeDimensionOverride overrideOption = {};
-    overrideOption.dimension_denotation = onnx::DATA_BATCH;
-    overrideOption.dimension_override = session_options_.BatchSizeOverride();
-    options.free_dimension_overrides.emplace_back(overrideOption);
+      options->SetBatchOverride(session_options_.BatchSizeOverride());
   }
 
   com_ptr<_winmla::IInferenceSession> session;
   WINML_THROW_IF_FAILED(session_builder->CreateSession(
-      options, session.put(), &cached_execution_provider_));
+      options.get(), session.put(), &cached_execution_provider_));
 
   // Register the custom operator registry
   auto model = model_.as<winmlp::LearningModel>();
@@ -136,7 +132,7 @@ void LearningModelSession::Initialize() {
 
   // Load the model into the session
   WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()));
-  // the session owns the model_proto now
+  // the session owns the model_proto now, it used detach()
   model_proto = nullptr;
 
   // Initialize the session

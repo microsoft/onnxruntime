@@ -32,24 +32,26 @@ CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
 
 HRESULT
 CpuOrtSessionBuilder::CreateSessionOptions(
-    onnxruntime::SessionOptions* p_options) {
+    ISessionOptions** p_options) {
   RETURN_HR_IF_NULL(E_POINTER, p_options);
 
-  *p_options = onnxruntime::SessionOptions();
-  p_options->graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+  auto options = wil::MakeOrThrow<AbiSafeSessionOptions>();
+  options.CopyTo(__uuidof(ISessionOptions), (void**)p_options);
+
+  (*p_options)->get().graph_optimization_level = onnxruntime::TransformerLevel::Level3;
 
   // Onnxruntime will use half the number of concurrent threads supported on the system
   // by default. This causes MLAS to not exercise every logical core.
   // We force the thread pool size to be maxxed out to ensure that WinML always
   // runs the fastest.
-  p_options->intra_op_num_threads = std::thread::hardware_concurrency();
+  (*p_options)->get().intra_op_num_threads = std::thread::hardware_concurrency();
 
   return S_OK;
 }
 
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
-    const onnxruntime::SessionOptions& options,
+    ISessionOptions* options,
     _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
@@ -57,7 +59,7 @@ CpuOrtSessionBuilder::CreateSession(
   RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
 
   // Create the inference session
-  auto session = std::make_unique<onnxruntime::InferenceSession>(options);
+  auto session = std::make_unique<onnxruntime::InferenceSession>(options->get());
 
   // Create the cpu execution provider
   onnxruntime::CPUExecutionProviderInfo xpInfo;

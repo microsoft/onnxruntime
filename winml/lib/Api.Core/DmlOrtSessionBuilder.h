@@ -15,10 +15,10 @@ class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
   DmlOrtSessionBuilder(ID3D12Device* device, ID3D12CommandQueue*  queue);
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
-      onnxruntime::SessionOptions* p_options) override;
+      ISessionOptions** p_options) override;
 
   HRESULT STDMETHODCALLTYPE CreateSession(
-      const onnxruntime::SessionOptions& options,
+      ISessionOptions* options,
       _winmla::IInferenceSession** p_session,
       onnxruntime::IExecutionProvider** pp_provider) override;
 
