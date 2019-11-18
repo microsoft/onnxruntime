@@ -29,23 +29,23 @@ static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::W
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
 LearningModelSession::LearningModelSession(
-    winml::LearningModel const& model) try : LearningModelSession(model,
-                                                                  make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
+  winml::LearningModel const& model) try : LearningModelSession(model,
+                                                                make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
-    winml::LearningModel const& model,
-    winml::LearningModelDevice const& deviceToRunOn) try : LearningModelSession(model,
-                                                                                deviceToRunOn,
-                                                                                nullptr) {}
+  winml::LearningModel const& model,
+  winml::LearningModelDevice const& deviceToRunOn) try : LearningModelSession(model,
+                                                                              deviceToRunOn,
+                                                                              nullptr) {}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
-    winml::LearningModel const& model,
-    winml::LearningModelDevice const& deviceToRunOn,
-    winml::LearningModelSessionOptions const& learningModelSessionOptions) try : model_(model),
-                                                                                 device_(deviceToRunOn),
-                                                                                 session_options_(learningModelSessionOptions) {
+  winml::LearningModel const& model,
+  winml::LearningModelDevice const& deviceToRunOn,
+  winml::LearningModelSessionOptions const& learningModelSessionOptions) try : model_(model),
+                                                                                device_(deviceToRunOn),
+                                                                                session_options_(learningModelSessionOptions) {
   Initialize();
 }
 WINML_CATCH_ALL
@@ -55,8 +55,8 @@ LearningModelSession::GetOptimizedModel() {
   // Get the model proto
 
   auto should_close_model =
-      session_options_ != nullptr &&
-      session_options_.CloseModelOnSessionCreation();
+    session_options_ != nullptr &&
+    session_options_.CloseModelOnSessionCreation();
 
   return GetOptimizedModel(should_close_model);
 }
@@ -91,7 +91,7 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
 void LearningModelSession::Initialize() {
   // Begin recording session creation telemetry
   _winmlt::TelemetryEvent session_creation_event(
-      _winmlt::EventCategory::kSessionCreation);
+    _winmlt::EventCategory::kSessionCreation);
 
   // Get the optimized model proto from the learning model
   com_ptr<_winmla::IModelProto> model_proto; 
@@ -105,9 +105,9 @@ void LearningModelSession::Initialize() {
 
   com_ptr<_winmla::IOrtSessionBuilder> session_builder;
   WINML_THROW_IF_FAILED(adapter->CreateOrtSessionBuilder(
-      device_impl->GetD3DDevice(), 
-      device_impl->GetDeviceQueue(),
-      session_builder.put()));
+    device_impl->GetD3DDevice(), 
+    device_impl->GetDeviceQueue(),
+    session_builder.put()));
 
   com_ptr<_winmla::ISessionOptions> options;
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(options.put()));
@@ -115,7 +115,7 @@ void LearningModelSession::Initialize() {
   // Make onnxruntime apply the batch size override, if any
   if (session_options_ && session_options_.BatchSizeOverride() != 0)
   {
-      options->SetBatchOverride(session_options_.BatchSizeOverride());
+    options->SetBatchOverride(session_options_.BatchSizeOverride());
   }
 
   com_ptr<_winmla::IInferenceSession> session;
@@ -142,9 +142,9 @@ void LearningModelSession::Initialize() {
   inference_session_ = session;
 
   telemetry_helper.LogSessionCreation(
-      WinML::Strings::UTF8FromHString(model_.Name()),
-      device_impl->IsCpuDevice(),
-      device_impl->GetDeviceLuid());
+    WinML::Strings::UTF8FromHString(model_.Name()),
+    device_impl->IsCpuDevice(),
+    device_impl->GetDeviceLuid());
 }
 
 wfc::IPropertySet
@@ -169,8 +169,8 @@ LearningModelSession::Device() try {
 WINML_CATCH_ALL
 
 auto CreateBinding(
-    LearningModelSession& session,
-    wfc::IMap<hstring, wf::IInspectable> const features) {
+  LearningModelSession& session,
+  wfc::IMap<hstring, wf::IInspectable> const features) {
   auto binding = winrt::make<LearningModelBinding>(session);
 
   for (auto feature : features.GetView()) {
@@ -181,8 +181,8 @@ auto CreateBinding(
 
 winml::LearningModelEvaluationResult
 LearningModelSession::EvaluateFeatures(
-    wfc::IMap<hstring, wf::IInspectable> const features,
-    hstring const correlation_id) try {
+  wfc::IMap<hstring, wf::IInspectable> const features,
+  hstring const correlation_id) try {
   auto binding = CreateBinding(*this, features);
   return Evaluate(binding, correlation_id);
 }
@@ -190,53 +190,53 @@ WINML_CATCH_ALL
 
 wf::IAsyncOperation<winml::LearningModelEvaluationResult>
 LearningModelSession::EvaluateFeaturesAsync(
-    wfc::IMap<hstring, wf::IInspectable> const features,
-    hstring const correlation_id) {
+  wfc::IMap<hstring, wf::IInspectable> const features,
+  hstring const correlation_id) {
   auto binding = CreateBinding(*this, features);
   return EvaluateAsync(binding, correlation_id);
 }
 
 static _winmla::IIOBinding*
 GetIOBinding(
-    winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
-    winml::LearningModel& model) {
+  winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
+  winml::LearningModel& model) {
   // Get the IOBinding Collection, and bound outputs
-    com_ptr<_winmla::IIOBinding> io_binding;
-    io_binding.attach(binding_impl->BindingCollection());
+  com_ptr<_winmla::IIOBinding> io_binding;
+  io_binding.attach(binding_impl->BindingCollection());
   auto& bound_output_names = io_binding->GetOutputNames();
   std::unordered_set<std::string> bound_output_names_set(
-      bound_output_names.begin(),
-      bound_output_names.end());
+    bound_output_names.begin(),
+    bound_output_names.end());
 
   // Get model output feature names
   auto model_impl = model.as<winmlp::LearningModel>();
   auto output_features = model_impl->OutputFeatures();
   std::vector<ILearningModelFeatureDescriptor> output_descriptors(
-      begin(output_features),
-      end(output_features));
+    begin(output_features),
+    end(output_features));
 
   // Convert all output features to their feature names
   std::vector<std::string> output_feature_names;
   std::transform(
-      std::begin(output_descriptors),
-      std::end(output_descriptors),
-      std::back_inserter(output_feature_names),
-      [&](auto& descriptor) {
-        auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
-        const wchar_t* p_name;
-        uint32_t size;
-        WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
-        return WinML::Strings::UTF8FromUnicode(p_name, size);
-      });
+    std::begin(output_descriptors),
+    std::end(output_descriptors),
+    std::back_inserter(output_feature_names),
+    [&](auto& descriptor) {
+      auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
+      const wchar_t* p_name;
+      uint32_t size;
+      WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
+      return WinML::Strings::UTF8FromUnicode(p_name, size);
+    });
 
   // Find the set difference to determine if there are any unbound output features
   std::vector<std::string> unbound_output_names;
   std::copy_if(
-      std::begin(output_feature_names), std::end(output_feature_names),
-      std::inserter(unbound_output_names, std::begin(unbound_output_names)),
-      [&](const auto& outputFeatureName) {
-        return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
-      });
+    std::begin(output_feature_names), std::end(output_feature_names),
+    std::inserter(unbound_output_names, std::begin(unbound_output_names)),
+    [&](const auto& outputFeatureName) {
+      return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
+    });
 
   // Add all unbound outputs to the iobinding collection
   for (const auto& unbound_output : unbound_output_names) {
@@ -274,9 +274,9 @@ LearningModelSession::Run(
 
 winml::LearningModelEvaluationResult
 LearningModelSession::GetResults(
-    winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
-    hstring const& correlation_id,
-    uint64_t evaluation_complete_fence) {
+  winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
+  hstring const& correlation_id,
+  uint64_t evaluation_complete_fence) {
   // First wait on the fence value for the expected frame. This is passed in so that
   // the fence value is added to the queue in a thread safe manor.
   auto device = device_.as<winmlp::LearningModelDevice>();
@@ -418,10 +418,10 @@ LearningModelSession::CreateSessionBinding() {
 void LearningModelSession::ApplyEvaluationProperties() try {
   if (evaluation_properties_) {
     auto is_debug_output_enabled = evaluation_properties_.HasKey(c_enable_debug_output);
-    if (is_debug_output_enabled) {        
-        com_ptr<_winmla::IWinMLAdapter> adapter;
-        WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-        adapter->EnableDebugOutput();
+    if (is_debug_output_enabled) {
+      com_ptr<_winmla::IWinMLAdapter> adapter;
+      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+      adapter->EnableDebugOutput();
     }
   }
 }
