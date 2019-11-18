@@ -47,7 +47,7 @@ struct Global {
 template <typename T>
 const OrtApi& Global<T>::api_ =
 #ifdef EXCLUDE_REFERENCE_TO_ORT_DLL
-    *((OrtApi*)(0xDEADBEEF));
+    *(static_cast<OrtApi*>(0xDEADBEEFul));
 #else
     *OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
