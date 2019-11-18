@@ -219,7 +219,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Add") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
           if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
-	      return true; 
+	      return true;
 	  }
       }
   } else if (optype == "Sub") {
@@ -227,7 +227,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
           if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
               return true;
           }
-      } 
+      }
   } else if (optype == "Mul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
           if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
@@ -240,7 +240,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
               node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
 	      return true;
           }
-      }	  
+      }
   } else if (optype == "Dropout" || optype == "Identity") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
@@ -248,7 +248,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 	  if (it != graph_inputs.end()) {
 	      return true;
 	  }
-      }		  
+      }
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
@@ -679,14 +679,15 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
+static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
   const auto* node_function = fused_node->GetFunctionBody();
 
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
   onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap()};
+                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
+                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -704,7 +705,7 @@ common::Status IntelExecutionProvider::Compile(
     NodeComputeInfo compute_info;
     std::shared_ptr<intel_ep::IntelGraph> intel_graph;
     intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node);
-    auto model_proto = GetModelProtoFromFusedNode(fused_node);
+    auto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
 
     compute_info.create_state_func =
         [intel_graph](ComputeContext* context, FunctionState* state) {
@@ -716,7 +717,7 @@ common::Status IntelExecutionProvider::Compile(
           *state = static_cast<FunctionState>(p);
           return 0;
         };
-    compute_info.compute_func = [model_proto](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [model_proto](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<IntelEPFunctionState*>(state);
       try {
         function_state->intel_graph->Infer(model_proto, *api, context);
