@@ -18,6 +18,13 @@ class NcclAllReduce final : public NcclKernel {
   bool use_tensor_fusion_ = false;
 };
 
+class FuseOutputNcclAllReduce final : public NcclKernel {
+ public:
+  explicit FuseOutputNcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 class NcclAllGather final : public NcclKernel {
  public:
   explicit NcclAllGather(const OpKernelInfo& info);

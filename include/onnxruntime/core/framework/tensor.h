@@ -139,20 +139,20 @@ class Tensor final {
 
   void* MutableDataRaw(MLDataType type) {
     ORT_ENFORCE(type == dtype_, "Tensor type mismatch.", type, "!=", dtype_);
-    return p_data_;
+    return static_cast<char*>(p_data_) + byte_offset_;
   }
 
   const void* DataRaw(MLDataType type) const {
     ORT_ENFORCE(type == dtype_, "Tensor type mismatch.", type, "!=", dtype_);
-    return p_data_;
+    return static_cast<char*>(p_data_) + byte_offset_;
   }
 
   void* MutableDataRaw() noexcept {
-    return p_data_;
+    return static_cast<char*>(p_data_) + byte_offset_;
   }
 
   const void* DataRaw() const noexcept {
-    return p_data_;
+    return static_cast<char*>(p_data_) + byte_offset_;
   }
 
   /**
@@ -165,6 +165,14 @@ class Tensor final {
                 "Tensor size (" + std::to_string(shape_.Size()) +
                     ") != new size (" + std::to_string(new_shape.Size()) + ")");
     shape_ = new_shape;
+  }
+
+  /**
+   * Set the byte offset with respect to the p_data
+   * @warning this is a temporary solution for reusing the buffer bigger than needed.
+   */
+  inline void SetByteOffset(int64_t byte_offset) {
+    byte_offset_ = byte_offset;
   }
 
   /**

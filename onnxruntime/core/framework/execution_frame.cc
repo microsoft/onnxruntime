@@ -220,7 +220,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                              : nullptr;
           buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
 
-          // comment out following line to see the size of activation 
+          // comment out following line to see the size of activation
           // printf("Allocated memory for activations, size: %zu\n", mem_patterns_->patterns[i].PeakSize());
         }
       }
@@ -335,7 +335,8 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
     // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
     if (buffer_num_elements >= required_num_elements) {
-      LOGS_DEFAULT(WARNING) << message;
+      // Todo: View Operator is reusing the buffer bigger than the required size. Disabling warming message for now.
+      //LOGS_DEFAULT(WARNING) << message;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
     }

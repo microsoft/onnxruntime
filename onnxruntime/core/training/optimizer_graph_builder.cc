@@ -127,19 +127,42 @@ ArgDef BuildHorovodAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::Gra
 #endif
 
 #ifdef USE_NCCL
-Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, GraphAugmenter::GraphDefs& graph_defs, bool use_tensor_fusion) {
-  std::vector<ArgDef> reduce_outputs(gradient_argdefs.size());
-  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
-    reduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out",
-                               gradient_argdefs[i].type_proto);
-  }
+Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, GraphAugmenter::GraphDefs& graph_defs, bool /*use_tensor_fusion*/) {
+  ArgDef fused_allreduce_output = ArgDef("fused_allreduce_output");
+
   // Add NCCL Allreduce node.
-  graph_defs.AddNodeDefs({NodeDef("NcclAllReduce",
+  graph_defs.AddNodeDefs({NodeDef("FuseOutputNcclAllReduce",
                                   gradient_argdefs,
-                                  reduce_outputs,
-                                  {MakeAttribute("tensor_fusion", static_cast<int64_t>(use_tensor_fusion))},
+                                  {fused_allreduce_output},
+                                  NodeAttributes(),
                                   "NcclAllReduce")});
-  gradient_argdefs = reduce_outputs;
+
+  std::vector<ArgDef> view_inputs(gradient_argdefs.size() + 1);
+  view_inputs[0] = fused_allreduce_output;
+
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    ArgDef& gradient_shape = view_inputs[i + 1];
+    gradient_shape = ArgDef(gradient_argdefs[i].name + "_Shape");
+
+    graph_defs.AddNodeDefs({NodeDef("Shape",
+                                    {gradient_argdefs[i]},
+                                    {gradient_shape},
+                                    NodeAttributes(),
+                                    gradient_shape.name)});
+  }
+
+  std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
+  for (size_t i = 0; i < gradient_argdefs.size(); i++) {
+    allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", gradient_argdefs[i].type_proto);
+  }
+
+  graph_defs.AddNodeDefs({NodeDef("View",
+                                  view_inputs,
+                                  allreduce_outputs,
+                                  NodeAttributes(),
+                                  "AllReduceOutputView")});
+
+  gradient_argdefs = allreduce_outputs;
   return Status::OK();
 }
 #else
@@ -260,7 +283,6 @@ Status AddDirectWeightUpdate(
     GraphAugmenter::GraphDefs& graph_defs) {
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
-
 
   const size_t num_weights = weight_argdefs.size();
   std::vector<ArgDef> output_weight_argdefs(num_weights);
@@ -416,7 +438,7 @@ Status AddConditionalWeightUpdate(
             then_subgraph_defs, external_inputs_including_initializers,
             new_external_initializers, output_weight_argdefs));
 
-        for (auto &arg: output_weight_argdefs) {
+        for (auto& arg : output_weight_argdefs) {
           group_input_argdefs.emplace_back(arg);
         }
 

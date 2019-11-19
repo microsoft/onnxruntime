@@ -1715,6 +1715,19 @@ Example 4:
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FuseOutputNcclAllReduce)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
+      .Output(0, "output", "reduced tensors in a fused buffer", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
@@ -2485,6 +2498,23 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, 0, 0);
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(View)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("View. The output tensors are views of the input, according to the shapes provided.")
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .Input(0, "input", "Input tensor.", "T")
+      .Input(1, "shapes", "Shapes of each view output. The shapes must adds up to the input buffer size.",
+             "tensor(int64)",
+             OpSchema::Variadic)
+      .Output(0, "outputs", "Output tensors viewed according the shapes input. It has a one to one mapping to the shapes input",
+              "T",
+              OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
