@@ -21,14 +21,7 @@ bool TryVectorizationX86(
     tvm_codegen::ScheduleContext& ctx_sched) {
   CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
   ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
-  //std::cout << "target: " << target->GetTargetName() << std::endl;
-  //std::cout << "bits " << tensor->dtype.bits() << std::endl;
-#if 1
   int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
-#else
-  int64_t natural_vector_size = 16;
-#endif
-  //std::cout << "natural vector at try vectorize:" << natural_vector_size << std::endl;
 
   return TryVectorization(tensor, natural_vector_size, ctx_sched);
 }
