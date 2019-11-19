@@ -94,11 +94,6 @@ class AbiSafeOrtValue : public Microsoft::WRL::RuntimeClass<
  public:
   AbiSafeOrtValue() : ort_value_weak_(nullptr) {}
   AbiSafeOrtValue(OrtValue* weak_value_in) : ort_value_weak_(weak_value_in) { }
-  ~AbiSafeOrtValue() {
-    int foo = 3;
-    foo += 1;
-  }
-
 
   OrtValue* STDMETHODCALLTYPE get() override {
     if (ort_value_weak_ != nullptr) 
