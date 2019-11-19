@@ -8,7 +8,6 @@
 #include <cmath>
 
 static const char* c_OpDomain = "test.customop";
-static const char* c_EPType = nullptr;  // CPU
 
 struct OrtTensorDimensions : std::vector<int64_t> {
   OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
