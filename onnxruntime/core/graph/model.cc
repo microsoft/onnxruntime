@@ -276,6 +276,38 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
 }
 
 template <typename T>
+static Status LoadModel(const T& file_path, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+  int fd;
+  Status status = Env::Default().FileOpenRd(file_path, fd);
+  if (!status.IsOK()) {
+    if (status.Category() == common::SYSTEM) {
+      switch (status.Code()) {
+        case ENOENT:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+                                 " failed. File doesn't exist");
+        case EINVAL:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
+      }
+    }
+  }
+  try {
+    status = Model::Load(fd, model_proto);
+  } catch (std::exception& ex) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return Status(ONNXRUNTIME, FAIL, ex.what());
+  }
+  if (!status.IsOK()) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return status;
+  }
+  return Env::Default().FileClose(fd);
+}
+
+template <typename T>
 static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
@@ -327,6 +359,10 @@ static Status SaveModel(Model& model, const T& file_path) {
   return Env::Default().FileClose(fd);
 }
 
+Status Model::Load(const std::wstring& file_path, std::shared_ptr<ModelProto>& model_proto) {
+  return LoadModel(file_path, model_proto);
+}
+
 #ifdef _WIN32
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
@@ -340,6 +376,10 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 
 #endif
 
+Status Model::Load(const std::string& file_path, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+  return LoadModel(file_path, model_proto);
+}
+
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
 Status Model::Load(const std::string& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
@@ -348,6 +388,15 @@ Status Model::Load(const std::string& file_path, std::shared_ptr<Model>& p_model
 
 Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
+}
+
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+  const bool result = model_proto->ParseFromArray(p_bytes, count);
+  if (!result) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+
+  return Status::OK();
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
@@ -367,6 +416,34 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Mo
 using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
+
+Status Model::Load(int fd, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+  if (fd < 0) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
+  }
+
+#if GOOGLE_PROTOBUF_VERSION >= 3002000
+  FileInputStream fs(fd);
+  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  if (!result) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+#else
+  // CNTK uses ORT as a submodule in order to use its GraphIR code.
+  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
+  // This code block is needed to support CNTK and any other
+  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
+  FileInputStream fs(fd);
+  CodedInputStream cis(&fs);
+
+  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
+  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
+  if (!model_proto->ParseFromCodedStream(&cis)) {
+    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  }
+#endif
+  return Status::OK();
+}
 
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
   if (fd < 0) {

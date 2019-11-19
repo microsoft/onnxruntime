@@ -99,8 +99,8 @@ inline std::basic_string<T> GetCurrentTimeString() {
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
-                                                ONNX_NAMESPACE::ModelProto model_proto) {
-  auto status = inference_session_utils::parse_session_options_from_model_proto(model_proto, session_options);
+                                                const ONNX_NAMESPACE::ModelProto& model_proto) {
+  auto status = inference_session_utils::parse_session_options_from_model_proto(model_proto, session_options, *session_logger_);
   if (!status.IsOK()) {
     return status;
   }
@@ -150,39 +150,59 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 
 InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::string& model_uri,
-                                   logging::LoggingManager* logging_manager = nullptr)
+                                   logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
   if (session_options == nullptr) {
     SessionOptions default_session_options;
     session_options = &default_session_options;
-    // FinalizeSessionOptions();
+
+    std::shared_ptr<ONNX_NAMESPACE::ModelProto> model_proto =
+        std::make_shared<ONNX_NAMESPACE::ModelProto>();
+
+    Model::Load(model_uri, model_proto);
+
+    FinalizeSessionOptions(default_session_options, *model_proto);
+
+    ConstructorCommon(default_session_options, logging_manager);
+
+    Load(*model_proto);
+  } else {
+    ConstructorCommon(*session_options, logging_manager);
+
+    Load(model_uri);
   }
-
-  ConstructorCommon(*session_options, logging_manager);
-
-  Load(model_uri);
 }
 
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::wstring& model_uri,
-                                   logging::LoggingManager* logging_manager = nullptr)
+                                   logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
   if (session_options == nullptr) {
     SessionOptions default_session_options;
     session_options = &default_session_options;
-    // FinalizeSessionOptions();
+
+    std::shared_ptr<ONNX_NAMESPACE::ModelProto> model_proto =
+        std::make_shared<ONNX_NAMESPACE::ModelProto>();
+
+    Model::Load(model_uri, model_proto);
+
+    FinalizeSessionOptions(default_session_options, *model_proto);
+
+    ConstructorCommon(default_session_options, logging_manager);
+
+    Load(*model_proto);
+  } else {
+    ConstructorCommon(*session_options, logging_manager);
+
+    Load(model_uri);
   }
-
-  ConstructorCommon(*session_options, logging_manager);
-
-  Load(model_uri);
 }
 #endif
 
 InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    std::istream& model_istream,
-                                   logging::LoggingManager* logging_manager = nullptr)
+                                   logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
   if (session_options == nullptr) {
     SessionOptions default_session_options;
@@ -211,7 +231,7 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
 InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const void* model_data,
                                    int model_data_len,
-                                   logging::LoggingManager* logging_manager = nullptr)
+                                   logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
   if (session_options == nullptr) {
     SessionOptions default_session_options;

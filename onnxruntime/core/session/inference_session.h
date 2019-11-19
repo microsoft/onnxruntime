@@ -376,7 +376,7 @@ class InferenceSession {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
   Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
-                                                  ONNX_NAMESPACE::ModelProto model_proto);
+                                                  const ONNX_NAMESPACE::ModelProto& model_proto);
 
   void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                            logging::LoggingManager* logging_manager);
