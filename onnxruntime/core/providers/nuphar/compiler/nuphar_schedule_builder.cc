@@ -36,7 +36,7 @@ static void Traverse(const tvm::Tensor& tensor,
 
   if (is_real_output) {
     CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
-    ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
+    ORT_ENFORCE(target != nullptr);
     int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
 
     TryVectorization(tensor, natural_vector_size, ctx_schedule);  // to x86

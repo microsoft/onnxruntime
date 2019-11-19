@@ -20,7 +20,7 @@ bool TryVectorizationX86(
     tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
-  ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
+  ORT_ENFORCE(target != nullptr);
   int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
 
   return TryVectorization(tensor, natural_vector_size, ctx_sched);

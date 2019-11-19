@@ -96,10 +96,12 @@ bool TryVectorization(
           natural_vector_size = GCD<int64_t>(natural_vector_size, (*tail_dim));
         }
 
-        tvm::IterVar xi, xo;
-        ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
-        ctx.schedule[tensor->op].vectorize(xi);
-        return true;
+        if (natural_vector_size > 1) {
+          tvm::IterVar xi, xo;
+          ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
+          ctx.schedule[tensor->op].vectorize(xi);
+          return true;
+        }
       } else if (*tail_dim > 0) {
         // don't vectorize if dim is 0
         ctx.schedule[tensor->op].vectorize(x);

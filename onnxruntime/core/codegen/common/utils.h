@@ -31,6 +31,8 @@ TargetFeature GetTargetInfo(const codegen::CodeGenSettings& setttings);
 // GCD (Greatest Common Divisor)
 template <typename T>
 T GCD(T a, T b) {
+  assert(a >= 0);
+  assert(b >= 0);
   if (a < b) std::swap(a, b);
   if (b == 0) return a;
   while (a % b != 0) {

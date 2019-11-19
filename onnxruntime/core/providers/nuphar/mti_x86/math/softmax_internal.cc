@@ -37,7 +37,7 @@ tvm::Tensor SoftmaxInternal(const tvm::Tensor& input,
                             const std::string& name,
                             bool logarithmic) {
   CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
-  ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
+  ORT_ENFORCE(target != nullptr);
   int64_t vectorization_width = target->NaturalVectorWidth(input->dtype.bits());
 
   std ::vector<int64_t> reduce_axis = ReduceAxes(axis, input->shape.size());
