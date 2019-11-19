@@ -40,7 +40,7 @@ tvm::Tensor SoftmaxInternal(const tvm::Tensor& input,
   // TODO use natural vector size check by type later
   CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
   ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
-#if 0
+#if 1
   int64_t vectorization_width = target->NaturalVectorWidth(input->dtype.bits());
 #else
   int32_t vectorization_width = 16;
