@@ -601,6 +601,49 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
 }
+
+// Returns nullptr if this is not a sequence
+const ONNX_NAMESPACE::TypeProto_Sequence* GetSequenceProto(MLDataType ml_type) {
+  auto base_type = ml_type->AsNonTensorTypeBase();
+  if (base_type == nullptr) {
+    return nullptr;
+  }
+  auto type_proto = base_type->GetTypeProto();
+  assert(type_proto != nullptr);
+  if (type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kSequenceType) {
+    return &type_proto->sequence_type();
+  }
+  return nullptr;
+}
+
+// Returns nullptr if this is not a map
+const ONNX_NAMESPACE::TypeProto_Map* GetMapProto(MLDataType ml_type) {
+  auto base_type = ml_type->AsNonTensorTypeBase();
+  if (base_type == nullptr) {
+    return nullptr;
+  }
+  auto type_proto = base_type->GetTypeProto();
+  assert(type_proto != nullptr);
+  if (type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kMapType) {
+    return &type_proto->map_type();
+  }
+  return nullptr;
+}
+
+// Returns nullptr if this is not an opaque type
+const ONNX_NAMESPACE::TypeProto_Opaque* GetOpaqueProto(MLDataType ml_type) {
+  auto base_type = ml_type->AsNonTensorTypeBase();
+  if (base_type == nullptr) {
+    return nullptr;
+  }
+  auto type_proto = base_type->GetTypeProto();
+  assert(type_proto != nullptr);
+  if (type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kOpaqueType) {
+    return &type_proto->opaque_type();
+  }
+  return nullptr;
+}
+
 }  // namespace data_types_internal
 
 void DataTypeImpl::RegisterDataType(MLDataType mltype) {

@@ -764,9 +764,9 @@ static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
     // Note: keep these in sync with the registered types in data_types.h
     if (type == DataTypeImpl::GetType<TensorSeq>()) {
       return OrtGetNumSequenceElements<TensorSeq>(v, out);
-    } else if (type == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
+    } else if (utils::IsSequenceOf<std::map<std::string, float>>(type)) {
       return OrtGetNumSequenceElements<VectorMapStringToFloat>(v, out);
-    } else if (type == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
+    } else if (utils::IsSequenceOf<std::map<int64_t, float>>(type)) {
       return OrtGetNumSequenceElements<VectorMapInt64ToFloat>(v, out);
     } else {
       return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported sequence types.");
@@ -875,9 +875,9 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAlloca
   // Note: keep these in sync with the registered types in data_types.h
   if (type == DataTypeImpl::GetType<TensorSeq>()) {
     return OrtGetValueImplSeqOfTensors<TensorSeq>(p_ml_value, index, allocator, out);
-  } else if (type == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
+  } else if (utils::IsSequenceOf<std::map<std::string, float>>(type)) {
     return OrtGetValueImplSeqOfMap<VectorMapStringToFloat>(p_ml_value, index, out);
-  } else if (type == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
+  } else if (utils::IsSequenceOf<std::map<int64_t, float>>(type)) {
     return OrtGetValueImplSeqOfMap<VectorMapInt64ToFloat>(p_ml_value, index, out);
   } else {
     return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported sequence types.");
@@ -925,22 +925,22 @@ static OrtStatus* OrtGetValueImplMap(const OrtValue* value, int index, OrtAlloca
   auto p_ml_value = reinterpret_cast<const OrtValue*>(value);
   auto type = p_ml_value->Type();
   // Note: keep these in sync with the registered types in data_types.h
-  if (type == DataTypeImpl::GetType<MapStringToString>()) {
+  if (utils::IsMapOf<std::string, std::string>(type)) {
     return OrtGetValueImplMapHelper<MapStringToString>(p_ml_value, index, allocator, out);
   }
-  if (type == DataTypeImpl::GetType<MapStringToInt64>()) {
+  if (utils::IsMapOf<std::string, int64_t>(type)) {
     return OrtGetValueImplMapHelper<MapStringToInt64>(p_ml_value, index, allocator, out);
-  } else if (type == DataTypeImpl::GetType<MapStringToFloat>()) {
+  } else if (utils::IsMapOf<std::string, float>(type)) {
     return OrtGetValueImplMapHelper<MapStringToFloat>(p_ml_value, index, allocator, out);
-  } else if (type == DataTypeImpl::GetType<MapStringToDouble>()) {
+  } else if (utils::IsMapOf<std::string, double>(type)) {
     return OrtGetValueImplMapHelper<MapStringToDouble>(p_ml_value, index, allocator, out);
-  } else if (type == DataTypeImpl::GetType<MapInt64ToString>()) {
+  } else if (utils::IsMapOf<int64_t, std::string>(type)) {
     return OrtGetValueImplMapHelper<MapInt64ToString>(p_ml_value, index, allocator, out);
-  } else if (type == DataTypeImpl::GetType<MapInt64ToInt64>()) {
+  } else if (utils::IsMapOf<int64_t, int64_t>(type)) {
     return OrtGetValueImplMapHelper<MapInt64ToInt64>(p_ml_value, index, allocator, out);
   } else if (type == DataTypeImpl::GetType<MapInt64ToFloat>()) {
     return OrtGetValueImplMapHelper<MapInt64ToFloat>(p_ml_value, index, allocator, out);
-  } else if (type == DataTypeImpl::GetType<MapInt64ToDouble>()) {
+  } else if (utils::IsMapOf<int64_t, double>(type)) {
     return OrtGetValueImplMapHelper<MapInt64ToDouble>(p_ml_value, index, allocator, out);
   } else {
     return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported map types.");
