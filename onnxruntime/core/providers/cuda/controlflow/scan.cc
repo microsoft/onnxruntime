@@ -78,7 +78,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   kCudaExecutionProvider,
                                   KernelDefBuilder()
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Scan<9>);
 
 // Opset 11 starts to support Neg Axis.
@@ -88,7 +88,7 @@ ONNX_OPERATOR_KERNEL_EX(Scan,
                         kCudaExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Scan<9>);
 
 }  // namespace cuda
