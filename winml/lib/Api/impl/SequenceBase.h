@@ -177,6 +177,12 @@ struct SequenceBase : public winrt::implements<
       _winmla::IOrtValue** ml_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
+    // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
+    if (context.type == WinML::BindingType::kOutput) {
+      *ml_value = nullptr;
+      return S_OK;
+    }
+
     // Create a copy of the sequence
     auto sequence = context.type == WinML::BindingType::kInput
                         ? std::make_unique<LotusSequence>(ConvertToLotusSequence(data_))
@@ -256,12 +262,12 @@ struct SequenceBase : public winrt::implements<
     winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-    const LotusSequence& sequence = *static_cast<LotusSequence*>(adapter->GetVectorData(
+    const LotusSequence* sequence = static_cast<LotusSequence*>(adapter->GetVectorData(
         ml_value, 
         TensorKindFrom<ValidLotusType<T>::TKey>::Type,
         TensorKindFrom<ValidLotusType<T>::TValue>::Type));
 
-    for (const auto& element : sequence) {
+    for (const auto& element : *sequence) {
       writable_vector.Append(ConvertToABIType<T>(element));
     }
 

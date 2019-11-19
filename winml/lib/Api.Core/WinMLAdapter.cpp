@@ -777,7 +777,7 @@ class IOBinding : public Microsoft::WRL::RuntimeClass<
     return binding_->GetOutputNames();
   }
   std::vector<IOrtValue*>& STDMETHODCALLTYPE GetOutputs() override {
-    auto output_inner = binding_->GetOutputs();
+    auto& output_inner = binding_->GetOutputs();
     outputs_weak_.clear();
     outputs_.clear();
     for (unsigned i = 0; i < output_inner.size(); i++) {
