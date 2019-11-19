@@ -57,7 +57,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (add_input1_shape->dim_size() != 3 || add_input2_shape->dim_size() != 3) {
       continue;
     }
-    // "Add" inputs have to be of same dimensions. 
+    // "Add" inputs have to be of same dimensions.
     bool isValidInput = true;
     for (int i = 0; i < 3; i++) {
       if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
@@ -69,8 +69,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       continue;
     }
 
-    nodes_to_remove.push_back(add_node);
-
     // Find "LayerNormalization" node after the "Add".
     Node& ln_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
@@ -78,13 +76,56 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         !IsSupportedDataType(ln_node)) {
       continue;
     }
-    nodes_to_remove.push_back(ln_node);
+
+    // Find Previous add node
+    //NodeArg* p_bias_node_arg = nullptr;
+    //NodeArg* p_input_node_arg = nullptr;
+    Node* p_bias_node = nullptr;
+    for (auto node_iter = add_node.InputNodesBegin(); node_iter != add_node.InputNodesEnd(); ++node_iter) {
+      Node* p_node = graph.GetNode(node_iter->Index());
+      if (!p_node ||
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*p_node, "Add", {7}) ||
+          !graph_utils::IsSupportedProvider(*p_node, GetCompatibleExecutionProviders()) ||
+          p_node->GetOutputEdgesCount() != 1 ||
+          !IsSupportedDataType(*p_node)) {
+        continue;
+      }
+
+      p_bias_node = p_node;
+      break;
+      /*const TensorShapeProto* bias_node_input1_shape = p_bias_node->MutableInputDefs()[0]->Shape();
+      const TensorShapeProto* bias_node_input2_shape = p_bias_node->MutableInputDefs()[1]->Shape();
+      if (bias_node_input1_shape != nullptr &&
+          bias_node_input1_shape->dim_size() == 1 &&
+          graph_utils::NodeArgIsConstant(graph, *(p_bias_node->InputDefs()[0]))) {
+        p_bias_node_arg = p_bias_node->MutableInputDefs()[0];
+        p_input_node_arg = p_bias_node->MutableInputDefs()[1];
+        break;
+      }
+      if (bias_node_input2_shape != nullptr &&
+          bias_node_input2_shape->dim_size() == 1 &&
+          graph_utils::NodeArgIsConstant(graph, *(p_bias_node->InputDefs()[1]))) {
+        p_input_node_arg = p_bias_node.MutableInputDefs()[0];
+        p_bias_node_arg = p_bias_node.MutableInputDefs()[1];
+        break;
+      }*/
+    }
 
     // Get the inputs for the new SkipLayerNormalization node.
-    const std::vector<NodeArg*> skip_layer_norm_input_defs{add_node.MutableInputDefs()[0],
-                                                           add_node.MutableInputDefs()[1],
-                                                           ln_node.MutableInputDefs()[1],
-                                                           ln_node.MutableInputDefs()[2]};
+    std::vector<NodeArg*> skip_layer_norm_input_defs{add_node.MutableInputDefs()[0],
+                                                     add_node.MutableInputDefs()[1],
+                                                     ln_node.MutableInputDefs()[1],
+                                                     ln_node.MutableInputDefs()[2]};
+
+    if (p_bias_node != nullptr) {
+      skip_layer_norm_input_defs[0] = p_bias_node->MutableInputDefs()[0];
+      skip_layer_norm_input_defs.push_back(p_bias_node->MutableInputDefs()[1]);
+      nodes_to_remove.push_back(*p_bias_node);
+    }
+
+    nodes_to_remove.push_back( add_node );
+    nodes_to_remove.push_back( ln_node );
+
     Node& skip_layer_norm_node = graph.AddNode(graph.GenerateNodeName("SkipLayerNormalization"),
                                                "SkipLayerNormalization",
                                                "fused SkipLayerNorm subgraphs ",

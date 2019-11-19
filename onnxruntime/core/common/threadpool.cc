@@ -43,6 +43,8 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
 
   // TODO: Eigen supports a more efficient ThreadPoolDevice mechanism
   // We will simply rely on the work queue and stealing in the short term.
+  //int32_t task_in_main_thread = total / (static_cast<int32_t>(NumThreads()) + 1);
+  //Barrier barrier(static_cast<unsigned int>(total - task_in_main_thread));
   Barrier barrier(static_cast<unsigned int>(total - 1));
   std::function<void(int32_t)> handle_iteration = [&barrier, &fn](int iteration) {
     fn(iteration);
@@ -54,6 +56,7 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
   }
 
   fn(0);
+
   barrier.Wait();
 }
 

@@ -123,10 +123,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
-
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<AddGeluFusion>(cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AddGeluFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>( cpu_cuda_execution_providers ));
 #endif
     } break;
 

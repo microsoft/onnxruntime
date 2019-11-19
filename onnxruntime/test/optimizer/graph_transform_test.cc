@@ -823,7 +823,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
-TEST(GraphTransformationTests, AddGeluFusionTest) {
+/*TEST(GraphTransformationTests, AddGeluFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/add_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
@@ -841,7 +841,7 @@ TEST(GraphTransformationTests, AddGeluFusionTest) {
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["Gelu"] == 0);
   ASSERT_TRUE(op_to_count["GeluFusion"] == 0);
-}
+}*/
 
 TEST(GraphTransformationTests, LayerNormFusionTest) {
   string model_uri = MODEL_FOLDER + "fusion/layer_norm.onnx";
@@ -903,7 +903,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
     if (node.OpType() == "LayerNormalization") {
       // LayerNormalization should have three inputs.
       EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
-      // LayerNormalization input "scale" and "bias" should have the same dimension. 
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
       EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();

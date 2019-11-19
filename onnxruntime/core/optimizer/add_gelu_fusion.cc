@@ -29,6 +29,23 @@ Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
       continue;
     }
 
+    std::vector<NodeArg*> gelu_input;
+    const TensorShapeProto* add_input1_shape = node.MutableInputDefs()[0]->Shape();
+    const TensorShapeProto* add_input2_shape = node.MutableInputDefs()[1]->Shape();
+    if (add_input1_shape != nullptr &&
+      add_input1_shape->dim_size() == 1 &&
+      graph_utils::NodeArgIsConstant(graph, *(node.InputDefs()[0]))) {
+      gelu_input.push_back(node.MutableInputDefs()[1]);
+      gelu_input.push_back(node.MutableInputDefs()[0]);
+    } else if (add_input2_shape != nullptr &&
+      add_input2_shape->dim_size() == 1 &&
+      graph_utils::NodeArgIsConstant(graph, *(node.InputDefs()[1]))) {
+      gelu_input.push_back(node.MutableInputDefs()[0]);
+      gelu_input.push_back(node.MutableInputDefs()[1]);
+    } else{
+      continue;
+    }
+
     auto next_node_itr = node.OutputNodesBegin();
     if (next_node_itr == node.OutputNodesEnd()) {
       continue;
@@ -50,7 +67,7 @@ Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) c
     Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName("AddGeluFusion"),
                                                "AddGeluFusion",
                                                "fused Add and Gelu",
-                                               {add_node.MutableInputDefs()},
+                                               gelu_input,
                                                {},
                                                {},
                                                kMSDomain);
