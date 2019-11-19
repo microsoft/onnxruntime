@@ -18,7 +18,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                   KernelDefBuilder()
                                       .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                                      .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
 
 // output shape rules requiring the output shapes of the 'THEN' and 'ELSE'
@@ -30,7 +30,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         KernelDefBuilder()
                             .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {
