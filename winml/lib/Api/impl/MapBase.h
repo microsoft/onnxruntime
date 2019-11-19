@@ -62,12 +62,13 @@ struct MapBase : winrt::implements<
   }
 
   template <typename TRawType>
-  static TRawType ConvertToABIType(typename ValidLotusType<TRawType>::Type lotusValue) {
-    return lotusValue;
+  static TRawType ConvertToABIType(const typename ValidLotusType<TRawType>::Type& lotusValue) {
+    TRawType copy = lotusValue;
+    return copy;
   }
 
   template <>
-  static typename winrt::hstring ConvertToABIType(typename ValidLotusType<winrt::hstring>::Type lotusValue) {
+  static typename winrt::hstring ConvertToABIType(const typename ValidLotusType<winrt::hstring>::Type& lotusValue) {
     return WinML::Strings::HStringFromUTF8(lotusValue);
   }
 
@@ -128,11 +129,19 @@ struct MapBase : winrt::implements<
       return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
   }
 
-  STDMETHOD(GetOrtValue)(WinML::BindingContext& context, _winmla::IOrtValue** mlValue) {
+  STDMETHOD(GetOrtValue)(WinML::BindingContext& context, _winmla::IOrtValue** ml_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
+    // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
+    if (context.type == WinML::BindingType::kOutput) {
+      *ml_value = nullptr;
+      return S_OK;
+    }
+
     // Create a copy of the map
-    auto map = context.type == WinML::BindingType::kInput ? std::make_unique<LotusMap>(ConvertToLotusMap(m_data)) : std::make_unique<LotusMap>();
+    auto map = context.type == WinML::BindingType::kInput ? 
+      std::make_unique<LotusMap>(ConvertToLotusMap(m_data)) : 
+      std::make_unique<LotusMap>();
 
     winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
@@ -142,7 +151,7 @@ struct MapBase : winrt::implements<
     winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
     adapter->CreateOrtValue(map.release(), lotus_type, ml_value_out.put());
 
-    *mlValue = ml_value_out.detach();
+    *ml_value = ml_value_out.detach();
     return S_OK;
   }
 
