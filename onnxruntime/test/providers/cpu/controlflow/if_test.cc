@@ -297,6 +297,12 @@ TEST(If, MixedExecutionProviders) {
   RunTest(true, options);
 }
 
+TEST(If, MixedExecutionProvidersOpset11) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  RunTest(true, options, false, test::OpTester::ExpectResult::kExpectSuccess, "", 11);
+}
+
 TEST(If, MixedExecutionProvidersNoShapeInSubgraph) {
   RunOptions options{};
   options.mixed_execution_providers = true;
