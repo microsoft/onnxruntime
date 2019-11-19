@@ -14,7 +14,7 @@ namespace nuphar {
 Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Softmax)::Evaluate(
     const tvm::Array<tvm::Tensor>& inputs,
     const Node& node,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm::Array<tvm::Tensor>& outputs) {
   ProtoHelperNodeContext ctx(node);
   OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
@@ -23,7 +23,7 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(Softmax)::Evaluate(
   ORT_RETURN_IF_ERROR(info.GetAttr<int64_t>("axis", &axis_i64));
 
   axis_i64 = HandleNegativeAxis(axis_i64, gsl::narrow_cast<int64_t>(inputs[0]->shape.size()));
-  tvm::Tensor Y = Softmax(inputs[0], axis_i64);
+  tvm::Tensor Y = Softmax(inputs[0], axis_i64, ctx_codegen);
   outputs.push_back(Y);
   return Status::OK();
 }

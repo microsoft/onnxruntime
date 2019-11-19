@@ -6,11 +6,13 @@
 #include <string>
 #include <tvm/tvm.h>
 
+#include "core/codegen/passes/utils/codegen_context.h"
+
 namespace onnxruntime {
 namespace nuphar {
 namespace internal {
 
-tvm::Tensor SoftmaxInternal(const tvm::Tensor& input, int64_t axis, const std::string& name, bool logarithmic);
+tvm::Tensor SoftmaxInternal(const tvm::Tensor& input, int64_t axis, tvm_codegen::CodeGenContext& ctx_codegen, const std::string& name, bool logarithmic);
 
 }  // namespace internal
 }  // namespace nuphar

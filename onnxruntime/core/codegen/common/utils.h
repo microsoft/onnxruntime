@@ -28,4 +28,16 @@ struct TargetFeature {
 
 TargetFeature GetTargetInfo(const codegen::CodeGenSettings& setttings);
 
+// GCD (Greatest Common Divisor)
+template <typename T>
+T GCD(T a, T b) {
+  if (a < b) std::swap(a, b);
+  if (b == 0) return a;
+  while (a % b != 0) {
+    a = a % b;
+    std::swap(a, b);
+  }
+  return b;
+}
+
 }  // namespace onnxruntime

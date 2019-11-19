@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/codegen/common/utils.h"
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 
 namespace onnxruntime {
@@ -78,6 +79,7 @@ bool TryVectorization(
     return false;
   }
   const int64_t* tail_dim = as_const_int(shape[rank - 1]);
+  std::cout << "tail size in try vector: " << *tail_dim << std::endl;
 
   if (nullptr != tail_dim) {
     auto extern_op = tensor->op.as<tvm::ExternOpNode>();
@@ -91,15 +93,23 @@ bool TryVectorization(
       auto axis = compute_op->axis;
       tvm::IterVar x = axis[rank - 1];
       if ((*tail_dim) > natural_vector_size) {
-        if ((*tail_dim) % natural_vector_size == 0) {
-          tvm::IterVar xi, xo;
-          ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
-          ctx.schedule[tensor->op].vectorize(xi);
-          return true;
+        if ((*tail_dim) % natural_vector_size != 0) {
+          natural_vector_size = GCD<int64_t>(natural_vector_size, (*tail_dim));
+          std::cout << "gcd vector: " << natural_vector_size << std::endl;
         }
+
+        //if ((*tail_dim) % natural_vector_size == 0) {
+        tvm::IterVar xi, xo;
+        ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
+        ctx.schedule[tensor->op].vectorize(xi);
+        std::cout << "cond vector width small : " << xi << std::endl;
+        return true;
+        //}
+
       } else if (*tail_dim > 0) {
         // don't vectorize if dim is 0
         ctx.schedule[tensor->op].vectorize(x);
+        std::cout << "cond vector width large : " << x << std::endl;
         return true;
       }
     }

@@ -7,6 +7,7 @@
 #include "core/codegen/mti/math/reduce_ops.h"
 #include "core/codegen/mti/math/unary_ops.h"
 
+#include "core/providers/nuphar/compiler/x86/x86_target_info.h"
 #include "core/providers/nuphar/mti_x86/math/unary_ops.h"
 #include "core/providers/nuphar/mti_x86/math/reduce_ops.h"
 #include "gsl/gsl"
@@ -32,11 +33,18 @@ static int32_t FuseDim(int64_t axis) {
 
 tvm::Tensor SoftmaxInternal(const tvm::Tensor& input,
                             int64_t axis,
+                            tvm_codegen::CodeGenContext& ctx_codegen,
                             const std::string& name,
                             bool logarithmic) {
   std ::vector<int64_t> reduce_axis = ReduceAxes(axis, input->shape.size());
   // TODO use natural vector size check by type later
+  CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
+  ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
+#if 0
+  int64_t vectorization_width = target->NaturalVectorWidth(input->dtype.bits());
+#else
   int32_t vectorization_width = 16;
+#endif
   int32_t fuse_dim = FuseDim(axis);
   auto max_element = ReduceMax(input, reduce_axis, true, vectorization_width, false, fuse_dim, name + "_reduce_max");
   auto x_shift = tvm_codegen::Sub(input, max_element, name + "_sub");
