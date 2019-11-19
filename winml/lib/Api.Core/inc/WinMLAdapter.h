@@ -32,7 +32,7 @@ MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") ITensor : IUnknown{
 
 MIDL_INTERFACE("72aa5eee-100c-4146-9008-4643d3b8af23") IOrtValue : IUnknown{
     // these all return weak pointers
-    virtual OrtValue& STDMETHODCALLTYPE get() = 0;
+    virtual OrtValue* STDMETHODCALLTYPE get() = 0;
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE Type() = 0;
     virtual bool STDMETHODCALLTYPE IsTensor() = 0;
     // end
@@ -126,9 +126,9 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
 
     // Data getter
-    virtual void * STDMETHODCALLTYPE GetTensorData(IOrtValue * ort_Value) = 0;
-    virtual void * STDMETHODCALLTYPE GetMapData(IOrtValue * ort_Value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
-    virtual void * STDMETHODCALLTYPE GetVectorData(IOrtValue * ort_Value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
+    virtual void * STDMETHODCALLTYPE GetTensorData(IOrtValue * ort_value) = 0;
+    virtual void * STDMETHODCALLTYPE GetMapData(IOrtValue * ort_value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
+    virtual void * STDMETHODCALLTYPE GetVectorData(IOrtValue * ort_value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
 
     // custom ops
     virtual HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) = 0;

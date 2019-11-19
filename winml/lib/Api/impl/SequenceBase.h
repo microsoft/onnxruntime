@@ -206,21 +206,24 @@ struct SequenceBase : public winrt::implements<
   template <typename TRawType>
   static TRawType
   ConvertToABIType(
-      typename ValidLotusType<TRawType>::Type lotus_value) {
-    return lotus_value;
+      const typename ValidLotusType<TRawType>::Type& lotus_value) {
+    // make a copy
+    TRawType copy = lotus_value;
+    return copy;
   }
 
   template <>
   static winrt::hstring
   ConvertToABIType(
-      typename ValidLotusType<winrt::hstring>::Type lotus_value) {
+      const typename ValidLotusType<winrt::hstring>::Type& lotus_value) {
     return WinML::Strings::HStringFromUTF8(lotus_value);
   }
 
   template <>
   static AbiMapStringToFloat
   ConvertToABIType(
-      typename ValidLotusType<AbiMapStringToFloat>::Type lotus_value) {
+      const typename ValidLotusType<AbiMapStringToFloat>::Type& lotus_value) {
+    // need to make a copy to convert std::string to hstring
     std::map<winrt::hstring, float> copy;
     for (const auto& pair : lotus_value) {
       auto key = WinML::Strings::HStringFromUTF8(pair.first);
@@ -233,9 +236,14 @@ struct SequenceBase : public winrt::implements<
   template <>
   static AbiMapInt64BitToFloat
   ConvertToABIType(
-      typename ValidLotusType<AbiMapInt64BitToFloat>::Type lotus_value) {
+      const typename ValidLotusType<AbiMapInt64BitToFloat>::Type& lotus_value) {
+    // need to make a copy since stl objects are not ABI safe.
+    std::map<int64_t, float> copy;
+    for (const auto& pair : lotus_value) {
+      copy[pair.first] = pair.second;
+    }
     return winrt::single_threaded_map<int64_t, float>(
-        std::move(lotus_value));
+        std::move(copy));
   }
 
   STDMETHOD(UpdateSourceResourceData)(
