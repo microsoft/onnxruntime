@@ -183,10 +183,8 @@ struct SequenceBase : public winrt::implements<
       return S_OK;
     }
 
-    // Create a copy of the sequence
-    auto sequence = context.type == WinML::BindingType::kInput
-                        ? std::make_unique<LotusSequence>(ConvertToLotusSequence(data_))
-                        : std::make_unique<LotusSequence>();
+    // handle inputs, Create a copy of the sequence
+    lotus_data_ = std::make_unique<LotusSequence>(ConvertToLotusSequence(data_));
 
     winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
@@ -195,7 +193,7 @@ struct SequenceBase : public winrt::implements<
         TensorKindFrom<ValidLotusType<T>::TValue>::Type);
 
     winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
-    adapter->CreateOrtValue(sequence.release(), lotus_type, ml_value_out.put());
+    adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
 
     *ml_value = ml_value_out.detach();
     return S_OK;
@@ -283,6 +281,7 @@ struct SequenceBase : public winrt::implements<
 
  private:
   ABISequence data_;
+  std::unique_ptr<LotusSequence> lotus_data_;
 };
 
 }  // namespace Windows::AI::MachineLearning

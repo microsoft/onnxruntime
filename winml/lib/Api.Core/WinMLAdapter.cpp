@@ -705,15 +705,20 @@ HRESULT STDMETHODCALLTYPE CreateMLValue(
   return S_OK;
 }
 
+static void Delete(void* p) {
+  // do nothing
+}
+
 HRESULT STDMETHODCALLTYPE CreateOrtValue(
   void* data,
   onnxruntime::MLDataType data_type,
   IOrtValue** ort_value) override {
   auto ort_value_out = wil::MakeOrThrow<AbiSafeOrtValue>();
+  // pass the data in as a weak ref, don't let it delete it
   ort_value_out->get()->Init(
       data,
       data_type,
-      data_type->GetDeleteFunc());
+      &Delete);
 
   *ort_value = ort_value_out.Detach();
   return S_OK;
