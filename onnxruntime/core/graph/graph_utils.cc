@@ -191,7 +191,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
       const Node& output_edge_node = *graph.GetNode(output_edge.dst_node);
       if (!CanUpdateImplicitInputNameInSubgraph(output_edge_node, output_edge.arg_name, new_arg_name)) {
         LOGS(logger, WARNING) << " Implicit input name " << output_edge.arg_name
-                                 << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
+                              << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
         return false;
       }
     }
@@ -284,6 +284,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+}
+
+bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
   return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
 }
 
@@ -563,7 +567,6 @@ const Node* FirstParentByType(Node& node, const std::string& parent_type) {
   return nullptr;
 }
 
-
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
@@ -660,6 +663,63 @@ void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<N
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
+}
+
+const Node::EdgeEnd*
+GetInputEdge(const Node& node, int arg_index) {
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (arg_index == it->GetDstArgIndex()) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+const Node* GetInputNode(const Node& node, int arg_index) {
+  const Node::EdgeEnd* edge = GetInputEdge(node, arg_index);
+  if (nullptr == edge) {
+    return nullptr;
+  }
+  return &(edge->GetNode());
+}
+
+bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
+  result.clear();
+  result.reserve(edges_to_match.size());
+
+  const Node* current_node = &node;
+  for (const auto& edge : edges_to_match) {
+    const Node::EdgeEnd* edge_found = nullptr;
+
+    auto edges_begin = is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
+    auto edges_end = is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
+    for (auto it = edges_begin; it != edges_end; ++it) {
+
+      if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && edge.op_type == it->GetNode().OpType() && MatchesOpSinceVersion(it->GetNode(), edge.versions) && MatchesOpSetDomain(it->GetNode(), edge.domain)) {
+        // For output edge, there could be multiple edges matched.
+        // This function will return failure in such case by design.
+        if (nullptr != edge_found) {
+          LOGS(logger, WARNING) << "Failed since multiple edges matched:" << current_node->OpType() << "->" << edge.op_type;
+          return false;
+        }
+        edge_found = &(*it);
+
+        // For input edge, each dst_arg_index only accepts one input edge so only there is at most one match.
+        if (is_input_edge) {
+          break;
+        }
+      }
+    }
+
+    if (nullptr == edge_found) {
+      return false;
+    }
+
+    result.push_back(edge_found);
+    current_node = &(edge_found->GetNode());
+  }
+
+  return true;
 }
 
 }  // namespace graph_utils
