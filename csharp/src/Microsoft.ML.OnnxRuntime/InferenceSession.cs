@@ -31,7 +31,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="modelPath"></param>
         public InferenceSession(string modelPath)
         {
-            _builtInSessionOptions = new SessionOptions(); // need to be disposed
             Init(modelPath, _builtInSessionOptions);
         }
 
@@ -52,7 +51,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="model"></param>
         public InferenceSession(byte[] model)
         {
-            _builtInSessionOptions = new SessionOptions(); // need to be disposed
             Init(model, _builtInSessionOptions);
         }
 
@@ -215,9 +213,10 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var envHandle = OnnxRuntime.Handle;
             var session = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
+            
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options != null ? options.Handle : IntPtr.Zero, out session));                
 
-            InitWithSessionHandle(session, options);
+            InitWithSessionHandle(session);
         }
 
         private void Init(byte[] modelData, SessionOptions options)
@@ -225,9 +224,9 @@ namespace Microsoft.ML.OnnxRuntime
             var envHandle = OnnxRuntime.Handle;
             var session = IntPtr.Zero;
 
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options != null ? options.Handle : IntPtr.Zero, out session));
 
-            InitWithSessionHandle(session, options);
+            InitWithSessionHandle(session);
         }
 
         /// <summary>
@@ -235,7 +234,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="session">Handle of a native session object</param>
         /// <param name="options">Session options</param>
-        private void InitWithSessionHandle(IntPtr session, SessionOptions options)
+        private void InitWithSessionHandle(IntPtr session)
         {
             _nativeHandle = session;
             try
