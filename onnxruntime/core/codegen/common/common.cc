@@ -152,7 +152,8 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
       };
     // handle current graph's inputs
     node.ForEachWithIndex(node.InputDefs(), process_input_fn);
-    // nodes' implicit inputs also need to be collected.
+    // nodes' implicit inputs also need to be collected. They need to
+    // be promoted to being explicit inputs for everything to work.
     node.ForEachWithIndex(node.ImplicitInputDefs(), process_input_fn);
 
     // Handle outouts
