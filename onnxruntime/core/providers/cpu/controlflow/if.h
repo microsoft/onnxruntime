@@ -13,7 +13,7 @@
 namespace onnxruntime {
 class SessionState;
 
-class If final : public OpKernel, public controlflow::IControlFlowKernel {
+class If : public OpKernel, public controlflow::IControlFlowKernel {
  public:
   If(const OpKernelInfo& info);
 
