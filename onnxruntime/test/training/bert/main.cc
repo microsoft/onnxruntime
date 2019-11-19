@@ -270,10 +270,10 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params) {
       });
 
       return std::unordered_map<std::string, float>{
-        {"alpha", alpha},
-        {"beta", beta},
-        {"lambda", zero_lambda ? 0.f : lambda},
-        {"epsilon", epsilon},
+          {"alpha", alpha},
+          {"beta", beta},
+          {"lambda", zero_lambda ? 0.f : lambda},
+          {"epsilon", epsilon},
       };
     };
   } catch (const exception& e) {

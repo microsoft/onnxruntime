@@ -50,7 +50,7 @@ class DataSet {
   // Given a batch_size, get the total num of batches.
   size_t TotalBatch(size_t batch_size) const;
 
-  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th) const;
+  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator = nullptr) const;
 
   void RandomShuffle();
 
@@ -82,7 +82,7 @@ class RandomDataSet : public DataSet {
 
   virtual size_t NumSamples() const override { return num_samples_; }
 
-  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th) const override;
+  virtual std::vector<OrtValue> GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator = nullptr) const override;
 
  private:
   size_t num_samples_;
@@ -95,11 +95,13 @@ class TrainingUtil {
   template <typename T>
   static void CreateCpuMLValue(const std::vector<int64_t>& dims,
                                const std::vector<T>& value,
-                               MLValue* p_mlvalue) {
+                               MLValue* p_mlvalue,
+                               AllocatorPtr alloc = nullptr) {
     TensorShape shape(dims);
     assert(shape.Size() == static_cast<int64_t>(value.size()));
     auto element_type = DataTypeImpl::GetType<T>();
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape, GetCpuAllocator());
+    auto allocator = alloc ? alloc : GetCpuAllocator();
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
 
     if (value.size() > 0) {
       memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());

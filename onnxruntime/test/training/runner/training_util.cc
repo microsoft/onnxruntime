@@ -69,7 +69,7 @@ size_t DataSet::TotalBatch(size_t batch_size) const {
   return NumSamples() / batch_size + ((NumSamples() % batch_size > 0) ? 1 : 0);
 }
 
-std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const {
+std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, AllocatorPtr allocator) const {
   batch_size = min(batch_size, data_.size());
 
   std::vector<OrtValue> result;
@@ -85,7 +85,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th) const
       shape.emplace_back(batch_size);
     }
 
-    AllocatorPtr alloc = TrainingUtil::GetCpuAllocator();
+    AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
     auto p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     void* buffer = p_tensor->MutableDataRaw();
     size_t memory_size_per_sample = first_tensor.SizeInBytes();
@@ -110,7 +110,7 @@ void DataSet::RandomShuffle() {
   random_shuffle(data_.begin(), data_.end());
 }
 
-std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /*k_th*/) const {
+std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /*k_th*/, AllocatorPtr allocator) const {
   std::vector<OrtValue> result;
 
   for (size_t input_index = 0; input_index < NumInputs(); ++input_index) {
@@ -124,7 +124,8 @@ std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_FLOAT) {
       element_type = NonOnnxType<float>::Type();
     }
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape, TrainingUtil::GetCpuAllocator());
+    AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
 
     result.emplace_back(p_tensor.release(),

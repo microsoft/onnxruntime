@@ -150,6 +150,7 @@ class TrainingRunner {
 
   Parameters params_;
   TrainingSession session_;
+  AllocatorPtr pinned_allocator_;
 };
 
 }  // namespace training

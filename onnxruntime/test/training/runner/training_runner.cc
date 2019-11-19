@@ -43,7 +43,8 @@ TrainingRunner::TrainingRunner(Parameters params)
       round_(0),
       weight_update_step_count_(0),
       params_(params),
-      session_(SESSION_OPTION) {
+      session_(SESSION_OPTION),
+      pinned_allocator_(nullptr){
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
@@ -139,6 +140,8 @@ Status TrainingRunner::Initialize() {
 #ifdef USE_CUDA
   if (params_.use_cuda) {
     CUDAExecutionProviderInfo xp_info{params_.mpi_context.local_rank};
+    auto cuda_xp = std::make_unique<CUDAExecutionProvider>(xp_info);
+    pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
@@ -207,13 +210,13 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
 
     printf("Warming up for perf test.\n");
     for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
-      std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+      std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, pinned_allocator_);
       if (loss_scaler_) {
         float loss_scale = loss_scaler_->GetLossScale();
-        TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val);
+        TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, pinned_allocator_);
         feeds.push_back(loss_scale_val);
       }
-      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
+      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val, pinned_allocator_);
       feeds.push_back(lr_ort_val);
 
       vector<MLValue> fetches;
@@ -250,16 +253,16 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
-        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch);
+        std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, pinned_allocator_);
         if (loss_scaler_) {
           float loss_scale = loss_scaler_->GetLossScale();
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val);
+          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, pinned_allocator_);
           feeds.push_back(loss_scale_val);
         }
 
         {
           float learning_rate = lr_scheduler->GetLearningRate(step_ + 1);
-          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val);
+          TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{learning_rate}, &lr_ort_val, pinned_allocator_);
           feeds.push_back(lr_ort_val);
         }
 
