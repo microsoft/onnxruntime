@@ -139,9 +139,7 @@ struct MapBase : winrt::implements<
     }
 
     // Create a copy of the map
-    auto map = context.type == WinML::BindingType::kInput ? 
-      std::make_unique<LotusMap>(ConvertToLotusMap(m_data)) : 
-      std::make_unique<LotusMap>();
+    lotus_data_ = std::make_unique<LotusMap>(ConvertToLotusMap(m_data));
 
     winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
@@ -149,7 +147,7 @@ struct MapBase : winrt::implements<
     auto lotus_type = GetLotusType<TKey, TValue>(adapter.get());
 
     winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
-    adapter->CreateOrtValue(map.release(), lotus_type, ml_value_out.put());
+    adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
 
     *ml_value = ml_value_out.detach();
     return S_OK;
@@ -191,6 +189,7 @@ struct MapBase : winrt::implements<
 
  private:
   ABIMap m_data;
+  std::unique_ptr<LotusMap> lotus_data_;
 };
 
 }  // namespace Windows::AI::MachineLearning
