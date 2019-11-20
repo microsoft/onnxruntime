@@ -52,6 +52,7 @@ file(GLOB winml_test_api_src CONFIGURE_DEPENDS
   "${WINML_TEST_SRC_DIR}/api/*.cpp"
   "${WINML_TEST_SRC_DIR}/api/*.h"
   # FIXME move common to a separate project to be used by all test classes
+  "${WINML_TEST_SRC_DIR}/common/dllload.cpp"
   "${WINML_TEST_SRC_DIR}/common/fileHelpers.cpp"
   "${WINML_TEST_SRC_DIR}/common/protobufHelpers.cpp"
   "${WINML_TEST_SRC_DIR}/common/SqueezeNetValidator.cpp"

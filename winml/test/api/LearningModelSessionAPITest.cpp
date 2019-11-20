@@ -19,10 +19,10 @@ using winrt::Windows::Foundation::IPropertyValue;
 class LearningModelSessionAPITests : public APITest
 {};
 
-class DISABLED_LearningModelSessionAPITestsGpu : public APITest
+class LearningModelSessionAPITestsGpu : public APITest
 {};  // TODO create a constructor that calls GTEST_SKIP when GPU tests are disabled
 
-class DISABLED_LearningModelSessionAPITestsSkipEdgeCore : public DISABLED_LearningModelSessionAPITestsGpu
+class LearningModelSessionAPITestsSkipEdgeCore : public LearningModelSessionAPITestsGpu
 {};  // TODO create a constructor that calls GTEST_SKIP when on EdgeCore
 
 TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDefault)
@@ -58,7 +58,7 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithModelLoadedFromStream)
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
 {
 
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -67,7 +67,7 @@ TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
 {
 
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -76,7 +76,7 @@ TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighP
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
 {
 
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
@@ -85,7 +85,7 @@ TEST_F(DISABLED_LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinim
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
 }
 
-TEST_F(DISABLED_LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
+TEST_F(LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
 {
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
@@ -101,7 +101,7 @@ TEST_F(DISABLED_LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
     id.QuadPart = GetAdapterIdQuadPart();
     EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
     EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
-    EXPECT_FALSE(m_device.Direct3D11Device());
+    EXPECT_TRUE(m_device.Direct3D11Device() != nullptr);
 
     m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance);
     adapter = nullptr;
@@ -110,7 +110,7 @@ TEST_F(DISABLED_LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
     id.QuadPart = GetAdapterIdQuadPart();
     EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
     EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
-    EXPECT_FALSE(m_device.Direct3D11Device());
+    EXPECT_TRUE(m_device.Direct3D11Device() != nullptr);
 
     adapter = nullptr;
     m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower);
@@ -119,7 +119,7 @@ TEST_F(DISABLED_LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
     id.QuadPart = GetAdapterIdQuadPart();
     EXPECT_EQ(desc.AdapterLuid.LowPart, id.LowPart);
     EXPECT_EQ(desc.AdapterLuid.HighPart, id.HighPart);
-    EXPECT_FALSE(m_device.Direct3D11Device());
+    EXPECT_TRUE(m_device.Direct3D11Device() != nullptr);
 
     EXPECT_NO_THROW(m_session = LearningModelSession(m_model, m_device));
     EXPECT_EQ(m_session.Device().AdapterId(), m_device.AdapterId());
