@@ -918,6 +918,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
+      .def("finalize", [](py::object) {
+#ifdef USE_HOROVOD
+	  shutdown_horovod();
+#endif
+        })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         auto status = sess->Load(path);
         if (!status.IsOK()) {

@@ -137,3 +137,7 @@ class TrainingSession(InferenceSession):
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
         Session.__init__(self, sess);
+
+    def __del__(self):
+        if self._sess:
+            self._sess.finalize()
