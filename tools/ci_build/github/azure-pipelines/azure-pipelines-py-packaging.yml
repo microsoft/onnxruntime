@@ -1,5 +1,7 @@
 jobs:
 - job: Manylinux2010_py_Wheels
+  workspace:
+    clean: all
   pool: Linux-CPU
   strategy:
     matrix:
@@ -59,6 +61,8 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Manylinux2010_py_GPU_Wheels
+  workspace:
+    clean: all
   pool: Linux-GPU-CUDA10
   strategy:
     matrix:
@@ -118,7 +122,10 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_py_Wheels
+  workspace:
+    clean: all
   pool: Win-CPU
+  timeoutInMinutes:  120  
   strategy:
     matrix:
       Python35:
@@ -162,7 +169,10 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
+  workspace:
+    clean: all
   pool: Win-GPU-CUDA10
+  timeoutInMinutes:  120  
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '10.0'
@@ -225,6 +235,8 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
     
 - job: MacOS_py_Wheels
+  workspace:
+    clean: all
   pool:
     vmImage: 'macOS-10.13'
   strategy:

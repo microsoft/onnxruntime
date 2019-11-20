@@ -1,5 +1,7 @@
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
+  workspace:
+    clean: all
   timeoutInMinutes:  60
   pool:
     vmImage: 'ubuntu-latest'
@@ -23,6 +25,8 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
     
 - job: Linux_C_API_Packaging_GPU_x64
+  workspace:
+    clean: all
   timeoutInMinutes:  60
   pool: 'Linux-GPU-CUDA10'
   steps:
@@ -47,6 +51,8 @@ jobs:
  
 
 - job: MacOS_C_API_Packaging_CPU_x64
+  workspace:
+    clean: all
   pool: 
     vmImage: 'macOS-10.13'
   steps:
@@ -69,7 +75,10 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_Packaging_CPU
+  workspace:
+    clean: all
   pool: 'Win-CPU'
+  timeoutInMinutes:  120
   strategy:
     maxParallel: 2
     matrix: 
@@ -115,6 +124,9 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_Packaging_GPU_x64
+  workspace:
+    clean: all
+  timeoutInMinutes:  120    
   pool: 'Win-GPU-CUDA10'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
