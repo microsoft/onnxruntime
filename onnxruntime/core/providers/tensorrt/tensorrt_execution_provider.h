@@ -45,7 +45,6 @@ struct TensorrtFuncState {
   nvinfer1::IExecutionContext* context = nullptr;
   nvinfer1::IBuilder* builder = nullptr;
   nvinfer1::INetworkDefinition* network = nullptr;
-  nvinfer1::IBuilderConfig* config = nullptr;
   std::vector<std::vector<int>> input_info;
   std::vector<std::vector<int>> output_info;
   std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
@@ -60,6 +59,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   virtual ~TensorrtExecutionProvider();
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
@@ -72,18 +72,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-  void SetMaxBatchSize(const int batch_size) {
-    max_batch_size_ = batch_size;
-  }
-
-  void SetMaxWorkspaceSize(const size_t workspace_size) {
-    max_workspace_size_ = workspace_size;
-  }
-
  private:
-  int max_batch_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
-  int max_parser_iterations_ = 1000; // 6
+  int max_partition_iterations_ = 1000;
+  int min_subgraph_size_ = 1;
 
   struct InferDeleter {
     template <typename T>
@@ -104,7 +96,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, unique_pointer<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::INetworkDefinition>> networks_;
-  std::unordered_map<std::string, unique_pointer<nvinfer1::IBuilderConfig>> configs_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
