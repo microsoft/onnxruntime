@@ -233,7 +233,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// Initializes the session object with a native session handle
         /// </summary>
         /// <param name="session">Handle of a native session object</param>
-        /// <param name="options">Session options</param>
         private void InitWithSessionHandle(IntPtr session)
         {
             _nativeHandle = session;

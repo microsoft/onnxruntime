@@ -222,6 +222,13 @@ class InferenceSession {
   common::Status Load(const void* model_data, int model_data_len);
 
   /**
+    * Load an ONNX model from the member model_proto_. 
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
+    * @return OK if success.
+    */
+  common::Status Load();
+
+  /**
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
@@ -308,8 +315,6 @@ class InferenceSession {
 
   /*
    * Get the options this session was initialized with.
-   * WARNING: MIGHT BE different from the options this session was initialized with after subsequent calls to Load(),  
-   * if the model file is annotated with the options needed to initialize the session which will be used to run it 
    */
   const SessionOptions& GetSessionOptions() const;
 
@@ -361,6 +366,9 @@ class InferenceSession {
   // unique_ptr for maximum flexibility. Client can always upgrade it to shared_ptr
   // if they need.
   std::shared_ptr<onnxruntime::Model> model_;
+
+  // used to hold the ModelProto parsed in a ctor (where applicable) to be used while calling parameter-less Load()
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
 
   // names of model outputs used for quick validation.
   std::unordered_set<std::string> model_output_names_;

@@ -423,9 +423,14 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
 
+  status = sess->Load();
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+
   status = sess->Initialize();
   if (!status.IsOK())
     return ToOrtStatus(status);
+
   *out = reinterpret_cast<OrtSession*>(sess.release());
   return nullptr;
 }
