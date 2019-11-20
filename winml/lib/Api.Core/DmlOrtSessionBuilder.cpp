@@ -25,6 +25,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/customRegistry.h"
 #include "core/framework/data_transfer.h"
+#include "core/session/abi_session_options_impl.h"
 
 using namespace Windows::AI::MachineLearning;
 
@@ -39,17 +40,20 @@ DmlOrtSessionBuilder::DmlOrtSessionBuilder(
 
 HRESULT
 DmlOrtSessionBuilder::CreateSessionOptions(
-    ISessionOptions** p_options) {
-  RETURN_HR_IF_NULL(E_POINTER, p_options);
+    OrtSessionOptions** options) {
+  RETURN_HR_IF_NULL(E_POINTER, options);
 
-  auto options = wil::MakeOrThrow<AbiSafeSessionOptions>();
-  options.CopyTo(__uuidof(ISessionOptions), (void**)p_options);
+  Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(options));
+  std::unique_ptr<Ort::SessionOptions> session_options = std::make_unique<Ort::SessionOptions>(*options);
 
-  (*p_options)->get().graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+  // set the graph optimization level to all (used to be called level 3)
+  session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
-  (*p_options)->get().enable_mem_pattern = false;
+  session_options->DisableMemPattern();
 
+  // all done with the smart ptr
+  session_options.release();
   return S_OK;
 }
 
@@ -101,7 +105,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 }
 
 HRESULT DmlOrtSessionBuilder::CreateSession(
-    ISessionOptions* options,
+    OrtSessionOptions* options,
     _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
@@ -114,7 +118,7 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 
   std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
-  auto session = std::make_unique<onnxruntime::InferenceSession>(options->get());
+  auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
 
   // Cache the provider's raw pointer
   *pp_provider = gpu_provider.get();

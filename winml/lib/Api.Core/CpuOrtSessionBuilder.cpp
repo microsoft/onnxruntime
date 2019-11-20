@@ -21,6 +21,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/session/abi_session_options_impl.h"
 
 using namespace Windows::AI::MachineLearning;
 
@@ -32,26 +33,29 @@ CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
 
 HRESULT
 CpuOrtSessionBuilder::CreateSessionOptions(
-    ISessionOptions** p_options) {
-  RETURN_HR_IF_NULL(E_POINTER, p_options);
+    OrtSessionOptions** options) {
+  RETURN_HR_IF_NULL(E_POINTER, options);
 
-  auto options = wil::MakeOrThrow<AbiSafeSessionOptions>();
-  options.CopyTo(__uuidof(ISessionOptions), (void**)p_options);
+  Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(options));
+  std::unique_ptr<Ort::SessionOptions> session_options = std::make_unique<Ort::SessionOptions>(*options);
 
-  (*p_options)->get().graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+  // set the graph optimization level to all (used to be called level 3)
+  session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   // Onnxruntime will use half the number of concurrent threads supported on the system
   // by default. This causes MLAS to not exercise every logical core.
   // We force the thread pool size to be maxxed out to ensure that WinML always
   // runs the fastest.
-  (*p_options)->get().intra_op_num_threads = std::thread::hardware_concurrency();
+  session_options->SetIntraOpNumThreads(std::thread::hardware_concurrency());
 
+  // all done with the smart ptr
+  session_options.release();
   return S_OK;
 }
 
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
-    ISessionOptions* options,
+    OrtSessionOptions* options,
     _winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
@@ -59,7 +63,7 @@ CpuOrtSessionBuilder::CreateSession(
   RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
 
   // Create the inference session
-  auto session = std::make_unique<onnxruntime::InferenceSession>(options->get());
+  auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
 
   // Create the cpu execution provider
   onnxruntime::CPUExecutionProviderInfo xpInfo;

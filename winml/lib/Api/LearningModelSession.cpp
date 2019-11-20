@@ -109,18 +109,22 @@ void LearningModelSession::Initialize() {
     device_impl->GetDeviceQueue(),
     session_builder.put()));
 
-  com_ptr<_winmla::ISessionOptions> options;
-  WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(options.put()));
+  OrtSessionOptions* options_ptr;
+  WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options_ptr));
+  std::unique_ptr<Ort::SessionOptions> options = std::make_unique<Ort::SessionOptions>(options_ptr);
 
   // Make onnxruntime apply the batch size override, if any
   if (session_options_ && session_options_.BatchSizeOverride() != 0)
   {
-    options->SetBatchOverride(session_options_.BatchSizeOverride());
+    Ort::ThrowOnError(Ort::GetApi().AddFreeDimensionOverride(
+      *(options.get()), 
+      onnx::DATA_BATCH, 
+      session_options_.BatchSizeOverride()));
   }
 
   com_ptr<_winmla::IInferenceSession> session;
   WINML_THROW_IF_FAILED(session_builder->CreateSession(
-      options.get(), session.put(), &cached_execution_provider_));
+      *(options.get()), session.put(), &cached_execution_provider_));
 
   // Register the custom operator registry
   auto model = model_.as<winmlp::LearningModel>();
