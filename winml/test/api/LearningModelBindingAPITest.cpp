@@ -452,7 +452,7 @@ TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
     LearningModelSession mapSession(m_model);
     LearningModelBinding mapBinding(mapSession);
 
-    inputName = m_model.InputFeatures().First().Current().Name();
+    auto inputName = m_model.InputFeatures().First().Current().Name();
 
     // Bind invalid image as image input
     auto smallImage = FileHelpers::LoadImageFeatureValue(L"100x100.png");
