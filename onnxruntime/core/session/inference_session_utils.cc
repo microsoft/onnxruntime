@@ -167,47 +167,6 @@ static Status set_enable_profiling(SessionOptions& session_options,
 //--- end of local helpers ---
 //---------------------
 
-Status parse_environment_variables_from_model_proto(const ONNX_NAMESPACE::ModelProto& model_proto,
-                                                    /*out*/ EnvironmentVariables& env_vars,
-                                                    const logging::Logger& session_logger) {
-  json json_obj;
-  bool env_vars_found = false;
-  std::string env_vars_key = "env_vars";
-
-  for (auto metadata_field : model_proto.metadata_props()) {
-    if (metadata_field.has_key() && metadata_field.key() == "ort_config") {
-      LOGS(session_logger, INFO) << "Found session/run/environment configuration in the model file to be used while running the model";
-
-      auto status = parse_json_and_search_for_key(metadata_field.value(), env_vars_key, env_vars_found, json_obj);
-
-      if (!status.IsOK()) {
-        LOGS(session_logger, ERROR) << "Could not parse session/run/environment configuration json in the model file";
-        return status;
-      }
-    }
-  }
-
-  if (!env_vars_found) {
-    LOGS(session_logger, INFO) << "Did not find environment variables in the model file to be used while running the model";
-    return Status::OK();
-  }
-
-  auto& env_vars_from_model = json_obj.at("env_vars");
-
-  for (auto it = env_vars_from_model.cbegin(); it != env_vars_from_model.cend(); ++it) {
-    auto& key = it.key();
-    auto& value = it.value();
-
-    if (key == "omp_num_threads ") {
-      if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "omp_num_threads option in the model file must be an integer");
-      }
-
-      env_vars.omp_num_threads = it.value().get<int>();
-    }
-  }
-}
-
 Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& model_proto,
                                               SessionOptions& session_options,
                                               const logging::Logger& session_logger) {

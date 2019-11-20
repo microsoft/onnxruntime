@@ -532,7 +532,13 @@ common::Status InferenceSession::Load() {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(*this->model_proto_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    auto status = onnxruntime::Model::Load(*this->model_proto_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+
+    // we don't need to hold onto the member 'model_proto_' anymore in this class as the model creation has been attempted
+    // If successful, it will hold the model_proto within it. So clean up unnecessarily held memory.
+    model_proto_.reset();
+
+    return status;
   };
 
   return Load(loader, "model_loading_from_saved_proto");
