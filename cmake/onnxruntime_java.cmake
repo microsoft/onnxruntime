@@ -18,30 +18,6 @@ else()
   set (JAVA_DEPENDS onnxruntime)
 endif()
 
-if (onnxruntime_USE_CUDA)
-  STRING(APPEND JAVA_PREPROCESSOR_DEFINES "USE_CUDA,")
-endif()
-
-if (onnxruntime_USE_MKLDNN)
-  STRING(APPEND JAVA_PREPROCESSOR_DEFINES "USE_MKLDNN,")
-endif()
-
-if (onnxruntime_USE_TENSORRT)
-  STRING(APPEND JAVA_PREPROCESSOR_DEFINES "USE_TENSORRT,")
-endif()
-
-if (onnxruntime_USE_OPENVINO)
-  STRING(APPEND JAVA_PREPROCESSOR_DEFINES "USE_OPENVINO,")
-endif()
-
-if (onnxruntime_USE_NGRAPH)
-  STRING(APPEND JAVA_PREPROCESSOR_DEFINES "USE_NGRAPH,")
-endif()
-
-if (onnxruntime_USE_NUPHAR)
-  STRING(APPEND JAVA_PREPROCESSOR_DEFINES "USE_NUPHAR,")
-endif()
-
 set(onnxruntime4j_src
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/MapInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/NodeInfo.java
@@ -61,7 +37,7 @@ set(onnxruntime4j_src
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ValueInfo.java
         )
 
-add_jar(onnxruntime4j SOURCES ${onnxruntime4j_src} GENERATE_NATIVE_HEADERS onnxruntime4j_generated DESTINATION ${REPO_ROOT}/java/src/main/native/)
+add_jar(onnxruntime4j SOURCES ${onnxruntime4j_src} VERSION ${ORT_VERSION} GENERATE_NATIVE_HEADERS onnxruntime4j_generated DESTINATION ${REPO_ROOT}/java/src/main/native/)
 
 file(GLOB onnxruntime4j_native_src 
     "${REPO_ROOT}/java/src/main/native/*.c"
@@ -83,3 +59,32 @@ target_link_libraries(onnxruntime4j_jni PUBLIC
     onnxruntime
     onnxruntime4j_generated
     )
+
+get_property(onnxruntime_jar_name TARGET onnxruntime4j PROPERTY JAR_FILE)
+
+# Now the jar, jni binary and shared lib binary have been built, but the jar does not contain the necessary binaries.
+
+add_custom_target(TARGET onnxruntime4j_jni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib)
+
+add_custom_command(
+        TARGET onnxruntime4j_jni POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                "$<TARGET_FILE:onnxruntime4j_jni>"
+                ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
+
+add_custom_command(
+        TARGET onnxruntime4j_jni POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+        "$<TARGET_LINKER_FILE:onnxruntime>"
+                ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
+
+add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD
+            OUTPUT ${_JAVA_JAR_OUTPUT_PATH}
+            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_name} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_LINKER_FILE_NAME:onnxruntime>
+            DEPENDS onnxruntime4j
+            COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
+            VERBATIM
+        )
+

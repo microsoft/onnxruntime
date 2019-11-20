@@ -12,7 +12,7 @@ plugins {
     id 'maven-publish'
 }
 
-group 'com.microsoft.onnxruntime'
+group 'ai.onnxruntime'
 version '1.0.0-SNAPSHOT'
 
 sourceCompatibility = 1.8
@@ -35,7 +35,7 @@ compileJava {
 }
 
 library {
-    baseName = "ONNX4j"
+    baseName = "onnxruntime4j_jni"
     targetMachines = [
             machines.linux,
             machines.macOS
@@ -93,6 +93,7 @@ jar {
     into("/lib/") {
         from { "build/lib/main/release/" + platform + "/" }
         from { "../build/Linux/Debug/libonnxruntime.so" }
+        from { "../build/Linux/Debug/libonnxruntime.dylib" }
     }
 }
 
@@ -118,6 +119,7 @@ task('debugJar', type: Jar) {
     into("/lib/") {
         from { "build/lib/main/debug/" + platform + "/" }
         from { "../build/Linux/Debug/libonnxruntime.so" }
+        from { "../build/Linux/Debug/libonnxruntime.dylib" }
     }
 }
 

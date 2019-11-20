@@ -42,7 +42,7 @@ final class ONNX {
     /**
      * Library names stored in the jar.
      */
-    private static final List<String> libraryNames = Arrays.asList("onnxruntime","ONNX4j");
+    private static final List<String> libraryNames = Arrays.asList("onnxruntime","onnxruntime4j_jni");
 
     private ONNX() {}
 
