@@ -972,8 +972,8 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
 
             #It could run out of memory because of memory leak
-            if args.use_mkldnn:
-              mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+            #if args.use_mkldnn:
+            #  mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
             run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 0)                       
 
