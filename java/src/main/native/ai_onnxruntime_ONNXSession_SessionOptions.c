@@ -115,7 +115,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCP
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCUDA
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
-  #ifdef BUILD_CUDA
+  #ifdef USE_CUDA
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CUDA((OrtSessionOptions*) handle, deviceID));
   #else
     (void)jobj;(void)apiHandle;(void)handle;(void)deviceID; // Parameters used when CUDA is defined.
@@ -130,7 +130,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCU
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addMkldnn
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
-  #ifdef BUILD_MKLDNN
+  #ifdef USE_MKLDNN
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Mkldnn((OrtSessionOptions*) handle,useArena));
   #else
     (void)jobj;(void)apiHandle;(void)handle;(void)useArena; // Parameters used when MKL-DNN is defined.
@@ -145,7 +145,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addMk
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNGraph
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring backendString) {
-  #ifdef BUILD_NGRAPH
+  #ifdef USE_NGRAPH
     const char* backendType = (*jniEnv)->GetStringUTFChars(jniEnv, backendString, NULL);
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_NGraph((OrtSessionOptions*) handle, backendType));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,backendString,backendType);
@@ -162,7 +162,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNG
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addOpenVINO
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring deviceIDString) {
-  #ifdef BUILD_OPEN_VINO
+  #ifdef USE_OPENVINO
     const char* deviceID = (*jniEnv)->GetStringUTFChars(jniEnv, deviceIDString, NULL);
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_OpenVINO((OrtSessionOptions*) handle, deviceID));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,deviceIDString,deviceID);
@@ -179,7 +179,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addOp
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addTensorrt
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceNum) {
-  #ifdef BUILD_TENSOR_RT
+  #ifdef USE_TENSORRT
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tensorrt((OrtSessionOptions*) handle, deviceNum));
   #else
     (void)jobj;(void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when TensorRT is defined.
@@ -194,7 +194,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addTe
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNnapi
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
-  #ifdef BUILD_NNAPI
+  #ifdef USE_NNAPI
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle));
   #else
     (void)jobj;(void)apiHandle;(void)handle; // Parameters used when NNAPI is defined.
@@ -210,7 +210,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNn
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNuphar
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint allowUnalignedBuffers, jstring settingsString) {
-  #ifdef BUILD_NUPHAR
+  #ifdef USE_NUPHAR
     const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);
     checkONNXStatus(jniEnv,OrtSessionOptionsAppendExecutionProvider_Nuphar((OrtSessionOptions*) handle, allowUnalignedBuffers, settings));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
