@@ -127,9 +127,9 @@ bool IsDimensionSupported(const Node* node) {
 }
 
 //Ops which are not supported by Intel EP
-bool IsUnsupportedOp(std::string name){
+bool IsUnsupportedOp(std::string name, std::string device){
 
-  std::set<std::string> unsupported_ops = {
+  std::set<std::string> unsupported_ops_cpu = {
     "Where",
     "Hardmax",
     "ReduceL1",
@@ -153,21 +153,52 @@ bool IsUnsupportedOp(std::string name){
     "Softplus",
     "HardSigmoid",
     "GlobalLpPool",
-    "Sign",
-    "Erf"
-    // "Add", //disabled temporarily
-    // "MaxPool", //disabled temporarily
-    // "AveragePool" //disabled temporarily
+    // "Gemm",
   };
 
-  auto iter = unsupported_ops.find(name);
-  return iter != unsupported_ops.end();
+  std::set<std::string> unsupported_ops_gpu = {
+    "Cos",
+    "Cosh",
+    "SinFloat",
+    "Sinh"
+  };
+
+  std::set<std::string> unsupported_ops_vpu = {
+    "Abs",
+    "Acos",
+    "Acosh",
+    "Asin",
+    "Asinh",
+    "Atan",
+    "Atanh",
+    "Cos",
+    "Cosh"
+  };
+
+  if(device == "CPU")
+      return unsupported_ops_cpu.find(name) != unsupported_ops_cpu.end();
+  if(device == "GPU")
+      return unsupported_ops_gpu.find(name) != unsupported_ops_gpu.end();
+  if(device == "VPU")
+      return unsupported_ops_vpu.find(name) != unsupported_ops_vpu.end();
+  return false;
 }
 
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
-  if(IsUnsupportedOp(optype))
+
+  std::string device_id = "CPU";
+
+  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+    device_id = "GPU";
+  #endif
+
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    device_id = "VPU";
+  #endif
+
+  if(IsUnsupportedOp(optype,device_id))
     return true;
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
