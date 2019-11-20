@@ -736,3 +736,8 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+
+if (onnxruntime_BUILD_JAVA)
+  message(STATUS "Java Build is enabled")
+  include(onnxruntime_java.cmake)
+endif()

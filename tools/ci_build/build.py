@@ -91,6 +91,8 @@ Use the individual flags to only run the specified stages.
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
 
+    # Java bindings
+    parser.add_argument("--build_java", action='store_true', help="Build Java bindings.")
 
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
@@ -337,6 +339,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
+                 "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
                  "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
                  "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + ("OFF" if args.use_openblas else "ON"),
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
@@ -892,7 +895,7 @@ def main():
     if args.build_wheel or args.enable_server_model_tests:
         args.enable_pybind = True
 
-    if args.build_csharp:
+    if args.build_csharp or args.build_java:
         args.build_shared_lib = True
 
     # Disabling unit tests for VAD-F as FPGA only supports models with NCHW layout
