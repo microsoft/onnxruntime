@@ -725,6 +725,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
             break;
         }
         default: {
+            sequenceInfo = createEmptySequenceInfo(jniEnv);
             throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"Invalid element type found in sequence");
             break;
         }
