@@ -1,4 +1,4 @@
-Images are licensed as follows:
+# Licenses
 
 | Image       | Source     | License     |
 | ----------- | ---------- | ----------- |
