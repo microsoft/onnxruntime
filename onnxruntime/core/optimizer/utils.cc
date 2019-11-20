@@ -110,5 +110,39 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   return true;
 }
 
+
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_i()) {
+    return attr_proto->i() == expected_value;
+  }
+  return false;
+}
+
+bool LoadTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+    return false;
+  }
+
+  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  const auto data_type = tensor_proto->data_type();
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    const int64_t* val = init_const->data<int64_t>();
+    data.reserve(data.size() + init_const->size());
+    data.insert(data.end(), val, val + init_const->size());
+  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    const int32_t* val = init_const->data<int32_t>();
+    data.reserve(data.size() + init_const->size());
+    for (int64_t i = 0; i < init_const->size(); i++) {
+      data.push_back(static_cast<int64_t>(val[i]));
+    }
+  } else {
+    return false;
+  }
+
+  return true;
+}
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

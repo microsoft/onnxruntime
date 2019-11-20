@@ -30,5 +30,15 @@ bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxr
 */
 bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, int64_t expected_value, bool is_constant);
 
+/** Check whether an attribute of node has specified integer value.
+@param expected_value is the expected value of the initializer.
+*/
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value);
+
+/** Get values of an integer tensor from initializer, and append them to a vector.
+@remarks only support int32 and int64 tensor. This function does not clear vector before appending.
+*/
+bool LoadTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime
