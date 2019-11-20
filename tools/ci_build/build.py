@@ -544,8 +544,11 @@ def setup_tensorrt_vars(args):
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
-        os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
-
+        os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "6"
+        
+        # Set minimum subgraph node size in graph partitioning for TensorRT
+        os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
+        
     return tensorrt_home
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
