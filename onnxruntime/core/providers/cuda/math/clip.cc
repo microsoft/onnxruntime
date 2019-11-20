@@ -17,7 +17,7 @@ namespace cuda {
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Clip_6<T>);                                                 \
+      Clip<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Clip,                                                       \
       kOnnxDomain,                                                \
@@ -31,44 +31,27 @@ namespace cuda {
       Clip<T>);
 
 template <typename T>
-Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor& X = *ctx->Input<Tensor>(0);
-  const TensorShape input_shape{X.Shape()};
-  Tensor* Y = ctx->Output(0, input_shape);
-
-  size_t count = input_shape.Size();
-
-  if (count > 0) {
-    auto* y_data = Y->template MutableData<T>();
-    const auto* x_data = X.template Data<T>();
-    ClipImpl<T>(x_data, y_data, min_, max_, count);
-  }
-
-  return Status::OK();
-}
-
-template <typename T>
 Status Clip<T>::ComputeInternal(OpKernelContext* ctx) const {
-  const auto* min = ctx->Input<Tensor>(1);
-  const auto* max = ctx->Input<Tensor>(2);
-
-  auto min_val = -std::numeric_limits<T>::infinity();
-  auto max_val = std::numeric_limits<T>::infinity();
-  if (min) {
-    ORT_ENFORCE(min->Shape().NumDimensions() == 0, "min should be a scalar.");
-    min_val = *(min->template Data<T>());
+  T min_val = min_;
+  T max_val = max_;
+  if (is_min_max_input_) {
+    const auto* min_input = ctx->Input<Tensor>(1);
+    const auto* max_input = ctx->Input<Tensor>(2);
+    if (min_input) {
+      ORT_ENFORCE(min_input->Shape().NumDimensions() == 0, "min should be a scalar.");
+      min_val = *(min_input->template Data<T>());
+    }
+    if (max_input) {
+      ORT_ENFORCE(max_input->Shape().NumDimensions() == 0, "max should be a scalar.");
+      max_val = *(max_input->template Data<T>());
+    }
+    ORT_ENFORCE(min_val <= max_val);
   }
-  if (max) {
-    ORT_ENFORCE(max->Shape().NumDimensions() == 0, "max should be a scalar.");
-    max_val = *(max->template Data<T>());
-  }
-  ORT_ENFORCE(min_val <= max_val);
 
   const Tensor& X = *ctx->Input<Tensor>(0);
-  const TensorShape input_shape{X.Shape()};
+  const TensorShape& input_shape{X.Shape()};
   Tensor* Y = ctx->Output(0, input_shape);
   size_t count = input_shape.Size();
-
   if (count > 0) {
     auto* y_data = Y->template MutableData<T>();
     const auto* x_data = X.template Data<T>();
