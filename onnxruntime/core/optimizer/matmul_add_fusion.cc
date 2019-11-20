@@ -10,7 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -21,7 +21,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
 
     auto& node = *node_ptr;
 
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {1, 9}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
@@ -64,15 +64,6 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
       continue;
     }
 
-    if (1 == matmul_a_shape->dim_size() && 2 == matmul_b_shape->dim_size()) {
-      // MatMul has shape [K] * [K, N], reset it to [1, K] * [K, N], so that it can work for Gemm
-      auto mutable_matmul_a_shape = const_cast<ONNX_NAMESPACE::TensorShapeProto*>(matmul_a_shape);
-      auto dim_0 = mutable_matmul_a_shape->mutable_dim(0);
-      auto dim_1 = (const_cast<ONNX_NAMESPACE::TensorShapeProto*>(matmul_a_shape))->add_dim();
-      (*dim_1) = (*dim_0);
-      dim_0->set_dim_value(1);
-    }
-
     if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
       // Gemm only support Matrix
       continue;
@@ -110,7 +101,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level)
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
     // move output definitions and edges from act_node to gemm_node. delete gemm_node and act_node.
-    graph_utils::FinalizeNodeFusion(graph, matmul_node, add_node, &gemm_node);
+    graph_utils::FinalizeNodeFusion(graph, {matmul_node, add_node}, gemm_node);
 
     modified = true;
   }

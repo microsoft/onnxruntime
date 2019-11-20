@@ -11,16 +11,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Compress,
     9,
     10,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Compress);
 
 // Opset 11 starts to support Neg Axis.
 ONNX_CPU_OPERATOR_KERNEL(
     Compress,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Compress);
 
 Status Compress::Compute(OpKernelContext* ctx) const {
@@ -30,7 +32,6 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   int64_t axis = axis_;
   if (has_axis_) {
     axis = HandleNegativeAxis(axis, rank);  // handle negative and enforce axis is valid
-    ORT_ENFORCE(axis < static_cast<int64_t>(rank), "axis greater than input data dimension!");
   }
 
   const auto* condition = ctx->Input<Tensor>(1);
@@ -66,7 +67,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   const auto* input_data = static_cast<const uint8_t*>(input_tensor->DataRaw());
   auto* output_data = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
   auto element_bytes = input_tensor->DataType()->Size();
-  bool is_string_type = input_tensor->DataType() == DataTypeImpl::GetType<std::string>();
+  bool is_string_type = input_tensor->IsDataTypeString();
   int64_t output_index = 0;
 
   if (has_axis_) {
@@ -95,7 +96,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
         if (is_string_type) {
           for (int idxItem = 0; idxItem < axes_right_stride; ++idxItem) {
             reinterpret_cast<std::string*>(output_data)[output_index + idxItem] =
-              reinterpret_cast<const std::string*>(input_data)[i * axes_included_right_stride + j * axes_right_stride + idxItem];
+                reinterpret_cast<const std::string*>(input_data)[i * axes_included_right_stride + j * axes_right_stride + idxItem];
           }
           output_index += axes_right_stride;
         } else {
@@ -118,7 +119,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
     }
   }
 
-return Status::OK();
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

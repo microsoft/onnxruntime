@@ -28,7 +28,7 @@ class HttpJsonPayloadTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        onnx_model = os.path.join(cls.model_path, 'model.onnx')
         test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
@@ -250,7 +250,7 @@ class HttpProtobufPayloadTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        onnx_model = os.path.join(cls.model_path, 'model.onnx')
         test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
@@ -380,7 +380,7 @@ class HttpEndpointTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        onnx_model = os.path.join(cls.model_path, 'model.onnx')
         test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--http_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))
@@ -416,7 +416,7 @@ class GRPCTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        onnx_model = os.path.join(cls.model_path, 'mnist.onnx')
+        onnx_model = os.path.join(cls.model_path, 'model.onnx')
         test_util.prepare_mnist_model(onnx_model)
         cmd = [cls.server_app_path, '--grpc_port', str(cls.server_port), '--model_path', onnx_model, '--log_level', cls.log_level]
         test_util.test_log('Launching server app: [{0}]'.format(' '.join(cmd)))

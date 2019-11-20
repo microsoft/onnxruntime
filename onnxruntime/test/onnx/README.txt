@@ -4,7 +4,7 @@ Options:
         -c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.
         -n [test_case_name]: Specifies a single test case to run.
         -p [PLANNER_TYPE]: PLANNER_TYPE could be 'seq' or 'simple'. Default: 'simple'.
-        -e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph' or 'nuphar'. Default: 'cpu'.
+        -e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', 'nuphar' or 'acl'. Default: 'cpu'.
         -h: help
 
 The debug version of this program depends on dbghelp.dll. Please make sure it's in your PATH.

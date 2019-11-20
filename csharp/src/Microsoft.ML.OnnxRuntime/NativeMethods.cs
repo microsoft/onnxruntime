@@ -16,12 +16,13 @@ namespace Microsoft.ML.OnnxRuntime
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
-        public OrtApiBase base_;
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
         public IntPtr CreateEnv;
         public IntPtr CreateEnvWithCustomLogger;
+        public IntPtr EnableTelemetryEvents;
+        public IntPtr DisableTelemetryEvents;
         public IntPtr CreateSession;
         public IntPtr CreateSessionFromArray;
         public IntPtr Run;
@@ -363,10 +364,10 @@ namespace Microsoft.ML.OnnxRuntime
         ExecutionMode execution_mode);
         public static DOrtSetSessionExecutionMode OrtSetSessionExecutionMode;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, [MarshalAs(UnmanagedType.LPWStr)]string optimizedModelFilepath);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetOptimizedModelFilePath(IntPtr /* OrtSessionOptions* */ options, byte[] optimizedModelFilepath);
         public static DOrtSetOptimizedModelFilePath OrtSetOptimizedModelFilePath;
 
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, string profilePathPrefix);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableProfiling(IntPtr /* OrtSessionOptions* */ options, byte[] profilePathPrefix);
         public static DOrtEnableProfiling OrtEnableProfiling;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableProfiling(IntPtr /* OrtSessionOptions* */ options);
@@ -658,5 +659,13 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleaseValue OrtReleaseValue;
 
         #endregion
+
+        public static byte[] GetPlatformSerializedString(string str)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
+            else
+                return System.Text.Encoding.UTF8.GetBytes(str + Char.MinValue);
+        }
     } //class NativeMethods
 } //namespace

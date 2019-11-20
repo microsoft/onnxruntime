@@ -4,6 +4,8 @@ parameters:
 
 jobs:
 - job: NuGet_Test_Linux
+  workspace:
+    clean: all
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging

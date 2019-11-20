@@ -348,8 +348,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
-                 "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino else "OFF"),
-                 "-Donnxruntime_USE_OPENVINO_SOURCE=OFF",
                  "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
@@ -753,8 +751,9 @@ def run_server_tests(build_dir, configs):
             server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
             python_package_path = config_build_dir
         server_test_folder = os.path.join(config_build_dir, 'server_test')
-        server_test_data_folder = os.path.join(os.path.join(config_build_dir, 'testdata'), 'server')
-        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
+        server_test_model_folder = os.path.join(build_dir, 'models', 'opset8', 'test_mnist')
+        server_test_data_folder = os.path.join(config_build_dir, 'testdata', 'server')
+        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_model_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
 def run_server_model_tests(build_dir, configs):

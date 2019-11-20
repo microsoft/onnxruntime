@@ -10,7 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   auto& conv_node = node;
   Node& bn_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());
 
@@ -131,6 +131,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     graph_utils::AddNodeInput(node, 2, new_conv_B_node_arg);
   }
 
+  // trim off any output defs that are optional in the bn_node before we finalize fusion, as we copy the '
+  // defs across to the Conv node so the output name is maintained. we checked in SatisfyCondition that
+  // none of these optional outputs exist, so it's safe to do this.
+  bn_node.MutableOutputDefs().resize(1);
+
   // Move the output definition and edges from the BN node to the Conv node and delete the BN node.
   graph_utils::FinalizeNodeFusion(graph, conv_node, bn_node);
 
@@ -139,7 +144,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   return Status::OK();
 }
 
-bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
@@ -161,6 +166,15 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node) const 
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[3]) ||
       !graph_utils::NodeArgIsConstant(graph, *next_node.InputDefs()[4])) {
     return false;
+  }
+
+  // First output from BN is required. Others are optional. If any optional outputs exist we can't fuse.
+  const auto& output_defs = next_node.OutputDefs();
+  if (output_defs.size() > 1) {
+    for (size_t i = 1, end = output_defs.size(); i < end; ++i) {
+      if (output_defs[i] != nullptr && output_defs[i]->Exists())
+        return false;
+    }
   }
 
   if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {

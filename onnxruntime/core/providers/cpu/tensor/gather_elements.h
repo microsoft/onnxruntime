@@ -18,6 +18,11 @@ class GatherElements final : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
+  // holds common checks for the CPU and CUDA GatherElements kernel
+  static Status ValidateInputShapes(const TensorShape& input_data_shape,
+                                    const TensorShape& indices_shape,
+                                    int64_t axis);  // axis might be different from the member axis_ based on the input being processed
+
  private:
   Status CoreImplString(const Tensor* input_tensor, const Tensor* indices_tensor,
                         Tensor* output_tensor, int64_t axis) const;

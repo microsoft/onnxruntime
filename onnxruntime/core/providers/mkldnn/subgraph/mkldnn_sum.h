@@ -21,11 +21,11 @@ class MklDnnSum : public MklDnnKernel {
     ReadAttributes(attributes, attributes_prefix);
   }
 
-  Status CreatePrimitives(const OrtCustomOpApi* api,
-                          OrtKernelContext* context,
-                          mkldnn::engine& cpu_engine,
-                          std::vector<mkldnn::primitive>& net,
-                          std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
+  void CreatePrimitives(const OrtCustomOpApi* api,
+                        OrtKernelContext* context,
+                        mkldnn::engine& cpu_engine,
+                        std::vector<mkldnn::primitive>& net,
+                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) override {
     Ort::CustomOpApi ort{*api};
     int num_inputs = mklnode_ptr_->num_inputs;
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
@@ -89,25 +89,28 @@ class MklDnnSum : public MklDnnKernel {
       }
     }
 
-	primitive_dst_md_.reset(new mkldnn::memory::desc(
-        {dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
-    sum_pd_.reset(new mkldnn::sum::primitive_desc(
-        *primitive_dst_md_, coeff, srcs_pd_, cpu_engine));
+    primitive_dst_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
+        mkldnn::memory::desc({dst_dims_mkl}, MklDnnType<T>(), mkldnn::memory::format_tag::any));
+    sum_pd_ = onnxruntime::make_unique<mkldnn::sum::primitive_desc>(
+        mkldnn::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, cpu_engine));
 
     if (mklnode_ptr_->output_index >= 0) {
       // last node of sub-graph. need to allocate memory for output_tensor
       if (primitive_dst_desc_ != ort_source_desc_) {
         // reorder neded. Use primitive output as input to reorder and
         // allocate buffer for reorder output, final output of this subgraph
-        primitive_dst_mem_.reset(new mkldnn::memory(sum_pd_->dst_desc(), cpu_engine));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(sum_pd_->dst_desc(), cpu_engine));
       } else {
         // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_.reset(new mkldnn::memory(sum_pd_->dst_desc(), cpu_engine, nullptr));
+        primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+            mkldnn::memory(sum_pd_->dst_desc(), cpu_engine, nullptr));
       }
     } else {
       // Intermediate node. Use mkldnn kernel internal memory for output and
       // use this as input to next node.
-      primitive_dst_mem_.reset(new mkldnn::memory(sum_pd_->dst_desc(), cpu_engine));
+      primitive_dst_mem_ = onnxruntime::make_unique<mkldnn::memory>(
+          mkldnn::memory(sum_pd_->dst_desc(), cpu_engine));
     }
     primitive_dst_desc_ = sum_pd_->dst_desc();
 
@@ -126,7 +129,6 @@ class MklDnnSum : public MklDnnKernel {
       mkldnn::memory::data_type t = MklDnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
-    return Status::OK();
   }
 
   Status Bind(const OrtCustomOpApi* api, OrtKernelContext* context) override {

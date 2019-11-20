@@ -22,7 +22,6 @@ jobs:
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
-
 - template: ../../templates/win-x86-ci.yml
   parameters:
     AgentPool : $(AgentPoolWin)
@@ -38,21 +37,40 @@ jobs:
      ren *.nupkg win-x86.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
 
-- template: ../../templates/linux-ci.yml
-  parameters:
-    AgentPool : $(AgentPoolLinux)
-    JobName: 'Linux_CI_Dev'
-    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)'
-    DoNugetPack : 'true'
-    ArtifactName: 'drop-linux'
-    NuPackScript: |
-     set -e -x
-     mkdir $(Build.BinariesDirectory)/linux-x64
-     cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-     cd $(Build.BinariesDirectory)
-     zip -r linux-x64.zip linux-x64
-     cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
-     ls -al $(Build.ArtifactStagingDirectory)
+- job: 'Linux_CI_Dev'
+  workspace:
+    clean: all
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cd $(Build.BinariesDirectory)/linux-x64
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml
   parameters:
@@ -75,6 +93,8 @@ jobs:
      cd $cwd
 
 - job: NuGet_Packaging
+  workspace:
+    clean: all
   pool: $(AgentPoolWin)
   dependsOn:
   - Windows_CI_Dev
@@ -130,6 +150,8 @@ jobs:
 - template: test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
+  workspace:
+    clean: all
   variables:
   - group: Dashboard_MySQL_Secret
   pool: 
@@ -139,7 +161,7 @@ jobs:
     # So, all the copy/publish jobs are being run on hosted agent
     # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
     demands: azureps
-  condition: and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
   - NuGet_Test_Linux
@@ -175,6 +197,7 @@ jobs:
       storage: ortpackages
       containerName: ortpackages
       blobPrefix: '$(CurrentDate)/'
+    continueOnError: true
 
   - task: DotNetCoreCLI@2
     displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'

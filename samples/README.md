@@ -38,6 +38,7 @@ For a list of available dockerfiles and published images to help with getting st
 **Inference and Deploy wtih Azure IoT Edge**
   * [Intel OpenVINO](http://aka.ms/onnxruntime-openvino)
   * [NVIDIA TensorRT on Jetson Nano (ARM64)](http://aka.ms/onnxruntime-arm64)
+  * [ONNX Runtime with Azure ML](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md)
 
 **Other**
 * [Running ONNX model tests](./docs/Model_Test.md)

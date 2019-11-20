@@ -202,7 +202,8 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   // There are several identical graphs in Model zoo and only differ in
   // few attribute values. GetGraphName return graph-name + first-node-output name
   std::string graph_name = GetGraphName(graph_viewer);
-  subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+  subgraph_ptr = onnxruntime::make_unique<mkl_dnn::Subgraph>(
+      mkl_dnn::Subgraph(graph_name));
 
   // output name to node index map. Using it to find sub-graph end nodes
   // if output of a node is not an input to any node in a sub-graph is end node
@@ -221,7 +222,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
       node_index++;
       if (subgraph_ptr->mkldnn_nodes.size() > 0) {
         CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-        subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+        subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
         subgraph_attributes.clear();
         output_to_source_node_map.clear();
       }
@@ -281,7 +282,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             if (input_from_subgraph == false) {
               CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
               subgraph_attributes.clear();
-              subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+              subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
               output_to_source_node_map.clear();
             }
           }
@@ -295,32 +296,33 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
             bool create_subgraph = false;
             bool break_loop = false;
             while (!break_loop) {
-              if (temp_index > graph_viewer.MaxNodeIndex())
-                break_loop = true;
-
-              auto next_node = graph_viewer.GetNode(temp_index);
-              while (next_node == nullptr) {
+              if (temp_index < graph_viewer.MaxNodeIndex()) {
+                auto next_node = graph_viewer.GetNode(temp_index);
+                while (next_node == nullptr) {
+                  temp_index++;
+                  next_node = graph_viewer.GetNode(temp_index);
+                }
+                if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
+                  // if all nodes in the branch loop are mkldnn nodes
+                  // then continue with adding nodes to sub-graph
+                  break_loop = true;
+                }
+                // inner nodes. if inner nodes are not  mkldnn nodes
+                // create subgraph (inception v2)
+                auto sub_it = mkldnn_ops_.find(next_node->OpType());
+                if (sub_it == mkldnn_ops_.end()) {
+                  // break and create a sub-graph
+                  break_loop = true;
+                  create_subgraph = true;
+                }
                 temp_index++;
-                next_node = graph_viewer.GetNode(temp_index);
-              }
-              if (next_node->GetInputEdgesCount() == node->GetOutputEdgesCount()) {
-                // if all nodes in the branch loop are mkldnn nodes
-                // then continue with adding nodes to sub-graph
+              } else {
                 break_loop = true;
               }
-              // inner nodes. if inner nodes are not  mkldnn nodes
-              // create subgraph (inception v2)
-              auto sub_it = mkldnn_ops_.find(next_node->OpType());
-              if (sub_it == mkldnn_ops_.end()) {
-                // break and create a sub-graph
-                break_loop = true;
-                create_subgraph = true;
-              }
-              temp_index++;
             }
             if (create_subgraph) {
               CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-              subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+              subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
               subgraph_attributes.clear();
               output_to_source_node_map.clear();
             }
@@ -330,7 +332,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
     } else {
       if (!sub_var.subgraph_node_indexes.empty()) {
         CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-        subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+        subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
         subgraph_attributes.clear();
         output_to_source_node_map.clear();
       }
@@ -339,7 +341,7 @@ std::vector<std::unique_ptr<ComputeCapability>> MKLDNNExecutionProvider::GetCapa
   }  // graph_viewer node iterator ends
   if (!sub_var.subgraph_node_indexes.empty()) {
     CreateMetaDef(graph_viewer, subgraph_attributes, subgraph_ptr, sub_var, result);
-    subgraph_ptr.reset(new mkl_dnn::Subgraph(graph_name));
+    subgraph_ptr = std::make_shared<mkl_dnn::Subgraph>(mkl_dnn::Subgraph(graph_name));
     subgraph_attributes.clear();
     output_to_source_node_map.clear();
   }

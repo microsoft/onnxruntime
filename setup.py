@@ -115,15 +115,17 @@ except ImportError:
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.0', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
+  # Openvino Libs
+  libs.extend(['libcpu_extension.so'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
@@ -131,6 +133,8 @@ else:
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
+  # Openvino Libs
+  libs.extend(['cpu_extension.dll'])
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
@@ -158,7 +162,7 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")

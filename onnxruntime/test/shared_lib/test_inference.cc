@@ -14,8 +14,6 @@
 #include "test_fixture.h"
 #include "onnx_protobuf.h"
 
-extern const OrtApi* g_ort;
-
 struct Input {
   const char* name;
   std::vector<int64_t> dims;
@@ -66,21 +64,21 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_MKLDNN
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, 1));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, 1));
     std::cout << "Running simple inference with mkldnn provider" << std::endl;
 #else
     return;
 #endif
   } else if (provider_type == 3) {
 #ifdef USE_NUPHAR
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
     std::cout << "Running simple inference with nuphar provider" << std::endl;
 #else
     return;
@@ -292,7 +290,7 @@ TEST_F(CApiTest, create_tensor) {
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  ORT_THROW_ON_ERROR(g_ort->FillStringTensor(tensor, s, expected_len));
+  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
   int64_t len = shape_info.GetElementCount();
@@ -337,7 +335,7 @@ TEST_F(CApiTest, override_initializer) {
   Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
   // No C++ Api to either create a string Tensor or to fill one with string, so we use C
   const char* const input_char_string[] = {f2_data.c_str()};
-  ORT_THROW_ON_ERROR(g_ort->FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
 
   Ort::SessionOptions session_options;
   Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);

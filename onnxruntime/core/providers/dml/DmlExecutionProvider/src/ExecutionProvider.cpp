@@ -11,6 +11,7 @@
 #include "BucketizedBufferAllocator.h"
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
+#include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
 #include "AbiCustomRegistry.h"
 #include "GraphPartitioner.h"
 #include "core/graph/indexed_sub_graph.h"
@@ -261,7 +262,37 @@ namespace Dml
         ) const noexcept try
     {
         assert(!m_closed);
-      
+
+        std::vector<uint32_t> shape;
+
+        for (IMLOperatorTensor* tensor : inputTensors)
+        {
+            if (tensor)
+            {
+                shape.resize(tensor->GetDimensionCount());
+                THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
+
+                if (OperatorHelper::ContainsEmptyDimensions(shape))
+                {
+                    return S_OK;
+                }
+            }
+        }
+
+        for (IMLOperatorTensor* tensor : outputTensors)
+        {
+            if (tensor)
+            {
+                shape.resize(tensor->GetDimensionCount());
+                THROW_IF_FAILED(tensor->GetShape(tensor->GetDimensionCount(), shape.data()));
+
+                if (OperatorHelper::ContainsEmptyDimensions(shape))
+                {
+                    return S_OK;
+                }
+            }
+        }
+
         auto FillBindings = [this](auto& bufferBindings, auto& bindingDescs, auto& tensors)
         {
             for (IMLOperatorTensor* tensor : tensors)
@@ -341,6 +372,11 @@ namespace Dml
 
         const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst);
         THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src)); // Tensors must be the same size
+
+        if (dataSizeInBytes == 0)
+        {
+            return S_OK;
+        }
 
         if (src->IsCpuData() && !dst->IsCpuData())
         {
