@@ -151,8 +151,6 @@ class LoopImpl {
   LoopImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Loop::Info& info,
-           const AllocatorPtr& cpu_allocator,
-           const DataTransferManager& data_transfer_mgr,
            const Loop::ConcatOutput& concat_output_func);
 
   // Initialize by validating all the inputs, and allocating the output tensors
@@ -185,8 +183,6 @@ class LoopImpl {
   // the order from the subgraph matches the order from the loop output
   std::vector<std::vector<OrtValue>> loop_output_tensors_;
 
-  const AllocatorPtr& cpu_allocator_;
-  const DataTransferManager& data_transfer_mgr_;
   const Loop::ConcatOutput& concat_output_func_;
 };
 
@@ -265,10 +261,10 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
     feed_names.push_back(entry->Name());
   }
 
-  // iter_num and cond are created on CPU via MakeScalarMLValue so skip those (they will correctly default to CPU)
-  // use the SessionState from the control flow node for this lookup.
-  std::vector<OrtDevice> feed_locations;
+  // iter_num and cond are created on CPU via MakeScalarMLValue so skip those (they will correctly default to CPU).
+  // use the SessionState from the control flow node to find the remaining input locations.
   size_t start_at = 2;
+  std::vector<OrtDevice> feed_locations;
   ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations, start_at));
 
   // now update the feed names to use the subgraph input names for the loop carried vars so that we can determine
@@ -283,31 +279,21 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
                                                   subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
-  // we don't provide pre-allocated fetches for Loop subgraph execution.
-  // use nullptr for all the fetch locations to represent that
-  //std::vector<const OrtMemoryInfo*> fetch_locations(info_->num_subgraph_outputs, nullptr);
-  // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
-
+  // setup the locations where we want the subgraph output to end up on
   std::vector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(info_->num_subgraph_outputs);
 
+  // 'cond' is first output and we need it to be on CPU so we can read the latest value
   const auto& cpu_allocator_info = session_state.GetExecutionProviders()
                                        .Get(onnxruntime::kCpuExecutionProvider)
                                        ->GetAllocator(0, OrtMemTypeDefault)
                                        ->Info();
-
-  // 'cond' is first output and we want it to be on CPU so we can check the latest value
   fetch_locations.push_back(&cpu_allocator_info);
 
   // Loop state variables need to be where we can feed them in to the next iteration, so set the fetch location
   // to match the feed location.
-  //
-  // TODO: Potential edge case where the input loop state variable received by the Loop node is on device A,
-  // but the subgraph uses it as an input and output on device B. As we feed from device A each iteration there's
-  // a copy every time. It would be better to manually copy from A to B prior to the first execution of the subgraph
-  // so that it just stays on B the whole time, and to setup the feed information accordingly.
   for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
-    // +2 for both to skip the iter_num and cond values
+    // +2 for both to skip the iter_num and cond input values
     const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
   }
@@ -332,12 +318,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  auto cpu_allocator = session_state->GetExecutionProviders()
-                           .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
-  const auto& data_transfer_mgr = session_state->GetDataTransferMgr();
-
-  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, cpu_allocator, data_transfer_mgr, concat_output_func_};
+  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_};
 
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -350,15 +331,11 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info,
-                   const AllocatorPtr& cpu_allocator,
-                   const DataTransferManager& data_transfer_mgr,
                    const Loop::ConcatOutput& concat_output_func)
     : context_(context),
       session_state_(session_state),
       info_(subgraph_info),
       implicit_inputs_(context_.GetImplicitInputs()),
-      cpu_allocator_(cpu_allocator),
-      data_transfer_mgr_(data_transfer_mgr),
       concat_output_func_(concat_output_func) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
@@ -407,8 +384,11 @@ Status LoopImpl::Initialize() {
   auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
 
   // these need to be on CPU
-  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator_, 0, iter_num_rank);
-  condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator_, condition_, condition_rank);
+  auto& cpu_allocator = session_state_.GetExecutionProviders()
+                            .Get(onnxruntime::kCpuExecutionProvider)
+                            ->GetAllocator(0, OrtMemTypeDefault);
+  iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank);
+  condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank);
 
   loop_output_tensors_.resize(info_.num_outputs - info_.num_loop_carried_vars);
 
@@ -499,7 +479,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
   auto copy_tensor_from_mlvalue_to_output = [this](const OrtValue& input, int output_idx) {
     auto& data = input.Get<Tensor>();
     Tensor* output = context_.Output(output_idx, data.Shape());
-    data_transfer_mgr_.CopyTensor(input.Get<Tensor>(), *output);
+    session_state_.GetDataTransferMgr().CopyTensor(input.Get<Tensor>(), *output);
   };
 
   // copy to Loop output
