@@ -62,7 +62,7 @@ public class ONNXTensor implements ONNXValue {
                 case FLOAT:
                     return getFloat(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
                 case DOUBLE:
-                    return getDouble(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getDouble(ONNX.ortApiHandle,nativeHandle);
                 case INT8:
                     return getByte(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
                 case INT16:
@@ -72,9 +72,9 @@ public class ONNXTensor implements ONNXValue {
                 case INT64:
                     return getLong(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
                 case BOOL:
-                    return getBool(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getBool(ONNX.ortApiHandle,nativeHandle);
                 case STRING:
-                    return getString(ONNX.ortApiHandle,nativeHandle,allocatorHandle,info.onnxType.value);
+                    return getString(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
                 case UNKNOWN:
                 default:
                     throw new ONNXException("Extracting the value of an invalid Tensor.");
@@ -105,13 +105,13 @@ public class ONNXTensor implements ONNXValue {
     }
 
     private native float getFloat(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native double getDouble(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
+    private native double getDouble(long apiHandle, long nativeHandle) throws ONNXException;
     private native byte getByte(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
     private native short getShort(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
     private native int getInt(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
     private native long getLong(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native String getString(long apiHandle, long nativeHandle, long allocatorHandle, int onnxType) throws ONNXException;
-    private native boolean getBool(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
+    private native String getString(long apiHandle, long nativeHandle, long allocatorHandle) throws ONNXException;
+    private native boolean getBool(long apiHandle, long nativeHandle) throws ONNXException;
 
     private native void getArray(long apiHandle, long nativeHandle, long allocatorHandle, Object carrier) throws ONNXException;
 

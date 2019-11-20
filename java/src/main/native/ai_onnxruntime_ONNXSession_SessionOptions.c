@@ -24,6 +24,7 @@
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setSequentialExecution
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jboolean setSequential) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     if (setSequential) {
         checkONNXStatus(jniEnv,api,api->SetSessionExecutionMode((OrtSessionOptions*) handle,ORT_SEQUENTIAL));
@@ -38,7 +39,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setSe
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setOptimizationLevel
-  (JNIEnv * jniEnv, jobject obj, jlong apiHandle, jlong handle, jint optLevel) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint optLevel) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetSessionGraphOptimizationLevel((OrtSessionOptions*) handle, convertOptimizationLevel(optLevel)));
 }
@@ -50,6 +52,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setOp
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIntraOpNumThreads
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetIntraOpNumThreads((OrtSessionOptions*) handle, numThreads));
 }
@@ -61,6 +64,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIn
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setInterOpNumThreads
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint numThreads) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     checkONNXStatus(jniEnv,api,api->SetInterOpNumThreads((OrtSessionOptions*) handle, numThreads));
 }
@@ -72,6 +76,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_setIn
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_createOptions
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSessionOptions* opts;
     checkONNXStatus(jniEnv,api,api->CreateSessionOptions(&opts));
@@ -87,6 +92,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_crea
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_closeOptions
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseSessionOptions((OrtSessionOptions*) handle);
 }
@@ -98,6 +104,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_close
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCPU
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CPU((OrtSessionOptions*)handle,useArena));
 }
 
@@ -111,6 +118,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addCU
   #ifdef BUILD_CUDA
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CUDA((OrtSessionOptions*) handle, deviceID));
   #else
+    (void)jobj;(void)apiHandle;(void)handle;(void)deviceID; // Parameters used when CUDA is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CUDA support.");
   #endif
 }
@@ -125,6 +133,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addMk
   #ifdef BUILD_MKLDNN
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Mkldnn((OrtSessionOptions*) handle,useArena));
   #else
+    (void)jobj;(void)apiHandle;(void)handle;(void)useArena; // Parameters used when MKL-DNN is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MKL-DNN support.");
   #endif
 }
@@ -141,6 +150,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNG
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_NGraph((OrtSessionOptions*) handle, backendType));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,backendString,backendType);
   #else
+    (void)jobj;(void)apiHandle;(void)handle;(void)backendString; // Parameters used when NGraph is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NGraph support.");
   #endif
 }
@@ -157,6 +167,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addOp
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_OpenVINO((OrtSessionOptions*) handle, deviceID));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,deviceIDString,deviceID);
   #else
+    (void)jobj;(void)apiHandle;(void)handle;(void)deviceIDString; // Parameters used when OpenVINO is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with OpenVINO support.");
   #endif
 }
@@ -171,6 +182,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addTe
   #ifdef BUILD_TENSOR_RT
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Tensorrt((OrtSessionOptions*) handle, deviceNum));
   #else
+    (void)jobj;(void)apiHandle;(void)handle;(void)deviceNum; // Parameters used when TensorRT is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TensorRT support.");
   #endif
 }
@@ -185,6 +197,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNn
   #ifdef BUILD_NNAPI
     checkONNXStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nnapi((OrtSessionOptions*) handle));
   #else
+    (void)jobj;(void)apiHandle;(void)handle; // Parameters used when NNAPI is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with NNAPI support.");
   #endif
 }
@@ -202,6 +215,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_00024SessionOptions_addNu
     checkONNXStatus(jniEnv,OrtSessionOptionsAppendExecutionProvider_Nuphar((OrtSessionOptions*) handle, allowUnalignedBuffers, settings));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
   #else
+    (void)jobj;(void)apiHandle;(void)handle;(void)allowUnalignedBuffers;(void)settingsString; // Parameters used when Nuphar is defined.
     throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with Nuphar support.");
   #endif
 }

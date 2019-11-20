@@ -13,6 +13,7 @@
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStringKeys
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract element
@@ -38,6 +39,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStringKeys
  */
 JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongKeys
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract element
@@ -63,6 +65,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongKeys
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStringValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract element
@@ -88,6 +91,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStringValues
  */
 JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract element
@@ -113,6 +117,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongValues
  */
 JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloatValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract element
@@ -138,6 +143,7 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloatValues
  */
 JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubleValues
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint index) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract element
@@ -163,6 +169,7 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubleValues
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStrings
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -173,7 +180,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStrings
 
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv,"java/lang/String");
     jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv,count,stringClazz,NULL);
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
         checkONNXStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
@@ -193,6 +200,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSequence_getStrings
  */
 JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongs
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -204,7 +212,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongs
     int64_t* values;
     checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t)*count,(void**)&values));
 
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
         checkONNXStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
@@ -232,6 +240,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXSequence_getLongs
  */
 JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloats
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -243,7 +252,7 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloats
     float* values;
     checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(float)*count,(void**)&values));
 
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
         checkONNXStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
@@ -271,6 +280,7 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXSequence_getFloats
  */
 JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubles
   (JNIEnv *jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* sequence = (OrtValue*) handle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -282,7 +292,7 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubles
     double* values;
     checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(double)*count,(void**)&values));
 
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         // Extract element
         OrtValue* element;
         checkONNXStatus(jniEnv,api,api->GetValue(sequence,i,allocator,&element));
@@ -308,7 +318,8 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXSequence_getDoubles
  * Method:    close
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSequence_close(JNIEnv * jniEnv, jobject obj, jlong apiHandle, jlong handle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSequence_close(JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseValue((OrtValue*)handle);
 }

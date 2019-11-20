@@ -15,28 +15,30 @@
  */
 JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_ONNXTensor_getFloat
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-  if (onnxType == 9) {
-    uint16_t* arr;
-    checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
-    jfloat floatVal = convertHalfToFloat(*arr);
-    return floatVal;
-  } else if (onnxType == 10) {
-    jfloat* arr;
-    checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
-    return *arr;
-  } else {
-    return NAN;
-  }
+    if (onnxType == 9) {
+        uint16_t* arr;
+        checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
+        jfloat floatVal = convertHalfToFloat(*arr);
+        return floatVal;
+    } else if (onnxType == 10) {
+        jfloat* arr;
+        checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
+        return *arr;
+    } else {
+        return NAN;
+    }
 }
 
 /*
  * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getDouble
- * Signature: (JI)D
+ * Signature: (J)D
  */
 JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_ONNXTensor_getDouble
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     jdouble* arr;
     checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
@@ -50,6 +52,7 @@ JNIEXPORT jdouble JNICALL Java_ai_onnxruntime_ONNXTensor_getDouble
  */
 JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_ONNXTensor_getByte
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 1) {
     uint8_t* arr;
@@ -71,6 +74,7 @@ JNIEXPORT jbyte JNICALL Java_ai_onnxruntime_ONNXTensor_getByte
  */
 JNIEXPORT jshort JNICALL Java_ai_onnxruntime_ONNXTensor_getShort
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 3) {
     uint16_t* arr;
@@ -92,6 +96,7 @@ JNIEXPORT jshort JNICALL Java_ai_onnxruntime_ONNXTensor_getShort
  */
 JNIEXPORT jint JNICALL Java_ai_onnxruntime_ONNXTensor_getInt
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 5) {
     uint32_t* arr;
@@ -113,6 +118,7 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_ONNXTensor_getInt
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXTensor_getLong
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   if (onnxType == 7) {
     uint64_t* arr;
@@ -130,10 +136,11 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXTensor_getLong
 /*
  * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getString
- * Signature: (JJI)Ljava/lang/String;
+ * Signature: (JJ)Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL Java_ai_onnxruntime_ONNXTensor_getString
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Extract a String array - if this becomes a performance issue we'll refactor later.
     jobjectArray outputArray = createStringArrayFromTensor(jniEnv,api, (OrtAllocator*) allocatorHandle, (OrtValue*) handle);
@@ -150,10 +157,11 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_ONNXTensor_getString
 /*
  * Class:     ai_onnxruntime_ONNXTensor
  * Method:    getBool
- * Signature: (JI)Z
+ * Signature: (J)Z
  */
 JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_ONNXTensor_getBool
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint onnxType) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     jboolean* arr;
     checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
@@ -167,6 +175,7 @@ JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_ONNXTensor_getBool
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXTensor_getArray
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle, jobject carrier) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtTensorTypeAndShapeInfo* info;
     checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape((OrtValue*) handle, &info));
@@ -193,6 +202,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXTensor_getArray
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXTensor_close(JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseValue((OrtValue*)handle);
 }

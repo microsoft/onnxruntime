@@ -13,6 +13,7 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNX_initialiseAPIBase
   (JNIEnv * jniEnv, jclass clazz, jint apiVersion) {
+    (void) jniEnv; (void) clazz; // required JNI parameters not needed by functions which don't call back into Java.
     const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t) apiVersion);
     return (jlong) ortPtr;
 }

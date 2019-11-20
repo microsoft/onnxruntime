@@ -14,6 +14,7 @@
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringKeys
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract key
@@ -35,6 +36,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringKeys
  */
 JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongKeys
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract key
@@ -55,6 +57,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongKeys
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
@@ -76,6 +79,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringValues
  */
 JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
@@ -96,6 +100,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongValues
  */
 JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXMap_getFloatValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
@@ -116,6 +121,7 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXMap_getFloatValues
  */
 JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXMap_getDoubleValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
@@ -136,6 +142,7 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXMap_getDoubleValues
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXMap_close
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseValue((OrtValue*)handle);
 }

@@ -14,6 +14,7 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_createSession__JJLjava_lang_String_2J
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong envHandle, jstring modelPath, jlong optsHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSession* session;
 
@@ -32,6 +33,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_createSession__JJLjava_l
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_createSession__JJ_3BJ
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong envHandle, jbyteArray jModelArray, jlong optsHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtSession* session;
 
@@ -52,6 +54,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_createSession__JJ_3BJ
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getNumInputs
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     size_t numInputs;
     checkONNXStatus(jniEnv,api,api->SessionGetInputCount((OrtSession*)handle, &numInputs));
@@ -65,6 +68,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getNumInputs
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getInputNames
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
@@ -90,6 +94,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getInputNames
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getNumOutputs
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     size_t numOutputs;
     checkONNXStatus(jniEnv,api,api->SessionGetOutputCount((OrtSession*)handle, &numOutputs));
@@ -103,6 +108,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getNumOutputs
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getOutputNames
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
@@ -128,6 +134,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXSession_getOutputNames
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getInputInfo
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong inputNamesHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Setup
     char *nodeInfoClassName = "ai/onnxruntime/NodeInfo";
@@ -164,6 +171,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getInputInfo
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getOutputInfo
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong outputNamesHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     // Setup
     char *nodeInfoClassName = "ai/onnxruntime/NodeInfo";
@@ -201,6 +209,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_getOutputInfo
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_run
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong sessionHandle, jlong allocatorHandle, jlong inputNamesHandle, jlong numInputs, jlongArray tensorArr, jlong outputNamesHandle, jlong numOutputs) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract a C array of longs.
@@ -241,6 +250,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXSession_run
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_closeSession
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseSession((OrtSession*)handle);
 }
@@ -252,6 +262,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_closeSession
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXSession_releaseNamesHandle
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jlong namesHandle, jlong length) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     char** names = (char**) namesHandle;

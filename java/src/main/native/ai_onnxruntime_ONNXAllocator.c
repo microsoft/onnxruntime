@@ -14,6 +14,7 @@
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createAllocator
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator;
     checkONNXStatus(jniEnv,api,api->GetAllocatorWithDefaultOptions(&allocator));
@@ -27,6 +28,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createAllocator
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensor
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject dataObj, jlongArray shape, jint onnxTypeJava) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Convert type to ONNX C enum
@@ -71,6 +73,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensor
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensorFromBuffer
         (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     const OrtMemoryInfo* allocatorInfo;
@@ -103,6 +106,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensorFromBuffer
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createString
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jstring input) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
@@ -137,6 +141,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createString
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createStringTensor
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobjectArray stringArr, jlongArray shape) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 

@@ -7,6 +7,9 @@
 #include "ONNXUtil.h"
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved) {
+    // To silence unused-parameter error.
+    // This function must exist according to the JNI spec, but the arguments aren't necessary for the library to request a specific version.
+    (void)vm; (void) reserved;
     return JNI_VERSION_1_8;
 }
 
@@ -179,10 +182,10 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * inf
             return convertToTensorInfo(jniEnv, api, (const OrtTensorTypeAndShapeInfo *) tensorInfo);
         }
         case ONNX_TYPE_SEQUENCE: {
-            return convertToSequenceInfo(jniEnv,api,info);
+            return createEmptySequenceInfo(jniEnv);
         }
         case ONNX_TYPE_MAP: {
-            return convertToMapInfo(jniEnv,api,info);
+            return createEmptyMapInfo(jniEnv);
         }
         case ONNX_TYPE_UNKNOWN:
         case ONNX_TYPE_OPAQUE:
@@ -235,7 +238,9 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
     return tensorInfo;
 }
 
-jobject convertToMapInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info) {
+//jobject convertToMapInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info) {
+// As map info isn't available at this point, it creates an empty map info type.
+jobject createEmptyMapInfo(JNIEnv *jniEnv) {
     // Create the ONNXJavaType enum
     char *onnxJavaTypeClassName = "ai/onnxruntime/ONNXJavaType";
     jclass clazz = (*jniEnv)->FindClass(jniEnv, onnxJavaTypeClassName);
@@ -250,7 +255,9 @@ jobject convertToMapInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo *
     return mapInfo;
 }
 
-jobject convertToSequenceInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info) {
+//jobject convertToSequenceInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo * info) {
+// As sequence info isn't available at this point, it creates an empty sequence info type.
+jobject createEmptySequenceInfo(JNIEnv *jniEnv) {
     // Create the ONNXJavaType enum
     char *onnxJavaTypeClassName = "ai/onnxruntime/ONNXJavaType";
     jclass clazz = (*jniEnv)->FindClass(jniEnv, onnxJavaTypeClassName);
@@ -265,7 +272,7 @@ jobject convertToSequenceInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeI
     return sequenceInfo;
 }
 
-size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize, jarray input) {
+size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, jarray input) {
     uint32_t inputLength = (*jniEnv)->GetArrayLength(jniEnv,input);
     size_t consumedSize = inputLength * onnxTypeSize(onnxType);
     switch (onnxType) {
@@ -342,7 +349,7 @@ size_t copyJavaToTensor(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint
                         uint32_t dimensionsRemaining, jarray input) {
     if (dimensionsRemaining == 1) {
         // write out 1d array of the respective primitive type
-        return copyJavaToPrimitiveArray(jniEnv,onnxType,tensor,tensorSize,input);
+        return copyJavaToPrimitiveArray(jniEnv,onnxType,tensor,input);
     } else {
         // recurse through the dimensions
         // Java arrays are objects until the final dimension
@@ -359,7 +366,7 @@ size_t copyJavaToTensor(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint
     }
 }
 
-size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, size_t tensorSize, jarray output) {
+size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint8_t* tensor, jarray output) {
     uint32_t outputLength = (*jniEnv)->GetArrayLength(jniEnv,output);
     size_t consumedSize = outputLength * onnxTypeSize(onnxType);
     switch (onnxType) {
@@ -432,7 +439,7 @@ size_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint
                         uint32_t dimensionsRemaining, jarray output) {
     if (dimensionsRemaining == 1) {
         // write out 1d array of the respective primitive type
-        return copyPrimitiveArrayToJava(jniEnv,onnxType,tensor,tensorSize,output);
+        return copyPrimitiveArrayToJava(jniEnv,onnxType,tensor,output);
     } else {
         // recurse through the dimensions
         // Java arrays are objects until the final dimension
@@ -493,7 +500,7 @@ void copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* a
 
     char * tempBuffer = NULL;
     size_t bufferSize = 0;
-    for (int i = 0; i < length; i++) {
+    for (size_t i = 0; i < length; i++) {
         size_t curSize = (offsets[i+1] - offsets[i]) + 1;
         if (curSize > bufferSize) {
             checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
@@ -550,7 +557,7 @@ jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
 
     // Create the java array and copy to it.
     jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,length);
-    copyPrimitiveArrayToJava(jniEnv, value, arr, length, outputArray);
+    copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
     return outputArray;
 }
 
@@ -572,7 +579,7 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
 
     // Create the java array and copy to it.
     jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,length);
-    copyPrimitiveArrayToJava(jniEnv, value, arr, length, outputArray);
+    copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
     return outputArray;
 }
 
@@ -594,7 +601,7 @@ jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
 
     // Create the java array and copy to it.
     jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,length);
-    copyPrimitiveArrayToJava(jniEnv, value, arr, length, outputArray);
+    copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
     return outputArray;
 }
 
@@ -868,6 +875,8 @@ jint convertErrorCode(OrtErrorCode code) {
 			return 10;
         case ORT_EP_FAIL:
 			return 11;
+        default:
+            return -1; // Unknown error code
     }
 }
 
