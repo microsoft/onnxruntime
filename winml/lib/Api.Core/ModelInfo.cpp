@@ -137,12 +137,21 @@ std::unique_ptr<onnx::ModelProto>
 WinML::CreateModelProto(
     const char* path) {
   int file_descriptor;
+  _set_errno(0); // clear errno
   _sopen_s(
       &file_descriptor,
       path,
       O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
       _SH_DENYWR,
       _S_IREAD | _S_IWRITE);
+
+  errno_t err = 0;
+  _get_errno(&err);
+  WINML_THROW_HR_IF_TRUE_MSG(
+    __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND),
+    err == ENOENT,
+    "File not found: %s",
+    path);
 
   WINML_THROW_HR_IF_TRUE_MSG(
       E_FAIL,

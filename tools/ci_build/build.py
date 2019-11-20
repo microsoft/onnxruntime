@@ -161,7 +161,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
-    parser.add_argument("--use_telemetry", action='store_true', help="Official build should provide GUID in the header file")
+    parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -375,7 +375,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml and args.use_dml else "OFF"),
-                 "-Duse_telemetry=" + ("ON" if args.use_telemetry else "OFF"),
+                 "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
