@@ -437,7 +437,7 @@ TEST_F(DISABLED_LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
     */
 
     // Bind invalid image as tensorfloat input
-    auto image = FileHelpers::LoadImageFeatureValue(L"doritos_227.png");
+    auto image = FileHelpers::LoadImageFeatureValue(L"227x227.png");
     EXPECT_THROW_SPECIFIC(binding.Bind(L"X", image), winrt::hresult_error, ensureWinmlSizeMismatch);
 
     // Bind invalid map as tensorfloat input
@@ -512,7 +512,7 @@ TEST_F(DISABLED_LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
     inputName = m_model.InputFeatures().First().Current().Name();
 
     // Bind invalid image as image input
-    auto smallImage = FileHelpers::LoadImageFeatureValue(L"doritos_100.png");
+    auto smallImage = FileHelpers::LoadImageFeatureValue(L"100x100.png");
     EXPECT_THROW_SPECIFIC(mapBinding.Bind(inputName, smallImage), winrt::hresult_error, ensureWinmlInvalidBinding);
 
     // Bind invalid map as image input
