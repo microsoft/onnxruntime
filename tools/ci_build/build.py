@@ -630,8 +630,7 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           # /data/onnx
           run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
           run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
-
-        # models/opset7, models/opset8, models/opset9
+        
         if config != 'Debug' and os.path.exists(model_dir):
           opset7_model_dir = os.path.join(model_dir, 'opset7')
           opset7_cmd = cmd_base + [opset7_model_dir]
@@ -639,12 +638,20 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           opset8_cmd = cmd_base + [opset8_model_dir]
           opset9_model_dir = os.path.join(model_dir, 'opset9')
           opset9_cmd = cmd_base + [opset9_model_dir]
+          opset10_model_dir = os.path.join(model_dir, 'opset10')
+          opset10_cmd = cmd_base + [opset10_model_dir]
+          opset11_model_dir = os.path.join(model_dir, 'opset11')
+          opset11_cmd = cmd_base + [opset11_model_dir]
           run_subprocess([exe] + opset7_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
           run_subprocess([exe] + opset8_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
           run_subprocess([exe] + opset9_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+          run_subprocess([exe] + opset10_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
+          run_subprocess([exe] + opset11_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset11_cmd, cwd=cwd)
 
 
 # nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
@@ -964,9 +971,9 @@ def main():
             if args.use_dml:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
 
-			#OOM because of memory leak
-            #if args.use_mkldnn:
-            #  mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+            #It could run out of memory because of memory leak
+            if args.use_mkldnn:
+              mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
             run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 0)                       
 
