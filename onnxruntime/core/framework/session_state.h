@@ -268,6 +268,19 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  SessionState* parent_ = nullptr;
+  //Assign each graph in each session an unique id.
+  int graph_id_ = 0;
+  int next_graph_id_ = 1;
+  
+  void GenerateGraphId() {
+	SessionState* p = this;
+    while (p->parent_ != nullptr) p = p->parent_;
+	graph_id_ = p->next_graph_id_ ++;
+  }
+
+#endif
 };
 
 }  // namespace onnxruntime

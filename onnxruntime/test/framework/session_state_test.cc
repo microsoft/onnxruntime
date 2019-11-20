@@ -14,6 +14,7 @@
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "gtest/gtest.h"
+#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;
@@ -42,7 +43,7 @@ TEST(SessionStateTest, AddGetKernelTest) {
   ExecutionProviders execution_providers;
   SessionState s{execution_providers, true, &tp, nullptr};
 
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -94,10 +95,11 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   const TestParam& param = GetParam();
   concurrency::ThreadPool tp{"test", 1};
 
-  std::string model_path = "testdata/optional_inputs_ir" + std::to_string(param.ir_version) + ".onnx";
+  std::basic_ostringstream<ORTCHAR_T> oss;
+  oss << ORT_TSTR("testdata/optional_inputs_ir") << param.ir_version << ORT_TSTR(".onnx");
   Status status;
   std::shared_ptr<Model> model;
-  ASSERT_TRUE((status = Model::Load(model_path, model)).IsOK()) << status;
+  ASSERT_TRUE((status = Model::Load(oss.str(), model, nullptr, DefaultLoggingManager().DefaultLogger())).IsOK()) << status;
   Graph& graph = model->MainGraph();
   // take a copy as this gets cleared during session state initialization
   InitializedTensorSet initializers = graph.GetAllInitializedTensors();
@@ -112,7 +114,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   SessionState session_state(execution_providers, param.enable_mem_pattern, &tp, nullptr);
-  SessionStateInitializer session_initializer(param.enable_mem_pattern, ToWideString(model_path), graph, session_state,
+  SessionStateInitializer session_initializer(param.enable_mem_pattern, oss.str(), graph, session_state,
                                               execution_providers, krm);
 
   GraphPartitioner partitioner(krm, execution_providers);

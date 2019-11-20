@@ -31,7 +31,8 @@ Model::Model(const std::string& graph_name,
              const ModelMetaData& model_metadata,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
-             const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions) {
+             const std::vector<ONNX_NAMESPACE::FunctionProto>& model_functions,
+             const logging::Logger& logger) {
   model_proto_ = onnxruntime::make_unique<ModelProto>();
   model_proto_->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_->mutable_graph()->set_name(graph_name);
@@ -69,14 +70,17 @@ Model::Model(const std::string& graph_name,
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(model_proto_->mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry, model_functions_map));
+  graph_.reset(new Graph(model_proto_->mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
+                         logger, model_functions_map));
 }
 
-Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries)
-    : Model(onnxruntime::make_unique<ModelProto>(model_proto), local_registries) {
+Model::Model(const ModelProto& model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+             const logging::Logger& logger)
+    : Model(onnxruntime::make_unique<ModelProto>(model_proto), local_registries, logger) {
 }
 
-Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+             const logging::Logger& logger) {
   if (!model_proto) {
     throw std::invalid_argument("ModelProto was null.");
   }
@@ -111,7 +115,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
     if ((domain.empty() || domain == kOnnxDomainAlias) && version < 7) {
       // TODO: Check if we can upgrade all the current opset 6 models that are being tested
       // in CI to opset 7 or above
-      LOGS_DEFAULT(WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
+      LOGS(logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
                                "with opset version 7 or above for opset domain 'ai.onnx'. "
                                "Please upgrade your model to opset 7 or higher. "
                                "For now, this opset "
@@ -146,7 +150,8 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(model_proto_->mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_functions_map));
+  graph_.reset(new Graph(model_proto_->mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger,
+                         model_functions_map));
 }
 
 Version Model::IrVersion() const {
@@ -237,7 +242,9 @@ Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   return Status::OK();
 }
 
-Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger) {
   // we expect a graph to be present
   if (!utils::HasGraph(model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -246,7 +253,7 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   try {
-    model.reset(new Model(model_proto, local_registries));
+    model.reset(new Model(model_proto, local_registries, logger));
   } catch (const std::exception& ex) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
@@ -256,7 +263,9 @@ Status Model::Load(const ModelProto& model_proto, std::shared_ptr<Model>& model,
   return Status::OK();
 }
 
-Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Model>& model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger) {
   // we expect a graph to be present
   if (!utils::HasGraph(*p_model_proto)) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No graph was found in the protobuf.");
@@ -265,7 +274,7 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   try {
-    model.reset(new Model(std::move(p_model_proto), local_registries));
+    model.reset(new Model(std::move(p_model_proto), local_registries, logger));
   } catch (const std::exception& ex) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
   }
@@ -308,7 +317,9 @@ static Status LoadModel(const T& file_path, std::shared_ptr<ONNX_NAMESPACE::Mode
 }
 
 template <typename T>
-static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
+                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                        const logging::Logger& logger) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -325,7 +336,7 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model, con
     }
   }
   try {
-    status = Model::Load(fd, p_model, local_registries);
+    status = Model::Load(fd, p_model, local_registries, logger);
   } catch (std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
@@ -364,16 +375,9 @@ Status Model::Load(const std::wstring& file_path, std::shared_ptr<ModelProto>& m
 }
 
 #ifdef _WIN32
-GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
-GSL_SUPPRESS(r .35)
-Status Model::Load(const std::wstring& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  return LoadModel(file_path, p_model, local_registries);
-}
-
 Status Model::Save(Model& model, const std::wstring& file_path) {
   return SaveModel(model, file_path);
 }
-
 #endif
 
 Status Model::Load(const std::string& file_path, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
@@ -382,8 +386,10 @@ Status Model::Load(const std::string& file_path, std::shared_ptr<ONNX_NAMESPACE:
 
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
-Status Model::Load(const std::string& file_path, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
-  return LoadModel(file_path, p_model, local_registries);
+Status Model::Load(const std::basic_string<ORTCHAR_T>& file_path, std::shared_ptr<Model>& p_model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger) {
+  return LoadModel(file_path, p_model, local_registries, logger);
 }
 
 Status Model::Save(Model& model, const std::string& file_path) {
@@ -399,14 +405,15 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<ON
   return Status::OK();
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
+                            const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
   std::unique_ptr<ModelProto> modelProto = onnxruntime::make_unique<ModelProto>();
   const bool result = modelProto->ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 
-  p_model = std::make_shared<Model>(std::move(modelProto), local_registries);
+  p_model = std::make_shared<Model>(std::move(modelProto), local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
@@ -445,7 +452,8 @@ Status Model::Load(int fd, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   return Status::OK();
 }
 
-Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries) {
+Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
@@ -471,12 +479,12 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #endif
-  p_model = std::make_shared<Model>(std::move(model_proto), local_registries);
+  p_model = std::make_shared<Model>(std::move(model_proto), local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
   return Status::OK();
-}
+}  // namespace onnxruntime
 
 Status Model::Save(Model& model, int p_fd) {
   if (p_fd < 0) {

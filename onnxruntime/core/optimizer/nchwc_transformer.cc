@@ -727,13 +727,13 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
   }
 }
 
-Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   NchwcTransformerImpl impl(graph);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
     if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
       impl.Transform(node);
     }

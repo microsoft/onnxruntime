@@ -12,6 +12,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace {
@@ -21,6 +22,8 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
   }
 }
 }  // namespace
+
+namespace test {
 TEST(MemcpyTest, copy1) {
   concurrency::ThreadPool tp{"test", 1};
 
@@ -39,7 +42,7 @@ TEST(MemcpyTest, copy1) {
   const bool result = mp.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ASSERT_TRUE(result);
 
-  Model model(mp);
+  Model model(mp, nullptr, DefaultLoggingManager().DefaultLogger());
   st = model.MainGraph().Resolve();
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);
@@ -61,4 +64,5 @@ TEST(MemcpyTest, copy1) {
   st = utils::CopyOneInputAcrossDevices(s, "X", input, output);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
+}  // namespace test
 }  // namespace onnxruntime

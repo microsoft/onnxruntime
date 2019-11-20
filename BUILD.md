@@ -80,7 +80,7 @@ For other system requirements and other dependencies, please see [this section](
 |Description|Command|Additional description|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
-|**Debug build**|--config RelWithDebugInfo|Debug build|
+|**Debug build**|--config RelWithDebInfo|Debug build|
 |**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
@@ -106,6 +106,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Options**
 * [OpenMP](#OpenMP)
 * [OpenBLAS](#OpenBLAS)
+* [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
 
 **Architectures**
 * [x86](#x86)
@@ -259,19 +260,9 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
 ```
 
-
-  For Linux:
-
-   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
-
-  For Windows:
-
-  <code> .\build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
-
-   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
-
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
+  <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
 
 * `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
@@ -421,6 +412,30 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ```
 ./build.sh --use_openblas
 ```
+
+---
+
+### DebugNodeInputsOutputs
+OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
+#### Build Instructions
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+Dump tensor input/output shapes for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+Dump tensor input/output shapes and output data for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
+To disable this functionality after previously enabling, set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0 or delete CMakeCache.txt.
 
 ---
 

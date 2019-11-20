@@ -24,6 +24,10 @@
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
+#include <TraceLoggingActivity.h>
+#endif
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -512,5 +516,10 @@ class InferenceSession {
   long long total_run_duration_since_last_;                         // the total duration (us) of Run() calls since the last report
   TimePoint time_sent_last_;                                        // the TimePoint of the last report
   const long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  bool session_activity_started_ = false;
+  TraceLoggingActivity<telemetry_provider_handle> session_activity;
+#endif
 };
 }  // namespace onnxruntime
