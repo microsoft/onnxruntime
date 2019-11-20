@@ -61,13 +61,13 @@ set(onnxruntime4j_src
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ValueInfo.java
         )
 
+add_jar(onnxruntime4j SOURCES ${onnxruntime4j_src} GENERATE_NATIVE_HEADERS onnxruntime4j_generated DESTINATION ${REPO_ROOT}/java/src/main/native/)
+
 file(GLOB onnxruntime4j_native_src 
     "${REPO_ROOT}/java/src/main/native/*.c"
     "${REPO_ROOT}/java/src/main/native/ONNXUtil.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
-
-add_jar(onnxruntime4j SOURCES ${onnxruntime4j_src} GENERATE_NATIVE_HEADERS onnxruntime4j_generated DESTINATION ${REPO_ROOT}/java/src/main/native/)
 
 add_library(onnxruntime4j_jni SHARED 
     ${onnxruntime4j_native_src}
@@ -75,9 +75,11 @@ add_library(onnxruntime4j_jni SHARED
     )
 
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
+
 target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/java/src/main/native)
 
 target_link_libraries(onnxruntime4j_jni PUBLIC 
     ${JNI_LIBRARIES}
     onnxruntime
+    onnxruntime4j_generated
     )
