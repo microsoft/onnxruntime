@@ -838,9 +838,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
 
   // info all execution providers InferenceSession:Run ended
   for (auto& xp : execution_providers_) {
-    auto s = xp->OnRunEnd();
-    ORT_CHECK_AND_SET_RETVAL(s);
-    //ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
+    ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
   }
 
   --current_num_runs_;
