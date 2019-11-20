@@ -135,73 +135,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   auto Q = reinterpret_cast<T*>(gemm_data);
   auto K = Q + batch_size * sequence_length * hidden_size;
   auto V = K + batch_size * sequence_length * hidden_size;
-  // auto Q = allocator->Alloc(batch_size * sequence_length * hidden_size * element_size);
-  // auto K = allocator->Alloc(batch_size * sequence_length * hidden_size * element_size);
-  // auto V = allocator->Alloc(batch_size * sequence_length * hidden_size * element_size);
-  // BufferUniquePtr Q_buffer(Q, BufferDeleter(allocator));
-  // BufferUniquePtr K_buffer(K, BufferDeleter(allocator));
-  // BufferUniquePtr V_buffer(V, BufferDeleter(allocator));
 
   T* QKV[3] = {reinterpret_cast<T*>(Q), reinterpret_cast<T*>(K), reinterpret_cast<T*>(V)};
 
-  // broadcast 3NH -> (3.B.N.S.H)
-  // {
-  //   int loop_len = 3 * batch_size * num_heads_ * sequence_length;
-
-  //   if (tp != nullptr) {
-  //     int numThreads = tp->NumThreads() + 1;
-  //     int size_per_batch = (loop_len + numThreads - 1) / numThreads;
-  //     tp->ParallelFor(numThreads, [numThreads, loop_len, size_per_batch,
-  //                                  num_heads = num_heads_,
-  //                                  bias_data = bias->template Data<T>(),
-  //                                  sequence_length,
-  //                                  batch_size,
-  //                                  head_size,
-  //                                  hidden_size,
-  //                                  QKV](int32_t k) {
-  //       int start = k * size_per_batch;
-  //       int end = k == numThreads - 1 ? loop_len : (k + 1) * size_per_batch;
-  //       for (int i = start; i < end; i++) {
-  //         int seq_index = i % sequence_length;
-  //         int rest = i / sequence_length;
-  //         int head_index = rest % num_heads;
-  //         rest /= num_heads;
-  //         int batch_index = rest % batch_size;
-  //         rest /= batch_size;
-  //         int qkv_index = rest;
-
-  //         T* data_dest = QKV[qkv_index] + ((batch_index * num_heads + head_index) * sequence_length + seq_index) * head_size;
-  //         const T* data_src = bias_data + qkv_index * hidden_size + head_index * head_size;
-  //         memcpy(data_dest, data_src, head_size * sizeof(T));
-  //       }
-  //     });
-  //   } else {
-  //     const T* data_src = bias->template Data<T>();
-  //     for (int qkv_index = 0; qkv_index < 3; qkv_index++) {
-  //       T* data_dest = QKV[qkv_index];
-  //       for (int batch_index = 0; batch_index < batch_size; batch_index++) {
-  //         for (int head_index = 0; head_index < num_heads_; head_index++) {
-  //           for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-  //             memcpy(data_dest, data_src, head_size * element_size);
-  //             data_dest += head_size;
-  //           }
-  //           data_src += head_size;
-  //         }
-  //         data_src -= hidden_size;
-  //       }
-  //       data_src += hidden_size;
-  //     }
-  //   }
-  // }
-
-  // if (is_profiler_enabled) {
-  //   context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-  //                                              "Custom_Attention_STEP_1_of_6_broadcast",
-  //                                              timepoint);
-  //   timepoint = context->Profiler()->StartTime();
-  // }
-
-  // gemm
   {
     int loop_len = 3 * batch_size * num_heads_;
 
@@ -236,111 +172,39 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
 
-        math::GemmEx<float, concurrency::ThreadPool>(CblasNoTrans,                                        // TransA = no
-                     CblasNoTrans,                                        // TransB = no
-                     sequence_length,                                     // M      = S
-                     head_size,                                           // N      = H
-                     hidden_size,                                         // K      = NH
-                     1.0f,                                                // alpha
-                     input_data + input_offset,                           // A
-                     hidden_size,                                         // lda    = NH
-                     weights_data + weights_offset,                       // B
-                     3 * hidden_size,                                     // ldb    = 3NH
-                     1.0f,                                                // beta
-                     qkv_dest + qkv_offset,                               // C
-                     head_size,                                           // ldc
-                     nullptr  // use single-thread
+        math::GemmEx<float, concurrency::ThreadPool>(CblasNoTrans,                   // TransA = no
+                                                     CblasNoTrans,                   // TransB = no
+                                                     sequence_length,                // M      = S
+                                                     head_size,                      // N      = H
+                                                     hidden_size,                    // K      = NH
+                                                     1.0f,                           // alpha
+                                                     input_data + input_offset,      // A
+                                                     hidden_size,                    // lda    = NH
+                                                     weights_data + weights_offset,  // B
+                                                     3 * hidden_size,                // ldb    = 3NH
+                                                     1.0f,                           // beta
+                                                     qkv_dest + qkv_offset,          // C
+                                                     head_size,                      // ldc
+                                                     nullptr                         // use single-thread
         );
       });
     } else {
-      const T* weights_data = weights->template Data<T>();
-      for (int qkv_index = 0; qkv_index < 3; qkv_index++) {
-        const T* input_data = input->template Data<T>();
-        T* qkv_data = QKV[qkv_index];
-        for (int batch_index = 0; batch_index < batch_size; batch_index++) {
-          for (int head_index = 0; head_index < num_heads_; head_index++) {
-            math::GemmEx<float, concurrency::ThreadPool>(CblasNoTrans,                                        // TransA = no
-                         CblasNoTrans,                                        // TransB = no
-                         sequence_length,                                     // M      = S
-                         head_size,                                           // N      = H
-                         hidden_size,                                         // K      = NH
-                         1.0f,                                                // alpha
-                         input_data,                                          // A
-                         hidden_size,                                         // lda    = NH
-                         weights_data,                                        // B
-                         3 * hidden_size,                                     // ldb    = 3NH
-                         1.0f,                                                // beta
-                         qkv_data,                                            // C
-                         head_size,                                           // ldc
-                         nullptr  // use single-thread
-            );
-
-            weights_data += head_size;
-            qkv_data += sequence_length * head_size;
-          }
-          input_data += sequence_length * hidden_size;
-          weights_data -= head_size * num_heads_;
-        }
-        weights_data += hidden_size;
-      }
+      // TODO: (tp == nullptr)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented yet");
     }
   }
 
   if (is_profiler_enabled) {
     context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_1_of_6_gemm",
+                                               "Custom_Attention_STEP_1_of_4",
                                                timepoint);
 
     timepoint = context->Profiler()->StartTime();
   }
 
-  // STEP.3: scratch(B, N, S, S) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S, H -> B, N, H, S) + 1 x mask_index(B -> B, 1, 1, 1)
+  // STEP.2: scratch(B, N, S, S) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S, H -> B, N, H, S) + 1 x mask_index(B -> B, 1, 1, 1)
   auto scratch_data = allocator->Alloc(batch_size * num_heads_ * sequence_length * sequence_length * element_size);
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
-
-  // {
-  //   memset(scratch_data, 0, batch_size * num_heads_ * sequence_length * sequence_length * element_size);
-  //   auto mask_data = mask_index->template Data<int>();
-  //   int size_n = num_heads_ * sequence_length;
-  //   if (tp != nullptr) {
-  //     int numThreads = tp->NumThreads() + 1;
-  //     int size_per_batch = (batch_size * size_n + numThreads - 1) / numThreads;
-  //     tp->ParallelFor(numThreads, [numThreads, n = batch_size * size_n, size_per_batch,
-  //                                  mask_data,
-  //                                  size_n,
-  //                                  sequence_length,
-  //                                  scratch_data](int k) {
-  //       int start = k * size_per_batch;
-  //       int end = k == numThreads - 1 ? n : (k + 1) * size_per_batch;
-  //       for (int j = start; j < end; j++) {
-  //         int b_i = j / size_n;
-  //         int n_i = j % size_n;
-  //         int mask = mask_data[b_i];
-  //         for (int m_i = mask; m_i < sequence_length; m_i++) {
-  //           reinterpret_cast<T*>(scratch_data)[n_i * sequence_length + m_i] = static_cast<T>(-10000.0);
-  //         }
-  //       }
-  //     });
-  //   } else {
-  //     T* p_current_data = reinterpret_cast<T*>(scratch_data);
-  //     for (int b_i = 0; b_i < batch_size; b_i++) {
-  //       int mask = mask_data[b_i];
-  //       for (int n_i = 0; n_i < size_n; n_i++) {
-  //         for (int m_i = mask; m_i < sequence_length; m_i++) {
-  //           p_current_data[m_i] = static_cast<T>(-10000.0);
-  //         }
-  //         p_current_data += sequence_length;
-  //       }
-  //     }
-  //   }
-  // }
-
-  // if (is_profiler_enabled) {
-  //   context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-  //                                              "Custom_Attention_STEP_3_of_6_broadcast",
-  //                                              timepoint);
-  //   timepoint = context->Profiler()->StartTime();
-  // }
 
   {
     auto scratch_broadcast_data = allocator->Alloc(batch_size * sequence_length * element_size);
@@ -391,99 +255,36 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
             nullptr);
       });
     } else {
-      int offset_Q = 0;
-      int offset_Q_increment = sequence_length * head_size;
-      int offset_scratch = 0;
-      int offset_scratch_increment = sequence_length * sequence_length;
-
-      for (int b_i = 0; b_i < batch_size; b_i++) {
-        for (int n_i = 0; n_i < num_heads_; n_i++) {
-          math::Gemm<T, concurrency::ThreadPool>(
-              CblasNoTrans,
-              CblasTrans,
-              sequence_length,
-              sequence_length,
-              head_size,
-              alpha,
-              Q + offset_Q,
-              K + offset_Q,
-              1.0,
-              reinterpret_cast<T*>(scratch_data) + offset_scratch,
-              nullptr);
-          offset_Q += offset_Q_increment;
-          offset_scratch += offset_scratch_increment;
-        }
-      }
+      // TODO: (tp == nullptr)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented yet");
     }
   }
 
   if (is_profiler_enabled) {
     context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_3_of_6_gemm",
+                                               "Custom_Attention_STEP_2_of_4",
                                                timepoint);
 
     timepoint = context->Profiler()->StartTime();
   }
 
-  // STEP.4: P(B, N, S, S) = Softmax(scratch)
-  auto p_data = allocator->Alloc(batch_size * num_heads_ * sequence_length * sequence_length * element_size);
-  BufferUniquePtr p_buffer(p_data, BufferDeleter(allocator));
-
+  // STEP.3: P(B, N, S, S) = Softmax(scratch)
   {
     int N = batch_size * num_heads_ * sequence_length;
     int D = sequence_length;
 
-    //     Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> X_tensor(
-    //         reinterpret_cast<T*>(scratch_data), N, D);
-    //     Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> Y_tensor(
-    //         reinterpret_cast<T*>(p_data), N, D);
-    // #ifndef USE_OPENMP
-    //     if (tp == nullptr)
-    // #endif
-    //       ComputeSoftMax(Eigen::DefaultDevice(), X_tensor, Y_tensor, false);
-    // #ifndef USE_OPENMP
-    //     else
-    //       ComputeSoftMax(Eigen::ThreadPoolDevice(&tp->GetHandler(), tp->NumThreads()), X_tensor, Y_tensor, false);
-    // #endif
-
-    // TODO: support other type (half/double)
-    //ORT_ENFORCE(element_size == 4);
-    //vsExp(N * D, reinterpret_cast<T*>(scratch_data), reinterpret_cast<T*>(p_data));
-    //math::Exp(N * D, reinterpret_cast<T*>(scratch_data), reinterpret_cast<T*>(p_data), tp);
-
-    {
-      int numThreads = tp->NumThreads() + 1;
-      int size_per_batch = (N * D + numThreads - 1) / numThreads;
-      tp->ParallelFor(numThreads, [numThreads, n = N * D, size_per_batch,
-                                   input = reinterpret_cast<T*>(scratch_data),
-                                   output = reinterpret_cast<T*>(p_data)](int k) {
-        int start = k * size_per_batch;
-        int end = k == numThreads - 1 ? n : (k + 1) * size_per_batch;
-        for (int index = start; index < end; index++)
-          output[index] = expf(input[index]);
-      });
-    }
-
-    // EigenVectorMap<T>(reinterpret_cast<T*>(p_data), N * D) = ConstEigenVectorMap<T>(reinterpret_cast<T*>(scratch_data), N * D).array().exp();
-
-    if (is_profiler_enabled) {
-      context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                 "Custom_Attention_STEP_4_of_6_exp",
-                                                 timepoint);
-      timepoint = context->Profiler()->StartTime();
-    }
-
     {
       int numThreads = tp->NumThreads() + 1;
       int size_per_batch = (N + numThreads - 1) / numThreads;
-      tp->ParallelFor(numThreads, [numThreads, n = N, size_per_batch, p_data, D](int k) {
+      tp->ParallelFor(numThreads, [numThreads, n = N, size_per_batch, scratch_data, len = D](int k) {
         int start = k * size_per_batch;
         int end = k == numThreads - 1 ? n : (k + 1) * size_per_batch;
         for (int j = start; j < end; j++) {
-          float* x = reinterpret_cast<T*>(p_data) + j * D;
+          float* x = reinterpret_cast<T*>(scratch_data) + j * len;
           float* y = x;
 
-          int len = D;
+          for (int i = 0; i < len; i++)
+            y[i] = expf(x[i]);
 
           double sum = 0.0;
 
@@ -503,97 +304,64 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
       });
     }
-
-    // for (int j = 0; j < N; j++) {
-    //   float* x = reinterpret_cast<T*>(p_data) + j * sequence_length;
-    //   float* y = x;
-
-    //   int len = sequence_length;
-
-    //   double sum = 0.0;
-
-    //   for (int i = 0; i < len; i++) {
-    //     sum += x[i];
-    //   }
-
-    //   if (sum == 0) {
-    //     for (int i = 0; i < len; i++) {
-    //       y[i] = 1.0f / (float)len;
-    //     }
-    //   } else {
-    //     for (int i = 0; i < len; i++) {
-    //       y[i] = x[i] / (float)sum;
-    //     }
-    //   }
-    // }
   }
 
   if (is_profiler_enabled) {
     context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_4_of_6_rest",
+                                               "Custom_Attention_STEP_3_of_4",
                                                timepoint);
 
     timepoint = context->Profiler()->StartTime();
   }
 
-  // STEP.5: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
+  // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
   auto out_tmp_data = allocator->Alloc(batch_size * num_heads_ * sequence_length * head_size * element_size);
   BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
   {
     if (tp != nullptr) {
-      tp->ParallelFor(batch_size * num_heads_, [this, sequence_length, head_size, p_data, out_tmp_data, V, tp](int32_t i) {
+      tp->ParallelFor(batch_size * num_heads_, [this,
+                                                sequence_length,
+                                                num_heads = num_heads_,
+                                                head_size,
+                                                hidden_size,
+                                                scratch_data,
+                                                out_tmp_data,
+                                                output_data = output->template MutableData<T>(),
+                                                V](int32_t i) {
+        T* current_tmp_data = reinterpret_cast<T*>(out_tmp_data) + sequence_length * head_size * i;
         math::MatMul<T>(
             sequence_length,
             head_size,
             sequence_length,
-            reinterpret_cast<T*>(p_data) + sequence_length * sequence_length * i,
+            reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
             V + sequence_length * head_size * i,
-            reinterpret_cast<T*>(out_tmp_data) + sequence_length * head_size * i,
+            current_tmp_data,
             nullptr);
+
+        // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
+        int batch_index = i / num_heads;
+        int head_index = i % num_heads;
+        T* src = current_tmp_data;
+        T* dest = output_data + (batch_index * sequence_length * num_heads + head_index) * head_size;
+        for (int j = 0; j < sequence_length; j++) {
+          memcpy(dest, src, head_size * sizeof(T));
+          src += head_size;
+          dest += hidden_size;
+        }
       });
     } else {
-      int offset_p = 0;
-      int offset_p_increment = sequence_length * sequence_length;
-      int offset_V = 0;
-      int offset_V_increment = sequence_length * head_size;
-
-      for (int b_i = 0; b_i < batch_size; b_i++) {
-        for (int n_i = 0; n_i < num_heads_; n_i++) {
-          math::MatMul<T>(
-              sequence_length,
-              head_size,
-              sequence_length,
-              reinterpret_cast<T*>(p_data) + offset_p,
-              V + offset_V,
-              reinterpret_cast<T*>(out_tmp_data) + offset_V,
-              nullptr);
-          offset_p += offset_p_increment;
-          offset_V += offset_V_increment;
-        }
-      }
+      // TODO: (tp == nullptr)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented yet");
     }
   }
 
   if (is_profiler_enabled) {
     context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_5_of_6",
+                                               "Custom_Attention_STEP_4_of_4",
                                                timepoint);
 
     timepoint = context->Profiler()->StartTime();
-  }
-
-  // STEP.6: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
-  Tensor out_tmp_tensor{input->DataType(), TensorShape{batch_size, num_heads_, sequence_length, head_size}, out_tmp_data, allocator->Info()};
-  Tensor output_tensor{input->DataType(), TensorShape{batch_size, sequence_length, num_heads_, head_size}, output->template MutableData<T>(), allocator->Info()};
-
-  static const std::vector<size_t> transpose_out_permutations{0, 2, 1, 3};
-  ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(transpose_out_permutations, out_tmp_tensor, output_tensor));
-
-  if (is_profiler_enabled) {
-    context->Profiler()->EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                               "Custom_Attention_STEP_6_of_6",
-                                               timepoint);
   }
 
   return Status::OK();
