@@ -540,14 +540,7 @@ inline bool IsMapOf(MLDataType ml_type) {
   return false;
 }
 
-inline bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name) {
-  const auto* op_proto = data_types_internal::GetOpaqueProto(ml_type);
-  if (op_proto != nullptr) {
-    return (op_proto->domain() == domain &&
-            op_proto->name() == name);
-  }
-  return false;
-}
+bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name);
 
 }  // namespace utils
 }  // namespace onnxruntime

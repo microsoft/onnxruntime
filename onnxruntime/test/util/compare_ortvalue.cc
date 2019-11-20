@@ -228,55 +228,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
 }
 
 const char* ElementTypeToString(MLDataType type) {
-  if (type == DataTypeImpl::GetType<float>()) {
-    return "tensor(float)";
-  } else if (type == DataTypeImpl::GetType<bool>()) {
-    return "tensor(bool)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int32_t>()) {
-    return "tensor(int32)";
-  }
-
-  else if (type == DataTypeImpl::GetType<double>()) {
-    return "tensor(double)";
-  }
-
-  else if (type == DataTypeImpl::GetType<std::string>()) {
-    return "tensor(string)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint8_t>()) {
-    return "tensor(uint8)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint16_t>()) {
-    return "tensor(uint16)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int16_t>()) {
-    return "tensor(int16)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int64_t>()) {
-    return "tensor(int64)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint32_t>()) {
-    return "tensor(uint32)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint64_t>()) {
-    return "tensor(uint64)";
-  }
-
-  else if (type == DataTypeImpl::GetType<MLFloat16>()) {
-    return "tensor(MLFloat16)";
-  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
-    return "tensor(bfloat16)";
-  } else {
-    return "unknown";
-  }
+  return DataTypeImpl::ToString(type);
 }
 
 // The expected_shape could contain unknown dimensions, but the real_shape cannot

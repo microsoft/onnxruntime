@@ -1100,10 +1100,10 @@ static OrtStatus* OrtCreateValueImplSeq(const OrtValue* const* in, size_t num_va
     return OrtCreateValueImplSeqHelper(in, num_values, out);
   } else if (first_value_type == ONNX_TYPE_MAP) {
     auto map_type = first_mlvalue->Type();
-    if (map_type == DataTypeImpl::GetType<MapStringToFloat>()) {
+    if (utils::IsMapOf<std::string, float>(map_type)) {
       return OrtCreateValueImplSeqHelperMap<MapStringToFloat>(in, num_values, out);
     }
-    if (map_type == DataTypeImpl::GetType<MapInt64ToFloat>()) {
+    if (utils::IsMapOf<int64_t, float>(map_type)) {
       return OrtCreateValueImplSeqHelperMap<MapInt64ToFloat>(in, num_values, out);
     } else {
       return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported map types.");

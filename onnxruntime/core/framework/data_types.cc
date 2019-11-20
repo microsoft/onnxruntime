@@ -646,6 +646,15 @@ const ONNX_NAMESPACE::TypeProto_Opaque* GetOpaqueProto(MLDataType ml_type) {
 
 }  // namespace data_types_internal
 
+bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name) {
+  const auto* op_proto = data_types_internal::GetOpaqueProto(ml_type);
+  if (op_proto != nullptr) {
+    return (op_proto->domain() == domain &&
+            op_proto->name() == name);
+  }
+  return false;
+}
+
 void DataTypeImpl::RegisterDataType(MLDataType mltype) {
   data_types_internal::DataTypeRegistry::instance().RegisterDataType(mltype);
 }
