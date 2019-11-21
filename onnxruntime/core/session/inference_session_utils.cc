@@ -207,7 +207,8 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
 
     if (key == "intra_op_num_threads ") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra_op_num_threads option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "intra_op_num_threads option in the model file must be an integer");
       }
 
       auto status = set_intra_op_num_threads(session_options, it.value().get<int>(), session_logger);
@@ -218,7 +219,8 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
 
     } else if (key == "inter_op_num_threads") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "inter_op_num_threads option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "inter_op_num_threads option in the model file must be an integer");
       }
 
       auto status = set_inter_op_num_threads(session_options, it.value().get<int>(), session_logger);
@@ -228,7 +230,8 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
       }
     } else if (key == "execution_mode") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "execution_mode option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "execution_mode option in the model file must be an integer");
       }
 
       auto status = set_execution_mode(session_options, it.value().get<int>(), session_logger);
@@ -249,7 +252,8 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
       }
     } else if (key == "enable_profiling") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "enable_profiling option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "enable_profiling option in the model file must be an integer");
       }
 
       auto status = set_enable_profiling(session_options, it.value().get<int>(), session_logger);
@@ -258,7 +262,7 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
         return status;
       }
     } else {
-      LOGS(session_logger, INFO) << "Ignoring unsupported session option: " << key;
+      LOGS(session_logger, INFO) << "Ignoring unsupported session option in ORT config: " << key;
     }
   }
 
@@ -268,7 +272,8 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
 Status parse_run_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& /*model_proto*/,
                                           RunOptions& /*run_options*/,
                                           const logging::Logger& /*session_logger*/) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Parsing RunOptions from ModelProto is not supported yet");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "Parsing RunOptions from ModelProto is not supported yet");
 }
 
 }  // namespace inference_session_utils
