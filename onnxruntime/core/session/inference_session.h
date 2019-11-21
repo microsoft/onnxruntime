@@ -447,8 +447,6 @@ class InferenceSession {
 
   SessionOptions session_options_;
 
-  bool is_non_default_session_options_;
-
   std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
