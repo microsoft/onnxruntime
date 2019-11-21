@@ -7,12 +7,7 @@
 #include "core/optimizer/utils.h"
 #include <cmath>
 
-// A macro that diables logging in release build
-#ifndef NDEBUG
 #define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
-#else
-#define DEBUG_LOG(x)
-#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -74,36 +69,49 @@ void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
   }
 }
 
-// Merge the weights of Q, K and V inputs for MatMul or Add (bias) into one input.
-static NodeArg* MergeQkvWeights(Graph& graph, int64_t hidden_size, const Node& q, const Node& k, const Node& v, bool is_matmul) {
+static bool LoadQkvWeights(
+    Graph& graph,
+    const Node& q, const Node& k, const Node& v,
+    const ONNX_NAMESPACE::TensorProto*& q_tensor,
+    const ONNX_NAMESPACE::TensorProto*& k_tensor,
+    const ONNX_NAMESPACE::TensorProto*& v_tensor) {
   // Load q, k and v weights
-  const ONNX_NAMESPACE::TensorProto* q_tensor = nullptr;
   if (!graph.GetInitializedTensor(q.InputDefs()[1]->Name(), q_tensor)) {
-    return nullptr;
+    return false;
   }
 
-  const ONNX_NAMESPACE::TensorProto* k_tensor = nullptr;
-  if (!graph.GetInitializedTensor(k.InputDefs()[1]->Name(), k_tensor)) {
-    return nullptr;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* v_tensor = nullptr;
-  if (!graph.GetInitializedTensor(v.InputDefs()[1]->Name(), v_tensor)) {
-    return nullptr;
-  }
-
-  // Make sure tensor type is either float or float16, and same across q, k and v.
   const auto data_type = q_tensor->data_type();
-  if (data_type != k_tensor->data_type() ||
-      data_type != v_tensor->data_type() ||
-      (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-       data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
-    return nullptr;
+  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
   }
 
+  if (!graph.GetInitializedTensor(k.InputDefs()[1]->Name(), k_tensor) ||
+      data_type != k_tensor->data_type()) {
+    return false;
+  }
+
+  if (!graph.GetInitializedTensor(v.InputDefs()[1]->Name(), v_tensor) ||
+      data_type != v_tensor->data_type()) {
+    return false;
+  }
+
+  return true;
+}
+
+// Merge the weights of Q, K and V inputs for MatMul or Add (bias) into one input.
+static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
+                                const ONNX_NAMESPACE::TensorProto* q_tensor,
+                                const ONNX_NAMESPACE::TensorProto* k_tensor,
+                                const ONNX_NAMESPACE::TensorProto* v_tensor,
+                                bool is_matmul) {
+  assert(nullptr != q_tensor);
+  assert(nullptr != k_tensor);
+  assert(nullptr != v_tensor);
   auto q_initializer = onnxruntime::make_unique<Initializer>(*q_tensor);
   auto k_initializer = onnxruntime::make_unique<Initializer>(*k_tensor);
   auto v_initializer = onnxruntime::make_unique<Initializer>(*v_tensor);
+  auto data_type = q_tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
   initializer.set_name(graph.GenerateNodeArgName(is_matmul ? "qkv_weights" : "qkv_bias"));
@@ -142,11 +150,10 @@ static NodeArg* MergeQkvWeights(Graph& graph, int64_t hidden_size, const Node& q
     initializer.set_raw_data(result.data(), element_count * sizeof(MLFloat16));
   }
 
-  NodeArg& new_node_arg = graph_utils::AddInitializer(graph, initializer);
-  return &new_node_arg;
+  return graph_utils::AddInitializer(graph, initializer);
 }
 
-static NodeArg* CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provider_type) {
+static NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provider_type) {
   const TensorShapeProto* mask_shape = mask_input->Shape();
   TypeProto mask_int32;
   mask_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
@@ -155,13 +162,13 @@ static NodeArg* CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType 
   auto& cast32 = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Mask_Int32"), &mask_int32);
 
   Node& node = graph.AddNode(graph.GenerateNodeName("MaskCast"),
-                "Cast",
-                "Cast mask from int64 to int32",
-                {mask_input},
-                {&cast32},
-                nullptr,
-                kOnnxDomain);
-  
+                             "Cast",
+                             "Cast mask from int64 to int32",
+                             {mask_input},
+                             {&cast32},
+                             nullptr,
+                             kOnnxDomain);
+
   // Add attribute: "to" = 6
   ONNX_NAMESPACE::AttributeProto to;
   to.set_name("to");
@@ -170,14 +177,11 @@ static NodeArg* CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType 
   node.AddAttribute("to", to);
 
   node.SetExecutionProviderType(provider_type);
-  return &cast32;
+  return cast32;
 }
 
-static NodeArg* AddMaskReduceSum(Graph& graph, NodeArg* reduce_sum_input, int64_t batch_size, ProviderType provider_type) {
-  TypeProto mask_index_int32;
-  mask_index_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
-  mask_index_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(batch_size);
-  NodeArg& reduce_sum_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MaskIndex_Int32"), &mask_index_int32);
+static NodeArg& AddMaskReduceSum(Graph& graph, NodeArg* reduce_sum_input, TypeProto& output_type, ProviderType provider_type) {
+  NodeArg& reduce_sum_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MaskIndex_Int32"), &output_type);
 
   const std::vector<NodeArg*> input_defs{reduce_sum_input};
   const std::vector<NodeArg*> output_defs{&reduce_sum_output};
@@ -206,32 +210,39 @@ static NodeArg* AddMaskReduceSum(Graph& graph, NodeArg* reduce_sum_input, int64_
 
   node.SetExecutionProviderType(provider_type);
 
-  return &reduce_sum_output;
+  return reduce_sum_output;
 }
 
-static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType provider_type) {
-  // Validate mask input shape (batch_size, sequence length) and data type
+static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType provider_type, const logging::Logger& logger) {
+  // Validate mask input shape (batch_size, sequence_length) and data type.
+  // Note that batch_size and sequence_length could be symbolic.
   const TensorShapeProto* mask_shape = mask_input->Shape();
-  if (mask_shape == nullptr ||
-      mask_shape->dim_size() != 2 ||
-      !mask_shape->dim(0).has_dim_value() ||
-      mask_input->Type() == nullptr) {
+  if (mask_shape == nullptr || mask_shape->dim_size() != 2 || mask_input->Type() == nullptr) {
+    DEBUG_LOG("Mask shape is unknown or not 2D, or data type unknown");
     return nullptr;
   }
 
   auto data_type = mask_input->TypeAsProto()->tensor_type().elem_type();
   if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
       data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    DEBUG_LOG("Mask data type is not int32 or int64");
     return nullptr;
   }
 
   NodeArg* reduce_sum_input = mask_input;
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    reduce_sum_input = CastMaskToInt32(graph, mask_input, provider_type);
+    NodeArg& cast_int32 = CastMaskToInt32(graph, mask_input, provider_type);
+    reduce_sum_input = &cast_int32;
   }
 
-  int64_t batch_size = mask_shape->dim(0).dim_value();
-  return AddMaskReduceSum(graph, reduce_sum_input, batch_size, provider_type);
+  // Construct shape based on mask input shape. Note that batch_size could be symbolic.
+  TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  auto dim = output_type.mutable_tensor_type()->mutable_shape()->add_dim();
+  *dim = mask_shape->dim(0);
+
+  NodeArg& output = AddMaskReduceSum(graph, reduce_sum_input, output_type, provider_type);
+  return &output;
 }
 
 static NodeArg* GetOrCreateMaskIndex(
@@ -239,14 +250,15 @@ static NodeArg* GetOrCreateMaskIndex(
     NodeArg* mask_input,
     int64_t hidden_size,
     std::map<std::string, NodeArg*>& mask_index_map,
-    ProviderType provider_type) {
+    ProviderType provider_type,
+    const logging::Logger& logger) {
   // Lookup in map, and return the mask index if created.
   auto search = mask_index_map.find(mask_input->Name());
   if (search != mask_index_map.end()) {
     return search->second;
   }
 
-  NodeArg* output = ProcessMask(graph, mask_input, provider_type);
+  NodeArg* output = ProcessMask(graph, mask_input, provider_type, logger);
   if (nullptr == output) {
     return nullptr;
   }
@@ -548,25 +560,6 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
     return false;
   }
 
-  NodeArg* qkv_weight = MergeQkvWeights(graph, hidden_size, q_matmul, k_matmul, v_matmul, true);
-  if (nullptr == qkv_weight) {
-    DEBUG_LOG("Failed to merge matmul weights");
-    return false;
-  }
-
-  NodeArg* qkv_bias = MergeQkvWeights(graph, hidden_size, q_add, k_add, v_add, false);
-  if (nullptr == qkv_bias) {
-    DEBUG_LOG("Failed to merge add bias weights");
-    return false;
-  }
-
-  NodeArg* mask_input = graph.GetNode(mask_unsqueeze_1.Index())->MutableInputDefs()[0];
-  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, hidden_size, mask_index_map, layer_norm.GetExecutionProviderType());
-  if (nullptr == mask_index) {
-    DEBUG_LOG("Failed to create mask index");
-    return false;
-  }
-
   std::vector<int64_t> k_reshape_shape;
   if (!optimizer_utils::LoadTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
       k_reshape_shape.size() != 4 ||
@@ -576,8 +569,37 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
     return false;
   }
 
+  // Load q, k and v weights
+  const ONNX_NAMESPACE::TensorProto* q_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
+  if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
+    DEBUG_LOG("Failed to load Q, K and V weights");
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* q_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
+  const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
+  if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
+    DEBUG_LOG("Failed to load Q, K and V bias tensors");
+    return false;
+  }
+
+  // Now everything is ready, we will start fusing subgraph.
+  NodeArg* mask_input = graph.GetNode(mask_unsqueeze_1.Index())->MutableInputDefs()[0];
+  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, hidden_size, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
+  if (nullptr == mask_index) {
+    DEBUG_LOG("Failed to create mask index");
+    return false;
+  }
+
+  // Merge Q, K and V weights
+  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true); 
+  NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
+
   // Create Attention Node.
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], qkv_weight, qkv_bias, mask_index};
+  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_index};
   const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
   Node& attention_node = graph.AddNode(
       graph.GenerateNodeName("Attention"),

@@ -1016,9 +1016,9 @@ TEST(GraphTransformationTests, AttentionFusionInt32Test) {
   ValidateAttention(graph);
 }
 
-// Test Attention Fusion with int64 mask
+// Test Attention Fusion with int64 mask and symbolic batch dimension
 TEST(GraphTransformationTests, AttentionFusionInt64Test) {
-  auto model_uri = MODEL_FOLDER "fusion/attention_int64_mask.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/attention_symbolic_batch.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -1033,7 +1033,7 @@ TEST(GraphTransformationTests, AttentionFusionInt64Test) {
   EXPECT_EQ(op_to_count["Add"], 2);
   EXPECT_EQ(op_to_count["Transpose"], 0);
   EXPECT_EQ(op_to_count["Reshape"], 0);
-  EXPECT_EQ(op_to_count["Cast"], 1); // Cast for int64 mask to int32
+  EXPECT_EQ(op_to_count["Cast"], 1);  // Cast for int64 mask to int32
   EXPECT_EQ(op_to_count["ReduceSum"], 1);
   EXPECT_EQ(op_to_count["Attention"], 1);
 
