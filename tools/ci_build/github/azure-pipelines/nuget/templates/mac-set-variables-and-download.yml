@@ -1,6 +1,4 @@
 steps:
-- template: set-test-data-variables-step.yml
-
 - task: CmdLine@2
   displayName: 'Download azcopy'
   inputs:
@@ -16,3 +14,5 @@ steps:
     arguments: --test_data_url $(TestDataUrl) --azure_region centralus --build_dir $(Build.BinariesDirectory)
     pythonInterpreter: '/usr/local/bin/python3'
     workingDirectory: $(Build.BinariesDirectory)
+  env:
+    Test_Data_Download_Key: $(ort-internal-test-data-sas)
