@@ -966,8 +966,8 @@ def main():
             #  mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
             run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
-              1 args.x86 or platform.system() == 'Darwin' else 0,
-              1 args.x86 or platform.system() == 'Darwin' else 0)                       
+              1 if args.x86 or platform.system() == 'Darwin' else 0,
+              1 if args.x86 or platform.system() == 'Darwin' else 0)                       
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
