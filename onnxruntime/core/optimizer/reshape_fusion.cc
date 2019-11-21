@@ -147,12 +147,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   // We do not check whether the initializer is constant.
   // Some model uses constant initializer and some does not.
   // Here we assume that no one will override the initializer using graph input.
-  if (!optimizer_utils::LoadTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value)) {
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value)) {
     return false;
   }
 
   if (concat_input_count > 3) {
-    if (!optimizer_utils::LoadTensorFromInitializer(graph, *(concat.InputDefs()[3]), shape_value)) {
+    if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[3]), shape_value)) {
       return false;
     }
   }

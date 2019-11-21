@@ -38,7 +38,7 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
 /** Get values of an integer tensor from initializer, and append them to a vector.
 @remarks only support int32 and int64 tensor. This function does not clear vector before appending.
 */
-bool LoadTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data);
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data);
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

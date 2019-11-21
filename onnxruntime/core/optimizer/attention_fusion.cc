@@ -13,7 +13,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-static bool CheckMatMulInput(const Graph& graph, const Node& matmul, int64_t hidden_size) {
+static bool ValidateMatMulInitializer(const Graph& graph, const Node& matmul, int64_t hidden_size) {
   const NodeArg& input_b = *(matmul.InputDefs()[1]);
   if (!graph_utils::IsInitializer(graph, input_b.Name(), true)) {
     return false;
@@ -28,7 +28,7 @@ static bool CheckMatMulInput(const Graph& graph, const Node& matmul, int64_t hid
          hidden_size == shape->dim(1).dim_value();
 }
 
-static bool CheckAddBiasInput(const Graph& graph, const Node& add, int64_t hidden_size) {
+static bool ValidateAddBiasInitializer(const Graph& graph, const Node& add, int64_t hidden_size) {
   const NodeArg& input_b = *(add.InputDefs()[1]);
   if (!graph_utils::IsInitializer(graph, input_b.Name(), true)) {
     return false;
@@ -41,6 +41,7 @@ static bool CheckAddBiasInput(const Graph& graph, const Node& add, int64_t hidde
          hidden_size == shape->dim(0).dim_value();
 }
 
+// Merge 1-D weights (q, k and v) by concanating them one by one.
 template <typename T>
 void MergeWeights(const T* q, const T* k, const T* v, std::vector<T>& result, int64_t element_count) {
   for (int64_t i = 0; i < element_count; i++) {
@@ -59,6 +60,7 @@ void MergeWeights(const T* q, const T* k, const T* v, std::vector<T>& result, in
   }
 }
 
+// Merge 2-D weights (q, k and v) by concanating them row by row.
 template <typename T>
 void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight, std::vector<T>& result, int64_t hidden_size) {
   const T* q = q_weight;
@@ -69,17 +71,19 @@ void MergeMatMulWeights(const T* q_weight, const T* k_weight, const T* v_weight,
   }
 }
 
+// Load q, k and v weights, and validate their data types.
 static bool LoadQkvWeights(
     Graph& graph,
     const Node& q, const Node& k, const Node& v,
     const ONNX_NAMESPACE::TensorProto*& q_tensor,
     const ONNX_NAMESPACE::TensorProto*& k_tensor,
     const ONNX_NAMESPACE::TensorProto*& v_tensor) {
-  // Load q, k and v weights
+  
   if (!graph.GetInitializedTensor(q.InputDefs()[1]->Name(), q_tensor)) {
     return false;
   }
 
+  // Attention Op requires float or float16 weights.
   const auto data_type = q_tensor->data_type();
   if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
       data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
@@ -153,12 +157,15 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   return graph_utils::AddInitializer(graph, initializer);
 }
 
+// Add a Cast to convert Mask from int64 to int32.
 static NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provider_type) {
   const TensorShapeProto* mask_shape = mask_input->Shape();
   TypeProto mask_int32;
   mask_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
-  mask_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(mask_shape->dim(0).dim_value());
-  mask_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(mask_shape->dim(1).dim_value());
+  auto dim0 = mask_int32.mutable_tensor_type()->mutable_shape()->add_dim();
+  *dim0 = mask_shape->dim(0);
+  auto dim1 = mask_int32.mutable_tensor_type()->mutable_shape()->add_dim();
+  *dim1 = mask_shape->dim(1);
   auto& cast32 = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Mask_Int32"), &mask_int32);
 
   Node& node = graph.AddNode(graph.GenerateNodeName("MaskCast"),
@@ -308,11 +315,11 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       if (add_count != 1 || matmul_count != 3) {
-        DEBUG_LOG("Children expects Add:1, MatMul:3");
+        DEBUG_LOG("Attention subgraph expects 1 Add and 3 MatMul as children of LayerNormalization.");
         continue;
       }
 
-      if (AttentionFusion::Fuse_Subgraph1(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
+      if (AttentionFusion::FuseSubGraph(node, *add_node, graph, hidden_size, mask_index_map, logger)) {
         fused_count++;
         modified = true;
       }
@@ -326,7 +333,63 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   return Status::OK();
 }
 
-bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
+/** Fuse Attention SubGraph.
+@remark add_after_layer_norm is the Add node in the bottom of sub-graph.
+ Abbreviatios: B is batch_size, S is sequence_length, W is hidden_size
+               N is number of attention heads, H is head size, and W=N*H
+               B and S could be symbolic.
+    Graph before Fusion (q_, k_, v_, qk_, qkv_ and mask_ prefix is added before Operator type):
+                  [Input](BxSxW)
+                        |
+                LayerNormalization
+            /       |        |     \     [Weights](WxW)
+           /        |        |      \    /
+          |   q_MatMul    k_MatMul  v_MatMul  [Bias](W)    
+          |         |        |        |   /
+          |     q_Add     k_Add     v_Add     [Shape=0,0,N,H]
+          |         |        |        |      /
+          | q_Reshape   k_Reshape   v_Reshape                [Mask] (BxS)
+          |         |        |        |                          |
+          |q_Transpose  k_Transpose v_Transpose            mask_Unsqueeze(axes=1)
+          |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              | 
+          |         \       /         |                    mask_Unsqueeze(axes=2) 
+          |      qk_MatMul            |                          |
+          |           |    [B=2]      |              [A=1] mask_Cast(to=1)        
+          |           |   /           |                   \     /
+          |        qk_Div             |                 mask_Sub   [A=1000]
+          |            \              |                        \   /
+          |       mask_Add <-------- /---------------------mask_Mul
+          |             |           /
+          |          Softmax       /
+          |             \         /
+          |              \       /
+          |            qkv_MatMul
+          |                   |
+          |                Transpose (perm=0,2,1,3)
+          |                   |
+          |                Reshape---[shape=0,0,W]
+          |                   |
+          |                 MatMul----[Weights](WxW)
+          |                   |
+          |                  Add----[Bias](W)
+          +-------------------|---+
+                              |   |
+                               Add
+
+After Fusion:
+  LayerNormalization  [Weights](Wx3W)   Mask
+      |        \      /   [Bias](3W)     |
+      |         \    /   /               |
+      |         Attention <------------ReduceSum
+      \          |        
+       \        MatMul    
+        \        |      
+         \      Add
+          +------|---+
+                 |   |
+                  Add
+*/
+bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer_norm, Graph& graph, int64_t hidden_size, std::map<std::string, NodeArg*>& mask_index_map, const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
@@ -384,12 +447,12 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   }
 
   std::vector<int64_t> v_reshape_shape;
-  if (!optimizer_utils::LoadTensorFromInitializer(graph, *(v_reshape.InputDefs()[1]), v_reshape_shape) ||
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(v_reshape.InputDefs()[1]), v_reshape_shape) ||
       v_reshape_shape.size() != 4 ||
       v_reshape_shape[2] <= 0 ||
       v_reshape_shape[3] <= 0 ||
       hidden_size != v_reshape_shape[2] * v_reshape_shape[3]) {
-    DEBUG_LOG("v_reshape const not matched");
+    DEBUG_LOG("v_reshape initializer value is not expected");
     return false;
   }
 
@@ -397,18 +460,18 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   const int64_t attention_head_size = v_reshape_shape[3];
 
   std::vector<int64_t> reshape_shape;
-  if (!optimizer_utils::LoadTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape) ||
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape) ||
       reshape_shape.size() != 3 ||
       reshape_shape[2] != hidden_size) {
-    DEBUG_LOG("reshape const not matched");
+    DEBUG_LOG("reshape initializer value is not expected");
     return false;
   }
 
   // Validate the input shape of MatMul and Add according to hidden_size.
-  if (!(CheckAddBiasInput(graph, add, hidden_size) &&
-        CheckMatMulInput(graph, matmul, hidden_size) &&
-        CheckAddBiasInput(graph, v_add, hidden_size) &&
-        CheckMatMulInput(graph, v_matmul, hidden_size))) {
+  if (!(ValidateAddBiasInitializer(graph, add, hidden_size) &&
+        ValidateMatMulInitializer(graph, matmul, hidden_size) &&
+        ValidateAddBiasInitializer(graph, v_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, v_matmul, hidden_size))) {
     DEBUG_LOG("Failed in match v_matmul and v_add input shape");
     return false;
   }
@@ -428,7 +491,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
     return false;
   }
 
-  const Node& mask_softmax = edges[0]->GetNode();
+  const Node& softmax = edges[0]->GetNode();
   const Node& mask_add = edges[1]->GetNode();
   const Node& mask_mul = edges[2]->GetNode();
   const Node& mask_sub = edges[3]->GetNode();
@@ -436,7 +499,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   const Node& mask_unsqueeze_2 = edges[5]->GetNode();
   const Node& mask_unsqueeze_1 = edges[6]->GetNode();
 
-  if (mask_softmax.GetOutputEdgesCount() != 1 ||
+  if (softmax.GetOutputEdgesCount() != 1 ||
       mask_add.GetOutputEdgesCount() != 1 ||
       mask_sub.GetOutputEdgesCount() != 1 ||
       mask_cast.GetOutputEdgesCount() != 1 ||
@@ -446,7 +509,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
     return false;
   }
 
-  if (!optimizer_utils::IsAttributeWithExpectedValue(mask_softmax, "axis", 3)) {
+  if (!optimizer_utils::IsAttributeWithExpectedValue(softmax, "axis", 3)) {
     DEBUG_LOG("Softmax attribute axis is expected to be 3");
     return false;
   }
@@ -500,7 +563,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   }
 
   std::vector<int64_t> q_reshape_shape;
-  if (!optimizer_utils::LoadTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
       q_reshape_shape.size() != 4 ||
       q_reshape_shape[2] != num_attention_head ||
       q_reshape_shape[3] != attention_head_size) {
@@ -519,8 +582,8 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
     return false;
   }
 
-  if (!(CheckAddBiasInput(graph, q_add, hidden_size) &&
-        CheckMatMulInput(graph, q_matmul, hidden_size))) {
+  if (!(ValidateAddBiasInitializer(graph, q_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, q_matmul, hidden_size))) {
     DEBUG_LOG("q_matmul and q_add shape not matched");
     return false;
   }
@@ -553,14 +616,14 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
     return false;
   }
 
-  if (!(CheckAddBiasInput(graph, k_add, hidden_size) &&
-        CheckMatMulInput(graph, k_matmul, hidden_size))) {
+  if (!(ValidateAddBiasInitializer(graph, k_add, hidden_size) &&
+        ValidateMatMulInitializer(graph, k_matmul, hidden_size))) {
     DEBUG_LOG("k_matmul and k_add shape not matched");
     return false;
   }
 
   std::vector<int64_t> k_reshape_shape;
-  if (!optimizer_utils::LoadTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
       k_reshape_shape.size() != 4 ||
       k_reshape_shape[2] != num_attention_head ||
       k_reshape_shape[3] != attention_head_size) {
@@ -573,7 +636,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   const ONNX_NAMESPACE::TensorProto* k_weight_tensor = nullptr;
   const ONNX_NAMESPACE::TensorProto* v_weight_tensor = nullptr;
   if (!LoadQkvWeights(graph, q_matmul, k_matmul, v_matmul, q_weight_tensor, k_weight_tensor, v_weight_tensor)) {
-    DEBUG_LOG("Failed to load Q, K and V weights");
+    DEBUG_LOG("Failed to load Q, K and V weights, or data type is not float or float16.");
     return false;
   }
 
@@ -581,7 +644,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   const ONNX_NAMESPACE::TensorProto* k_bias_tensor = nullptr;
   const ONNX_NAMESPACE::TensorProto* v_bias_tensor = nullptr;
   if (!LoadQkvWeights(graph, q_add, k_add, v_add, q_bias_tensor, k_bias_tensor, v_bias_tensor)) {
-    DEBUG_LOG("Failed to load Q, K and V bias tensors");
+    DEBUG_LOG("Failed to load Q, K and V bias tensors, or data type is not float or float16.");
     return false;
   }
 
@@ -613,7 +676,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
 
-  // Remove nodes not used anymore.
+  // Remove nodes that are not used anymore.
   std::vector<NodeIndex> nodes_to_remove{
       reshape.Index(),
       transpose.Index(),
@@ -622,7 +685,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
       v_reshape.Index(),
       v_add.Index(),
       v_matmul.Index(),
-      mask_softmax.Index(),
+      softmax.Index(),
       mask_add.Index(),
       qk_div.Index(),
       qk_matmul.Index(),
@@ -635,6 +698,7 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
       k_add.Index(),
       k_matmul.Index()};
 
+  // When the last Attention node is fused. Original mask processing nodes can be removed safely.
   if (mask_mul.GetOutputEdgesCount() == 1) {
     nodes_to_remove.push_back(mask_mul.Index());
     nodes_to_remove.push_back(mask_sub.Index());
