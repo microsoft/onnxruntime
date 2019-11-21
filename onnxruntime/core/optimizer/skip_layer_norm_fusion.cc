@@ -23,15 +23,15 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
-static bool CheckAdd1(Node& add1, ProviderType providertype) {
-  if (providertype != add1.GetExecutionProviderType() ||
-      !IsSupportedDataType(add1)) {
+static bool CheckFirstAdd(Node& add, ProviderType providertype) {
+  if (providertype != add.GetExecutionProviderType() ||
+      !IsSupportedDataType(add)) {
     return false;
   }
 
   // Check the input dimensions of the "Add" node.
-  const TensorShapeProto* add_input1_shape = add1.MutableInputDefs()[0]->Shape();
-  const TensorShapeProto* add_input2_shape = add1.MutableInputDefs()[1]->Shape();
+  const TensorShapeProto* add_input1_shape = add.MutableInputDefs()[0]->Shape();
+  const TensorShapeProto* add_input2_shape = add.MutableInputDefs()[1]->Shape();
 
   if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
     return false;
@@ -54,15 +54,15 @@ static bool CheckAdd1(Node& add1, ProviderType providertype) {
 // Add2 is the 2nd add of the to be fused sub-graph
 // The 1st input should be a 3D tensor
 // The 2nd input should be a 1D constant value
-static bool CheckAdd2(Graph& graph, Node& add2, ProviderType providertype) {
-  if (providertype != add2.GetExecutionProviderType() ||
-      !IsSupportedDataType(add2)) {
+static bool CheckSecondAdd(Graph& graph, Node& add, ProviderType providertype) {
+  if (providertype != add.GetExecutionProviderType() ||
+      !IsSupportedDataType(add)) {
     return false;
   }
 
   // Check the input dimensions of the "Add" node.
-  const TensorShapeProto* add_input1_shape = add2.MutableInputDefs()[0]->Shape();
-  const TensorShapeProto* add_input2_shape = add2.MutableInputDefs()[1]->Shape();
+  const TensorShapeProto* add_input1_shape = add.MutableInputDefs()[0]->Shape();
+  const TensorShapeProto* add_input2_shape = add.MutableInputDefs()[1]->Shape();
 
   if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
     return false;
@@ -158,8 +158,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       p_add1 = const_cast<Node*>(&edges[0]->GetNode());
       p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
-      if (CheckAdd1(*p_add1, ln_node.GetExecutionProviderType()) &&
-          CheckAdd2(graph, *p_add2, ln_node.GetExecutionProviderType())) {
+      if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
+          CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType())) {
         matched_format = Format::Format1;
       }
     }
@@ -174,8 +174,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
         p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
-        if (CheckAdd1(*p_add1, ln_node.GetExecutionProviderType()) &&
-            CheckAdd2(graph, *p_add2, ln_node.GetExecutionProviderType())) {
+        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
+            CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType())) {
           matched_format = Format::Format2;
         }
       }
@@ -189,7 +189,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
 
-        if (CheckAdd1(*p_add1, ln_node.GetExecutionProviderType())) {
+        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType())) {
           matched_format = Format::Format3;
         }
       }
