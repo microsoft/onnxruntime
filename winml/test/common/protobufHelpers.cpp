@@ -1,5 +1,4 @@
-﻿#include "testPch.h"
-// LotusRT
+﻿// LotusRT
 #include "core/framework/allocatormgr.h"
 // #include "core/session/inference_session.h"
 #include "core/common/logging/logging.h"

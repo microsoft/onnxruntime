@@ -5,6 +5,9 @@
 //-----------------------------------------------------------------------------
 
 #pragma once
+
+#include "std.h"
+
 namespace ProtobufHelpers
 {
     // LoadTensorFromProtobufFile take a path to a FP32 data file and loads it into a 32bit array or

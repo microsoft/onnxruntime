@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <std.h>
+
 enum OutputBindingStrategy { Bound, Unbound, Empty };
 
 namespace WinML::Engine::Test::ModelValidator

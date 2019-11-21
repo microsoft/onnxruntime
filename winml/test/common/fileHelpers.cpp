@@ -1,4 +1,4 @@
-﻿#include "testPch.h"
+﻿#include "std.h"
 #include "fileHelpers.h"
 #include "winrt/Windows.Media.h"
 #include "winrt/Windows.Storage.h"
