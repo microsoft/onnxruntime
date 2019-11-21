@@ -523,7 +523,22 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
-  std::set<const onnxruntime::NodeArg *> fused_inputs, fused_outputs;
+  // Make sure *not* to use a pointer type for the key, which can cause nondeterminism
+  // for iterating the set elements. The reason is that although iterating std::set by
+  // itself is stable, pointer values of NodeArgs may vary. Consequently, we may end up
+  // visiting the set's elements in different orders for different runs for the same test,
+  // which will result in constructing inputs (and outputs) with different orders to
+  // the fused graph. For example, for the same test, we may have inputs [A, B] in some
+  // runs but inputs[B, A] in others.
+  // Let's use std::string as the key type to avoid such nondeterminism.
+  std::set<std::string> fused_inputs, fused_outputs;
+
+  // Keep inputs and outputs inside the fused graph, i.e. those NodeArgs
+  // being consumed by nodes within the fused graph. Note that we cannot
+  // simply erase those inner args while iterating the nodes. For example,
+  // an output arg may have multiple uses, it would be wrong if we erase it
+  // from fused_outputs when we encounter only one of its uses as inputs.
+  std::set<std::string> inner_inputs, inner_outputs;
 
   try {
     CheckGraphSupported(graph_viewer, device_id);
@@ -552,21 +567,32 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     sub_graph->nodes.push_back(index);
     const auto node = graph_viewer.GetNode(index);
 
-    // Track graph inputs and initializers
-    for (const auto& input_def : node->InputDefs()) {
-      if (fused_outputs.find(input_def) == fused_outputs.end()) {
-        fused_inputs.insert(input_def);
-      } else {
-        fused_outputs.erase(input_def);
-      }
-    }
+    auto process_input_fn =
+      [&fused_inputs, &fused_outputs, &inner_inputs, &inner_outputs, &node](
+          const onnxruntime::NodeArg& input_def, size_t) {
+
+        const auto& name = input_def.Name();
+        if (fused_outputs.find(name) == fused_outputs.end()) {
+          fused_inputs.insert(name);
+        } else {
+          inner_outputs.insert(name);
+        }
+        return Status::OK();
+      };
+
+    // Track graph inputs (both explicit and implicit) and initializers
+    node->ForEachWithIndex(node->InputDefs(), process_input_fn);
+    // Implicit inputs will be promoted to be explicit inputs of the fused
+    // graph later by ORT.
+    node->ForEachWithIndex(node->ImplicitInputDefs(), process_input_fn);
 
     // Track graph outputs
     for (const auto& output_def : node->OutputDefs()) {
-      if (fused_inputs.find(output_def) == fused_inputs.end()) {
-        fused_outputs.insert(output_def);
+      const auto& name = output_def->Name();
+      if (fused_inputs.find(name) == fused_inputs.end()) {
+        fused_outputs.insert(name);
       } else {
-        fused_inputs.erase(output_def);
+        inner_inputs.insert(name);
       }
     }
   }
@@ -588,12 +614,16 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   meta_def->domain = "OpenVINO";
   meta_def->since_version = 1;
 
-  for (auto input : fused_inputs) {
-    meta_def->inputs.push_back(input->Name());
+  for (const auto& name : fused_inputs) {
+    if (inner_inputs.count(name) == 0) {
+      meta_def->inputs.push_back(name);
+    }
   }
 
-  for (auto output : fused_outputs) {
-    meta_def->outputs.push_back(output->Name());
+  for (const auto& name : fused_outputs) {
+    if (inner_outputs.count(name) == 0) {
+      meta_def->outputs.push_back(name);
+    }
   }
 
   sub_graph->SetMetaDef(meta_def);
