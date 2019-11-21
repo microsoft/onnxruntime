@@ -135,7 +135,8 @@ static Status set_graph_optimization_level(SessionOptions& session_options,
 
     default:
       LOGS(session_logger, ERROR) << "Unsupported graph_optimization_level value in ORT config: " << value;
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported graph_optimization_level value in ORT config: ", value);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unsupported graph_optimization_level value in ORT config: ", value);
   }
 }
 
@@ -176,9 +177,11 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
 
   for (auto metadata_field : model_proto.metadata_props()) {
     if (metadata_field.has_key() && metadata_field.key() == "ort_config") {
-      LOGS(session_logger, INFO) << "Found session/run/environment configuration in the model file to be used while running the model";
+      LOGS(session_logger, INFO)
+          << "Found session/run/environment configuration in the model file to be used while running the model";
 
-      auto status = parse_json_and_search_for_key(metadata_field.value(), session_options_key, session_options_found, json_obj);
+      auto status =
+          parse_json_and_search_for_key(metadata_field.value(), session_options_key, session_options_found, json_obj);
 
       if (!status.IsOK()) {
         LOGS(session_logger, ERROR) << "Could not parse session/run/environment configuration json in the model file";
@@ -235,7 +238,8 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
       }
     } else if (key == "graph_optimization_level") {
       if (!value.is_number_integer()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "graph_optimization_level option in the model file must be an integer");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "graph_optimization_level option in the model file must be an integer");
       }
 
       auto status = set_graph_optimization_level(session_options, it.value().get<int>(), session_logger);

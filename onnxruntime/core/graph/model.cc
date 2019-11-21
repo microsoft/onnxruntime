@@ -370,11 +370,11 @@ static Status SaveModel(Model& model, const T& file_path) {
   return Env::Default().FileClose(fd);
 }
 
+#ifdef _WIN32
 Status Model::Load(const std::wstring& file_path, std::shared_ptr<ModelProto>& model_proto) {
   return LoadModel(file_path, model_proto);
 }
 
-#ifdef _WIN32
 Status Model::Save(Model& model, const std::wstring& file_path) {
   return SaveModel(model, file_path);
 }
