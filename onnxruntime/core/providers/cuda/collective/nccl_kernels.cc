@@ -75,40 +75,6 @@ Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-Status FuseOutputNcclAllReduce::ComputeInternal(OpKernelContext* context) const {
-  cudaStream_t stream = nullptr;  // Default stream
-  ncclComm_t comm = nccl_->Comm();
-
-  // Compute fusion buffer size.
-  int64_t fusion_count = 0;
-  int64_t fusion_bytes = 0;
-  for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    fusion_count += input_tensor->Shape().Size();
-    fusion_bytes += input_tensor->SizeInBytes();
-  }
-  // Allocate output buffer.
-  Tensor* output_tensor = context->Output(0, TensorShape({fusion_count}));
-  void* fusion_data = output_tensor->MutableDataRaw();
-
-  // Copy inputs into the fusion buffer.
-  uint64_t offset = 0;
-  for (int i = 0; i < context->InputCount(); i++) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
-    const void* input_data = input_tensor->DataRaw();
-    size_t input_size = input_tensor->SizeInBytes();
-    void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, input_size, cudaMemcpyDeviceToDevice));
-    offset += input_size;
-  }
-
-  // AllReduce on the fusion buffer.
-  ncclDataType_t dtype = GetNcclDataType(context->Input<Tensor>(0)->DataType());
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(fusion_data, fusion_data, fusion_count, dtype, ncclSum, comm, stream));
-
-  return Status::OK();
-}
-
 NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
   int64_t use_tensor_fusion = 0;
   info.GetAttrOrDefault<int64_t>("tensor_fusion", &use_tensor_fusion, int64_t(0));
@@ -254,15 +220,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
     NcclAllReduce);
-
-ONNX_OPERATOR_KERNEL_EX(
-    FuseOutputNcclAllReduce,
-    kOnnxDomain,
-    9,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
-    FuseOutputNcclAllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllGather,

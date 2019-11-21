@@ -127,12 +127,12 @@ ArgDef BuildHorovodAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::Gra
 #endif
 
 #ifdef USE_NCCL
-Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, GraphAugmenter::GraphDefs& graph_defs, bool /*use_tensor_fusion*/) {
-  ArgDef fused_allreduce_output = ArgDef("fused_allreduce_output");
+Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, ArgDef& fused_gradient_argdef, GraphAugmenter::GraphDefs& graph_defs) {
+  ArgDef fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
-  graph_defs.AddNodeDefs({NodeDef("FuseOutputNcclAllReduce",
-                                  gradient_argdefs,
+  graph_defs.AddNodeDefs({NodeDef("NcclAllReduce",
+                                  {fused_gradient_argdef},
                                   {fused_allreduce_output},
                                   NodeAttributes(),
                                   "NcclAllReduce")});
@@ -153,7 +153,11 @@ Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, Graph
 
   std::vector<ArgDef> allreduce_outputs(gradient_argdefs.size());
   for (size_t i = 0; i < gradient_argdefs.size(); i++) {
-    allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", gradient_argdefs[i].type_proto);
+    TypeProto* allreduced_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdefs[i]);
+    allreduced_gradient_type_proto->mutable_tensor_type()->set_elem_type(
+        fused_gradient_argdef.type_proto->tensor_type().elem_type());
+
+    allreduce_outputs[i] = ArgDef(gradient_argdefs[i].name + "_AllReduce_Out", allreduced_gradient_type_proto);
   }
 
   graph_defs.AddNodeDefs({NodeDef("View",
@@ -166,7 +170,7 @@ Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, Graph
   return Status::OK();
 }
 #else
-Status AddNcclAllReduceForGradients(std::vector<ArgDef>& /*gradient_argdefs*/, GraphAugmenter::GraphDefs& /*graph_defs*/, bool /*use_tensor_fusion*/) {
+Status AddNcclAllReduceForGradients(std::vector<ArgDef>& /*gradient_argdefs*/, ArgDef& /*fused_gradient_argdef*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
   ORT_NOT_IMPLEMENTED("Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
 }
 #endif
@@ -184,42 +188,55 @@ ArgDef BuildGroupNode(const std::string& group_output_name,
   return group_output;
 }
 
-ArgDef BuildGradientScalingNode(const NodeArgNameGeneratorFn& nodearg_name_generator,
-                                const ArgDef& scale_argdef,
-                                const ArgDef& gradient_argdef,
-                                GraphAugmenter::GraphDefs& graph_defs,
-                                const bool allreduce_in_fp16) {
-  auto target_type = allreduce_in_fp16
-                         ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-                         : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-
-  TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
-  scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
-
-  ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
-                                         scaled_gradient_type_proto);
-
-  graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
-                                  {gradient_argdef, scale_argdef},
-                                  {scaled_gradient_argdef},
-                                  {MakeAttribute("to", static_cast<int64_t>(target_type))},
-                                  scaled_gradient_argdef.name)});
-
-  return scaled_gradient_argdef;
-}
-
 Status AddGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_generator,
                                const float scale,
                                std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                               ArgDef& fused_gradient_argdef,          // update argdef in place
                                GraphAugmenter::GraphDefs& graph_defs,
-                               const bool allreduce_in_fp16) {
+                               const bool allreduce_in_fp16,
+                               const bool fuse_scaling_outputs) {
   ArgDef pre_allreduce_scale(nodearg_name_generator("pre_allreduce_scale"),
                              graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   graph_defs.AddInitializers({CreateTensorProto<float>(pre_allreduce_scale.name, scale, {})});
 
-  for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildGradientScalingNode(nodearg_name_generator, pre_allreduce_scale, gradient_argdefs[i], graph_defs, allreduce_in_fp16);
+  auto target_type = allreduce_in_fp16 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                                       : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+
+  if (fuse_scaling_outputs) {
+    TypeProto* fused_gradient_type_proto = graph_defs.CreateTypeProto();
+    fused_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+    fused_gradient_argdef = ArgDef("fused_gradient", fused_gradient_type_proto);
+
+    std::vector<ArgDef> inputs;
+    inputs.emplace_back(pre_allreduce_scale);
+    for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+      inputs.emplace_back(gradient_argdefs[i]);
+    }
+    graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
+                                    inputs,
+                                    {fused_gradient_argdef},
+                                    std::vector<AttributeProto>({MakeAttribute("to", static_cast<int64_t>(target_type)),
+                                                                 MakeAttribute("fuse_outputs", static_cast<int64_t>(true))}),
+                                    pre_allreduce_scale.name)});
+  } else {
+    for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
+      ArgDef& gradient_argdef = gradient_argdefs[i];
+
+      TypeProto* scaled_gradient_type_proto = graph_defs.CopyTypeProto(gradient_argdef);
+      scaled_gradient_type_proto->mutable_tensor_type()->set_elem_type(target_type);
+
+      ArgDef scaled_gradient_argdef = ArgDef(nodearg_name_generator(gradient_argdef.name + "_scaled"),
+                                             scaled_gradient_type_proto);
+      graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
+                                      {pre_allreduce_scale, gradient_argdef},
+                                      {scaled_gradient_argdef},
+                                      {MakeAttribute("to", static_cast<int64_t>(target_type))},
+                                      scaled_gradient_argdef.name)});
+
+      gradient_argdef = scaled_gradient_argdef;
+    }
   }
+
   return Status::OK();
 }
 
@@ -565,6 +582,7 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
 
   const bool is_gradient_accumulation_enabled = opt_graph_config_.gradient_accumulation_steps > 1;
   const bool is_all_reduce_enabled = opt_graph_config_.world_size > 1;
+  const bool overlap_compute_allreduce = !opt_graph_config_.use_nccl;
 
   // add grad accumulation
   std::vector<ArgDef> gradient_accumulation_buffers;
@@ -575,19 +593,22 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   }
 
   // add gradient scaling
+  ArgDef fused_gradient_argdef{};
   if (is_gradient_accumulation_enabled || is_all_reduce_enabled) {
     const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.world_size;
     ORT_RETURN_IF_NOT(total_num_accumulations > 0);
     const float scale = 1.0f / total_num_accumulations;
-    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, graph_defs, opt_graph_config_.allreduce_in_fp16));
+    const bool fuse_scaling_outputs = is_all_reduce_enabled && !overlap_compute_allreduce;
+    ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
+                                                opt_graph_config_.allreduce_in_fp16, fuse_scaling_outputs));
   }
 
   // add all-reduce
   if (is_all_reduce_enabled) {
-    if (opt_graph_config_.use_nccl) {
-      ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, graph_defs, opt_graph_config_.use_nccl_tensor_fusion));
-    } else {
+    if (overlap_compute_allreduce) {
       ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs));
+    } else {
+      ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs));
     }
   }
 

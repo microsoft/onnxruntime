@@ -19,17 +19,13 @@ void Impl_MixedPrecisionScale(
 template <typename SrcT>
 class MixedPrecisionScale final : public CudaKernel {
  public:
-  MixedPrecisionScale(const OpKernelInfo& info) : CudaKernel(info) {
-    int64_t to;
-    Status status = info.GetAttr("to", &to);
-    ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
-    to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
-  }
-
+  MixedPrecisionScale(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   ONNX_NAMESPACE::TensorProto_DataType to_;
+  size_t bytes_per_output_elem_;
+  bool fuse_outputs_;
 };
 
 }  // namespace cuda

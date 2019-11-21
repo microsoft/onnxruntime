@@ -1715,19 +1715,6 @@ Example 4:
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(FuseOutputNcclAllReduce)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .Input(0, "input", "tensors to be reduced", "T", OpSchema::Variadic)
-      .Output(0, "output", "reduced tensors in a fused buffer", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      });
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllGather)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
@@ -2473,13 +2460,17 @@ Return true if all elements are true and false otherwise.
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("MixedPrecisionScale")
-      .Input(0, "X", "input", "SrcT")
-      .Input(1, "S", "scale", "ScaleT")
-      .Output(0, "Y", "output", "DstT")
+      .Input(0, "S", "scale", "ScaleT")
+      .Input(1, "X", "inputs", "SrcT", OpSchema::Variadic)
+      .Output(0, "Y", "output", "DstT", OpSchema::Variadic)
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
             "Strictly must be one of the types from DataType enum in TensorProto",
             AttributeProto::INT)
+      .Attr("fuse_outputs",
+            "If true, fuse all outputs into one continous buffer.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .TypeConstraint(
           "SrcT",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -2493,9 +2484,27 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
-        if (hasNInputShapes(ctx, 1)) {
-          propagateShapeFromInputToOutput(ctx, 0, 0);
+        bool fuse_outputs = static_cast<bool>(getAttribute(ctx, "fuse_outputs", int64_t(0)));
+        if (fuse_outputs) {
+          int64_t total_num_elements = 0;
+          for (size_t i = 1; i < ctx.getNumInputs(); ++i) {
+            if (!hasInputShape(ctx, i))
+              return;
+            auto& input_shape = getInputShape(ctx, i);
+            int rank = static_cast<int>(input_shape.dim_size());
+            int64_t num_elements = multiplyDims(input_shape, 0, rank).dim_value();
+            total_num_elements += num_elements;
+          }
+
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          output_shape.add_dim()->set_dim_value(total_num_elements);
+          updateOutputShape(ctx, 0, output_shape);
+          propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+        } else {
+          for (size_t i = 1; i < ctx.getNumInputs(); ++i) {
+            propagateElemTypeFromAttributeToOutput(ctx, "to", i - 1);
+            propagateShapeFromInputToOutput(ctx, i, i - 1);
+          }
         }
       });
 
