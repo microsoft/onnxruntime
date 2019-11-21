@@ -10,8 +10,10 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
   - group: ORT_TEST_DATA_SAS
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
+
   steps:
   - template: set-test-data-variables-step.yml
   - template: ../../templates/windows-build-tools-setup-steps.yml
