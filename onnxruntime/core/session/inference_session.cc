@@ -100,12 +100,9 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
                                                 const ONNX_NAMESPACE::ModelProto& model_proto) {
-  auto status = inference_session_utils::parse_session_options_from_model_proto(model_proto, session_options, *session_logger_);
-  if (!status.IsOK()) {
-    return status;
-  }
-
-  return Status::OK();
+  auto status = inference_session_utils::parse_session_options_from_model_proto(
+      model_proto, session_options, *session_logger_);
+  return status;
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
@@ -114,7 +111,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
               "Environment must be initialized before creating an InferenceSession.");
   session_options_ = session_options;
   GraphTransformerManager gtm(session_options.max_num_graph_transformation_steps);
-  graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(session_options.max_num_graph_transformation_steps);
+  graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
+      session_options.max_num_graph_transformation_steps);
   logging_manager_ = logging_manager;
   thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
                                                session_options.intra_op_num_threads);
@@ -124,7 +122,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                               : nullptr;
 
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
-                                                          session_options.enable_mem_pattern && session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
+                                                          session_options.enable_mem_pattern &&
+                                                              session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                                                           thread_pool_.get(),
                                                           inter_op_thread_pool_.get());
 
@@ -151,7 +150,7 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::string& model_uri,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // Parse ModelProto from given model and re-use later
+  // Parse ModelProto from given model_uri and re-use later
   std::shared_ptr<ONNX_NAMESPACE::ModelProto> model_proto =
       std::make_shared<ONNX_NAMESPACE::ModelProto>();
 
@@ -179,7 +178,7 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::wstring& model_uri,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // Parse ModelProto from given model and re-use later
+  // Parse ModelProto from given model_uri and re-use later
   std::shared_ptr<ONNX_NAMESPACE::ModelProto> model_proto =
       std::make_shared<ONNX_NAMESPACE::ModelProto>();
 
@@ -208,7 +207,7 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    std::istream& model_istream,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // Parse ModelProto from given model and re-use later
+  // Parse ModelProto from given model_istream and re-use later
   ModelProto model_proto;
 
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
@@ -236,7 +235,7 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    int model_data_len,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  // Parse ModelProto from given model and re-use later
+  // Parse ModelProto from given model array and re-use later
   ModelProto model_proto;
 
   const bool result = model_proto.ParseFromArray(model_data, model_data_len);
@@ -1196,9 +1195,7 @@ std::string InferenceSession::EndProfiling() {
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
   // TODO add other post load processing here
-
-  // Save the model metadata in this step
-  auto status = SaveModelMetadata(model);
+  common::Status status = SaveModelMetadata(model);
   return status;
 }
 
