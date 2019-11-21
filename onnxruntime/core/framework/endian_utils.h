@@ -14,11 +14,14 @@ namespace onnxruntime {
 namespace utils {
 
 /**
- * Swaps the byte order of elements in a buffer.
- * This is a low-level funtion - please be sure to pass in valid arguments.
- * In particular, source_bytes and destination_bytes should have the same size,
- * which should be a multiple of element_size_in_bytes. element_size_in_bytes
- * should also be greater than zero.
+ * Copies elements and swaps their byte orders.
+ *
+ * This is a low-level function - please be sure to pass in valid arguments.
+ * In particular:
+ * - source_bytes and destination_bytes should have the same size, which should
+ *   be a multiple of element_size_in_bytes.
+ * - element_size_in_bytes should be greater than zero.
+ * - source_bytes and destination_bytes should not overlap.
  *
  * @param element_size_in_bytes The size of an individual element, in bytes.
  * @param source_bytes The source byte span.
