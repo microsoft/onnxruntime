@@ -103,8 +103,6 @@ class Model {
   static common::Status Load(const std::wstring& file_path,
                              /*out*/ std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto);
 
-  static common::Status Load(const std::wstring& file_path, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registry = nullptr);
 #endif
   static common::Status Save(Model& model, const std::string& file_path);
 

@@ -417,7 +417,9 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 
 common::Status InferenceSession::Load(const std::string& model_uri) {
   if (model_proto_ != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has already been parsed. Invoke Load().");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
   }
 
   return Load<char>(model_uri);
@@ -426,7 +428,9 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
 #ifdef _WIN32
 common::Status InferenceSession::Load(const std::wstring& model_uri) {
   if (model_proto_ != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has already been parsed. Invoke Load().");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
   }
 
   return Load<PATH_CHAR_TYPE>(model_uri);
@@ -436,7 +440,9 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 common::Status
 InferenceSession::Load(const ModelProto& model_proto) {
   if (model_proto_ != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has already been parsed. Invoke Load().");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
   }
 
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
@@ -455,7 +461,9 @@ InferenceSession::Load(const ModelProto& model_proto) {
 
 common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto) {
   if (model_proto_ != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has already been parsed. Invoke Load().");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
   }
 
   auto loader = [this, &p_model_proto](std::shared_ptr<onnxruntime::Model>& model) {
@@ -474,7 +482,9 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
 
 common::Status InferenceSession::Load(std::istream& model_istream) {
   if (model_proto_ != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has already been parsed. Invoke Load().");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
   }
 
   auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
@@ -501,7 +511,9 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
   if (model_proto_ != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has already been parsed. Invoke Load().");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has already been parsed. "
+                           "Invoke Load().");
   }
 
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
@@ -538,7 +550,8 @@ common::Status InferenceSession::Load() {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    auto status = Model::Load(*this->model_proto_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    auto status = Model::Load(*this->model_proto_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                              *session_logger_);
 
     // we don't need to hold onto the member 'model_proto_' anymore in this class as the model creation has been attempted
     // If successful, it will hold the model_proto within it. So clean up unnecessarily held memory.
@@ -771,7 +784,8 @@ common::Status InferenceSession::Initialize() {
     }
 
     // add predefined transformers
-    AddPredefinedTransformers(*graph_transformation_mgr_, session_options_.graph_optimization_level, transformers_to_enable_);
+    AddPredefinedTransformers(*graph_transformation_mgr_, session_options_.graph_optimization_level,
+                              transformers_to_enable_);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 

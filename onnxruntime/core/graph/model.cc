@@ -484,7 +484,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
   return Status::OK();
-}  // namespace onnxruntime
+}
 
 Status Model::Save(Model& model, int p_fd) {
   if (p_fd < 0) {
