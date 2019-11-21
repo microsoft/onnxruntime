@@ -30,7 +30,6 @@ class DeviceAllocatorRegistry {
     return device_allocator_registrations_;
   }
 
-  static DeviceAllocatorRegistry& Instance();
 
  private:
   DeviceAllocatorRegistry() = default;
