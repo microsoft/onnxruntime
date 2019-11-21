@@ -573,7 +573,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models, num_parallel_tests=0):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -585,12 +585,9 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         cmd = []
         if provider:
           cmd += ["-e", provider]
-          if provider == 'mkldnn':
-             cmd += ['-c', '1']
-          if provider == 'openvino':
-             cmd += ['-c', '1']
-          if provider == 'nuphar':
-             cmd += ['-c', '1']
+
+        if num_parallel_tests != 0:
+          cmd += ['-c', num_parallel_tests]
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
@@ -950,19 +947,16 @@ def main():
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
 
             if args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)
-
-            if args.x86 or platform.system() == 'Darwin':
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
 
             if args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)
 
             if args.use_openvino:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1, 1)
               # TODO: parallel executor test fails on MacOS
             if args.use_nuphar:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1, 1)
 
             if args.use_dml:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
@@ -971,7 +965,9 @@ def main():
             #if args.use_mkldnn:
             #  mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
-            run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 1 if args.x86 else 0)                       
+            run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
+              1 args.x86 or platform.system() == 'Darwin' else 0,
+              1 args.x86 or platform.system() == 'Darwin' else 0)                       
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
