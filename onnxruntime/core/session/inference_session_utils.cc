@@ -196,13 +196,13 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
     return Status::OK();
   }
 
-  auto& session_options_from_model = json_obj.at("session_options");
+  auto& session_options_from_model = json_obj.at(session_options_key);
 
   // TODO: Support all valid session options
   // Only the following config options from the json will be supported in this version
   // Any other option if part of the json (even if valid session option) will be ignored
 
-  for (auto it = session_options_from_model.cbegin(); it != session_options_from_model.cend(); ++it) {
+  for (const auto& it : session_options_from_model.items()) {
     auto& key = it.key();
     auto& value = it.value();
 
