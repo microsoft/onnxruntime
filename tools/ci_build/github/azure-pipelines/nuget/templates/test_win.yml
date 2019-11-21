@@ -21,8 +21,6 @@ jobs:
       EnvSetupScript: 'setup_env.bat'
       buildArch: 'x64'
       setVcvars: true
-    env:
-      Test_Data_Download_Key: $(ort-internal-test-data-sas)
 
   - task: BatchScript@1
     displayName: 'Setup VS2017 env vars'

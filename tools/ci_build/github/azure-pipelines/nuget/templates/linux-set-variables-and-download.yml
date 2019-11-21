@@ -25,3 +25,5 @@ steps:
     arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
     pythonInterpreter: '/usr/bin/python3'
     workingDirectory: $(Build.BinariesDirectory)
+    env:
+      Test_Data_Download_Key: $(ort-internal-test-data-sas)
