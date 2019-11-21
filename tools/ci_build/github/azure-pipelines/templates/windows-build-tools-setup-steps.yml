@@ -58,6 +58,8 @@ steps:
         arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
         pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
         workingDirectory: $(Build.BinariesDirectory)
+      env:
+        Test_Data_Download_Key: $(ort-internal-test-data-sas)
 
     - task: CmdLine@1
       continueOnError: true
