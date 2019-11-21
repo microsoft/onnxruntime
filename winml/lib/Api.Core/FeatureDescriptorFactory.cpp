@@ -13,7 +13,7 @@
 
 #include "winrt/windows.foundation.collections.h"
 #include "winrt/windows.graphics.imaging.h"
-
+#include "inc/WinMLAdapter.h"
 using namespace winrt::Windows::AI::MachineLearning;
 
 // BitmapPixelFormat constants
@@ -473,14 +473,12 @@ GetTensorType(
        has_unsupported_image_metadata);
 
   if (is_tensor_improperly_annotated_as_image) {
-#ifdef LAYERING_DONE
-    TraceLoggingWrite(winml_trace_logging_provider,
+    TraceLoggingWrite(_winmla::winml_trace_logging_provider,
                       "WinMLInputValidation",
                       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
                       TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
                       TraceLoggingOpcode(EVENT_TRACE_TYPE_INFO),
                       TraceLoggingString(log_stream.str().c_str()));
-#endif
   }
 
   auto is_valid_image_tensor =
