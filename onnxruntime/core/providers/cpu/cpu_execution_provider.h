@@ -47,11 +47,11 @@ class CPUExecutionProvider : public IExecutionProvider {
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
-#else
-    InsertAllocator(
-        std::shared_ptr<IArenaAllocator>(
-            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
 #endif
+      InsertAllocator(
+          std::shared_ptr<IArenaAllocator>(
+              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+
 #endif
   }
 
