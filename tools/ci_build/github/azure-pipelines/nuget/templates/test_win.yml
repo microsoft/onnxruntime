@@ -21,6 +21,8 @@ jobs:
       EnvSetupScript: 'setup_env.bat'
       buildArch: 'x64'
       setVcvars: true
+      DoDataDownload: false
+  - template: win-download-test-data.yml
 
   - task: BatchScript@1
     displayName: 'Setup VS2017 env vars'
