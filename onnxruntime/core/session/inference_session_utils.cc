@@ -65,76 +65,76 @@ static Status parse_json_and_search_for_key(const std::string& config_string,
 static Status
 set_intra_op_num_threads(SessionOptions& session_options,
                          int value,
-                         const logging::Logger& session_logger) {
+                         const logging::Logger& logger) {
   if (value < 0) {
-    LOGS(session_logger, ERROR) << "Unsupported value for intra_op_num_threads: " << value;
+    LOGS(logger, ERROR) << "Unsupported value for intra_op_num_threads: " << value;
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported value for intra_op_num_threads: ", value);
   }
 
-  LOGS(session_logger, INFO) << "Setting intra_op_num_threads to " << value;
+  LOGS(logger, INFO) << "Setting intra_op_num_threads to " << value;
   session_options.intra_op_num_threads = value;
   return Status::OK();
 }
 
 static Status set_inter_op_num_threads(SessionOptions& session_options,
                                        int value,
-                                       const logging::Logger& session_logger) {
+                                       const logging::Logger& logger) {
   if (value < 0) {
-    LOGS(session_logger, ERROR) << "Unsupported value for inter_op_num_threads: " << value;
+    LOGS(logger, ERROR) << "Unsupported value for inter_op_num_threads: " << value;
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported value for inter_op_num_threads: ", value);
   }
 
-  LOGS(session_logger, INFO) << "Setting inter_op_num_threads to " << value;
+  LOGS(logger, INFO) << "Setting inter_op_num_threads to " << value;
   session_options.inter_op_num_threads = value;
   return Status::OK();
 }
 
 static Status set_execution_mode(SessionOptions& session_options,
                                  int value,
-                                 const logging::Logger& session_logger) {
+                                 const logging::Logger& logger) {
   switch (value) {
     case ExecutionMode::ORT_SEQUENTIAL:
-      LOGS(session_logger, INFO) << "Setting execution_mode to Sequential mode";
+      LOGS(logger, INFO) << "Setting execution_mode to Sequential mode";
       session_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
       return Status::OK();
 
     case ExecutionMode::ORT_PARALLEL:
-      LOGS(session_logger, INFO) << "Setting execution_mode to Parallel mode";
+      LOGS(logger, INFO) << "Setting execution_mode to Parallel mode";
       session_options.execution_mode = ExecutionMode::ORT_PARALLEL;
       return Status::OK();
 
     default:
-      LOGS(session_logger, ERROR) << "Unsupported execution_mode value in ORT config: " << value;
+      LOGS(logger, ERROR) << "Unsupported execution_mode value in ORT config: " << value;
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported execution_mode value in ORT config: ", value);
   }
 }
 
 static Status set_graph_optimization_level(SessionOptions& session_options,
                                            int value,
-                                           const logging::Logger& session_logger) {
+                                           const logging::Logger& logger) {
   switch (value) {
     case 0:
-      LOGS(session_logger, INFO) << "Setting graph_optimization_level to ORT_DISABLE_ALL";
+      LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_DISABLE_ALL";
       session_options.graph_optimization_level = TransformerLevel::Default;
       return Status::OK();
 
     case 1:
-      LOGS(session_logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_BASIC";
+      LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_BASIC";
       session_options.graph_optimization_level = TransformerLevel::Level1;
       return Status::OK();
 
     case 2:
-      LOGS(session_logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_EXTENDED";
+      LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_EXTENDED";
       session_options.graph_optimization_level = TransformerLevel::Level2;
       return Status::OK();
 
     case 3:
-      LOGS(session_logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_ALL";
+      LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_ALL";
       session_options.graph_optimization_level = TransformerLevel::Level3;
       return Status::OK();
 
     default:
-      LOGS(session_logger, ERROR) << "Unsupported graph_optimization_level value in ORT config: " << value;
+      LOGS(logger, ERROR) << "Unsupported graph_optimization_level value in ORT config: " << value;
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Unsupported graph_optimization_level value in ORT config: ", value);
   }
@@ -142,20 +142,20 @@ static Status set_graph_optimization_level(SessionOptions& session_options,
 
 static Status set_enable_profiling(SessionOptions& session_options,
                                    int value,
-                                   const logging::Logger& session_logger) {
+                                   const logging::Logger& logger) {
   switch (value) {
     case 0:
-      LOGS(session_logger, INFO) << "Setting enable_profiling to false";
+      LOGS(logger, INFO) << "Setting enable_profiling to false";
       session_options.enable_profiling = false;
       return Status::OK();
 
     case 1:
-      LOGS(session_logger, INFO) << "Setting enable_profiling to true";
+      LOGS(logger, INFO) << "Setting enable_profiling to true";
       session_options.enable_profiling = true;
       return Status::OK();
 
     default:
-      LOGS(session_logger, ERROR) << "Unsupported value for enable_profiling option: " << value;
+      LOGS(logger, ERROR) << "Unsupported value for enable_profiling option: " << value;
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported value for enable_profiling option: ", value);
   }
 }
@@ -170,28 +170,28 @@ static Status set_enable_profiling(SessionOptions& session_options,
 
 Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& model_proto,
                                               SessionOptions& session_options,
-                                              const logging::Logger& session_logger) {
+                                              const logging::Logger& logger) {
   json json_obj;
   bool session_options_found = false;
   std::string session_options_key = "session_options";
 
   for (auto metadata_field : model_proto.metadata_props()) {
     if (metadata_field.has_key() && metadata_field.key() == "ort_config") {
-      LOGS(session_logger, INFO)
+      LOGS(logger, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
       auto status =
           parse_json_and_search_for_key(metadata_field.value(), session_options_key, session_options_found, json_obj);
 
       if (!status.IsOK()) {
-        LOGS(session_logger, ERROR) << "Could not parse session/run/environment configuration json in the model file";
+        LOGS(logger, ERROR) << "Could not parse session/run/environment configuration json in the model file";
         return status;
       }
     }
   }
 
   if (!session_options_found) {
-    LOGS(session_logger, INFO) << "Did not find session options in the model file to be used while running the model";
+    LOGS(logger, INFO) << "Did not find session options in the model file to be used while running the model";
     return Status::OK();
   }
 
@@ -211,7 +211,7 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
                                "intra_op_num_threads option in the model file must be an integer");
       }
 
-      auto status = set_intra_op_num_threads(session_options, it.value().get<int>(), session_logger);
+      auto status = set_intra_op_num_threads(session_options, it.value().get<int>(), logger);
 
       if (!status.IsOK()) {
         return status;
@@ -223,7 +223,7 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
                                "inter_op_num_threads option in the model file must be an integer");
       }
 
-      auto status = set_inter_op_num_threads(session_options, it.value().get<int>(), session_logger);
+      auto status = set_inter_op_num_threads(session_options, it.value().get<int>(), logger);
 
       if (!status.IsOK()) {
         return status;
@@ -234,7 +234,7 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
                                "execution_mode option in the model file must be an integer");
       }
 
-      auto status = set_execution_mode(session_options, it.value().get<int>(), session_logger);
+      auto status = set_execution_mode(session_options, it.value().get<int>(), logger);
 
       if (!status.IsOK()) {
         return status;
@@ -245,7 +245,7 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
                                "graph_optimization_level option in the model file must be an integer");
       }
 
-      auto status = set_graph_optimization_level(session_options, it.value().get<int>(), session_logger);
+      auto status = set_graph_optimization_level(session_options, it.value().get<int>(), logger);
 
       if (!status.IsOK()) {
         return status;
@@ -256,13 +256,13 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
                                "enable_profiling option in the model file must be an integer");
       }
 
-      auto status = set_enable_profiling(session_options, it.value().get<int>(), session_logger);
+      auto status = set_enable_profiling(session_options, it.value().get<int>(), logger);
 
       if (!status.IsOK()) {
         return status;
       }
     } else {
-      LOGS(session_logger, INFO) << "Ignoring unsupported session option in ORT config: " << key;
+      LOGS(logger, INFO) << "Ignoring unsupported session option in ORT config: " << key;
     }
   }
 
@@ -271,7 +271,7 @@ Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& 
 
 Status parse_run_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& /*model_proto*/,
                                           RunOptions& /*run_options*/,
-                                          const logging::Logger& /*session_logger*/) {
+                                          const logging::Logger& /*logger*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Parsing RunOptions from ModelProto is not supported yet");
 }

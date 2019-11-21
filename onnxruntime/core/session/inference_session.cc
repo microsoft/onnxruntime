@@ -101,7 +101,7 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
                                                 const ONNX_NAMESPACE::ModelProto& model_proto) {
   return inference_session_utils::parse_session_options_from_model_proto(
-      model_proto, session_options, *session_logger_);
+      model_proto, session_options, logging::LoggingManager::DefaultLogger());
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
@@ -178,7 +178,6 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   // No session options provided by user
   if (session_options == nullptr) {
     SessionOptions default_session_options;
-    session_options = &default_session_options;
 
     status = FinalizeSessionOptions(default_session_options, model_proto_);
     ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
