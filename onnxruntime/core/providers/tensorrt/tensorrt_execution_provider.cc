@@ -335,9 +335,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
         ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
-
-        ///ONNX_NAMESPACE::ModelProto model_proto = model_build.ToProto();
-        // *(model_proto.mutable_graph()) = graph_build.ToGraphProto();
         model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
@@ -414,11 +411,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
-    std::cout << "TRT: early_termination!" << std::endl;
     supported_nodes_vector.clear();
   }
-
-  /// std::cout << "TRT: supported_nodes_vector size:" << supported_nodes_vector.size() << std::endl;
 
   // Remove nodes with empty shape (for example [1, 0]) because TensorRT 6 doens't support empty shape
   SubGraphCollection_t post_processed_supported_nodes_vector;
@@ -464,8 +458,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
   }
 
-  /// std::cout << "TRT: post_processed_supported_nodes_vector size:" << post_processed_supported_nodes_vector.size() << std::endl;
-
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   int counter = 0;
@@ -481,7 +473,6 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
-  /// std::cout << "TensorRT Compile" << std::endl;
   for (const auto* fused_node : fused_nodes) {
     std::vector<int> input_indexes;
     std::vector<int> output_indexes;
@@ -517,11 +508,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string string_buf;
     model_proto.SerializeToString(&string_buf);
-
-    /// Save ModelProto to file for debugging
-    int fd;
-    Env::Default().FileOpenWr("trt_model_proto_Compile_" + fused_node->Name() + ".onnx", fd);
-    model_proto.SerializeToFileDescriptor(fd);
 
     // Create TensorRT engine
     TensorrtLogger& trt_logger = GetTensorrtLogger();
@@ -668,7 +654,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     // Create compute function
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      /// std::cout << "TRT compute" << std::endl;
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
@@ -680,7 +665,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int total_bindings = num_binding_inputs + num_binding_outputs;
       std::vector<void*> buffers(total_bindings);
 
-      //TODO: check shape tensor inputs: allInutSHapesSpecified()
+      //TODO: check shape tensor inputs by allInutShapesSpecified()
       bool dynamic_shape = false;
       auto trt_context = trt_state->context;
       if (!trt_context->allInputDimensionsSpecified()) {
@@ -729,7 +714,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
           if (dimension_update) {
             if (engine.isShapeBinding(i)) {
-              ///int shapes_size = dims_min.nbDims;
               std::vector<int32_t> shapes_min(nb_dims), shapes_opt(nb_dims), shapes_max(nb_dims);
               for (int j = 0, end = nb_dims; j < end; ++j) {
                 shapes_min[j] = dims_min.d[j];

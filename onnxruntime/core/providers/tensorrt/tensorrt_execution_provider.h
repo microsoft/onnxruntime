@@ -74,7 +74,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
  private:
   size_t max_workspace_size_ = 1 << 30;  // 1GB
-  int max_partition_iterations_ = 1000;
+  int max_partition_iterations_ = 6;
   int min_subgraph_size_ = 1;
 
   struct InferDeleter {
