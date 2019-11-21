@@ -78,6 +78,20 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.dll')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\mkldnn.dll"
           Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
