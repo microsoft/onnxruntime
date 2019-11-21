@@ -100,6 +100,7 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
                                                 const ONNX_NAMESPACE::ModelProto& model_proto) {
+  // Use DefaultLogger as session_logger_ hasn't initialized yet (needs SessionOptions for it to be initialized)
   return inference_session_utils::parse_session_options_from_model_proto(
       model_proto, session_options, logging::LoggingManager::DefaultLogger());
 }
