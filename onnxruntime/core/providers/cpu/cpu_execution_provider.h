@@ -43,7 +43,7 @@ class CPUExecutionProvider : public IExecutionProvider {
             onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
 #else
 //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-#if defined(__amd64__) || defined(__x86_64__) || defined(_M_AMD64)
+#if defined(__amd64__) || defined(_M_AMD64)
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
