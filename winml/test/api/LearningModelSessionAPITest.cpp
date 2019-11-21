@@ -43,7 +43,7 @@ TEST_F(LearningModelSessionAPITests, CreateSessionDeviceCpu)
     EXPECT_FALSE(m_device.Direct3D11Device());
     LARGE_INTEGER id;
     id.QuadPart = GetAdapterIdQuadPart();
-    EXPECT_EQ(id.LowPart, 0);
+    EXPECT_EQ(id.LowPart, static_cast<DWORD>(0));
     EXPECT_EQ(id.HighPart, 0);
 }
 
@@ -268,7 +268,7 @@ static void EvaluateSessionAndCloseModel(
     EXPECT_NO_THROW(session = LearningModelSession(model, device, options));
 
     std::vector<float> input(1000);
-    std::iota(std::begin(input), std::end(input), 0);
+    std::iota(std::begin(input), std::end(input), 0.0f);
     auto tensor_input = TensorFloat::CreateFromShapeArrayAndDataArray(shape, input);
     auto binding = LearningModelBinding(session);
     binding.Bind(L"input", tensor_input);

@@ -21,7 +21,7 @@ namespace FileHelpers
         wchar_t dir[_MAX_DIR];
         wchar_t filename[_MAX_FNAME];
         wchar_t ext[_MAX_EXT];
-        errno_t err = _wsplitpath_s(modulePath, drive, _MAX_DRIVE, dir, _MAX_DIR, filename, _MAX_FNAME, ext, _MAX_EXT);
+        _wsplitpath_s(modulePath, drive, _MAX_DRIVE, dir, _MAX_DIR, filename, _MAX_FNAME, ext, _MAX_EXT);
 
         val = drive;
         val += dir;
@@ -31,7 +31,7 @@ namespace FileHelpers
 
     std::wstring GetWinMLPath()
     {
-        bool inboxDll = false;
+        // bool inboxDll = false;
         // TODO Add command line parsing
         // if (SUCCEEDED(WEX::TestExecution::RuntimeParameters::TryGetValue(L"inbox", inboxDll)) && inboxDll)
         // {

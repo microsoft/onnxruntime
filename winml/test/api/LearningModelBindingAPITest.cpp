@@ -190,8 +190,8 @@ static void RunZipMapInt64(
     if (bindingStrategy == OutputBindingStrategy::Bound)
     {
         // from output binding
-        auto &out1 = abiOutput.GetAt(0);
-        auto &out2 = result.Lookup(L"Y").as<IVectorView<ABIMap>>().GetAt(0);
+        const auto &out1 = abiOutput.GetAt(0);
+        const auto &out2 = result.Lookup(L"Y").as<IVectorView<ABIMap>>().GetAt(0);
         SCOPED_TRACE((std::ostringstream() << "size: " << out1.Size()).str());
         // check outputs
         auto iter1 = out1.First();
@@ -200,8 +200,8 @@ static void RunZipMapInt64(
         {
             EXPECT_TRUE(iter1.HasCurrent());
             EXPECT_TRUE(iter2.HasCurrent());
-            auto &pair1 = iter1.Current();
-            auto &pair2 = iter2.Current();
+            const auto &pair1 = iter1.Current();
+            const auto &pair2 = iter2.Current();
             SCOPED_TRACE((std::ostringstream() << "key: " << pair1.Key() << ", value: " << pair2.Value()).str());
             EXPECT_TRUE(pair1.Key() == i && pair2.Key() == i);
             EXPECT_TRUE(pair1.Value() == inputs[i] && pair2.Value() == inputs[i]);
@@ -265,8 +265,8 @@ TEST_F(LearningModelBindingAPITest, ZipMapString)
     binding.Bind(winrt::hstring(L"Y"), ABIOutput);
     auto result = session.Evaluate(binding, L"0").Outputs();
     // from output binding
-    auto &out1 = ABIOutput.GetAt(0);
-    auto &out2 = result.Lookup(L"Y").as<IVectorView<ABIMap>>().GetAt(0);
+    const auto &out1 = ABIOutput.GetAt(0);
+    const auto &out2 = result.Lookup(L"Y").as<IVectorView<ABIMap>>().GetAt(0);
     SCOPED_TRACE((std::ostringstream() << "size: " << out1.Size()).str());
     // single key,value pair for each map
     auto iter1 = out1.First();
@@ -274,8 +274,8 @@ TEST_F(LearningModelBindingAPITest, ZipMapString)
     for (uint32_t i = 0, size = (uint32_t)inputs.size(); i < size; ++i)
     {
         EXPECT_TRUE(iter2.HasCurrent());
-        auto &pair1 = iter1.Current();
-        auto &pair2 = iter2.Current();
+        const auto &pair1 = iter1.Current();
+        const auto &pair2 = iter2.Current();
         SCOPED_TRACE((std::ostringstream() << "key: " << pair1.Key().c_str() << ", value " << pair2.Value()).str());
         EXPECT_TRUE(std::wstring(pair1.Key().c_str()).compare(labels[i]) == 0);
         EXPECT_TRUE(std::wstring(pair2.Key().c_str()).compare(labels[i]) == 0);

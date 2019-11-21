@@ -104,6 +104,7 @@ TEST_F(LearningModelAPITest, GetVersion)
 {
     EXPECT_NO_THROW(LoadModel(L"squeezenet_modifiedforruntimestests.onnx"));
     int64_t version(m_model.Version());
+    (void)(version);
 }
 
 typedef std::vector<std::pair<std::wstring, std::wstring>> Metadata;

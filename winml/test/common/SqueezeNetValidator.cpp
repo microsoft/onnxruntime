@@ -201,7 +201,8 @@ void ModelValidator::FnsCandy16(
         {
             // When output binding strategy is unbound, the output tensor was not set on bind.
             // Therefore, we need to retrieve it from the LearnignModelEvaluationResult
-            auto outputTensor = result.Outputs().Lookup(outputDataBindingName).as<TensorFloat16Bit>();
+            // TODO: is this right? outputTensorT is unused...
+            /*auto outputTensorT = */result.Outputs().Lookup(outputDataBindingName).as<TensorFloat16Bit>();
         }
         else
         {

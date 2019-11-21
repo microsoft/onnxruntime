@@ -12,6 +12,8 @@
 
 #include "winrt/Windows.Storage.Streams.h"
 
+#pragma warning(disable : 4244)
+
 using namespace winrt::Windows::Storage::Streams;
 using namespace winrt::Windows::AI::MachineLearning;
 using namespace winrt::Windows::Foundation::Collections;
@@ -58,7 +60,7 @@ bool LoadTensorFromPb(onnx::TensorProto& tensor, std::wstring filePath)
     std::vector<char> buffer(size);
     if (stream.read(buffer.data(), size))
     {
-        return tensor.ParseFromArray(buffer.data(), size);
+        return tensor.ParseFromArray(buffer.data(), static_cast<int>(size));
     }
     else
     {
@@ -74,7 +76,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(onnx::TensorProto tensorProto
     {
         std::vector<DataType> tensorData;
         auto& values = tensorProto.raw_data();
-        EXPECT_EQ(elementCount, values.size() / sizeof(DataType), L"TensorProto elementcount should match raw data buffer size in elements.");
+        EXPECT_EQ(elementCount, values.size() / sizeof(DataType)) << L"TensorProto elementcount should match raw data buffer size in elements.";
 
         tensorData = std::vector<DataType>(elementCount);
         memcpy(tensorData.data(), values.data(), values.size());
@@ -108,7 +110,8 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
     if (LoadTensorFromPb(tensorProto, filePath))
     {
         std::vector<int64_t> tensorShape = std::vector<int64_t>(tensorProto.dims().begin(), tensorProto.dims().end());
-        auto elementCount = std::accumulate(tensorShape.begin(), tensorShape.end(), 1, std::multiplies<int64_t>());
+        int64_t initialValue = 1;
+        auto elementCount = std::accumulate(tensorShape.begin(), tensorShape.end(), initialValue, std::multiplies<int64_t>());
 
         if (!tensorProto.has_data_type())
         {
@@ -161,7 +164,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
         uint32_t sizeInBytes;
         spTensorValueNative->GetBuffer(reinterpret_cast<BYTE**>(&data), &sizeInBytes);
 
-        EXPECT_TRUE(tensorProto.has_raw_data(), L"Float16 tensor proto buffers are expected to contain raw data.");
+        EXPECT_TRUE(tensorProto.has_raw_data()) << L"Float16 tensor proto buffers are expected to contain raw data.";
 
         auto& raw_data = tensorProto.raw_data();
         auto buff = raw_data.c_str();
@@ -241,7 +244,7 @@ winrt::Windows::AI::MachineLearning::LearningModel ProtobufHelpers::CreateModel(
     {
         onnx::ValueInfoProto& variable = *graph.add_input();
         variable.set_name("input");
-        onnx::TypeProto_Tensor* pTensor = variable.mutable_type()->mutable_tensor_type();
+        //onnx::TypeProto_Tensor* pTensor = variable.mutable_type()->mutable_tensor_type();
         variable.mutable_type()->mutable_tensor_type()->set_elem_type(dataType);
         for (auto dim : shape)
         {
@@ -266,7 +269,7 @@ winrt::Windows::AI::MachineLearning::LearningModel ProtobufHelpers::CreateModel(
     {
         onnx::ValueInfoProto& variable = *graph.add_output();
         variable.set_name("output");
-        onnx::TypeProto_Tensor* pTensor = variable.mutable_type()->mutable_tensor_type();
+        //onnx::TypeProto_Tensor* pTensor = variable.mutable_type()->mutable_tensor_type();
         variable.mutable_type()->mutable_tensor_type()->set_elem_type(dataType);
         for (auto dim : shape)
         {
