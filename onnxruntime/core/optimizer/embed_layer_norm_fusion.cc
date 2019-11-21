@@ -17,7 +17,6 @@ static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
     if (std::find(supported_data_types.begin(), supported_data_types.end(),
                   *(input_arg->Type())) == supported_data_types.end()) {
-      std::cout << *(input_arg->Type()) << std::endl;
       return false;
     }
   }
@@ -46,18 +45,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& skip_ln_node = *p_skip_ln;
     ORT_RETURN_IF_ERROR(Recurse(skip_ln_node, modified, graph_level, logger));
-    std::cout << "Cur node: " << skip_ln_node.OpType() << std::endl;
-    /*std::cout << !graph_utils::IsSupportedOptypeVersionAndDomain(skip_ln_node, "SkipLayerNormalization", {1}, kMSDomain) << std::endl;
-    std::cout << "MatchesOpSinceVersion " << graph_utils::MatchesOpSinceVersion(skip_ln_node, {1}) << std::endl;
-    std::cout << "SinceVersion " << skip_ln_node.Op()->SinceVersion() << std::endl;
-    std::cout <<  !graph_utils::IsSupportedProvider(skip_ln_node, GetCompatibleExecutionProviders())<< std::endl;
-    std::cout << !IsSupportedDataType(skip_ln_node) << std::endl;*/
+
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(skip_ln_node, "SkipLayerNormalization", {1}, kMSDomain) ||
         !graph_utils::IsSupportedProvider(skip_ln_node, GetCompatibleExecutionProviders()) ||
         !IsSupportedDataType(skip_ln_node)) {
       continue;
     }
-    std::cout << "SkipLayerNorm " << std::endl;
     // Find Attention after SkipLayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(skip_ln_node, "Attention");
     if (p_attention == nullptr) {
@@ -69,18 +62,15 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !IsSupportedDataType(attention_node)) {
       continue;
     }
-    std::cout << "Attention " << std::endl;
     // Find ReduceSum --> Attention
     std::vector<const Node::EdgeEnd*> edges;
     if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1}, kOnnxDomain}}, edges, logger)) {
       continue;
     }
-    std::cout << "ReduceSum found " << std::endl;
     Node& reduce_sum_node = *graph.GetNode(edges[0]->GetNode().Index());
     if (reduce_sum_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    std::cout << "ReduceSum " << std::endl;
 
     // Traceback the SkipLayerNormalization node to find Gather --> SkipLayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> segment_embedding_path{
@@ -93,7 +83,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (segment_gather_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    std::cout << "Segment Gather " << std::endl;
 
     // Traceback the SkipLayerNormalization node to find Gather --> Add --> SkipLayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
@@ -108,7 +97,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (add_node.GetOutputEdgesCount() != 1 || word_gather_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    std::cout << "Word Gather " << std::endl;
 
     // Traceback the Add node to find Shape --> Expand --> Gather --> Add
     std::vector<graph_utils::EdgeEndToMatch> position_embedding_path{
@@ -119,15 +107,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (!graph_utils::FindPath(add_node, true, position_embedding_path, edges, logger)) {
       continue;
     }
-    std::cout << "Position embedding path found. " << std::endl;
     Node& position_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
     //Node& expand_node = *graph.GetNode(edges[1]->GetNode().Index());
     //Node& shape_node = *graph.GetNode(edges[2]->GetNode().Index());
-    std::cout << "Position gather nodes get. " << std::endl;
     if (position_gather_node.GetOutputEdgesCount() != 1) {
       continue;
     }
-    std::cout << "Position Gather " << std::endl;
 
     // Get input "input_ids" from node.
     NodeArg* input_ids = nullptr;
@@ -136,7 +121,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     input_ids = word_gather_node.MutableInputDefs()[1];
-    std::cout << "word gather has input " << std::endl;
 
     // Get input "segment_ids" from node.
     NodeArg* segment_ids = nullptr;
@@ -145,7 +129,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     segment_ids = segment_gather_node.MutableInputDefs()[1];
-    std::cout << "Segment id input " << std::endl;
 
     // Get input "mask" from "ReduceSum" node.
     NodeArg* mask = nullptr;
@@ -154,7 +137,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     mask = reduce_sum_node.MutableInputDefs()[0];
-    std::cout << "Mask input " << std::endl;
 
     const std::vector<NodeArg*> embed_layer_norm_input_defs{
         input_ids,
@@ -171,9 +153,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                                                 embed_layer_norm_input_defs,
                                                 {skip_ln_node.MutableOutputDefs()[0], reduce_sum_node.MutableOutputDefs()[0]},
                                                 {}, kMSDomain);
-
-    std::cout << "Embed Layer Norm node created. " << std::endl;
-    std::cout << "Embed Layer nod outputs " << embed_layer_norm_node.MutableOutputDefs()[0] << " " << embed_layer_norm_node.MutableOutputDefs()[1] << std::endl;
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     embed_layer_norm_node.SetExecutionProviderType(skip_ln_node.GetExecutionProviderType());
@@ -196,7 +175,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());
     }
-    std::cout << "finalized " << std::endl;
 
     modified = true;
   }
