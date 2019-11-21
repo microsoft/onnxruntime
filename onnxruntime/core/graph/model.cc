@@ -303,7 +303,7 @@ static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_pr
   }
   try {
     status = Model::Load(fd, model_proto);
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
@@ -337,7 +337,7 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
   }
   try {
     status = Model::Load(fd, p_model, local_registries, logger);
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
@@ -357,7 +357,7 @@ static Status SaveModel(Model& model, const T& file_path) {
   ORT_RETURN_IF_ERROR(status);
   try {
     status = Model::Save(model, fd);
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
@@ -407,13 +407,14 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::Mo
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
                             const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
-  std::unique_ptr<ModelProto> modelProto = onnxruntime::make_unique<ModelProto>();
-  const bool result = modelProto->ParseFromArray(p_bytes, count);
-  if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
+  ModelProto model_proto;
+
+  auto status = LoadFromBytes(count, p_bytes, model_proto);
+  if (!status.IsOK()) {
+    return status;
   }
 
-  p_model = std::make_shared<Model>(std::move(modelProto), local_registries, logger);
+  p_model = std::make_shared<Model>(model_proto, local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
@@ -454,32 +455,14 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
 
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger) {
-  if (fd < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
+  ModelProto model_proto;
+
+  auto status = Load(fd, model_proto);
+  if (!status.IsOK()) {
+    return status;
   }
 
-  std::unique_ptr<ModelProto> model_proto = onnxruntime::make_unique<ModelProto>();
-#if GOOGLE_PROTOBUF_VERSION >= 3002000
-  FileInputStream fs(fd);
-  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
-  if (!result) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#else
-  // CNTK uses ORT as a submodule in order to use its GraphIR code.
-  // CNTK needs to be built with protobuf 3.1.0 for its version specific features.
-  // This code block is needed to support CNTK and any other
-  // GraphIR client that will be built with protobuf at a version older than 3.2.0.
-  FileInputStream fs(fd);
-  CodedInputStream cis(&fs);
-
-  // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
-  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
-  if (!model_proto->ParseFromCodedStream(&cis)) {
-    return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
-  }
-#endif
-  p_model = std::make_shared<Model>(std::move(model_proto), local_registries, logger);
+  p_model = std::make_shared<Model>(model_proto, local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 

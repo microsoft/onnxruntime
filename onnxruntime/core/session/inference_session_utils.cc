@@ -21,7 +21,7 @@ namespace inference_session_utils {
 static Status parse_json(const std::string& config_string, /*out*/ json& json_obj) {
   try {
     json_obj = json::parse(config_string);
-  } catch (std::exception&) {
+  } catch (const std::exception&) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Json stored in the `ort_config` key is invalid. "
                            "Cannot parse necessary config options to run the model with.");
@@ -168,12 +168,13 @@ static Status set_enable_profiling(SessionOptions& session_options,
 //--- end of local helpers ---
 //---------------------
 
+static const std::string session_options_key = "session_options";
+
 Status parse_session_options_from_model_proto(const ONNX_NAMESPACE::ModelProto& model_proto,
                                               SessionOptions& session_options,
                                               const logging::Logger& logger) {
   json json_obj;
   bool session_options_found = false;
-  std::string session_options_key = "session_options";
 
   for (auto metadata_field : model_proto.metadata_props()) {
     if (metadata_field.has_key() && metadata_field.key() == "ort_config") {

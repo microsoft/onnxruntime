@@ -389,7 +389,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
 
 namespace {
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* /*env*/, _In_ const OrtSessionOptions* options,
-                             _In_ std::unique_ptr<::onnxruntime::InferenceSession> sess,
+                             _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
                              _Outptr_ OrtSession** out) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
@@ -445,7 +445,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   API_IMPL_BEGIN
   auto sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
       options == nullptr ? nullptr : &options->value, model_path, env->loggingManager);
-  return CreateSessionImpl(env, options, std::move(sess), out);
+  return CreateSessionImpl(env, options, sess, out);
   API_IMPL_END
 }
 
@@ -455,7 +455,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   auto sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
       options == nullptr ? nullptr : &options->value, model_data, static_cast<int>(model_data_length), env->loggingManager);
 
-  return CreateSessionImpl(env, options, std::move(sess), out);
+  return CreateSessionImpl(env, options, sess, out);
   API_IMPL_END
 }
 
