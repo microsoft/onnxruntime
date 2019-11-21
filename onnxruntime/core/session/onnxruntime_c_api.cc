@@ -388,7 +388,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
 }
 
 namespace {
-OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
+OrtStatus* CreateSessionImpl(_In_ const OrtEnv* /*env*/, _In_ const OrtSessionOptions* options,
                              _In_ std::unique_ptr<::onnxruntime::InferenceSession> sess,
                              _Outptr_ OrtSession** out) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of

@@ -168,7 +168,6 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
 
     ConstructorCommon(default_session_options, logging_manager);
-
   } else {
     // Explicit session options provided by user - honor that
     ConstructorCommon(*session_options, logging_manager);
@@ -198,7 +197,6 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
 
     ConstructorCommon(default_session_options, logging_manager);
-
   } else {
     // Explicit session options provided by user - honor that
     ConstructorCommon(*session_options, logging_manager);
