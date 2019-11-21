@@ -285,7 +285,7 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
 }
 
 template <typename T>
-static Status LoadModel(const T& file_path, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -371,7 +371,7 @@ static Status SaveModel(Model& model, const T& file_path) {
 }
 
 #ifdef _WIN32
-Status Model::Load(const std::wstring& file_path, std::shared_ptr<ModelProto>& model_proto) {
+Status Model::Load(const std::wstring& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
   return LoadModel(file_path, model_proto);
 }
 
@@ -380,7 +380,7 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 }
 #endif
 
-Status Model::Load(const std::string& file_path, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+Status Model::Load(const std::string& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
   return LoadModel(file_path, model_proto);
 }
 
@@ -396,8 +396,8 @@ Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
-  const bool result = model_proto->ParseFromArray(p_bytes, count);
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
+  const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
@@ -424,14 +424,14 @@ using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
 
-Status Model::Load(int fd, std::shared_ptr<ONNX_NAMESPACE::ModelProto>& model_proto) {
+Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
   FileInputStream fs(fd);
-  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  const bool result = model_proto.ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
