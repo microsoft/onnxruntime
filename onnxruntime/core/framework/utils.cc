@@ -156,8 +156,6 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
   //  return Status::OK();
   //}
 
-  assert(source_mlvalue.IsTensor());
-
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
     ORT_RETURN_IF_ERROR(utils::AllocateHelper(*copy_info.allocation_provider, copy_info.target_device,
@@ -647,7 +645,7 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
                 }
               }
 #else
-  ORT_UNUSED_PARAMETER(session_state);
+              ORT_UNUSED_PARAMETER(session_state);
 #endif
             }
           }

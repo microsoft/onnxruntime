@@ -17,6 +17,9 @@ class ReshapeFusion : public GraphTransformer {
       : GraphTransformer("ReshapeFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+private:
+  static bool Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::Logger& logger);
 };
 
 }  // namespace onnxruntime

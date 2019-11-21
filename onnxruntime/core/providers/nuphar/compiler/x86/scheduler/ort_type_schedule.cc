@@ -8,6 +8,7 @@
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_extern.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_ir.h"
+#include "core/providers/nuphar/compiler/x86/x86_target_info.h"
 #include "core/framework/op_kernel_info.h"
 #include <tvm/tvm.h>
 
@@ -16,21 +17,24 @@ namespace nuphar {
 
 bool TryVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
+  ORT_ENFORCE(target != nullptr);
+  int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
 
-  return TryVectorization(tensor, natural_vector_size, ctx);
+  return TryVectorization(tensor, natural_vector_size, ctx_sched);
 }
 
 bool InputRootScheduleWithVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx) {
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   bool status = false;
   for (auto& t : tensor->op->InputTensors()) {
     if (t->op->InputTensors().size() > 0) {
-      bool status_vec = TryVectorizationX86(t, ctx);
-      bool status_root = InsertRootSchedule(t, ctx);
+      bool status_vec = TryVectorizationX86(t, ctx_codegen, ctx_sched);
+      bool status_root = InsertRootSchedule(t, ctx_sched);
       status = status || status_root || status_vec;
     }
   }
@@ -40,13 +44,13 @@ bool InputRootScheduleWithVectorizationX86(
 bool TVM_SCHEDULER_CLASS(Softmax, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   bool status_softmax_itself = TryInlineSchedule(tensor, ctx_sched);
 
   // compute root the exp since it is reused more than once
   auto& tensor_exp = tensor->op->InputTensors()[0];
-  bool status_vec = TryVectorizationX86(tensor_exp, ctx_sched);
+  bool status_vec = TryVectorizationX86(tensor_exp, ctx_codegen, ctx_sched);
   bool status_root = InsertRootSchedule(tensor_exp, ctx_sched);
   return status_softmax_itself || status_vec || status_root;
 }
@@ -54,14 +58,14 @@ bool TVM_SCHEDULER_CLASS(Softmax, NupharX86OrtOpType)::Evaluate(
 bool TVM_SCHEDULER_CLASS(Split, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   auto& tensor_split_input = tensor->op->InputTensors()[0];
   // force inline for split since to avoid extra copy
   bool status_split_itself = TryInlineSchedule(tensor, ctx_sched);
 
   // add root for split's inputs to avoid inline of the inputs
-  bool status_vec = TryVectorizationX86(tensor_split_input, ctx_sched);
+  bool status_vec = TryVectorizationX86(tensor_split_input, ctx_codegen, ctx_sched);
   bool status_input_root = InsertRootSchedule(tensor_split_input, ctx_sched);
   return status_split_itself || status_vec || status_input_root;
 }

@@ -191,7 +191,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
       const Node& output_edge_node = *graph.GetNode(output_edge.dst_node);
       if (!CanUpdateImplicitInputNameInSubgraph(output_edge_node, output_edge.arg_name, new_arg_name)) {
         LOGS(logger, WARNING) << " Implicit input name " << output_edge.arg_name
-                                 << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
+                              << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
         return false;
       }
     }
@@ -284,6 +284,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 }
 
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+}
+
+bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
   return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
 }
 
@@ -563,7 +567,6 @@ const Node* FirstParentByType(Node& node, const std::string& parent_type) {
   return nullptr;
 }
 
-
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
@@ -663,21 +666,6 @@ void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<N
 }
 
 const Node::EdgeEnd*
-FindFirstInputEdge(
-    const Node& node,
-    const std::string& op_type,
-    const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
-    const std::string& domain) {
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    const Node& parent = it->GetNode();
-    if (parent.OpType() == op_type && MatchesOpSinceVersion(parent, versions) && MatchesOpSetDomain(parent, domain)) {
-      return &(*it);
-    }
-  }
-  return nullptr;
-}
-
-const Node::EdgeEnd*
 GetInputEdge(const Node& node, int arg_index) {
   for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
     if (arg_index == it->GetDstArgIndex()) {
@@ -695,33 +683,40 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return &(edge->GetNode());
 }
 
-bool
-FindParentPath(const Node& node, const std::vector<MatchEdgeInfo>& match_edges, std::vector<const Node::EdgeEnd*>& result) {
+bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
-  result.reserve(match_edges.size());
+  result.reserve(edges_to_match.size());
 
   const Node* current_node = &node;
-  for (size_t i = 0; i < match_edges.size(); i++) {
-    const MatchEdgeInfo& match_edge = match_edges[i];
+  for (const auto& edge : edges_to_match) {
+    const Node::EdgeEnd* edge_found = nullptr;
 
-    const Node::EdgeEnd* edge = nullptr;
-    if (match_edge.dst_arg_index < 0) {
-      // When arg index is not specified, just find the first input edge that matched.
-      // This is a limitation of this utility function: by design to reduce complexity.
-      edge = FindFirstInputEdge(*current_node, match_edge.op_type, match_edge.versions, match_edge.domain);
-    } else {
-      const Node::EdgeEnd* input_edge = GetInputEdge(*current_node, match_edge.dst_arg_index);
-      if (nullptr != input_edge && IsSupportedOptypeVersionAndDomain(input_edge->GetNode(), match_edge.op_type, match_edge.versions, match_edge.domain)) {
-        edge = input_edge;
+    auto edges_begin = is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
+    auto edges_end = is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
+    for (auto it = edges_begin; it != edges_end; ++it) {
+
+      if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && edge.op_type == it->GetNode().OpType() && MatchesOpSinceVersion(it->GetNode(), edge.versions) && MatchesOpSetDomain(it->GetNode(), edge.domain)) {
+        // For output edge, there could be multiple edges matched.
+        // This function will return failure in such case by design.
+        if (nullptr != edge_found) {
+          LOGS(logger, WARNING) << "Failed since multiple edges matched:" << current_node->OpType() << "->" << edge.op_type;
+          return false;
+        }
+        edge_found = &(*it);
+
+        // For input edge, each dst_arg_index only accepts one input edge so only there is at most one match.
+        if (is_input_edge) {
+          break;
+        }
       }
     }
 
-    if (nullptr != edge) {
-      result.push_back(edge);
-      current_node = &(edge->GetNode());
-    } else {
+    if (nullptr == edge_found) {
       return false;
     }
+
+    result.push_back(edge_found);
+    current_node = &(edge_found->GetNode());
   }
 
   return true;
