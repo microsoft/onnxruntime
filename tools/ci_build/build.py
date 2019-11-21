@@ -587,7 +587,7 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           cmd += ["-e", provider]
 
         if num_parallel_tests != 0:
-          cmd += ['-c', num_parallel_tests]
+          cmd += ['-c', str(num_parallel_tests)]
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
