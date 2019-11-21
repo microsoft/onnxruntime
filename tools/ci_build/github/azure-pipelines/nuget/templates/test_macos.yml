@@ -12,6 +12,7 @@ jobs:
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
   steps:
+  - template: set-test-data-variables-step.yml
   - template: ../../templates/mac-set-variables-and-download.yml
 
   - task: DownloadPipelineArtifact@0
