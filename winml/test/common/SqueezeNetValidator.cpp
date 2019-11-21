@@ -1,5 +1,3 @@
-#include "testPch.h"
-
 #include "SqueezeNetValidator.h"
 #include "protobufHelpers.h"
 #include "fileHelpers.h"

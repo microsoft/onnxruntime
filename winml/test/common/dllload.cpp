@@ -1,5 +1,3 @@
-#include "testPch.h"
-
 #include "Std.h"
 #include "fileHelpers.h"
 #include <winstring.h>
