@@ -64,15 +64,6 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    if (1 == matmul_a_shape->dim_size() && 2 == matmul_b_shape->dim_size()) {
-      // MatMul has shape [K] * [K, N], reset it to [1, K] * [K, N], so that it can work for Gemm
-      auto mutable_matmul_a_shape = const_cast<ONNX_NAMESPACE::TensorShapeProto*>(matmul_a_shape);
-      auto dim_0 = mutable_matmul_a_shape->mutable_dim(0);
-      auto dim_1 = (const_cast<ONNX_NAMESPACE::TensorShapeProto*>(matmul_a_shape))->add_dim();
-      (*dim_1) = (*dim_0);
-      dim_0->set_dim_value(1);
-    }
-
     if (2 != matmul_a_shape->dim_size() || 2 != matmul_b_shape->dim_size()) {
       // Gemm only support Matrix
       continue;
