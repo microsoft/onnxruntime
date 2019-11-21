@@ -11,7 +11,7 @@ jobs:
   condition: succeeded()
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    - group: ORT_TEST_DATA_SAS
+  - group: ORT_TEST_DATA_SAS
   steps:
   - template: set-test-data-variables-step.yml
   - template: ../../templates/windows-build-tools-setup-steps.yml
