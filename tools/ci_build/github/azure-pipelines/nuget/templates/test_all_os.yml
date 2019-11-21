@@ -1,9 +1,5 @@
 # test NuGet package on Win, Linux and MacOS
 jobs:
-  variables:
-  - group: ORT_TEST_DATA_SAS
-  env: 
-    Test_Data_Download_Key: $(ort-internal-test-data-sas)
 - template: test_win.yml
   parameters:
     AgentPool : $(AgentPoolWin)

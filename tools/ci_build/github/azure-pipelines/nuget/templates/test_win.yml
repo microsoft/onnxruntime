@@ -5,6 +5,8 @@ jobs:
 - job: NuGet_Test_Win
   workspace:
     clean: all
+  variables:
+  - group: ORT_TEST_DATA_SAS
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging
@@ -18,6 +20,8 @@ jobs:
       EnvSetupScript: 'setup_env.bat'
       buildArch: 'x64'
       setVcvars: true
+    env:
+      Test_Data_Download_Key: $(ort-internal-test-data-sas)
 
   - task: BatchScript@1
     displayName: 'Setup VS2017 env vars'
