@@ -5,14 +5,13 @@ jobs:
 - job: NuGet_Test_Win
   workspace:
     clean: all
-  variables:
-  - group: ORT_TEST_DATA_SAS
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    - group: ORT_TEST_DATA_SAS
   steps:
   - template: set-test-data-variables-step.yml
   - template: ../../templates/windows-build-tools-setup-steps.yml
