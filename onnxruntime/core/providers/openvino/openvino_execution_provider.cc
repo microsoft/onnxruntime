@@ -498,6 +498,13 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   // Let's use std::string as the key type to avoid such nondeterminism.
   std::set<std::string> fused_inputs, fused_outputs;
 
+  // Keep inputs and outputs inside the fused graph, i.e. those NodeArgs
+  // being consumed by nodes within the fused graph. Note that we cannot
+  // simply erase those inner args while iterating the nodes. For example,
+  // an output arg may have multiple uses, it would be wrong if we erase it
+  // from fused_outputs when we encounter only one of its uses as inputs.
+  std::set<std::string> inner_inputs, inner_outputs;
+
   try {
     CheckGraphSupported(graph_viewer, device_id);
   } catch (const char* error_msg) {
@@ -526,12 +533,14 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     const auto node = graph_viewer.GetNode(index);
 
     auto process_input_fn =
-      [&fused_inputs, &fused_outputs, &node](const onnxruntime::NodeArg& input_def, size_t) {
+      [&fused_inputs, &fused_outputs, &inner_inputs, &inner_outputs, &node](
+          const onnxruntime::NodeArg& input_def, size_t) {
+
         const auto& name = input_def.Name();
         if (fused_outputs.find(name) == fused_outputs.end()) {
           fused_inputs.insert(name);
         } else {
-          fused_outputs.erase(name);
+          inner_outputs.insert(name);
         }
         return Status::OK();
       };
@@ -548,7 +557,7 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
       if (fused_inputs.find(name) == fused_inputs.end()) {
         fused_outputs.insert(name);
       } else {
-        fused_inputs.erase(name);
+        inner_inputs.insert(name);
       }
     }
   }
@@ -571,11 +580,15 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   meta_def->since_version = 1;
 
   for (const auto& name : fused_inputs) {
-    meta_def->inputs.push_back(name);
+    if (inner_inputs.count(name) == 0) {
+      meta_def->inputs.push_back(name);
+    }
   }
 
   for (const auto& name : fused_outputs) {
-    meta_def->outputs.push_back(name);
+    if (inner_outputs.count(name) == 0) {
+      meta_def->outputs.push_back(name);
+    }
   }
 
   sub_graph->SetMetaDef(meta_def);
