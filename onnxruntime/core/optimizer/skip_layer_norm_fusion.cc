@@ -68,11 +68,7 @@ static bool CheckAdd2(Graph& graph, Node& add2, ProviderType providertype) {
     return false;
   }
 
-  if (add_input1_shape->dim_size() != 3 || add_input2_shape->dim_size() != 1) {
-    return false;
-  }
-
-  return graph_utils::NodeArgIsConstant(graph, *(add2.MutableInputDefs()[1]));
+  return add_input1_shape->dim_size() == 3 && add_input2_shape->dim_size() == 1;
 }
 
 /**
@@ -161,7 +157,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
       p_add1 = const_cast<Node*>(&edges[0]->GetNode());
       p_add2 = const_cast<Node*>(&edges[1]->GetNode());
-      matched_format = Format::Format1;
 
       if (CheckAdd1(*p_add1, ln_node.GetExecutionProviderType()) &&
           CheckAdd2(graph, *p_add2, ln_node.GetExecutionProviderType())) {
@@ -178,7 +173,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
         p_add2 = const_cast<Node*>(&edges[1]->GetNode());
-        matched_format = Format::Format2;
 
         if (CheckAdd1(*p_add1, ln_node.GetExecutionProviderType()) &&
             CheckAdd2(graph, *p_add2, ln_node.GetExecutionProviderType())) {
@@ -194,7 +188,6 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
-        matched_format = Format::Format3;
 
         if (CheckAdd1(*p_add1, ln_node.GetExecutionProviderType())) {
           matched_format = Format::Format3;
@@ -214,12 +207,12 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::Format1) {
       skip_layer_norm_input_defs[0] = p_add2->MutableInputDefs()[0];
-      skip_layer_norm_input_defs.push_back(p_add2->MutableImplicitInputDefs()[1]);
-      nodes_to_remove.push_back( *p_add2 );
+      skip_layer_norm_input_defs.push_back(p_add2->MutableInputDefs()[1]);
+      nodes_to_remove.push_back(*p_add2);
     } else if (matched_format == Format::Format2) {
       skip_layer_norm_input_defs[1] = p_add2->MutableInputDefs()[0];
-      skip_layer_norm_input_defs.push_back(p_add2->MutableImplicitInputDefs()[1]);
-      nodes_to_remove.push_back( *p_add2 );
+      skip_layer_norm_input_defs.push_back(p_add2->MutableInputDefs()[1]);
+      nodes_to_remove.push_back(*p_add2);
     }
 
     nodes_to_remove.push_back(*p_add1);
