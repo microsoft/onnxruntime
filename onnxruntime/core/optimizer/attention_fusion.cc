@@ -248,7 +248,6 @@ static NodeArg* ProcessMask(Graph& graph, NodeArg* mask_input, ProviderType prov
 static NodeArg* GetOrCreateMaskIndex(
     Graph& graph,
     NodeArg* mask_input,
-    int64_t hidden_size,
     std::map<std::string, NodeArg*>& mask_index_map,
     ProviderType provider_type,
     const logging::Logger& logger) {
@@ -588,14 +587,14 @@ bool AttentionFusion::Fuse_Subgraph1(Node& layer_norm, const Node& add_after_lay
 
   // Now everything is ready, we will start fusing subgraph.
   NodeArg* mask_input = graph.GetNode(mask_unsqueeze_1.Index())->MutableInputDefs()[0];
-  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, hidden_size, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
+  NodeArg* mask_index = GetOrCreateMaskIndex(graph, mask_input, mask_index_map, layer_norm.GetExecutionProviderType(), logger);
   if (nullptr == mask_index) {
     DEBUG_LOG("Failed to create mask index");
     return false;
   }
 
   // Merge Q, K and V weights
-  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true); 
+  NodeArg& qkv_weights = MergeQkvWeights(graph, hidden_size, q_weight_tensor, k_weight_tensor, v_weight_tensor, true);
   NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
 
   // Create Attention Node.
