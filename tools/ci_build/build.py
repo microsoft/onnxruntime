@@ -640,8 +640,6 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           opset9_cmd = cmd_base + [opset9_model_dir]
           opset10_model_dir = os.path.join(model_dir, 'opset10')
           opset10_cmd = cmd_base + [opset10_model_dir]
-          opset11_model_dir = os.path.join(model_dir, 'opset11')
-          opset11_cmd = cmd_base + [opset11_model_dir]
           run_subprocess([exe] + opset7_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
           run_subprocess([exe] + opset8_cmd, cwd=cwd)
@@ -650,8 +648,6 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
           run_subprocess([exe] + opset10_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
-          run_subprocess([exe] + opset11_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset11_cmd, cwd=cwd)
 
 
 # nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
