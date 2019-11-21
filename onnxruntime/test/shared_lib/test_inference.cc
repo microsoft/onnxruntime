@@ -96,7 +96,7 @@ void TestInference(Ort::Env& env, T model_uri,
   }
 
   if (custom_op_library_filename){
-    void* library_handle = nullptr; // leak this, there is no way to free this in C-API for now. ideally this should be tied to SessionOptions lifecycle
+    void* library_handle = nullptr; // leak this, no harm. 
     Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
   }
 
