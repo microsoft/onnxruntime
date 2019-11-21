@@ -74,11 +74,15 @@ def get_region_based_url(url, azure_location):
     print("url changed to %s" % url)
     return url
 
-def download_and_unzip(build_dir, url, dest_folder):
+def download_and_unzip(build_dir, url, dest_folder, use_token = True):
     dest_folder = os.path.join(build_dir, dest_folder)
     # attach the SAS token to the url. Note DO NOT print the url with the token in any logs.
     token = os.environ.get('Test_Data_Download_Key')
-    url_with_token = urljoin(url, token)
+    if use_token:
+        url_with_token = urljoin(url, token)
+    else:
+        url_with_token = url
+
     # Download data using AZCopy tool
     try:
         subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', '--recursive', url_with_token, build_dir],check=True)
@@ -106,7 +110,7 @@ def download_additional_data(build_dir, azure_region):
 
     cmake_url = urljoin(additional_data_url, 'cmake-3.15.1-win64-x64.zip')
     print("Starting download for cmake : " + cmake_url)
-    download_and_unzip(build_dir, cmake_url, 'cmake_temp')
+    download_and_unzip(build_dir, cmake_url, 'cmake_temp', False)
     dest_dir = os.path.join(build_dir,'cmake')
     if os.path.exists(dest_dir):
         print('deleting %s' % dest_dir)
