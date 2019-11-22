@@ -10,7 +10,7 @@ from onnx import helper, numpy_helper, shape_inference
 import sympy
 
 from packaging import version
-assert version.parse(onnx.__version__) >= version.parse("1.5.0") # need at least opset 10 for MatMulInteger shape inference
+assert version.parse(onnx.__version__) >= version.parse("1.5.0")
 
 def get_attribute(node, attr_name, default_value=None):
     found = [attr for attr in node.attribute if attr.name == attr_name]
@@ -115,6 +115,7 @@ class SymbolicShapeInference:
             'Sub'                   : self._infer_binary_ops,
             'Tile'                  : self._infer_Tile,
             'TopK'                  : self._infer_TopK,
+            'Upsample'              : self._infer_Upsample,
             'Unsqueeze'             : self._infer_Unsqueeze,
             'ZipMap'                : self._infer_ZipMap}
         self.run_ = True
@@ -1041,6 +1042,12 @@ class SymbolicShapeInference:
         for i_o in range(len(node.output)):
             vi = self.known_vi_[node.output[i_o]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[i_o], vi.type.tensor_type.elem_type, new_shape))
+
+    def _infer_Upsample(self, node):
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
+                                                  self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                                  self._new_symbolic_shape(self._get_shape_rank(node, 0), node)))
 
     def _infer_Unsqueeze(self, node):
         self._pass_on_sympy_data(node)
