@@ -284,8 +284,8 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
   return Status::OK();
 }
 
-template <typename T>
-static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
+template <typename T, typename Loader>
+static Status LoadModelHelper(const T& file_path, Loader loader) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -302,7 +302,7 @@ static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_pr
     }
   }
   try {
-    status = Model::Load(fd, model_proto);
+    status = loader(fd);
   } catch (const std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
@@ -317,37 +317,23 @@ static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_pr
 }
 
 template <typename T>
+static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
+  const auto loader = [&model_proto](int fd) {
+    return Model::Load(fd, model_proto);
+  };
+
+  return LoadModelHelper(file_path, loader);
+}
+
+template <typename T>
 static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                         const logging::Logger& logger) {
-  int fd;
-  Status status = Env::Default().FileOpenRd(file_path, fd);
-  if (!status.IsOK()) {
-    if (status.Category() == common::SYSTEM) {
-      switch (status.Code()) {
-        case ENOENT:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
-                                 " failed. File doesn't exist");
-        case EINVAL:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
-      }
-    }
-  }
-  try {
-    status = Model::Load(fd, p_model, local_registries, logger);
-  } catch (const std::exception& ex) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return Status(ONNXRUNTIME, FAIL, ex.what());
-  }
-  if (!status.IsOK()) {
-    GSL_SUPPRESS(es .84)
-    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
-    return status;
-  }
-  return Env::Default().FileClose(fd);
+  const auto loader = [&p_model, local_registries, &logger](int fd) {
+    return Model::Load(fd, p_model, local_registries, logger);
+  };
+
+  return LoadModelHelper(file_path, loader);
 }
 
 template <typename T>
@@ -457,10 +443,7 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
                    const logging::Logger& logger) {
   ModelProto model_proto;
 
-  auto status = Load(fd, model_proto);
-  if (!status.IsOK()) {
-    return status;
-  }
+  ORT_RETURN_IF_ERROR(Load(fd, model_proto));
 
   p_model = std::make_shared<Model>(model_proto, local_registries, logger);
 
