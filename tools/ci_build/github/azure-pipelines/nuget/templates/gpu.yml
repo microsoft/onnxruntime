@@ -81,7 +81,8 @@ jobs:
 - job: NuGet_Packaging
   pool: $(AgentPoolWin)
   dependsOn:
-  - Windows_CI_GPU_Dev
+  - Windows_CI_GPU_CUDA_Dev
+  - Windows_CI_GPU_DML_Dev
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:  
