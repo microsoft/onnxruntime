@@ -29,9 +29,4 @@ AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id
   return AllocatorPtr(std::move(device_allocator));
 }
 
-DeviceAllocatorRegistry& DeviceAllocatorRegistry::Instance() {
-  static DeviceAllocatorRegistry s_instance;
-  return s_instance;
-}
-
 }  // namespace onnxruntime

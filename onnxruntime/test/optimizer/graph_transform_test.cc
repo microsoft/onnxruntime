@@ -544,6 +544,27 @@ TEST(GraphTransformationTests, MatMulAddFusion_three_input) {
   ASSERT_TRUE(op_to_count["Gemm"] == 1);
 }
 
+// Matmul+Add with shape [k]*[k,N]+[N], won't do the fusion
+// We can do the fusion by changing shape to [1,k]*[k,N]+[1,N], then add a reshape [1,N]=>[N]
+// This will bring extra cost. And there's only very limited gain to fuse Matmul+Add to Gemm
+// Since the basic implementation is almost same
+TEST(GraphTransformationTests, MatMulAddFusion_negitive_case) {
+  auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/neg_model.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["MatMul"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["Gemm"] == 0);
+}
+
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
@@ -1152,10 +1173,9 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   }
 }
 
-TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/skip_layer_norm.onnx";
+static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path) {
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -1173,6 +1193,12 @@ TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 1);
+}
+
+TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx");
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx");
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx");
 }
 #endif
 

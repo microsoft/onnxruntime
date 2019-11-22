@@ -11,13 +11,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
     1,
     10,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Gather,
     11,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                        DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -63,7 +69,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -axis_dim_limit,",", axis_dim_limit - 1, "]");
+                             " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
     }
   }
 
