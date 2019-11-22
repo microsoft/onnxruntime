@@ -22,21 +22,49 @@ static void ComputeWithParallelFor(int64_t batch_sequence,
                                    const T* __restrict bias,
                                    T* __restrict output,
                                    T* __restrict temp_output_data,
-                                   concurrency::ThreadPool& tp) {
-  int task_count = tp.NumThreads() + 1;
-  tp.ParallelFor(task_count, [input,
-                              bias,
-                              output,
-                              temp_output_data,
-                              bias_length,
-                              batch_sequence,
-                              task_count](int32_t i) {
-    int64_t elem_inx_start = i * batch_sequence / task_count;
-    int64_t elem_inx_end = (i + 1) * batch_sequence / task_count;
-    for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
-      const T* input_start = input + elem_inx * bias_length;
-      T* output_start = output + elem_inx * bias_length;
-      T* temp_output_start = temp_output_data + elem_inx * bias_length;
+                                   concurrency::ThreadPool* tp) {
+  if (tp != nullptr) {
+    int task_count = tp->NumThreads() + 1;
+    tp->ParallelFor(task_count, [input,
+                                 bias,
+                                 output,
+                                 temp_output_data,
+                                 bias_length,
+                                 batch_sequence,
+                                 task_count](int32_t i) {
+      int64_t elem_inx_start = i * batch_sequence / task_count;
+      int64_t elem_inx_end = (i + 1) * batch_sequence / task_count;
+      for (int64_t elem_inx = elem_inx_start; elem_inx < elem_inx_end; elem_inx++) {
+        const T* input_start = input + elem_inx * bias_length;
+        T* output_start = output + elem_inx * bias_length;
+        T* temp_output_start = temp_output_data + elem_inx * bias_length;
+        const T* input_src = input_start;
+        const T* bias_src = bias;
+        T* ouput_src = output_start;
+        T* temp_output_src = temp_output_start;
+        for (int64_t h = 0; h < bias_length; h++) {
+          T value = *input_src++ + *bias_src++;
+          *ouput_src++ = value * static_cast<T>(M_SQRT1_2);
+          *temp_output_src++ = value * 0.5f;
+        }
+
+        MlasComputeErf(output_start, output_start, bias_length);
+
+        ouput_src = output_start;
+        temp_output_src = temp_output_start;
+        for (int64_t h = 0; h < bias_length; h++, ouput_src++) {
+          *ouput_src = *temp_output_src++ * (*ouput_src + 1.0f);
+        }
+      }
+    });
+  } else {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+    for (int64_t i = 0; i < batch_sequence; i++) {
+      const T* input_start = input + i * bias_length;
+      T* output_start = output + i * bias_length;
+      T* temp_output_start = temp_output_data + i * bias_length;
       const T* input_src = input_start;
       const T* bias_src = bias;
       T* ouput_src = output_start;
@@ -51,11 +79,11 @@ static void ComputeWithParallelFor(int64_t batch_sequence,
 
       ouput_src = output_start;
       temp_output_src = temp_output_start;
-      for (int64_t h = 0; h < bias_length; h++) {
-        *ouput_src++ = *temp_output_src++ * (*ouput_src + 1.0f);
+      for (int64_t h = 0; h < bias_length; h++, ouput_src++) {
+        *ouput_src = *temp_output_src++ * (*ouput_src + 1.0f);
       }
     }
-  });
+  }
 }
 
 template <typename T>
@@ -84,29 +112,18 @@ Status AddGeluFusion<T>::Compute(OpKernelContext* ctx) const {
   BufferUniquePtr temp_data_buf_ptr = BufferUniquePtr(alloc->Alloc(sizeof(T) * X->Shape().Size()), BufferDeleter(alloc));
   T* temp_output_data = static_cast<T*>(temp_data_buf_ptr.get());
 
-  concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
-  if (nullptr != tp) {
-    const T* input = X->template Data<T>();
-    const T* bias = B->template Data<T>();
-    T* output = Y->template MutableData<T>();
-    int64_t BS = X->Shape().Size() / bias_length;
+  const T* input = X->template Data<T>();
+  const T* bias = B->template Data<T>();
+  T* output = Y->template MutableData<T>();
+  int64_t BS = X->Shape().Size() / bias_length;
 
-    ComputeWithParallelFor(BS,
-                           bias_length,
-                           input,
-                           bias,
-                           output,
-                           temp_output_data,
-                           *tp);
-    return Status::OK();
-  }
-
-  ConstEigenVectorArrayMap<T> xm(X->template Data<T>(), X->Shape().Size());
-  ConstEigenVectorArrayMap<T> bm(B->template Data<T>(), B->Shape().Size());
-  EigenVectorArrayMap<T> ym(Y->template MutableData<T>(), Y->Shape().Size());
-  ym = (xm + bm) * static_cast<float>(M_SQRT1_2);
-  MlasComputeErf(Y->template MutableData<T>(), Y->template MutableData<T>(), X->Shape().Size());
-  ym = (xm + bm) * 0.5f * (ym + 1.0f);
+  ComputeWithParallelFor(BS,
+                         bias_length,
+                         input,
+                         bias,
+                         output,
+                         temp_output_data,
+                         ctx->GetOperatorThreadPool());
   return Status::OK();
 }
 }  // namespace contrib

@@ -140,15 +140,18 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   {
     int loop_len = 3 * batch_size * num_heads_;
+    auto input_data = input->template Data<T>();
+    auto weights_data = weights->template Data<T>();
+    auto bias_data = bias->template Data<T>();
 
     if (tp != nullptr) {
       tp->ParallelFor(loop_len, [num_heads = num_heads_,
                                  sequence_length,
                                  head_size,
                                  hidden_size,
-                                 input_data = input->template Data<T>(),
-                                 weights_data = weights->template Data<T>(),
-                                 bias_data = bias->template Data<T>(),
+                                 input_data,
+                                 weights_data,
+                                 bias_data,
                                  QKV](int32_t i) {
         int batch_index = (i / 3) / num_heads;
         int head_index = (i / 3) % num_heads;
@@ -189,8 +192,48 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         );
       });
     } else {
-      // TODO: (tp == nullptr)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented yet");
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int32_t i = 0; i < loop_len; i++) {
+        int batch_index = (i / 3) / num_heads_;
+        int head_index = (i / 3) % num_heads_;
+        int qkv_index = i % 3;
+
+        int input_offset = batch_index * sequence_length * hidden_size;
+        int weights_offset = qkv_index * hidden_size + head_index * head_size;
+        T* qkv_dest = QKV[qkv_index];
+        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+
+        // broadcast 3NH -> (3.B.N.S.H)
+        const T* broadcast_data_src = bias_data + weights_offset;
+        T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
+          broadcast_data_dest += head_size;
+        }
+
+        //                   original           transposed            iteration
+        // A: input          (BxSxNxH)          (B.)S x NH            S x NH
+        // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
+        // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
+
+        math::GemmEx<float, concurrency::ThreadPool>(CblasNoTrans,                   // TransA = no
+                                                     CblasNoTrans,                   // TransB = no
+                                                     sequence_length,                // M      = S
+                                                     head_size,                      // N      = H
+                                                     hidden_size,                    // K      = NH
+                                                     1.0f,                           // alpha
+                                                     input_data + input_offset,      // A
+                                                     hidden_size,                    // lda    = NH
+                                                     weights_data + weights_offset,  // B
+                                                     3 * hidden_size,                // ldb    = 3NH
+                                                     1.0f,                           // beta
+                                                     qkv_dest + qkv_offset,          // C
+                                                     head_size,                      // ldc
+                                                     nullptr                         // use single-thread
+        );
+      }
     }
   }
 
@@ -219,12 +262,13 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       p_scratch_broadcast_current_data += sequence_length;
     }
 
+    int loop_len = batch_size * num_heads_;
     float alpha = 1.0f / sqrt(static_cast<float>(head_size));
 
     if (tp != nullptr) {
-      tp->ParallelFor(batch_size * num_heads_, [num_heads = num_heads_, sequence_length, head_size, alpha, Q, K,
-                                                scratch_data,
-                                                scratch_broadcast_data](int32_t i) {
+      tp->ParallelFor(loop_len, [num_heads = num_heads_, sequence_length, head_size, alpha, Q, K,
+                                 scratch_data,
+                                 scratch_broadcast_data](int32_t i) {
         int batch_index = i / num_heads;
         // broadcast masks (B) -> (B.N.)S.S
         const T* broadcast_data_src = reinterpret_cast<T*>(scratch_broadcast_data) + batch_index * sequence_length;
@@ -255,8 +299,39 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
             nullptr);
       });
     } else {
-      // TODO: (tp == nullptr)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented yet");
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int32_t i = 0; i < loop_len; i++) {
+        int batch_index = i / num_heads_;
+        // broadcast masks (B) -> (B.N.)S.S
+        const T* broadcast_data_src = reinterpret_cast<T*>(scratch_broadcast_data) + batch_index * sequence_length;
+        T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i;
+        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+          memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * sizeof(T));
+          broadcast_data_dest += sequence_length;
+        }
+
+        // gemm
+
+        //                   original           transposed            iteration
+        // A: Q              (BxNxSxH)          (B.N.)S x H            S x H
+        // B: K'             (BxNxSxH)          (B.N.)H x S            H x S
+        // C: scratch_data   (BxNxSxS)          (B.N.)S x S            S x S
+
+        math::Gemm<T, concurrency::ThreadPool>(
+            CblasNoTrans,
+            CblasTrans,
+            sequence_length,
+            sequence_length,
+            head_size,
+            alpha,
+            Q + sequence_length * head_size * i,
+            K + sequence_length * head_size * i,
+            1.0,
+            reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
+            nullptr);
+      }
     }
   }
 
@@ -273,36 +348,63 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     int N = batch_size * num_heads_ * sequence_length;
     int D = sequence_length;
 
-    {
+    if (tp != nullptr) {
       int numThreads = tp->NumThreads() + 1;
       int size_per_batch = (N + numThreads - 1) / numThreads;
-      tp->ParallelFor(numThreads, [numThreads, n = N, size_per_batch, scratch_data, len = D](int k) {
+      tp->ParallelFor(numThreads, [numThreads, N, D, size_per_batch, scratch_data](int k) {
         int start = k * size_per_batch;
-        int end = k == numThreads - 1 ? n : (k + 1) * size_per_batch;
+        int end = k == numThreads - 1 ? N : (k + 1) * size_per_batch;
         for (int j = start; j < end; j++) {
-          float* x = reinterpret_cast<T*>(scratch_data) + j * len;
+          float* x = reinterpret_cast<T*>(scratch_data) + j * D;
           float* y = x;
 
-          for (int i = 0; i < len; i++)
+          for (int i = 0; i < D; i++)
             y[i] = expf(x[i]);
 
           double sum = 0.0;
 
-          for (int i = 0; i < len; i++) {
+          for (int i = 0; i < D; i++) {
             sum += x[i];
           }
 
           if (sum == 0) {
-            for (int i = 0; i < len; i++) {
-              y[i] = 1.0f / (float)len;
+            for (int i = 0; i < D; i++) {
+              y[i] = 1.0f / (float)D;
             }
           } else {
-            for (int i = 0; i < len; i++) {
+            for (int i = 0; i < D; i++) {
               y[i] = x[i] / (float)sum;
             }
           }
         }
       });
+    } else {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int32_t j = 0; j < N; j++) {
+        float* x = reinterpret_cast<T*>(scratch_data) + j * D;
+        float* y = x;
+
+        for (int i = 0; i < D; i++)
+          y[i] = expf(x[i]);
+
+        double sum = 0.0;
+
+        for (int i = 0; i < D; i++) {
+          sum += x[i];
+        }
+
+        if (sum == 0) {
+          for (int i = 0; i < D; i++) {
+            y[i] = 1.0f / (float)D;
+          }
+        } else {
+          for (int i = 0; i < D; i++) {
+            y[i] = x[i] / (float)sum;
+          }
+        }
+      }
     }
   }
 
@@ -319,16 +421,18 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
   {
+    int loop_len = batch_size * num_heads_;
+    auto output_data = output->template MutableData<T>();
     if (tp != nullptr) {
-      tp->ParallelFor(batch_size * num_heads_, [this,
-                                                sequence_length,
-                                                num_heads = num_heads_,
-                                                head_size,
-                                                hidden_size,
-                                                scratch_data,
-                                                out_tmp_data,
-                                                output_data = output->template MutableData<T>(),
-                                                V](int32_t i) {
+      tp->ParallelFor(loop_len, [this,
+                                 sequence_length,
+                                 num_heads = num_heads_,
+                                 head_size,
+                                 hidden_size,
+                                 scratch_data,
+                                 out_tmp_data,
+                                 output_data,
+                                 V](int32_t i) {
         T* current_tmp_data = reinterpret_cast<T*>(out_tmp_data) + sequence_length * head_size * i;
         math::MatMul<T>(
             sequence_length,
@@ -351,8 +455,31 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
       });
     } else {
-      // TODO: (tp == nullptr)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not implemented yet");
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int32_t i = 0; i < loop_len; i++) {
+        T* current_tmp_data = reinterpret_cast<T*>(out_tmp_data) + sequence_length * head_size * i;
+        math::MatMul<T>(
+            sequence_length,
+            head_size,
+            sequence_length,
+            reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i,
+            V + sequence_length * head_size * i,
+            current_tmp_data,
+            nullptr);
+
+        // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
+        int batch_index = i / num_heads_;
+        int head_index = i % num_heads_;
+        T* src = current_tmp_data;
+        T* dest = output_data + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
+        for (int j = 0; j < sequence_length; j++) {
+          memcpy(dest, src, head_size * sizeof(T));
+          src += head_size;
+          dest += hidden_size;
+        }
+      }
     }
   }
 

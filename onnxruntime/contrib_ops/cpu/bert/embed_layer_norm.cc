@@ -61,27 +61,36 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   int position_embedding_length = static_cast<int>(position_embedding->Shape()[0]);
   int segment_embedding_length = static_cast<int>(segment_embedding->Shape()[0]);
 
+  auto input_ids_data = input_ids->template Data<int>();
+  auto segment_ids_data = segment_ids->template Data<int>();
+  auto word_embedding_data = word_embedding->template Data<T>();
+  auto position_embedding_data = position_embedding->template Data<T>();
+  auto segment_embedding_data = segment_embedding->template Data<T>();
+  auto gamma_data = gamma->template Data<T>();
+  auto beta_data = beta->template Data<T>();
+  auto output_data = output->template MutableData<T>();
+
   // Calculate output
   {
+    bool failed = false;  // TODO: do we need to make memory barrier for this variable?
+
+    int n = batch_size * sequence_length;
+
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     if (tp != nullptr) {
-      bool failed = false;  // TODO: do we need to make memory barrier for this variable?
-
-      int n = batch_size * sequence_length;
       int numThreads = tp->NumThreads() + 1;
-
       tp->ParallelFor(numThreads, [numThreads, n,
                                    &failed,
                                    sequence_length,
                                    hidden_size,
-                                   input_ids_data = input_ids->template Data<int>(),
-                                   segment_ids_data = segment_ids->template Data<int>(),
-                                   word_embedding_data = word_embedding->template Data<T>(),
-                                   position_embedding_data = position_embedding->template Data<T>(),
-                                   segment_embedding_data = segment_embedding->template Data<T>(),
-                                   gamma_data = gamma->template Data<T>(),
-                                   beta_data = beta->template Data<T>(),
-                                   output_data = output->template MutableData<T>(),
+                                   input_ids_data,
+                                   segment_ids_data,
+                                   word_embedding_data,
+                                   position_embedding_data,
+                                   segment_embedding_data,
+                                   gamma_data,
+                                   beta_data,
+                                   output_data,
                                    word_embedding_length,
                                    position_embedding_length,
                                    segment_embedding_length](int k) {
@@ -128,53 +137,54 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
           }
         }
       });
-
-      if (failed) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input index out of range");
-      }
     } else {
-      size_t index = 0;
-      for (int b = 0; b < batch_size; b++) {
-        for (int s = 0; s < sequence_length; s++) {
-          int word_col_index = input_ids->template Data<int>()[index];
-          if (word_col_index < 0 || word_col_index >= word_embedding_length) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "word_col_index out of range");
-          }
-          int position_col_index = s;
-          if (position_col_index >= position_embedding_length) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "position_col_index out of range");
-          }
-          int segment_col_index = segment_ids->template Data<int>()[index];
-          if (segment_col_index < 0 || segment_col_index >= segment_embedding_length) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "segment_col_index out of range");
-          }
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int i = 0; i < n; i++) {
+        int word_col_index = input_ids_data[i];
+        if (word_col_index < 0 || word_col_index >= word_embedding_length) {
+          failed = true;
+          continue;
+        }
+        int position_col_index = i % sequence_length;
+        if (position_col_index >= position_embedding_length) {
+          failed = true;
+          continue;
+        }
+        int segment_col_index = segment_ids_data[i];
+        if (segment_col_index < 0 || segment_col_index >= segment_embedding_length) {
+          failed = true;
+          continue;
+        }
 
-          T* output_data = output->template MutableData<T>() + index * hidden_size;
-          const T* input_word_embedding = word_embedding->template Data<T>() + word_col_index * hidden_size;
-          const T* input_position_embedding = position_embedding->template Data<T>() + position_col_index * hidden_size;
-          const T* input_segment_embedding = segment_embedding->template Data<T>() + segment_col_index * hidden_size;
+        T* y = output_data + i * hidden_size;
+        const T* input_word_embedding = word_embedding_data + word_col_index * hidden_size;
+        const T* input_position_embedding = position_embedding_data + position_col_index * hidden_size;
+        const T* input_segment_embedding = segment_embedding_data + segment_col_index * hidden_size;
 
-          T sum = static_cast<T>(0);
-          for (int i = 0; i < hidden_size; i++) {
-            T subtotal = input_word_embedding[i] + input_position_embedding[i] + input_segment_embedding[i];
-            output_data[i] = subtotal;
-            sum += subtotal;
-          }
-          T mean = sum / hidden_size;
-          sum = 0;
-          for (int i = 0; i < hidden_size; i++) {
-            T a = output_data[i] - mean;
-            output_data[i] = a;
-            sum += a * a;
-          }
-          T e = sqrt(sum / hidden_size + static_cast<T>(1.0e-13));
-          for (int i = 0; i < hidden_size; i++) {
-            output_data[i] = output_data[i] / e * gamma->template Data<T>()[i] + beta->template Data<T>()[i];
-          }
-
-          index++;
+        T sum = static_cast<T>(0);
+        for (int i = 0; i < hidden_size; i++) {
+          T subtotal = input_word_embedding[i] + input_position_embedding[i] + input_segment_embedding[i];
+          y[i] = subtotal;
+          sum += subtotal;
+        }
+        T mean = sum / hidden_size;
+        sum = 0;
+        for (int i = 0; i < hidden_size; i++) {
+          T a = y[i] - mean;
+          y[i] = a;
+          sum += a * a;
+        }
+        T e = sqrt(sum / hidden_size + static_cast<T>(1.0e-13));
+        for (int i = 0; i < hidden_size; i++) {
+          y[i] = y[i] / e * gamma_data[i] + beta_data[i];
         }
       }
+    }
+
+    if (failed) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input index out of range");
     }
   }
 
