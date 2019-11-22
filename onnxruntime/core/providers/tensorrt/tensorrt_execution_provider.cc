@@ -656,6 +656,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
+      std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       const std::vector<int>& input_indexes = (trt_state->input_info)[0];
       const std::vector<int>& output_indexes = (trt_state->output_info)[0];
       const std::vector<int>& output_types = (trt_state->output_info)[1];
@@ -826,7 +827,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       }
 
       // Run TRT inference
-      std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
       }
