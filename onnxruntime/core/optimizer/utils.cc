@@ -16,9 +16,7 @@ namespace onnxruntime {
 namespace optimizer_utils {
 
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT
-      || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-      || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
 }
 
 inline bool IsScalar(const NodeArg& input_arg) {
@@ -44,7 +42,7 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
-  
+
   if (tensor_proto == nullptr) {
     return false;
   }
@@ -110,7 +108,6 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   return true;
 }
 
-
 bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value) {
   const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
   if ((nullptr != attr_proto) && attr_proto->has_i()) {
@@ -139,6 +136,44 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, s
     }
   } else {
     return false;
+  }
+
+  return true;
+}
+
+bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>& expected_dim_values) {
+  auto shape = node_arg.Shape();
+  if (shape == nullptr || shape->dim_size() != expected_dim_values.size()) {
+    return false;
+  }
+
+  int index = 0;
+  for (auto& expected_dim_value : expected_dim_values) {
+    if (expected_dim_value > 0) {
+      auto dim = shape->dim(index);
+      bool is_unknown = utils::HasDimParam(dim) || (!utils::HasDimParam(dim) && !utils::HasDimValue(dim));
+      if (is_unknown || expected_dim_value != dim.dim_value()) {
+        return false;
+      }
+    }
+    ++index;
+  }
+
+  return true;
+}
+
+bool IsShapeKnownOnAllDims(const NodeArg& node_arg, const int expected_dim_size) {
+  auto shape = node_arg.Shape();
+  if (shape == nullptr || shape->dim_size() != expected_dim_size) {
+    return false;
+  }
+
+  for (int i = 0; i < expected_dim_size; i++) {
+    auto dim = shape->dim(i);
+    bool is_unknown = utils::HasDimParam(dim) || (!utils::HasDimParam(dim) && !utils::HasDimValue(dim));
+    if (is_unknown) {
+      return false;
+    }
   }
 
   return true;

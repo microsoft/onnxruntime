@@ -19,13 +19,7 @@ static bool ValidateMatMulInitializer(const Graph& graph, const Node& matmul, in
     return false;
   }
 
-  auto shape = input_b.Shape();
-  return shape != nullptr &&
-         shape->dim_size() == 2 &&
-         shape->dim(0).has_dim_value() &&
-         shape->dim(1).has_dim_value() &&
-         hidden_size == shape->dim(0).dim_value() &&
-         hidden_size == shape->dim(1).dim_value();
+  return optimizer_utils::ValidateShape(input_b, {hidden_size, hidden_size});
 }
 
 static bool ValidateAddBiasInitializer(const Graph& graph, const Node& add, int64_t hidden_size) {
@@ -34,11 +28,7 @@ static bool ValidateAddBiasInitializer(const Graph& graph, const Node& add, int6
     return false;
   }
 
-  auto shape = input_b.Shape();
-  return shape != nullptr &&
-         shape->dim_size() == 1 &&
-         shape->dim(0).has_dim_value() &&
-         hidden_size == shape->dim(0).dim_value();
+  return optimizer_utils::ValidateShape(input_b, {hidden_size});
 }
 
 // Merge 1-D weights (q, k and v) by concanating them one by one.
@@ -293,13 +283,13 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (node.GetOutputEdgesCount() == 4 &&
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
-      // Get hidden size from layer norm weight tensor shape.
-      auto shape = node.InputDefs()[2]->Shape();
-      if (nullptr == shape || shape->dim_size() != 1 || !shape->dim(0).has_dim_value()) {
-        DEBUG_LOG("shape of layer norm weight tensor no matched");
+      // Get hidden size from layer norm bias tensor shape.
+      const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
+      if (!optimizer_utils::IsShapeKnownOnAllDims(layer_norm_bias, 1)) {
+        DEBUG_LOG("shape of layer norm bias tensor not expected");
         continue;
       }
-      int64_t hidden_size = shape->dim(0).dim_value();
+      int64_t hidden_size = layer_norm_bias.Shape()->dim(0).dim_value();
 
       // Check that LayerNormalization has 4 children: 1 Add, 3 MatMul
       const Node* add_node = nullptr;

@@ -40,5 +40,17 @@ bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name
 */
 bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data);
 
+/** Check Shape of node input or output.
+@remarks when expected dim value > 0, the dim is expected to known and match the dim value.
+         when dim value <= 0, we do not check this dim.
+*/
+bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>& expected_dim_values);
+
+/** Check check whether each dimension is known for shape of node_arg
+@returns false when shape is nullptr, or total dimension is not same as expected_dim_known length,
+         or any dim(i) is unknown and expected_dim_known[i] is true, or dim(i) is known and expected_dim_known[i] is false.
+*/
+bool IsShapeKnownOnAllDims(const NodeArg& node_arg, const int expected_dim_size);
+
 }  // namespace optimizer_utils
 }  // namespace onnxruntime
