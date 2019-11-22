@@ -3,6 +3,7 @@
 
 #pragma once
 
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 
 namespace Windows::AI::MachineLearning::Adapter{
@@ -37,3 +38,4 @@ class AbiCustomRegistryImpl : public AbiCustomRegistry {
 };
 
 }  // namespace winrt::Windows::AI::MachineLearning::Adapter
+#endif USE_DML

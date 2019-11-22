@@ -10,6 +10,8 @@
 
 #include "core/framework/op_kernel.h"
 
+#include <DirectML.h>
+
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
 
@@ -65,6 +67,8 @@ namespace Windows::AI::MachineLearning::Adapter
         virtual void Close() = 0;
     };
 
+    using MLOperatorTensorGetter = std::function<Microsoft::WRL::ComPtr<IMLOperatorTensor>(uint32_t index)>;
+
     struct DmlOperatorParams
     {
         Microsoft::WRL::ComPtr<IDMLOperator> op;
@@ -86,8 +90,6 @@ namespace Windows::AI::MachineLearning::Adapter
         bool allowHalfPrecisionComputation = false;
     };
 
-    using MLOperatorTensorGetter = std::function<Microsoft::WRL::ComPtr<IMLOperatorTensor>(uint32_t index)>;
-
     using GraphNodeFactory = std::function<void(
         const onnxruntime::Node& node, 
         MLOperatorTensorGetter& constantInputGetter,
@@ -104,4 +106,4 @@ namespace Windows::AI::MachineLearning::Adapter
     };
 
     using GraphNodeFactoryMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<GraphNodeFactoryRegistration>>;
-}
+}  // namespace Windows::AI::MachineLearning::Adapter

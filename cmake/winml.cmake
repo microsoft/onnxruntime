@@ -119,26 +119,33 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_core STATIC
-  ${winml_lib_api_core_dir}/inc/AbiCustomRegistryImpl.h
+list(APPEND winml_lib_core_files
   ${winml_lib_api_core_dir}/inc/CustomRegistryHelper.h
   ${winml_lib_api_core_dir}/inc/LotusEnvironment.h
   ${winml_lib_api_core_dir}/inc/MLValueHelpers.h
   ${winml_lib_api_core_dir}/inc/TensorBaseHelpers.h
   ${winml_lib_api_core_dir}/inc/WinMLAdapter.h
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.h
-  ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.h
   ${winml_lib_api_core_dir}/FeatureDescriptorFactory.h
   ${winml_lib_api_core_dir}/FeatureDescriptorFactory.cpp
   ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.h
   ${winml_lib_api_core_dir}/pch.h
-  ${winml_lib_api_core_dir}/AbiCustomRegistryImpl.cpp
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.cpp
-  ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
   ${winml_lib_api_core_dir}/LotusEnvironment.cpp
   ${winml_lib_api_core_dir}/WinMLAdapter.cpp
   ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.cpp
 )
+
+if (onnxruntime_USE_DML)
+  list(APPEND winml_lib_core_files
+    ${winml_lib_api_core_dir}/inc/AbiCustomRegistryImpl.h
+    ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.h
+    ${winml_lib_api_core_dir}/AbiCustomRegistryImpl.cpp
+    ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
+  )
+endif(onnxruntime_USE_DML)
+
+add_library(winml_lib_core STATIC ${winml_lib_core_files})
 
 # Compiler options
 target_compile_features(winml_lib_core PRIVATE cxx_std_17)
@@ -194,7 +201,9 @@ add_dependencies(winml_lib_core winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_core PRIVATE wil)
-target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
+if (onnxruntime_USE_DML)
+  target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
+endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml windowsapp.lib -WHOLEARCHIVE:$<TARGET_FILE:winml_lib_core>)

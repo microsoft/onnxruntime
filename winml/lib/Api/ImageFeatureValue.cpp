@@ -14,7 +14,7 @@
 #include "ImageConversionTypes.h"
 #include "ConverterResourceStore.h"
 #include "ImageFeatureDescriptor.h"
-#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+
 #include "core/session/onnxruntime_c_api.h"
 
 #include "D3DDeviceCache.h"
@@ -537,7 +537,8 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, _winmla::
     auto singleFrameBufferSize = bufferByteSize / m_batchSize;
     if (spDevice->IsCpuDevice()) {
       CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, static_cast<unsigned int>(singleFrameBufferSize));
-    } else {
+    }
+    else {
       GPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, context);
     }
   }
@@ -588,7 +589,8 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, _wi
       pooledConverter->Get()->Detensorizer->SoftwareTensorToVideoFrame(context.session, tempPAllocatedResource, resourceMetadata.TensorDescriptor, videoFrame);
       tempPAllocatedResource += bufferByteSize;
     }
-  } else {
+  } 
+  else {
     descriptor.pixel_format = static_cast<DWORD>(DirectXPixelFormat::B8G8R8X8UIntNormalized);
     descriptor.luid = spDevice->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
 
