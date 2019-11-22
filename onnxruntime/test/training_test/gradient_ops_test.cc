@@ -1602,34 +1602,139 @@ void run_lamb_test_with_baseline(
   test.Run();
 }
 
+template <typename T1, typename T2, typename T3, typename T4>
+void run_multi_tensor_lamb_test_with_baseline(
+    const std::vector<std::vector<int64_t>>& shapes,
+    const T1 eta,
+    const std::vector<std::vector<T2>>& ws,
+    const std::vector<std::vector<T3>>& gs,
+    const std::vector<std::vector<T4>>& ms,
+    const std::vector<std::vector<T4>>& vs,
+    const std::vector<float>& alphas,
+    const std::vector<float>& betas,
+    const std::vector<float>& lambdas,
+    const std::vector<float>& epsilons,
+    const std::vector<std::vector<T2>>& w_news,
+    const std::vector<std::vector<T4>>& m_news,
+    const std::vector<std::vector<T4>>& v_news,
+    const std::vector<std::vector<MLFloat16>>& w_halfs = {},
+    const std::vector<std::vector<MLFloat16>>& w_new_halfs = {},
+    bool do_update = true) {
+  OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
+
+  ORT_ENFORCE(shapes.size() == ws.size());
+  ORT_ENFORCE(shapes.size() == gs.size());
+  ORT_ENFORCE(shapes.size() == ms.size());
+  ORT_ENFORCE(shapes.size() == vs.size());
+  ORT_ENFORCE(shapes.size() == alphas.size());
+  ORT_ENFORCE(shapes.size() == betas.size());
+  ORT_ENFORCE(shapes.size() == lambdas.size());
+  ORT_ENFORCE(shapes.size() == epsilons.size());
+  ORT_ENFORCE(shapes.size() == w_news.size());
+  ORT_ENFORCE(shapes.size() == m_news.size());
+  ORT_ENFORCE(shapes.size() == v_news.size());
+  if (!w_halfs.empty()) {
+    ORT_ENFORCE(shapes.size() == w_halfs.size());
+  }
+  if (!w_new_halfs.empty()) {
+    ORT_ENFORCE(shapes.size() == w_new_halfs.size());
+  }
+
+  const int group_count = static_cast<int>(ws.size());
+
+  test.AddMissingOptionalInput<T2>();
+  test.AddInput<bool>("update_signal", {1}, {do_update});
+  test.AddInput<T1>("ETA", {1}, {eta});
+  for (int i = 0; i < group_count; ++i) {
+    std::string w_name = "W_" + std::to_string(i);
+    std::string g_name = "G_" + std::to_string(i);
+    std::string m1_name = "Moment_1_" + std::to_string(i);
+    std::string m2_name = "Moment_2_" + std::to_string(i);
+    std::string w_fp16_name = "FP16_W_" + std::to_string(i);
+    std::string w_new_name = "W_Out_" + std::to_string(i);
+    std::string m1_new_name = "Moment_1_Out_" + std::to_string(i);
+    std::string m2_new_name = "Moment_2_Out_" + std::to_string(i);
+    std::string w_fp16_new_name = "FP16_W_Out_" + std::to_string(i);
+
+    test.AddInput<T2>(w_name.c_str(), shapes[i], ws[i]);
+    test.AddInput<T3>(g_name.c_str(), shapes[i], gs[i]);
+    test.AddInput<T4>(m1_name.c_str(), shapes[i], ms[i]);
+    test.AddInput<T4>(m2_name.c_str(), shapes[i], vs[i]);
+    if (!w_halfs.empty() && !w_halfs[i].empty()) {
+      test.AddInput<MLFloat16>(w_fp16_name.c_str(), shapes[i], w_halfs[i]);
+    } else {
+      test.AddMissingOptionalInput<MLFloat16>();
+    }
+
+    test.AddOutput<T2>(w_new_name.c_str(), shapes[i], w_news[i]);
+    test.AddOutput<T4>(m1_new_name.c_str(), shapes[i], m_news[i]);
+    test.AddOutput<T4>(m2_new_name.c_str(), shapes[i], v_news[i]);
+    if (!w_new_halfs.empty() && !w_new_halfs[i].empty()) {
+      test.AddOutput<MLFloat16>(w_fp16_new_name.c_str(), shapes[i], w_new_halfs[i]);
+    } else {
+      test.AddMissingOptionalOutput<MLFloat16>();
+    }
+  }
+
+  test.AddAttribute("alpha", alphas);
+  test.AddAttribute("beta", betas);
+  test.AddAttribute("lambda", lambdas);
+  test.AddAttribute("epsilon", epsilons);
+  // Tests should not trigger the thresholding mechnism,
+  // so we assign a big value here.
+  test.AddAttribute("threshold", std::vector<float>(group_count, 10000.0f));
+
+  test.Run();
+}
+
 // Lamb test without baseline. This function computes
 // baseline via an internal function and then invoke
 // run_lamb_test_with_baseline(...) to check the result.
-void run_lamb_test(
-    const std::vector<int64_t>& shape,
-    const std::vector<float>& eta,
-    const std::vector<float>& w,
-    const std::vector<float>& g,
-    const std::vector<float>& m,
-    const std::vector<float>& v,
-    const float lambda,
-    const float alpha,
-    const float beta,
-    const float epsilon) {
-  // Output buffers of the optimizer.
-  std::vector<float> w_new(w.size(), 0);
-  std::vector<float> m_new(w.size(), 0);
-  std::vector<float> v_new(v.size(), 0);
+void run_multi_tensor_lamb_test(
+  const std::vector<std::vector<int64_t>> shapes,
+  const float eta,
+  const std::vector<std::vector<float>> ws,
+  const std::vector<std::vector<float>> gs,
+  const std::vector<std::vector<float>> ms,
+  const std::vector<std::vector<float>> vs,
+  const std::vector<float> lambdas,
+  const std::vector<float> alphas,
+  const std::vector<float> betas,
+  const std::vector<float> epsilons) {
+  // Check if parallel vectors have the same length.
+  ORT_ENFORCE(shapes.size() == ws.size());
+  ORT_ENFORCE(shapes.size() == gs.size());
+  ORT_ENFORCE(shapes.size() == ms.size());
+  ORT_ENFORCE(shapes.size() == vs.size());
+  ORT_ENFORCE(shapes.size() == alphas.size());
+  ORT_ENFORCE(shapes.size() == betas.size());
+  ORT_ENFORCE(shapes.size() == lambdas.size());
+  ORT_ENFORCE(shapes.size() == epsilons.size());
 
-  // Invoke LAMB's reference implementation to compute baseline output.
-  compute_lamb(
-      shape, w, g, m, v,
-      eta[0], lambda, alpha, beta, epsilon,
-      w_new, m_new, v_new);
+  const int group_count = static_cast<int>(ws.size());
+
+  // Output buffers of the optimizer.
+  std::vector<std::vector<float>> w_news(group_count);
+  std::vector<std::vector<float>> m_news(group_count);
+  std::vector<std::vector<float>> v_news(group_count);
+
+  for (int i = 0; i < group_count; ++i) {
+    w_news[i] = std::vector<float>(ws[i].size(), 0.f);
+    m_news[i] = std::vector<float>(ms[i].size(), 0.f);
+    v_news[i] = std::vector<float>(vs[i].size(), 0.f);
+
+    // Invoke LAMB's reference implementation to compute baseline output.
+    compute_lamb(
+      shapes[i], ws[i], gs[i], ms[i], vs[i],
+      eta, lambdas[i], alphas[i], betas[i], epsilons[i],
+      w_news[i], m_news[i], v_news[i]);
+  }
 
   // Create test to make sure the output is correct.
-  run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+  run_multi_tensor_lamb_test_with_baseline(
+    shapes, eta, ws, gs, ms, vs,
+    alphas, betas, lambdas, epsilons,
+    w_news, m_news, v_news);
 }
 
 void run_lamb_mix_precision_test(
@@ -1708,7 +1813,7 @@ void run_lamb_mix_precision_test(
 TEST(OptimizerTest, LambOptimizerTestVector) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2};
-  const std::vector<float> eta = {0.5f};
+  const float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
@@ -1718,14 +1823,24 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
 
-  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon});
 }
 
 // A optimizer test with an 2-by-1-by-1-by-1 tensor.
 TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 1, 1, 1};
-  const std::vector<float> eta = {0.5f};
+  const float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f};
@@ -1735,14 +1850,24 @@ TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
 
-  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon});
 }
 
 // A optimizer test with an 2-by-3 tensor.
 TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {2, 3};
-  const std::vector<float> eta = {0.5f};
+  const float eta = 0.5f;
   const std::vector<float> w = {1.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f};
   const std::vector<float> g = {3.0f, 4.0f, 3.0f, 3.0f, 4.0f, 4.0f};
   const std::vector<float> m = {-1.0f, -2.0f, 2.0f, 1.0f, 1.0f, -2.0f};
@@ -1752,14 +1877,24 @@ TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   const float beta = 0.8f;
   const float epsilon = 1e-6f;
 
-  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon});
 }
 
 // A optimizer test with an 1-element tensor.
 TEST(OptimizerTest, LambOptimizerTestScalar) {
   // Input tensors and attributes.
   const std::vector<int64_t> shape = {(int64_t)1};
-  const std::vector<float> eta = {0.5f};
+  const float eta = 0.5f;
   const std::vector<float> w = {1.0f};
   const std::vector<float> g = {3.0f};
   const std::vector<float> m = {-10.0f};
@@ -1774,7 +1909,17 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
   std::vector<float> v_new = {0.0f};
   std::vector<float> w_new = {0.0f};
 
-  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon});
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
@@ -1923,30 +2068,91 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
 
 TEST(OptimizerTest, LambOptimizerTestLarge) {
   // Input tensors and attributes.
-  const size_t size = 55667;
-  const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
-  const std::vector<float> eta = {0.5f};
-  std::vector<float> w(size);
-  std::vector<float> g(size);
-  std::vector<float> m(size);
-  std::vector<float> v(size);
+  for (const auto & size: {55667, 1944006, 3907584}) {
+    const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
+    const float eta = 0.5f;
+    std::vector<float> w(size);
+    std::vector<float> g(size);
+    std::vector<float> m(size);
+    std::vector<float> v(size);
 
+    std::random_device random_device;
+    std::mt19937 random_engine(0);
+    std::uniform_real_distribution<float> dist(0.1f, 1.0f);
+    for (int i = 0; i < size; ++i) {
+      w[i] = dist(random_engine);
+      g[i] = dist(random_engine);
+      m[i] = dist(random_engine);
+      v[i] = dist(random_engine);
+    }
+
+    const float lambda = 0.5f;
+    const float alpha = 0.2f;
+    const float beta = 0.8f;
+    const float epsilon = 1e-6f;
+
+    run_multi_tensor_lamb_test(
+        {shape},
+        eta,
+        {w},
+        {g},
+        {m},
+        {v},
+        {lambda},
+        {alpha},
+        {beta},
+        {epsilon});
+  }
+}
+
+TEST(OptimizerTest, LambOptimizerMultiTensor6) {
+  const int group_count = 127;
   std::random_device random_device;
-  std::mt19937 random_engine(random_device());
+  std::mt19937 random_engine(0);
   std::uniform_real_distribution<float> dist(0.1f, 1.0f);
-  for (size_t i = 0; i < size; ++i) {
-    w[i] = dist(random_engine);
-    g[i] = dist(random_engine);
-    m[i] = dist(random_engine);
-    v[i] = dist(random_engine);
+  std::uniform_int_distribution<int64_t> dist_int(1, 1228);
+
+  std::vector<int64_t> sizes(group_count);
+  std::vector<std::vector<int64_t>> shapes(group_count);
+
+  std::vector<std::vector<float>> ws(group_count);
+  std::vector<std::vector<float>> gs(group_count);
+  std::vector<std::vector<float>> ms(group_count);
+  std::vector<std::vector<float>> vs(group_count);
+  std::vector<float> alphas(group_count);
+  std::vector<float> betas(group_count);
+  std::vector<float> lambdas(group_count);
+  std::vector<float> epsilons(group_count);
+
+  const float eta = dist(random_engine);
+
+  for (int64_t i = 0; i < group_count; ++i) {
+    const auto size = dist_int(random_engine);
+    sizes[i] = size;
+    shapes[i] = std::vector<int64_t>(1, size);
+
+    ws[i] = std::vector<float>(sizes[i]);
+    gs[i] = std::vector<float>(sizes[i]);
+    ms[i] = std::vector<float>(sizes[i]);
+    vs[i] = std::vector<float>(sizes[i]);
+
+    for (int64_t j = 0; j < sizes[i]; ++j) {
+      ws[i][j] = dist(random_engine);
+      gs[i][j] = dist(random_engine);
+      ms[i][j] = dist(random_engine);
+      vs[i][j] = dist(random_engine);
+    }
+
+    alphas[i] = dist(random_engine);
+    betas[i] = dist(random_engine);
+    lambdas[i] = dist(random_engine);
+    epsilons[i] = dist(random_engine);
   }
 
-  const float lambda = 0.5f;
-  const float alpha = 0.2f;
-  const float beta = 0.8f;
-  const float epsilon = 1e-6f;
-
-  run_lamb_test(shape, eta, w, g, m, v, lambda, alpha, beta, epsilon);
+  run_multi_tensor_lamb_test(
+    shapes, eta,
+    ws, gs, ms, vs,
+    lambdas, alphas, betas, epsilons);
 }
 
 TEST(GradientCheckerTest, LayerNormGrad) {

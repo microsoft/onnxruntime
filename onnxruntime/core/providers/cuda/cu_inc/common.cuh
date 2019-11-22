@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace cuda {
 
 // float16 arithmetic is supported after sm5.3 with intrinsics, and cuda does not provide fallback for lower versions
-#if __CUDA_ARCH__ < 530
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 __device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
 __device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
 __device__ __forceinline__ half operator*(const half& lh, const half& rh) { return half((float)lh * (float)rh); }

@@ -19,7 +19,8 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
         ReduceKernelBase<allow_multi_axes>(info, std::move(keep_dims_override)),
         calculate_log_(false),
         calculate_sqt_(false),
-        log_sum_exp_(false) {}
+        log_sum_exp_(false),
+        fast_reduction_(false) {}
 
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
   // Only Max Min will have indices output, need to set the indices to nullptr for other ops
@@ -41,6 +42,9 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   bool calculate_log_;
   bool calculate_sqt_;
   bool log_sum_exp_;
+  // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
+  // Those effecient kernels are defined/implemented in reduction_functions.h/.cu.
+  bool fast_reduction_;
 };
 
 template <typename T>
@@ -126,7 +130,9 @@ class ReduceProd final : public ReduceKernel<true> {
 template <typename T>
 class ReduceSum final : public ReduceKernel<true> {
  public:
-  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {}
+  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
+    fast_reduction_ = true;
+  }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T>(ctx, CUDNN_REDUCE_TENSOR_ADD);

@@ -39,15 +39,12 @@ SPECIALIZE_ISFINITE_IMPL(half)
 SPECIALIZE_ISFINITE_IMPL(float)
 SPECIALIZE_ISFINITE_IMPL(double)
 
-// Have one block to process one chunk.
 template <typename TSrc>
-__global__ void _IsFinite(
-    const ChunkGroup<TSrc> chunks,
-    bool* output) {
+__global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
   const int block_idx = blockIdx.x;
-  const int tensor_idx = chunks.block_index_to_tensor_index[block_idx];
+  const int tensor_idx = chunks.block_index_to_tensor_group_index[block_idx];
   const int tensor_size = chunks.tensor_sizes[tensor_idx];
-  const TSrc* tensor_ptr = chunks.tensor_ptrs[tensor_idx];
+  const TSrc* tensor_ptr = static_cast<TSrc*>(chunks.tensor_ptrs[0][tensor_idx]);
   const int chunk_start_idx = chunks.block_index_to_chunk_start_index[block_idx];
   // chunk_size is chunks.chunk_size if the loaded chunk is full. Otherwise (this
   // chunk is the last one in the source tensor), the actual size is determined
@@ -58,7 +55,7 @@ __global__ void _IsFinite(
   bool result = true;
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
-      result &= _IsFiniteScalar(chunk_ptr[i]);
+    result &= _IsFiniteScalar(chunk_ptr[i]);
   }
 
   if (!result) {
@@ -66,24 +63,20 @@ __global__ void _IsFinite(
   }
 }
 
-template <typename TSrc>
-void IsAllFinite(const ChunkGroup<TSrc> chunks, bool* output) {
-  const int block_count = std::min(MAX_BLOCK_COUNT, chunks.chunk_count);
+template <typename T>
+void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output) {
   // One thread loads PARALLEL_LOADS elements.
-  const int thread_count = (chunks.chunk_size + PARALLEL_LOADS - 1) / PARALLEL_LOADS;
-  // One warp contains 32 threads.
-  const int warp_count = (thread_count + WARP_THREAD_COUNT - 1) / WARP_THREAD_COUNT;
-  // Thread count should be greater than warp count * 32 and smaller than a pre-specified threshold.
-  const int block_thread_count = std::min(MAX_BLOCK_THREAD_COUNT, warp_count * WARP_THREAD_COUNT);
-  _IsFinite<<<block_count, block_thread_count, 0>>>(chunks, output);
+  const int block_count = chunks.chunk_count;
+  const int thread_count = ChunkGroup<1>::thread_count_per_block;
+  IsAllFiniteMultiTensorImpl<T><<<block_count, thread_count, 0>>>(chunks, output);
 }
 
-#define SPECIALIZE_ISALLFINITE_IMPL(T) \
-template void IsAllFinite(const ChunkGroup<T> chunks, bool* output);
+#define INSTANTIATE_ISALLFINITE_FUNCTOR(T) \
+  template void IsAllFiniteFunctor<T>::operator()(ChunkGroup<1> chunks, bool* output);
 
-SPECIALIZE_ISALLFINITE_IMPL(half)
-SPECIALIZE_ISALLFINITE_IMPL(float)
-SPECIALIZE_ISALLFINITE_IMPL(double)
+INSTANTIATE_ISALLFINITE_FUNCTOR(half)
+INSTANTIATE_ISALLFINITE_FUNCTOR(float)
+INSTANTIATE_ISALLFINITE_FUNCTOR(double)
 
 }  // namespace cuda
 }  // namespace onnxruntime

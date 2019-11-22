@@ -12,8 +12,8 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
                           const std::vector<int64_t>& Y_dims,
                           const std::vector<int64_t>& axes,
                           bool keepdims,
-                          double per_sample_tolerance = 1e-4,
-                          double relative_per_sample_tolerance = 1e-4) {
+                          double per_sample_tolerance = 2e-4,
+                          double relative_per_sample_tolerance = 2e-4) {
   CompareOpTester test("ReduceSum");
   test.AddAttribute("axes", axes);
   test.AddAttribute("keepdims", int64_t(keepdims));

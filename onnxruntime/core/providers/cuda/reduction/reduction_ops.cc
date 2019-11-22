@@ -40,7 +40,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 // It relies on new atomicAdd for half type, so old CUDA can't use it.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
-  if (reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
+  if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
       is_matrix_row_reduction(cudnnReduceOp,
         static_cast<int>(reduction_size),
         static_cast<int>(stride), rank, axes_)) {

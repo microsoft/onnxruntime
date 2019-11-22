@@ -2,6 +2,7 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/atomic/common.cuh"
 #include "reduction_functions.h"
 
 #define MAX_BLOCK_COUNT 256
@@ -321,14 +322,6 @@ bool is_matrix_row_reduction(
     const int n,
     const size_t rank,
     std::vector<int64_t> axes) {
-  auto propGroups = GridDim::GetCachedDeviceProps();
-  for (auto &group : propGroups) {
-    // Because of the use of atomaticAdd with half numbers our matrix-row reduction kernel
-    // requires CUDA version >= 9.0. Note that CUDA 9 maps to __CUDA_ARCH__ >= 700.
-    if (group.major < 7)
-      return false;
-  }
-
   if (m < 1)
     return false;
 
@@ -406,10 +399,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
     }
 
     if (threadIdx.y == 0) {
-
-#if __CUDA_ARCH__ >= 700
-      atomicAdd(output + col, TOut(shared_memory[threadIdx.x]));
-#endif
+      atomic_add(output + col, TOut(shared_memory[threadIdx.x]));
     }
 
     // Make sure all values in shared memory have been written into the output memory.

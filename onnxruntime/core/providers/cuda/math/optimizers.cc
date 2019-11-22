@@ -210,6 +210,307 @@ REGISTER_LAMB_KERNEL_TYPED(double, double, double, double)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16)
 REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float)
 
+
+void check_inputs_and_outputs(
+  const Tensor* w,
+  const Tensor* g,
+  const Tensor* m1,
+  const Tensor* m2,
+  const Tensor* w_fp16,
+  const Tensor* w_new,
+  const Tensor* m1_new,
+  const Tensor* m2_new,
+  const Tensor* w_fp16_new) {
+  // Throw if we have incomplete input or output lists.
+  ORT_ENFORCE(w, "Weight tensor should not be null.");
+  ORT_ENFORCE(g, "gradient tensor should not be null.");
+  ORT_ENFORCE(m1, "First-order momentum tensor should not be null.");
+  ORT_ENFORCE(m2, "Second-order momentum tensor should not be null.");
+  ORT_ENFORCE(w_new, "New weight tensor should not be null.");
+  ORT_ENFORCE(m1_new, "New first-order momentum tensor should not be null.");
+  ORT_ENFORCE(m2_new, "New second-order momentum tensor should not be null.");
+  // Check if all shapes are good.
+  ORT_ENFORCE(w->Shape() == m1->Shape());
+  ORT_ENFORCE(w->Shape() == g->Shape());
+  ORT_ENFORCE(w->Shape() == m2->Shape());
+  ORT_ENFORCE(w->Shape() == w_new->Shape());
+  ORT_ENFORCE(w->Shape() == m1_new->Shape());
+  ORT_ENFORCE(w->Shape() == m2_new->Shape());
+  // Optionally check optional input's shape.
+  if (w_fp16)
+    ORT_ENFORCE(w->Shape() == w_fp16->Shape());
+  // Optionally check optional output's shape.
+  if (w_fp16_new)
+    ORT_ENFORCE(w->Shape() == w_fp16_new->Shape());
+}
+
+template <typename TWeight, typename TMomentum>
+Status copy_inputs_to_outputs(
+  OpKernelContext* ctx,
+  const int non_grouped_input_count,
+  const int group_count,
+  const int input_group_size,
+  const int output_group_size) {
+  for (int group_index = 0; group_index < group_count; ++group_index) {
+    const int input_start_index = non_grouped_input_count + group_index * input_group_size;
+    const Tensor& w = *ctx->Input<Tensor>(input_start_index);
+    const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
+    const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
+    const int output_start_index = group_index * output_group_size;
+    Tensor& w_new = *ctx->Output(output_start_index, w.Shape());
+    Tensor& m1_new = *ctx->Output(output_start_index + 1, w.Shape());
+    Tensor& m2_new = *ctx->Output(output_start_index + 2, w.Shape());
+
+    ORT_ENFORCE(w.Shape() == m1.Shape());
+    ORT_ENFORCE(w.Shape() == m2.Shape());
+    ORT_ENFORCE(w.Shape() == m1_new.Shape());
+    ORT_ENFORCE(w.Shape() == m2_new.Shape());
+
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, w_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
+
+    const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
+    Tensor* w_fp16_new = ctx->Output(output_start_index + 3, w.Shape());
+    if (w_fp16 && w_fp16_new) {
+      ORT_ENFORCE(w.Shape() == w_fp16->Shape());
+      ORT_ENFORCE(w.Shape() == w_fp16_new->Shape());
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
+    }
+  }
+  return Status::OK();
+}
+
+template <typename CudaT2, typename CudaT3, typename CudaT4>
+Status launch_multi_tensor_lamb_stage1(
+  const int group_count,
+  const CudaT2* p_loss_scale,
+  std::vector<int> &tensor_sizes,
+  std::vector<const CudaT2*>& p_ws,
+  std::vector<const CudaT3*>& p_gs,
+  std::vector<const CudaT4*>& p_m1s,
+  std::vector<const CudaT4*>& p_m2s,
+  std::vector<CudaT3*>& p_ds,
+  std::vector<CudaT4*>& p_m1_news,
+  std::vector<CudaT4*>& p_m2_news,
+  const std::vector<float>& alphas,
+  const std::vector<float>& betas,
+  const std::vector<float>& lambdas,
+  const std::vector<float>& epsilons) {
+  ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
+
+  ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_gs.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_m1s.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_m2s.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_m1_news.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_m2_news.size()));
+
+  ORT_ENFORCE(group_count == static_cast<int>(alphas.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(betas.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(lambdas.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(epsilons.size()));
+
+  constexpr int tensor_count_per_group = 6;
+  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  // Bucketize tensor groups by the associated optimizer configuration.
+  // If two tensor groups use different "alpha", they should be put into two distinct buckets.
+  std::map<std::tuple<float, float, float, float>, std::vector<std::vector<void*>>> buckets;
+  std::map<std::tuple<float, float, float, float>, std::vector<int>> tensor_sizes_in_buckets;
+  for (int i = 0; i < group_count; ++i) {
+    if (tensor_sizes[i] >  max_tensor_size) {
+      LambComputeDirectionImpl(
+          p_ws[i],
+          p_gs[i],
+          p_m1s[i],
+          p_m2s[i],
+          p_loss_scale,
+          CudaT4(alphas[i]),
+          CudaT4(betas[i]),
+          CudaT2(lambdas[i]),
+          CudaT4(epsilons[i]),
+          p_ds[i],
+          p_m1_news[i],
+          p_m2_news[i],
+          tensor_sizes[i]);
+    } else {
+      std::vector<void*> ptrs(tensor_count_per_group);
+      ptrs[0] = const_cast<CudaT2*>(p_ws[i]);     // weight tensor
+      ptrs[1] = const_cast<CudaT3*>(p_gs[i]);     // gradient (reused to store update direction)
+      ptrs[2] = const_cast<CudaT4*>(p_m1s[i]);    // 1st momentum
+      ptrs[3] = const_cast<CudaT4*>(p_m2s[i]);    // 2nd momentum
+      ptrs[4] = p_m1_news[i];                     // new 1st momentum
+      ptrs[5] = p_m2_news[i];                     // new 2nd momentum
+
+      auto key = std::make_tuple(alphas[i], betas[i], lambdas[i], epsilons[i]);
+      buckets[key].push_back(ptrs);
+      tensor_sizes_in_buckets[key].push_back(tensor_sizes[i]);
+    }
+  }
+
+  for (auto& pair: buckets) {
+    const auto key = pair.first;
+    float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
+    std::tie(alpha, beta, lambda, epsilon) = key;
+
+    typedef LambStage1MultiTensorFunctor<CudaT2, CudaT3, CudaT4> LambStage1;
+    LambStage1 lamb_stage1;
+
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const CudaT2*, float, float, float, float>(
+      2048 * 32,
+      tensor_sizes_in_buckets[key],
+      buckets[key],
+      lamb_stage1,
+      p_loss_scale, lambda, alpha, beta, epsilon);
+  }
+
+  return Status::OK();
+}
+
+
+template <typename CudaTNorm, typename CudaTIn1, typename CudaTIn2>
+Status launch_multi_tensor_lamb_reduction(
+  const int group_count,
+  std::vector<int> &tensor_sizes,
+  std::vector<CudaTNorm*>& p_w_norms,
+  std::vector<CudaTNorm*>& p_d_norms,
+  std::vector<const CudaTIn1*>& p_ws,
+  std::vector<CudaTIn2*>& p_ds,
+  CudaTNorm* reduction_buffer) {
+  ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
+
+  ORT_ENFORCE(group_count == static_cast<int>(p_w_norms.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_d_norms.size()));
+
+  ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
+
+  constexpr int tensor_count_per_group = 4;
+
+  // Bucketize tensor groups by the associated optimizer configuration.
+  // If two tensor groups use different "alpha", they should be put into two distinct buckets.
+  std::vector<std::vector<void*>> buckets;
+  std::vector<int> tensor_sizes_in_buckets;
+  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  for (int i = 0; i < group_count; ++i) {
+    if (tensor_sizes[i] > max_tensor_size) {
+      reduce_square_sum(
+          p_ws[i],
+          p_w_norms[i],
+          tensor_sizes[i],
+          reduction_buffer);
+      reduce_square_sum(
+          p_ds[i],
+          p_d_norms[i],
+          tensor_sizes[i],
+          reduction_buffer);
+    } else {
+      std::vector<void*> ptrs(tensor_count_per_group);;
+      ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]); // weight tensor
+      ptrs[1] = const_cast<CudaTIn2*>(p_ds[i]); // update direction
+      ptrs[2] = p_w_norms[i];                   // weight tensor's norm
+      ptrs[3] = p_d_norms[i];                   // update direction's norm
+
+      buckets.push_back(ptrs);
+      tensor_sizes_in_buckets.push_back(tensor_sizes[i]);
+    }
+  }
+
+  if (buckets.size() > 0) {
+    ORT_ENFORCE(tensor_sizes_in_buckets.size() > 0);
+  }
+
+  if (tensor_sizes_in_buckets.size() > 0) {
+    ORT_ENFORCE(buckets.size() > 0);
+  }
+
+  if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
+    typedef LambReductionMultiTensorFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
+    TReducer reducer;
+    launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
+      2048 * 32,
+      tensor_sizes_in_buckets,
+      buckets,
+      reducer);
+  }
+
+  return Status::OK();
+}
+
+template <typename CudaT1, typename CudaT2, typename CudaT3>
+Status launch_multi_tensor_lamb_stage2(
+  const int group_count,
+  const CudaT1* eta,
+  std::vector<int> &tensor_sizes,
+  std::vector<CudaT2*>& p_w_norms,
+  std::vector<CudaT2*>& p_d_norms,
+  std::vector<const CudaT2*>& p_ws,
+  std::vector<CudaT3*>& p_ds,
+  const std::vector<float>& thresholds,
+  /* output */ std::vector<CudaT2*>& p_w_news,
+  /* output */ std::vector<half*>& p_w_fp16_news) {
+  ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
+
+  ORT_ENFORCE(group_count == static_cast<int>(p_w_norms.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_d_norms.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_w_news.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_w_fp16_news.size()));
+
+  constexpr int tensor_count_per_group = 6;
+
+  // Bucketize tensor groups by the associated optimizer configuration.
+  // If two tensor groups use different "alpha", they should be put into two distinct buckets.
+  std::map<float, std::vector<std::vector<void*>>> buckets;
+  std::map<float, std::vector<int>> tensor_sizes_in_bucket;
+  const int max_tensor_size = compute_max_tensor_size_per_launch<tensor_count_per_group>(4);
+  for (int i = 0; i < group_count; ++i) {
+    if (tensor_sizes[i] > max_tensor_size) {
+    LambUpdateImpl(
+        eta,
+        p_d_norms[i],
+        p_w_norms[i],
+        p_ws[i],
+        CudaT2(thresholds[i]),
+        p_ds[i],
+        p_w_news[i],
+        p_w_fp16_news[i],
+        tensor_sizes[i]);
+    } else {
+      std::vector<void*> ptrs(tensor_count_per_group);
+      ptrs[0] = p_w_norms[i];                  // weight tensor's norm
+      ptrs[1] = p_d_norms[i];                  // direction's norm
+      ptrs[2] = const_cast<CudaT2*>(p_ws[i]);  // weight tensor
+      ptrs[3] = p_ds[i];                       // direction
+      ptrs[4] = p_w_news[i];                   // new weight tensor
+      ptrs[5] = p_w_fp16_news[i];              // new half-precision weight tensor
+      auto key = thresholds[i];
+      buckets[key].push_back(ptrs);
+      tensor_sizes_in_bucket[key].push_back(tensor_sizes[i]);
+    }
+  }
+
+  for (auto& pair: buckets) {
+    // Key of tensor groups.
+    const float key = pair.first;
+
+    typedef LambStage2MultiTensorFunctor<CudaT1, CudaT2, CudaT3> LambStage2;
+    LambStage2 lamb_stage2;
+
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage2, const CudaT1*, const CudaT2>(
+      2048 * 32,
+      tensor_sizes_in_bucket[key],
+      buckets[key],
+      lamb_stage2,
+      eta,
+      key);
+  }
+
+  return Status::OK();
+}
+
 template <typename T1, typename T2, typename T3, typename T4>
 Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) const {
   // CudaT* are types used to invoke CUDA-based functions. It, for example, maps
@@ -263,38 +564,17 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(threshold_.size() >= static_cast<size_t>(group_count));
 
+  // If update signal exists, we check its value and copy inputs to outputs when its value is false.
   if (ctx->Input<Tensor>(1)) {
     const Tensor& update_signal_tensor = *ctx->Input<Tensor>(1);
     const bool update_signal = *update_signal_tensor.template Data<bool>();
     if (!update_signal) {
-      for (int group_index = 0; group_index < group_count; ++group_index) {
-        const int input_start_index = non_grouped_input_count + group_index * input_group_size;
-        const Tensor& w = *ctx->Input<Tensor>(input_start_index);
-        const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
-        const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
-        const int output_start_index = group_index * output_group_size;
-        Tensor& w_new = *ctx->Output(output_start_index, w.Shape());
-        Tensor& m1_new = *ctx->Output(output_start_index + 1, w.Shape());
-        Tensor& m2_new = *ctx->Output(output_start_index + 2, w.Shape());
-
-        ORT_ENFORCE(w.Shape() == m1.Shape());
-        ORT_ENFORCE(w.Shape() == m2.Shape());
-        ORT_ENFORCE(w.Shape() == m1_new.Shape());
-        ORT_ENFORCE(w.Shape() == m2_new.Shape());
-
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T2>(w, w_new));
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(m1, m1_new));
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(m2, m2_new));
-
-        const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
-        Tensor* w_fp16_new = ctx->Output(output_start_index + 3, w.Shape());
-        if (w_fp16 && w_fp16_new) {
-          ORT_ENFORCE(w.Shape() == w_fp16->Shape());
-          ORT_ENFORCE(w.Shape() == w_fp16_new->Shape());
-          ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
-        }
-      }
-      return Status::OK();
+      return copy_inputs_to_outputs<T2, T4>(
+        ctx,
+        non_grouped_input_count,
+        group_count,
+        input_group_size,
+        output_group_size);
     }
   }
 
@@ -307,121 +587,135 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   const Tensor& eta = *ctx->Input<Tensor>(2);
   const CudaT1* eta_data = reinterpret_cast<const CudaT1*>(eta.template Data<T1>());
 
+  // Allocate buffer for reduction computation of update directions.
+  // The i-th update direction's norm is stored at the i-th element.
+  // We reduce type T3 tensor to type T2 scalar. An example is that T3=float16
+  // and T2=float.
+  IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count);
+  CudaT2* d_norm_data = reinterpret_cast<CudaT2*>(d_norm_buffer.get());
+  ORT_ENFORCE(cudaMemset(d_norm_data, 0, group_count * sizeof(T2)) == cudaSuccess);
+
+  // Allocate buffer for reduction computation of weight tensor.
+  // The i-th weight's norm is stored at the i-th element.
+  // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
+  IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count);
+  CudaT2* w_norm_data = reinterpret_cast<CudaT2*>(w_norm_buffer.get());
+  ORT_ENFORCE(cudaMemset(w_norm_data, 0, group_count * sizeof(T2)) == cudaSuccess);
+
+  // Find the max size of updated weight tensors.
+  int max_tensor_size = 0;
   for (int group_index = 0; group_index < group_count; ++group_index) {
     // Prepare used input tensors for this group.
     const int input_start_index = non_grouped_input_count + group_index * input_group_size;
     const Tensor& w = *ctx->Input<Tensor>(input_start_index);
-    const Tensor& g = *ctx->Input<Tensor>(input_start_index + 1);
-    const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
-    const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
+    max_tensor_size = std::max(max_tensor_size, static_cast<int>(w.Shape().Size()));
+  }
+
+  // Allocate a buffer in byte for reduction API calls.
+  const auto buffer_size = static_cast<size_t>(
+      compute_reduction_buffer_size(
+          static_cast<int>(sizeof(T2)), max_tensor_size));
+
+  // Allocate reduction buffer whose size is buffer_size bytes.
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
+  CudaT2* reduction_data = reinterpret_cast<CudaT2*>(reduction_buffer.get());
+
+  // Input tensors' pointers.
+  std::vector<const CudaT2*> p_ws(group_count); 
+  std::vector<const CudaT3*> p_gs(group_count);
+  std::vector<const CudaT4*> p_m1s(group_count);
+  std::vector<const CudaT4*> p_m2s(group_count);
+  std::vector<const half*> p_w_fp16s(group_count);
+  // ds' is an mutable version of gs' because we want to reuse
+  // gs' memory to store the update direction to avoid allocating a model-scale buffer.
+  std::vector<CudaT3*> p_ds(group_count);
+  // Intermediate tensors, weight tensors' and directions' norms.
+  std::vector<CudaT2*> p_w_norms(group_count);
+  std::vector<CudaT2*> p_d_norms(group_count);
+  // Output tensors' pointers.
+  std::vector<CudaT2*> p_w_news(group_count);
+  std::vector<CudaT4*> p_m1_news(group_count);
+  std::vector<CudaT4*> p_m2_news(group_count);
+  std::vector<half*> p_w_fp16_news(group_count);
+  // The i-th element in following array is the size of
+  // the i-th updated weight tensor and other related tensors.
+  std::vector<int> tensor_sizes(group_count);
+
+  for (int group_index = 0; group_index < group_count; ++group_index) {
+    // Prepare used input tensors for this group.
+    const int input_start_index = non_grouped_input_count + group_index * input_group_size;
+    const Tensor* w = ctx->Input<Tensor>(input_start_index);
+    const Tensor* g = ctx->Input<Tensor>(input_start_index + 1);
+    const Tensor* m1 = ctx->Input<Tensor>(input_start_index + 2);
+    const Tensor* m2 = ctx->Input<Tensor>(input_start_index + 3);
+    const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
 
     // Prepare used outputs tensors for this group.
     const int output_start_index = group_index * output_group_size;
-    Tensor& w_new = *ctx->Output(output_start_index, w.Shape());
-    Tensor& m1_new = *ctx->Output(output_start_index + 1, w.Shape());
-    Tensor& m2_new = *ctx->Output(output_start_index + 2, w.Shape());
+    Tensor* w_new = ctx->Output(output_start_index, w->Shape());
+    Tensor* m1_new = ctx->Output(output_start_index + 1, w->Shape());
+    Tensor* m2_new = ctx->Output(output_start_index + 2, w->Shape());
+    Tensor* w_fp16_new = ctx->Output(output_start_index + 3, w->Shape());
 
-    ORT_ENFORCE(w.Shape() == m1.Shape());
-    ORT_ENFORCE(w.Shape() == g.Shape());
-    ORT_ENFORCE(w.Shape() == m2.Shape());
-    ORT_ENFORCE(w.Shape() == m1_new.Shape());
-    ORT_ENFORCE(w.Shape() == m2_new.Shape());
+    check_inputs_and_outputs(w, g, m1, m2, w_fp16, w_new, m1_new, m2_new, w_fp16_new);
 
-    // We should throw for overflow in reduction APIs.
-    // The index in CUDA system is integer.
+    // We should throw for preventing overflow in reduction APIs.
+    // The index in CUDA system is 32-bit integer.
     ORT_ENFORCE(
-        w.Shape().Size() <
+        w->Shape().Size() <
         static_cast<int64_t>(std::numeric_limits<int>::max()));
+    tensor_sizes[group_index] = static_cast<int>(w->Shape().Size());
 
-    const int size = static_cast<int>(w.Shape().Size());
+    // Input tensors' pointers.
+    p_ws[group_index] = reinterpret_cast<const CudaT2*>(w->template Data<T2>());
+    p_gs[group_index] = reinterpret_cast<const CudaT3*>(g->template Data<T3>());
+    p_m1s[group_index] = reinterpret_cast<const CudaT4*>(m1->template Data<T4>());
+    p_m2s[group_index] = reinterpret_cast<const CudaT4*>(m2->template Data<T4>());
+    p_w_fp16s[group_index] = w_fp16 != nullptr? reinterpret_cast<const half*>(w_fp16->template Data<MLFloat16>()) : nullptr;
 
-    // Cast input tensors to pointers because CUDA kernels consume pointers.
-    const CudaT2* w_data = reinterpret_cast<const CudaT2*>(w.template Data<T2>());
-    const CudaT3* g_data = reinterpret_cast<const CudaT3*>(g.template Data<T3>());
-    const CudaT4* m1_data = reinterpret_cast<const CudaT4*>(m1.template Data<T4>());
-    const CudaT4* m2_data = reinterpret_cast<const CudaT4*>(m2.template Data<T4>());
+    // The following cast is for reusing gradient tensor g to store update direction d.
+    p_ds[group_index] = const_cast<CudaT3*>(reinterpret_cast<const CudaT3*>(g->template Data<T3>()));
 
-    // Cast output tensors to pointers because CUDA kernels consume pointers.
-    CudaT2* w_new_data = reinterpret_cast<CudaT2*>(w_new.template MutableData<T2>());
-    CudaT4* m1_new_data = reinterpret_cast<CudaT4*>(m1_new.template MutableData<T4>());
-    CudaT4* m2_new_data = reinterpret_cast<CudaT4*>(m2_new.template MutableData<T4>());
+    // Set up which pointer to store which tensor's norm.
+    p_w_norms[group_index] = w_norm_data + group_index;
+    p_d_norms[group_index] = d_norm_data + group_index;
 
-    // Special processing for float16 weight because it could be null. 
-    half* w_fp16_new_data = nullptr;
-    if (ctx->Output(output_start_index + 3, w.Shape())) {
-      Tensor& w_fp16_new = *ctx->Output(output_start_index + 3, w.Shape());
-      ORT_ENFORCE(w.Shape() == w_fp16_new.Shape());
-      w_fp16_new_data = reinterpret_cast<half*>(w_fp16_new.template MutableData<MLFloat16>());
-    }
-
-    // Prepare temporal memory for storing update direction.
-    IAllocatorUniquePtr<T3> d = GetScratchBuffer<T3>(size);
-    CudaT3* d_data = reinterpret_cast<CudaT3*>(d.get());
-
-    // Lamb Stage 1.
-    LambComputeDirectionImpl(
-        w_data,
-        g_data,
-        m1_data,
-        m2_data,
-        loss_scale_data,
-        ToCudaType<T4>::FromFloat(alpha_[group_index]),
-        ToCudaType<T4>::FromFloat(beta_[group_index]),
-        ToCudaType<T2>::FromFloat(lambda_[group_index]),
-        ToCudaType<T4>::FromFloat(epsilon_[group_index]),
-        d_data,
-        m1_new_data,
-        m2_new_data,
-        size);
-
-    // Allocate buffer for reduction computation of update direction.
-    // We reduce type T3 tensor to type T2 scalar. An example is that T3=float16
-    // and T2=float.
-    IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(1);
-    CudaT2* d_norm_data = reinterpret_cast<CudaT2*>(d_norm_buffer.get());
-
-    // Allocate buffer for reduction computation of weight tensor.
-    // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
-    IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(1);
-    CudaT2* w_norm_data = reinterpret_cast<CudaT2*>(w_norm_buffer.get());
-
-    // Compute buffer size in byte for reduction APIs.
-    const auto buffer_size = static_cast<size_t>(
-        compute_reduction_buffer_size(
-            static_cast<int>(sizeof(T2)), size));
-
-    // Allocate reduction buffer whose size is buffer_size bytes.
-    IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(buffer_size);
-    CudaT2* reduction_data = reinterpret_cast<CudaT2*>(reduction_buffer.get());
-
-    // Lamb reduction Stage.
-    reduce_l2_norm(
-        w_data,
-        w_norm_data,
-        size,
-        reduction_data);
-
-    reduce_l2_norm(
-        d_data,
-        d_norm_data,
-        size,
-        reduction_data);
-
-
-    // Lamb reduction Stage 2.
-    // Use the update direction and the computed norms to compute
-    // the new weights.
-    LambUpdateImpl(
-        eta_data,
-        d_norm_data,
-        w_norm_data,
-        w_data,
-        ToCudaType<T2>::FromFloat(threshold_[group_index]),
-        d_data,
-        w_new_data,
-        w_fp16_new_data,
-        size);
+    // Output tensors' pointers.
+    p_w_news[group_index] = reinterpret_cast<CudaT2*>(w_new->template MutableData<T2>());
+    p_m1_news[group_index] = reinterpret_cast<CudaT4*>(m1_new->template MutableData<T4>());
+    p_m2_news[group_index] = reinterpret_cast<CudaT4*>(m2_new->template MutableData<T4>());
+    p_w_fp16_news[group_index] = w_fp16_new != nullptr? reinterpret_cast<half*>(w_fp16_new->template MutableData<MLFloat16>()) : nullptr;
   }
+
+  launch_multi_tensor_lamb_stage1(
+    group_count, 
+    loss_scale_data,
+    tensor_sizes,
+    p_ws, p_gs, p_m1s, p_m2s,
+    p_ds,
+    p_m1_news, p_m2_news,
+    alpha_, beta_, lambda_, epsilon_);
+
+  launch_multi_tensor_lamb_reduction(
+    group_count,
+    tensor_sizes,
+    p_w_norms,
+    p_d_norms,
+    p_ws,
+    p_ds,
+    reduction_data);
+
+  launch_multi_tensor_lamb_stage2(
+    group_count,
+    eta_data,
+    tensor_sizes,
+    p_w_norms,
+    p_d_norms,
+    p_ws,
+    p_ds,
+    threshold_,
+    p_w_news,
+    p_w_fp16_news);
 
   return Status::OK();
 }
