@@ -100,9 +100,13 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
                                                 const ONNX_NAMESPACE::ModelProto& model_proto) {
-  // Use DefaultLogger as session_logger_ hasn't initialized yet (needs SessionOptions for it to be initialized)
-  return inference_session_utils::ParseSessionOptionsFromModelProto(
-      model_proto, session_options, logging::LoggingManager::DefaultLogger());
+  InferenceSessionUtils inference_session_utils(logging::LoggingManager ::DefaultLogger());
+
+  ORT_RETURN_IF_ERROR(inference_session_utils.ParseOrtConfigJsonInModelProto(model_proto));
+
+  ORT_RETURN_IF_ERROR(inference_session_utils.ParseSessionOptionsFromModelProto(session_options));
+
+  return Status::OK();
 }
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
@@ -153,6 +157,8 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   auto status = Model::Load(model_uri, *model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
 
+  model_location_ = ToWideString(model_uri);
+
   // No session options provided by user
   if (session_options == nullptr) {
     SessionOptions default_session_options;
@@ -175,6 +181,8 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   auto status = Model::Load(model_uri, *model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
+
+  model_location_ = ToWideString(model_uri);
 
   // No session options provided by user
   if (session_options == nullptr) {
@@ -420,8 +428,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 }
 #endif
 
-common::Status
-InferenceSession::Load(const ModelProto& model_proto) {
+common::Status InferenceSession::Load(const ModelProto& model_proto) {
   if (model_proto_ != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
@@ -826,7 +833,9 @@ common::Status InferenceSession::Initialize() {
   return status;
 }
 
-int InferenceSession::GetCurrentNumRuns() const { return current_num_runs_.load(); }
+int InferenceSession::GetCurrentNumRuns() const {
+  return current_num_runs_.load();
+}
 
 const std::vector<std::string>& InferenceSession::GetRegisteredProviderTypes() const {
   return execution_providers_.GetIds();
@@ -1149,10 +1158,14 @@ void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
   session_profiler_.StartProfiling(ss.str());
 }
 
-void InferenceSession::StartProfiling(const std::string& file_prefix) { StartProfiling<char>(file_prefix); }
+void InferenceSession::StartProfiling(const std::string& file_prefix) {
+  StartProfiling<char>(file_prefix);
+}
 
 #ifdef _WIN32
-void InferenceSession::StartProfiling(const std::wstring& file_prefix) { StartProfiling<PATH_CHAR_TYPE>(file_prefix); }
+void InferenceSession::StartProfiling(const std::wstring& file_prefix) {
+  StartProfiling<PATH_CHAR_TYPE>(file_prefix);
+}
 #endif
 
 void InferenceSession::StartProfiling(const logging::Logger* logger_ptr) {
