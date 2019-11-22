@@ -17,7 +17,7 @@ storage_account_to_endpoint_map = {
         'northcentralus' : 'onnxruntimetestdata2.blob.core.windows.net'
     },
     'ortinternaltestdata' : {
-        'westus' : 'ortinternaltestdata.blob.core.windows.net'
+        'centralus' : 'ortinternaltestdata.blob.core.windows.net'
     }
 }
 

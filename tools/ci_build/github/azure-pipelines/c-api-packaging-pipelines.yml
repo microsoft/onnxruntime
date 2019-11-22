@@ -50,7 +50,6 @@ jobs:
   pool: 
     vmImage: 'macOS-10.13'
   steps:
-    - template: templates/set-test-data-variables-step.yml
     - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
 

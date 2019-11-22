@@ -1,7 +1,7 @@
 # sets variables $(TestDataUrl)
 
 parameters:
-  TestDataUrl: https://ortinternaltestdata.blob.core.windows.net/models/20190925.zip
+  TestDataUrl: https://ortinternaltestdata.blob.core.windows.net/models/20191122.zip
 
 steps:
 - task: CmdLine@1
