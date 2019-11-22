@@ -120,6 +120,13 @@ class IOBinding:
         self._iobinding.bind_output(name,
                                     C.OrtDevice(getOrtDeviceType(device_type), C.OrtDevice.default_memory(), device_id),
                                     element_type, shape, buffer_ptr)
+    
+    def clear_binding_inputs(self):
+        self._iobinding.clear_binding_inputs()
+
+    def clear_binding_outputs(self):
+        self._iobinding.clear_binding_outputs()
+
 
 class TrainingSession(InferenceSession):
     def __init__(self, path_or_bytes, parameters, sess_options=None):
