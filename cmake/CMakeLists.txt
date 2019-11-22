@@ -83,6 +83,7 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
+option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
@@ -740,10 +741,11 @@ if (onnxruntime_USE_WINML)
 
   if (NOT onnxruntime_USE_DML)
     message(
-        FATAL_ERROR 
+        FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_USE_DML is also enabled")
   endif()
 
+  option(onnxruntime_BUILD_WINML_TESTS "Build WinML tests" OFF)
   include(wil.cmake)
   include(winml.cmake)
 
