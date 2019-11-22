@@ -2,60 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session_utils.h"
-#include "single_include/nlohmann/json.hpp"
-
-using json = nlohmann::json;
 
 namespace onnxruntime {
-
-namespace inference_session_utils {
 
 //---------------------
 //--- local helpers ---
 //---------------------
-
-//--------------------------------------------
-//--- general JSON parsing related helpers ---
-//--------------------------------------------
-
-static Status ParseJson(const std::string& config_string, /*out*/ json& json_obj) {
-  try {
-    json_obj = json::parse(config_string);
-  } catch (const std::exception& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Json stored in the `ort_config` key cannot be parsed. Error message: ",
-                           e.what());
-  }
-
-  return Status::OK();
-}
-
-static Status ParseJsonAndSearchForKey(const std::string& config_string,
-                                       const std::string& key,
-                                       /*out*/ bool& key_found,
-                                       /*out*/ json& json_obj) {
-  // Try to parse the given json
-  auto status = ParseJson(config_string, json_obj);
-
-  // Json parsing failed
-  if (!status.IsOK()) {
-    key_found = false;
-    return status;
-  }
-
-  // The given json doesn't contain requested key
-  if (!json_obj.contains(key)) {
-    key_found = false;
-  } else {
-    key_found = true;
-  }
-
-  return Status::OK();
-}
-
-//---------------------------------------------------
-//--- end of general JSON parsing related helpers ---
-//---------------------------------------------------
 
 //--------------------------------------------
 //--- session options related helpers ---
@@ -154,37 +106,43 @@ static Status SetEnableProfiling(SessionOptions& session_options,
 //--- end of local helpers ---
 //---------------------
 
-static const std::string session_options_key = "session_options";
-
-Status ParseSessionOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& model_proto,
-                                         SessionOptions& session_options,
-                                         const logging::Logger& logger) {
-  json json_obj;
-  bool session_options_found = false;
+Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  if (is_json_parsed_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ORT config json has already been parsed from the Model Proto.");
+  }
 
   for (const auto& metadata_field : model_proto.metadata_props()) {
-    if (metadata_field.has_key() && metadata_field.key() == "ort_config") {
-      LOGS(logger, INFO)
+    if (metadata_field.has_key() && metadata_field.key() == inference_session_utils::ort_config_key) {
+      LOGS(*logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
-      auto status =
-          ParseJsonAndSearchForKey(metadata_field.value(), session_options_key, session_options_found, json_obj);
-      if (!status.IsOK()) {
-        LOGS(logger, ERROR) << "Could not parse session/run/environment configuration json in the model file";
-        return status;
+      try {
+        parsed_json_ = json::parse(metadata_field.value());
+        is_json_parsed_ = true;
+      } catch (const std::exception& e) {
+        LOGS(*logger_, ERROR) << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Json stored in the `ort_config` key cannot be parsed. Error message: ", e.what());
       }
 
-      // no need to keep iterating over the remaining keys
       break;
     }
   }
 
-  if (!session_options_found) {
-    LOGS(logger, INFO) << "Did not find session options in the model file to be used while running the model";
+  return Status::OK();
+}
+
+Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& session_options) {
+  if (!is_json_parsed_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ORT config json hasn't been parsed from the Model Proto yet.");
+  }
+
+  if (parsed_json_.contains(inference_session_utils::session_options_key)) {
+    LOGS(*logger_, INFO) << "Did not find session options in the model file to be used while running the model";
     return Status::OK();
   }
 
-  const auto& session_options_from_model = json_obj.at(session_options_key);
+  const auto& session_options_from_model =
+      parsed_json_.at(inference_session_utils::session_options_key);
 
   // TODO: Support all valid session options
   // Only the following config options from the json will be supported in this version
@@ -200,7 +158,7 @@ Status ParseSessionOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& model
                                "intra_op_num_threads option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetIntraOpNumThreads(session_options, it.value().get<int>(), logger));
+      ORT_RETURN_IF_ERROR(SetIntraOpNumThreads(session_options, it.value().get<int>(), *logger_));
 
     } else if (key == "inter_op_num_threads") {
       if (!value.is_number_integer()) {
@@ -208,7 +166,7 @@ Status ParseSessionOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& model
                                "inter_op_num_threads option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetInterOpNumThreads(session_options, it.value().get<int>(), logger));
+      ORT_RETURN_IF_ERROR(SetInterOpNumThreads(session_options, it.value().get<int>(), *logger_));
 
     } else if (key == "execution_mode") {
       if (!value.is_number_integer()) {
@@ -216,7 +174,7 @@ Status ParseSessionOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& model
                                "execution_mode option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetExecutionMode(session_options, it.value().get<int>(), logger));
+      ORT_RETURN_IF_ERROR(SetExecutionMode(session_options, it.value().get<int>(), *logger_));
 
     } else if (key == "graph_optimization_level") {
       if (!value.is_number_integer()) {
@@ -224,7 +182,7 @@ Status ParseSessionOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& model
                                "graph_optimization_level option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetGraphOptimizationLevel(session_options, it.value().get<int>(), logger));
+      ORT_RETURN_IF_ERROR(SetGraphOptimizationLevel(session_options, it.value().get<int>(), *logger_));
 
     } else if (key == "enable_profiling") {
       if (!value.is_number_integer()) {
@@ -232,22 +190,19 @@ Status ParseSessionOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& model
                                "enable_profiling option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetEnableProfiling(session_options, it.value().get<int>(), logger));
+      ORT_RETURN_IF_ERROR(SetEnableProfiling(session_options, it.value().get<int>(), *logger_));
 
     } else {
-      LOGS(logger, INFO) << "Ignoring unsupported session option in ORT config: " << key;
+      LOGS(*logger_, INFO) << "Ignoring unsupported session option in ORT config: " << key;
     }
   }
 
   return Status::OK();
 }
 
-Status ParseRunOptionsFromModelProto(const ONNX_NAMESPACE::ModelProto& /*model_proto*/,
-                                     RunOptions& /*run_options*/,
-                                     const logging::Logger& /*logger*/) {
+Status InferenceSessionUtils::ParseRunOptionsFromModelProto(RunOptions& /*run_options*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Parsing RunOptions from ModelProto is not supported yet");
 }
 
-}  // namespace inference_session_utils
 }  // namespace onnxruntime
