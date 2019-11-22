@@ -287,6 +287,29 @@ TEST(ReductionOpTest, ReduceLogSum_do_not_keepdims_2) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceLogSumAxes01) {
+  OpTester test("ReduceLogSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4, 5},
+    {0.5172141f , 0.36681905f, 0.7489675f, 0.21859895f, 0.6378839f,
+     0.6120873f, 0.74698675f, 0.87222993f, 0.23919299f, 0.4877085f,
+     0.58392614f, 0.56973755f, 0.28744474f, 0.56500393f, 0.13348383f,
+     0.06321382f, 0.20588198f, 0.08760026f, 0.9710815f, 0.6781033f,
+     0.38189054f, 0.9127731f, 0.21229997f, 0.7597165f, 0.36321816f,
+     0.18440539f, 0.44839138f, 0.888846f, 0.54862875f, 0.15642975f,
+     0.5046317f, 0.6035792f, 0.42172152f, 0.55201846f, 0.8684674f,
+     0.8725194f, 0.89469117f, 0.88513845f, 0.48750868f, 0.2512843f,
+     0.54381144f, 0.970685f, 0.44817686f, 0.7655562f, 0.64186585f,
+     0.8696393f, 0.91110307f, 0.12956737f, 0.9199235f, 0.26789218f,
+     0.25372583f, 0.6147827f, 0.67517287f, 0.74066293f, 0.6317299f,
+     0.70738846f, 0.27802366f, 0.15887405f, 0.95882577f, 0.23314993f});
+  test.AddOutput<float>("reduced", {5},
+    {1.8073791f, 2.0180254f, 1.7606194f, 2.0446842f, 1.6773242f});
+
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("keepdims", (int64_t)1);
