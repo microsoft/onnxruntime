@@ -153,7 +153,9 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "Softplus",
     "HardSigmoid",
     "GlobalLpPool",
-    // "Gemm",
+    "LogSoftmax",
+    "MeanVarianceNormalization",
+    "LpNormalization"
   };
 
   std::set<std::string> unsupported_ops_gpu = {
@@ -216,16 +218,16 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return true;
       }
       else{
-	auto num_dims = node_inputs[i]->Shape()->dim_size();
-	for(int j = 0; j < num_dims; j++){
-	   if(node_inputs[i]->Shape()->dim(j).dim_value() == 0)
-	      return true;
-	}
+        auto num_dims = node_inputs[i]->Shape()->dim_size();
+        for(int j = 0; j < num_dims; j++){
+          if(node_inputs[i]->Shape()->dim(j).dim_value() == 0){
+              return true;
+          }
+        }
       }
     }
   }
 
-  std::cout << "Op Type: " << optype << std::endl;
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
@@ -247,31 +249,26 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
-  } else if (optype == "Add") {
+
+    //TODO: Make this better
+  } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
           if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
-	      return true;
-	  }
-      }
-  } else if (optype == "Sub") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
-              return true;
-          }
-      }
-  } else if (optype == "Mul") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
-	      return true;
-	  }
+    	      return true;
+	        }
       }
   } else if (optype == "Div") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
-          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64 ||
-              node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
-	      return true;
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64 ||
+            node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+              return true;
           }
       }
+  } else if (optype == "Abs") {
+    for(size_t i = 0; i < node->InputDefs().size(); i++) {
+      if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+        return true;
+    }
   } else if (optype == "Dropout" || optype == "Identity") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
@@ -413,12 +410,12 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
   //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
+    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
+    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
-  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
+   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
+    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
+    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
   //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
   //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
       return true;
@@ -432,6 +429,8 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
                             const NodeIndex node_idx) {
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
+
+  std::cout << "Node " << optype;
   const auto& domain = node->Domain();
 
   /*
@@ -454,7 +453,11 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 
   //Check 2a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
+    std::cout << " is not supported" << std::endl;
     return false;
+  }
+  else{
+    std::cout << "\n";
   }
 
   //Check 2b
