@@ -32,6 +32,13 @@ namespace intel_ep {
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 const std::string IntelGraph::log_tag = "[Intel-EP] ";
 
+
+//TODO: Remove this before production
+bool IsDebugEnabled(){
+
+  return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
+}
+
 IntelGraph::IntelGraph(const onnxruntime::Node* fused_node) {
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
@@ -126,8 +133,10 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
   LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
   // Configure input & output
   // Prepare input blobs
-  if (network)
-    std::cout << "Network is not NULL" << std::endl;
+  if (network){
+    if(IsDebugEnabled())
+      std::cout << "Network is not NULL" << std::endl;
+  }
   auto inputInfo = network->getInputsInfo();
   LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
   auto onnx_input_defs = fused_node_->InputDefs();
@@ -310,6 +319,7 @@ void IntelGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* contex
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
+
   std::cout << "In CreateNgraphFunc" << std::endl;
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -329,9 +339,11 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
   }
 
   //Serializing nGraph function
-  std::string json_string = serialize(ng_function, 4);
-  std::ofstream out("serialize_function_before_PM.json");
-  out << json_string;
+  if(IsDebugEnabled()){
+    std::string json_string = serialize(ng_function, 4);
+    std::ofstream out("serialize_function_before_PM.json");
+    out << json_string;
+  }
 
   //Pass Manager for V1 transformations
   ngraph::pass::Manager pass_manager;
@@ -340,16 +352,19 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
 
   if (precision_ == InferenceEngine::Precision::FP16)
   {
-     std::cout << "FP16" << std::endl;
+     if(IsDebugEnabled())
+       std::cout << "FP16" << std::endl;
      //FP16 transformations
      ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
      ng_function->validate_nodes_and_infer_types();
   }
 
   //Serializing nGraph function
-  std::string json_string_pm = serialize(ng_function, 4);
-  std::ofstream out_pm("serialize_function_after_PM.json");
-  out_pm << json_string_pm;
+  if(IsDebugEnabled()){
+    std::string json_string_pm = serialize(ng_function, 4);
+    std::ofstream out_pm("serialize_function_after_PM.json");
+    out_pm << json_string_pm;
+  }
 
   //IE wrapper for nGraph function
   InferenceEngine::CNNNetwork network(ng_function);

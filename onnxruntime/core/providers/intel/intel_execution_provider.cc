@@ -36,7 +36,6 @@ constexpr const char* Intel = "Intel";
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
 
-  std::cout << "In the Intel EP" << std::endl;
   //ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
   ORT_UNUSED_PARAMETER(info);
 
@@ -84,7 +83,6 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
   }
 
 } */
-
 //Save ONNX Model
 static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
    int fd;
@@ -430,7 +428,8 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
 
-  std::cout << "Node " << optype;
+  if(intel_ep::IsDebugEnabled())
+    std::cout << "Node " << optype;
   const auto& domain = node->Domain();
 
   /*
@@ -453,11 +452,13 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 
   //Check 2a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
-    std::cout << " is not supported" << std::endl;
+    if(intel_ep::IsDebugEnabled())
+      std::cout << " is not supported" << std::endl;
     return false;
   }
   else{
-    std::cout << "\n";
+    if(intel_ep::IsDebugEnabled())
+      std::cout << "\n";
   }
 
   //Check 2b
@@ -649,6 +650,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
+  std::cout << "In the Intel EP" << std::endl;
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
@@ -728,7 +730,8 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
-  SaveModel(model_proto, "intel_model.onnx");
+  if(intel_ep::IsDebugEnabled())
+    SaveModel(model_proto, "intel_model.onnx");
   return model_proto;
 }
 
