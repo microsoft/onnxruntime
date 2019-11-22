@@ -6,6 +6,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
+TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
     // model metadata
