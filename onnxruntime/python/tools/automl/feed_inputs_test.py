@@ -10,7 +10,6 @@ import pandas as pd
 from feed_inputs import DataFrameTool
 import os
 import sys
-from timeit import default_timer as timer
 
 def main():
     parser = argparse.ArgumentParser(description='Test Feed Inputs utility')
