@@ -54,7 +54,7 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
 // Add2 is the 2nd add of the to be fused sub-graph
 // The 1st input should be a 3D tensor
 // The 2nd input should be a 1D constant value
-static bool CheckSecondAdd(Graph& graph, Node& add, ProviderType providertype) {
+static bool CheckSecondAdd(Node& add, ProviderType providertype) {
   if (providertype != add.GetExecutionProviderType() ||
       !IsSupportedDataType(add)) {
     return false;
@@ -159,7 +159,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
       if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-          CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType())) {
+          CheckSecondAdd(*p_add2, ln_node.GetExecutionProviderType())) {
         matched_format = Format::Format1;
       }
     }
@@ -175,7 +175,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         p_add2 = const_cast<Node*>(&edges[1]->GetNode());
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-            CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType())) {
+            CheckSecondAdd(*p_add2, ln_node.GetExecutionProviderType())) {
           matched_format = Format::Format2;
         }
       }
