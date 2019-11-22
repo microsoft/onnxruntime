@@ -1,5 +1,7 @@
 jobs:
 - job: Manylinux2010_py_Wheels
+  workspace:
+    clean: all
   pool: Linux-CPU
   strategy:
     matrix:
@@ -59,6 +61,8 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Manylinux2010_py_GPU_Wheels
+  workspace:
+    clean: all
   pool: Linux-GPU-CUDA10
   strategy:
     matrix:
@@ -118,7 +122,10 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_py_Wheels
+  workspace:
+    clean: all
   pool: Win-CPU
+  timeoutInMinutes:  120  
   strategy:
     matrix:
       Python35:
@@ -162,7 +169,10 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
+  workspace:
+    clean: all
   pool: Win-GPU-CUDA10
+  timeoutInMinutes:  120  
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '10.0'
@@ -188,6 +198,11 @@ jobs:
         filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
         arguments: 'amd64'
         modifyEnvironment: true
+    - task: PowerShell@1
+      displayName: 'Set CUDA path'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
 
     - task: BatchScript@1
       displayName: 'Run build script'
@@ -209,12 +224,19 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
+    - task: PowerShell@1
+      displayName: 'Clean up CUDA props files'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion 10.0'
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
 
     - template: templates/clean-agent-build-directory-step.yml
     
 - job: MacOS_py_Wheels
+  workspace:
+    clean: all
   pool:
     vmImage: 'macOS-10.13'
   strategy:
