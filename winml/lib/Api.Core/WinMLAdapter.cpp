@@ -27,23 +27,17 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 
 #include "FeatureDescriptorFactory.h"
+#include "core/platform/windows/TraceLoggingConfig.h"
 
 using namespace winrt::Windows::AI::MachineLearning;
 
 namespace Windows::AI::MachineLearning::Adapter {
 // Define winml trace logging provider with WinML GUID
-#ifdef LAYERING_DONE
 TRACELOGGING_DEFINE_PROVIDER(
     winml_trace_logging_provider,
     WINML_PROVIDER_DESC,
     WINML_PROVIDER_GUID,
     TraceLoggingOptionMicrosoftTelemetry());
-#else
-TRACELOGGING_DEFINE_PROVIDER(
-    winml_trace_logging_provider,
-    WINML_PROVIDER_DESC,
-    WINML_PROVIDER_GUID);
-#endif
 
 // Class to unregister trace logging provider at shutdown.
 // Only one static instance to be created for the lifetime of the program.
