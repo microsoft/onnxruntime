@@ -324,6 +324,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
+"-G" + "CodeBlocks - Unix Makefiles",
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
@@ -536,9 +537,6 @@ def setup_tensorrt_vars(args):
                              "tensorrt_home='{}' valid={}."
                              .format(tensorrt_home, tensorrt_home_valid))
 
-        # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests
-        os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
-
         # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
 
@@ -640,6 +638,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           if provider == 'openvino':
              cmd += ['-c', '1']
           if provider == 'nuphar':
+             cmd += ['-c', '1']
+          if provider == 'tensorrt':
              cmd += ['-c', '1']
 
         if num_parallel_models > 0:

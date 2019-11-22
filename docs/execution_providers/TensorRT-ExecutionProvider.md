@@ -7,7 +7,7 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 ## Build
 For build instructions, please see the [BUILD page](../../BUILD.md#tensorrt). 
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5 but validated with the feature set equivalent to TensorRT 5. Some TensorRT 6 new features such as dynamic shape is not available as this time.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
 
 ## Using the TensorRT execution provider
 ### C/C++
@@ -31,13 +31,15 @@ For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tun
 When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 
 ## Configuring Engine Max Batch Size and Workspace Size
-By default TensorRT execution provider builds an ICudaEngine with max batch size = 1 and max workspace size = 1 GB
+By default TensorRT execution provider builds an ICudaEngine with max partition iterations = 6, max workspace size = 1 GB and min subgraph size = 1.
 One can override these defaults by setting environment variables ORT_TENSORRT_MAX_BATCH_SIZE and ORT_TENSORRT_MAX_WORKSPACE_SIZE.
 e.g. on Linux
-
-### override default batch size to 10
-export ORT_TENSORRT_MAX_BATCH_SIZE=10
 
 ### override default max workspace size to 2GB
 export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
 
+### override default maximum number of iterations. Now run maximum 1000 iterations to partition the models, otherwise the whole model will fall back to other execution providers. 
+export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=1000
+        
+### override default minimum subgraph node size in graph partitioning. Subgraphs with smaller size will fall back to other execution providers.
+export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
