@@ -23,6 +23,7 @@ jobs:
     MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10_trt6015dll\'
     EnvSetupScript: 'setup_env_cuda.bat'
     CudaVersion: '10.0'
+    ArtifactName: drop-nuget-cuda
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.Gpu
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
@@ -40,7 +41,7 @@ jobs:
     SetVcvars: 'true'
     MsbuildArguments: '/m'
     EnvSetupScript: 'setup_env_cuda.bat'
-    CudaVersion: '10.0'
+    ArtifactName: drop-nuget-dml
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.Gpu.Dml
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
