@@ -357,16 +357,13 @@ static Status SaveModel(Model& model, const T& file_path) {
 }
 
 #ifdef _WIN32
-Status Model::Load(const std::wstring& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
-  return LoadModel(file_path, model_proto);
-}
-
 Status Model::Save(Model& model, const std::wstring& file_path) {
   return SaveModel(model, file_path);
 }
 #endif
 
-Status Model::Load(const std::string& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
+Status Model::Load(const std::basic_string<ORTCHAR_T>& file_path,
+                   ONNX_NAMESPACE::ModelProto& model_proto) {
   return LoadModel(file_path, model_proto);
 }
 

@@ -156,14 +156,16 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   model_location_ = ToWideString(model_uri);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   auto status = Model::Load(model_location_, *model_proto_);
-  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
+  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
+              status.ErrorMessage());
 
   // No session options provided by user
   if (session_options == nullptr) {
     SessionOptions default_session_options;
 
     status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
+    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
+                status.ErrorMessage());
 
     ConstructorCommon(default_session_options, logging_manager);
   } else {
@@ -180,14 +182,16 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   model_location_ = ToWideString(model_uri);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   auto status = Model::Load(model_location_, *model_proto_);
-  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
+  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
+              status.ErrorMessage());
 
   // No session options provided by user
   if (session_options == nullptr) {
     SessionOptions default_session_options;
 
     status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
+    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
+                status.ErrorMessage());
 
     ConstructorCommon(default_session_options, logging_manager);
   } else {
@@ -204,14 +208,15 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   const bool result = model_proto_->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
-  ORT_ENFORCE(result, "Could not finalize session options while constructing the inference session");
+  ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
 
   // No session options provided by user
   if (session_options == nullptr) {
     SessionOptions default_session_options;
 
     auto status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
+    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
+                status.ErrorMessage());
 
     ConstructorCommon(default_session_options, logging_manager);
   } else {
@@ -227,14 +232,15 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
     : insert_cast_transformer_("CastFloat16Transformer") {
   model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
   const bool result = model_proto_->ParseFromArray(model_data, model_data_len);
-  ORT_ENFORCE(result, "Could not finalize session options while constructing the inference session");
+  ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
 
   // No session options provided by user
   if (session_options == nullptr) {
     SessionOptions default_session_options;
 
     auto status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session");
+    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
+                status.ErrorMessage());
 
     ConstructorCommon(default_session_options, logging_manager);
   } else {
