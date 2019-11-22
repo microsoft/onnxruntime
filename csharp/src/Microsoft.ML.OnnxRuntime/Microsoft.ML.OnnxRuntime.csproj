@@ -54,6 +54,14 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
+          Condition="'$(PackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu'"
+          PackagePath="\build\native\include"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
+          Condition="'$(PackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.Dml'"
           PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
