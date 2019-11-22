@@ -32,9 +32,17 @@ class InferenceSessionUtils {
   Status ParseRunOptionsFromModelProto(/*out*/ RunOptions& run_options);
 
  private:
+  // Logger instance that will be used to log events along the parsing steps
   const logging::Logger* logger_;
+
+  // Flag indicating if the model has been checked for ort config json existence
+  bool is_model_checked_for_ort_config_json_ = false;
+
+  // Parsed json available for other utility methods to use (if the model did have a valid json)
   nlohmann::json parsed_json_;
-  bool is_json_parsed_ = false;
+
+  // Flag indicating if an ort config json is available to be used
+  bool is_json_available_ = false;
 };
 
 }  // namespace onnxruntime

@@ -275,13 +275,11 @@ TEST_F(CApiTest, DISABLED_test_pyop) {
 }
 #endif
 
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST_F(CApiTest, create_session_without_session_option) {
-  constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
+  constexpr PATH_TYPE model_uri = TSTR("C:\\Users\\hasesh\\Desktop\\model2.onnx");
   Ort::Session ret(env_, model_uri, Ort::SessionOptions{nullptr});
   ASSERT_NE(nullptr, ret);
 }
-#endif
 
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};

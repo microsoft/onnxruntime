@@ -107,8 +107,8 @@ static Status SetEnableProfiling(SessionOptions& session_options,
 //---------------------
 
 Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto) {
-  if (is_json_parsed_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ORT config json has already been parsed from the Model Proto.");
+  if (is_model_checked_for_ort_config_json_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The Model Proto has already been checked for the ORT config json.");
   }
 
   for (const auto& metadata_field : model_proto.metadata_props()) {
@@ -118,7 +118,8 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
 
       try {
         parsed_json_ = json::parse(metadata_field.value());
-        is_json_parsed_ = true;
+        // set the flag indicating that the model has the ORT config json.
+        is_json_available_ = true;
       } catch (const std::exception& e) {
         LOGS(*logger_, ERROR) << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Json stored in the `ort_config` key cannot be parsed. Error message: ", e.what());
@@ -128,15 +129,17 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
     }
   }
 
+  // all steps complete, set the flag indicating that the model has been checked for the ORT config json.
+  is_model_checked_for_ort_config_json_ = true;
   return Status::OK();
 }
 
 Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& session_options) {
-  if (!is_json_parsed_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ORT config json hasn't been parsed from the Model Proto yet.");
+  if (!is_model_checked_for_ort_config_json_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The Model Proto hasn't been checked for the ORT config json.");
   }
 
-  if (parsed_json_.contains(inference_session_utils::session_options_key)) {
+  if (!is_json_available_ || parsed_json_.contains(inference_session_utils::session_options_key)) {
     LOGS(*logger_, INFO) << "Did not find session options in the model file to be used while running the model";
     return Status::OK();
   }
