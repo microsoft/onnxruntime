@@ -153,11 +153,10 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::string& model_uri,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
-  auto status = Model::Load(model_uri, *model_proto_);
-  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
-
   model_location_ = ToWideString(model_uri);
+  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
+  auto status = Model::Load(model_location_, *model_proto_);
+  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
 
   // No session options provided by user
   if (session_options == nullptr) {
@@ -178,11 +177,10 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
                                    const std::wstring& model_uri,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
-  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
-  auto status = Model::Load(model_uri, *model_proto_);
-  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
-
   model_location_ = ToWideString(model_uri);
+  model_proto_ = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
+  auto status = Model::Load(model_location_, *model_proto_);
+  ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session");
 
   // No session options provided by user
   if (session_options == nullptr) {
