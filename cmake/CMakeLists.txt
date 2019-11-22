@@ -101,22 +101,49 @@ if(NOT WIN32)
   endif()
 endif()
 
+
+
+
+
+# ./build.sh --config=RelWithDebInfo --use_mklml --use_openmp
+# /usr/bin/cmake --build /mnt/onnxruntime/build/Linux/RelWithDebInfo --config RelWithDebInfo --verbose -- -j20 | grep 'onnx_test_runner'
+
+# # old
+# /usr/bin/c++   -fopenmp -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -Wall -Wextra -ffunction-sections -fdata-sections -Werror -Wno-parentheses -O2 -g -DNDEBUG -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION   CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/TFModelInfo.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/command_args_parser.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/main.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/ort_test_session.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/performance_runner.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/posix/utils.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/core/framework/path_lib.cc.o  -o onnxruntime_perf_test  -L/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib -Wl,-rpath,/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib libonnx_test_runner_common.a libonnxruntime_test_utils.a libonnxruntime_session.a libonnxruntime_optimizer.a libonnxruntime_providers.a libonnxruntime_util.a libonnxruntime_framework.a libonnxruntime_util.a libonnxruntime_graph.a libonnxruntime_common.a libonnxruntime_mlas.a libonnx_test_data_proto.a external/re2/libre2.a onnx/libonnx.a onnx/libonnx_proto.a external/protobuf/cmake/libprotobuf-lite.a external/re2/libre2.a -lmklml_intel -ldl external/protobuf/cmake/libprotobuf.a -lrt
+
+# # new
+# /usr/bin/c++ -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -Wall -Wextra -ffunction-sections -fdata-sections -Werror -Wno-parentheses -O2 -g -DNDEBUG -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION   CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/TFModelInfo.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/command_args_parser.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/main.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/ort_test_session.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/performance_runner.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/test/perftest/posix/utils.cc.o CMakeFiles/onnxruntime_perf_test.dir/mnt/onnxruntime/onnxruntime/core/framework/path_lib.cc.o  -o onnxruntime_perf_test  -L/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib -Wl,-rpath,/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib libonnx_test_runner_common.a libonnxruntime_test_utils.a libonnxruntime_session.a libonnxruntime_optimizer.a libonnxruntime_providers.a libonnxruntime_util.a libonnxruntime_framework.a libonnxruntime_util.a libonnxruntime_graph.a libonnxruntime_common.a libonnxruntime_mlas.a libonnx_test_data_proto.a external/re2/libre2.a onnx/libonnx.a onnx/libonnx_proto.a external/protobuf/cmake/libprotobuf-lite.a external/re2/libre2.a -lmklml_intel -ldl external/protobuf/cmake/libprotobuf.a -lrt -L/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib -liomp5 -lpthread
+
+
+
+# # old onnx_test_runner
+# /usr/bin/c++   -fopenmp -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -Wall -Wextra -ffunction-sections -fdata-sections -Werror -Wno-parentheses -O2 -g -DNDEBUG -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION   CMakeFiles/onnx_test_runner.dir/mnt/onnxruntime/onnxruntime/test/onnx/main.cc.o  -o onnx_test_runner  -L/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib -Wl,-rpath,/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib: libonnx_test_runner_common.a libonnxruntime_test_utils.a libonnxruntime_session.a libonnxruntime_optimizer.a libonnxruntime_providers.a libonnxruntime_util.a libonnxruntime_framework.a libonnxruntime_util.a libonnxruntime_graph.a libonnxruntime_common.a libonnxruntime_mlas.a libonnx_test_data_proto.a external/re2/libre2.a onnx/libonnx.a onnx/libonnx_proto.a external/protobuf/cmake/libprotobuf-lite.a external/re2/libre2.a -lmklml_intel -ldl external/protobuf/cmake/libprotobuf.a -lrt
+
+# # new
+# /usr/bin/c++ -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -Wall -Wextra -ffunction-sections -fdata-sections -Werror -Wno-parentheses -O2 -g -DNDEBUG -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION   CMakeFiles/onnx_test_runner.dir/mnt/onnxruntime/onnxruntime/test/onnx/main.cc.o  -o onnx_test_runner  -L/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib -Wl,-rpath,/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib: libonnx_test_runner_common.a libonnxruntime_test_utils.a libonnxruntime_session.a libonnxruntime_optimizer.a libonnxruntime_providers.a libonnxruntime_util.a libonnxruntime_framework.a libonnxruntime_util.a libonnxruntime_graph.a libonnxruntime_common.a libonnxruntime_mlas.a libonnx_test_data_proto.a external/re2/libre2.a onnx/libonnx.a onnx/libonnx_proto.a external/protobuf/cmake/libprotobuf-lite.a external/re2/libre2.a -lmklml_intel -ldl external/protobuf/cmake/libprotobuf.a -lrt -L/mnt/onnxruntime/build/Linux/RelWithDebInfo/mklml/src/project_mklml/lib -liomp5 -lpthread
+
+
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    add_definitions(-DUSE_OPENMP)
     # MKLML and NGraph depend on their own OpenMP library that may be different with the compiler's.
     # Disable the options to build mklml/NGraph and OpenMP together.
     if(onnxruntime_USE_MKLML)
-      message(FATAL_ERROR "Please use only one of onnxruntime_USE_MKLML, onnxruntime_USE_OPENMP")
-    endif()
-    if(onnxruntime_USE_NGRAPH)
+      if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # TODO: set correct flags
+      else()
+        message(FATAL_ERROR "Currently only support OpenMP+MklML on GNU")
+      endif()
+    elseif(onnxruntime_USE_NGRAPH)
       message(FATAL_ERROR "Please use only one of onnxruntime_USE_NGRAPH, onnxruntime_USE_OPENMP")
+    else()
+      set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+      add_definitions(-DUSE_OPENMP)
     endif()
   else()
     set(onnxruntime_USE_OPENMP OFF)
+    message(FATAL_ERROR "OPENMP not found")
   endif()
 endif()
 if(onnxruntime_ENABLE_LTO)
