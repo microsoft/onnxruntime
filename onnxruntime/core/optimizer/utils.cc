@@ -143,7 +143,7 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, s
 
 bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>& expected_dim_values) {
   auto shape = node_arg.Shape();
-  if (shape == nullptr || shape->dim_size() != expected_dim_values.size()) {
+  if (shape == nullptr || static_cast<size_t>(shape->dim_size()) != expected_dim_values.size()) {
     return false;
   }
 
