@@ -90,7 +90,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   InsertAllocator(allocator_);
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return std::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
   const char* batch_env = getenv("ORT_TENSORRT_MAX_PARTITION_ITERATIONS");
@@ -162,7 +162,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   }
 
   // Find inputs and outputs of the subgraph
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
   std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
@@ -239,7 +239,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   }
 
   // Assign inputs and outputs to subgraph's meta_def
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->name = "TRTKernel_" + std::to_string(kernels_index++);
   meta_def->domain = kMSDomain;
 
@@ -464,7 +464,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   for (const auto& group : post_processed_supported_nodes_vector) {
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
@@ -637,7 +637,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     // TODO: remove default capture
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
+      std::unique_ptr<TensorrtFuncState> p = onnxruntime::make_unique<TensorrtFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
