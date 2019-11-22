@@ -5,7 +5,6 @@
 #include "inc/LotusEnvironment.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
-#include "inc/WinMLAdapter.h"
 
 bool Windows::AI::MachineLearning::CWinMLLogSink::debug_output_ = false;
 void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(

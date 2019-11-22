@@ -38,22 +38,6 @@ TRACELOGGING_DEFINE_PROVIDER(
     WINML_PROVIDER_DESC,
     WINML_PROVIDER_GUID);
 
-// Class to unregister trace logging provider at shutdown.
-// Only one static instance to be created for the lifetime of the program.
-class WinMLTraceLoggingProviderManager {
- public:
-  WinMLTraceLoggingProviderManager() {
-    const HRESULT etw_status = TraceLoggingRegister(winml_trace_logging_provider);
-    if (FAILED(etw_status)) {
-      throw std::runtime_error("WinML TraceLogging registration failed. Logging will be broken: " + std::to_string(etw_status));
-    }
-  }
-
-  ~WinMLTraceLoggingProviderManager() {
-    TraceLoggingUnregister(winml_trace_logging_provider);
-  }
-};
-
 // ORT intentionally requires callers derive from their session class to access
 // the protected Load method used below.
 class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSession {
@@ -318,8 +302,6 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
  public:
   WinMLAdapter() : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()) {
-    // register ETW manager on adapter construction
-    static WinMLTraceLoggingProviderManager etw_manager;
   }
 
   // factory methods for creating an ort model from a path

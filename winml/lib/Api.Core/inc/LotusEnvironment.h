@@ -6,6 +6,7 @@
 #include "WinMLProfiler.h"
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
+#include "inc/WinMLAdapter.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4505)
@@ -54,6 +55,11 @@ static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender,
 class LotusEnvironment {
  public:
   LotusEnvironment() {
+    const HRESULT etw_status = TraceLoggingRegister(winml_trace_logging_provider);
+    if (FAILED(etw_status)) {
+      throw std::runtime_error("WinML TraceLogging registration failed. Logging will be broken: " + std::to_string(etw_status));
+    }
+
     // TODO: Do we need to call this or just define the method?
     default_logging_manager_ = &DefaultLoggingManager();
 
@@ -72,6 +78,7 @@ class LotusEnvironment {
   }
 
   ~LotusEnvironment() {
+    TraceLoggingUnregister(winml_trace_logging_provider);
     if (suspend_token_) {
       winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_token_);
     }
