@@ -377,7 +377,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
-  OrtStatus* (*RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+  OrtStatus* (ORT_API_CALL *RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
   Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
   if (!RegisterCustomOps)
