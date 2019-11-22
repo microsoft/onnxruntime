@@ -420,7 +420,7 @@ template <class T>
 struct IsMapValueOfType<std::vector<T>> {
   static bool check(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
     const auto* seq_proto = GetSequenceProtoForValue(map_proto);
-    if (val_seq_proto != nullptr) {
+    if (seq_proto != nullptr) {
       return IsSequenceOfType<std::vector<T>>::check(*seq_proto);
     }
     return false;
@@ -441,7 +441,7 @@ struct IsMapValueOfType<std::map<K, V>> {
       }
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
       if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        return IsMapValueOfPrimitiveType(*map_proto, val_type);
+        return IsMapValueOfPrimitiveType(*val_map_proto, val_type);
       }
       return IsMapValueOfType<V>::check(*val_map_proto);
     }
