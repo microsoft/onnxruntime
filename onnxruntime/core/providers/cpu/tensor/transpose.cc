@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/transpose.h"
-
+#include "core/framework/utils.h"
 namespace onnxruntime {
 
 /* A permutation [a,b,c,...] indicates that 
@@ -238,6 +238,268 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   return Status::OK();
 }
 
+/*
+Optimizations for moving a single axis either inwards or outwards.
+
+If moving outwards we can use a single reader and multiple writers. The number of writers is equal to the value of 
+the axis being moved.
+
+  e.g. if the input is NHWC with shape {N, 300, 300, 3}, we can transpose to NCHW by reading once and having
+       one writer for each of the 3 channels at a different offset in the output, updating the offset for each item
+       in the batch of N.
+
+Similarly if one axis is moving inwards we can use a single writer and multiple readers. The number of readers is equal
+to the value of the axis being moved.
+
+  e.g. if the input is NCHW with shape {N, 3, 300, 300}, we can transpose to NHWC by writing once using one reader for
+       each of the 3 channels at a different offset in the input, updating the read offset for each item in the batch
+       of N.
+
+This can be generalized for any input where only one axis is being moved, with the block size for each read/write
+being dependent on which axis is moving, what direction it's moving in, and where it's moving to.
+
+We use simple pointer arithmetic if the size of each read/write is a power of 2 and between 8 and 64 bits. 
+We use memcpy if the block size is larger.
+
+We fall back to the default implementation in all other cases, and if the input is std::string.
+*/
+
+// moving a single axis outwards where the read/write size is a power of 2 and between 8 and 64 bits.
+template <typename T>
+static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
+                                              int64_t num_loops, int64_t num_writers,
+                                              int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
+  std::vector<T*> writers;
+  writers.resize(num_writers);
+
+  for (int64_t l = 0; l < num_loops; ++l) {
+    for (auto w = 0; w < num_writers; ++w) {
+      writers[w] = (output_data + (w * writes_per_writer_per_loop));
+    }
+
+    for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+      for (int64_t w = 0; w < num_writers; ++w) {
+        *(writers[w]++) = *input_data++;
+      }
+    }
+
+    output_data += writes_per_loop;
+  }
+}
+
+static void TranposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                       int64_t from, int64_t to) {
+  ORT_UNUSED_PARAMETER(permutations);
+
+  const auto& input_shape = input.Shape();
+  const auto& input_dims = input_shape.GetDims();
+
+  const auto element_size = input.DataType()->Size();
+
+  const auto* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
+  auto* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
+
+  auto num_loops = input_shape.SizeToDimension(to);
+  auto num_writers = input_dims[from];
+  auto block_size = input_shape.SizeFromDimension(from + 1);
+  auto writes_per_loop = int64_t(input_shape.Size() / num_loops / block_size);
+  auto writes_per_writer_per_loop = int64_t(writes_per_loop / num_writers);
+  const int64_t bytes_per_write = block_size * element_size;
+
+  switch (bytes_per_write) {
+    case (sizeof(uint8_t)): {
+      SimpleTransposeSingleAxisOutwards(input_data, output_data,
+                                        num_loops, num_writers, writes_per_loop, writes_per_writer_per_loop);
+      break;
+    }
+    case (sizeof(uint16_t)): {
+      SimpleTransposeSingleAxisOutwards(reinterpret_cast<const uint16_t*>(input_data),
+                                        reinterpret_cast<uint16_t*>(output_data),
+                                        num_loops, num_writers, writes_per_loop, writes_per_writer_per_loop);
+      break;
+    }
+    case (sizeof(uint32_t)): {
+      SimpleTransposeSingleAxisOutwards(reinterpret_cast<const uint32_t*>(input_data),
+                                        reinterpret_cast<uint32_t*>(output_data),
+                                        num_loops, num_writers, writes_per_loop, writes_per_writer_per_loop);
+      break;
+    }
+    case (sizeof(uint64_t)): {
+      SimpleTransposeSingleAxisOutwards(reinterpret_cast<const uint64_t*>(input_data),
+                                        reinterpret_cast<uint64_t*>(output_data),
+                                        num_loops, num_writers, writes_per_loop, writes_per_writer_per_loop);
+      break;
+    }
+    default: {
+      // we need to use memcpy for each block
+      std::vector<uint8_t*> writers;
+      writers.resize(num_writers);
+
+      for (int64_t l = 0; l < num_loops; ++l) {
+        for (auto w = 0; w < num_writers; ++w) {
+          writers[w] = (output_data + (w * writes_per_writer_per_loop * bytes_per_write));
+        }
+
+        for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+          for (int64_t w = 0; w < num_writers; ++w) {
+            memcpy(writers[w], input_data, bytes_per_write);
+            writers[w] += bytes_per_write;
+            input_data += bytes_per_write;
+          }
+        }
+
+        output_data += writes_per_loop * bytes_per_write;
+      }
+    }
+  }
+}
+
+template <typename T>
+static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
+                                             int64_t num_loops, int64_t num_readers,
+                                             int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
+  std::vector<const T*> readers;
+  readers.resize(num_readers);
+
+  for (int64_t l = 0; l < num_loops; ++l) {
+    for (auto r = 0; r < num_readers; ++r) {
+      readers[r] = (input_data + (r * reads_per_reader_per_loop));
+    }
+
+    for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+      for (int64_t r = 0; r < num_readers; ++r) {
+        *output_data++ = *(readers[r]++);
+      }
+    }
+
+    input_data += reads_per_loop;
+  }
+}
+
+// moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
+static void TranposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                      int64_t from, int64_t to) {
+  ORT_UNUSED_PARAMETER(permutations);
+
+  const auto& input_shape = input.Shape();
+  const auto& input_dims = input_shape.GetDims();
+
+  const auto element_size = input.DataType()->Size();
+
+  const auto* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
+  auto* output_data = reinterpret_cast<uint8_t*>(output.MutableDataRaw());
+
+  auto num_loops = input_shape.SizeToDimension(from);
+  auto num_readers = input_dims[from];
+  auto block_size = input_shape.SizeFromDimension(to + 1);
+  auto reads_per_loop = int64_t(input_shape.Size() / num_loops / block_size);
+  auto reads_per_reader_per_loop = int64_t(reads_per_loop / num_readers);
+  const int64_t bytes_per_read = block_size * element_size;
+
+  switch (bytes_per_read) {
+    case (sizeof(uint8_t)): {
+      SimpleTransposeSingleAxisInwards(input_data, output_data,
+                                       num_loops, num_readers, reads_per_loop, reads_per_reader_per_loop);
+      break;
+    }
+    case (sizeof(uint16_t)): {
+      SimpleTransposeSingleAxisInwards(reinterpret_cast<const uint16_t*>(input_data),
+                                       reinterpret_cast<uint16_t*>(output_data),
+                                       num_loops, num_readers, reads_per_loop, reads_per_reader_per_loop);
+      break;
+    }
+    case (sizeof(uint32_t)): {
+      SimpleTransposeSingleAxisInwards(reinterpret_cast<const uint32_t*>(input_data),
+                                       reinterpret_cast<uint32_t*>(output_data),
+                                       num_loops, num_readers, reads_per_loop, reads_per_reader_per_loop);
+      break;
+    }
+    case (sizeof(uint64_t)): {
+      SimpleTransposeSingleAxisInwards(reinterpret_cast<const uint64_t*>(input_data),
+                                       reinterpret_cast<uint64_t*>(output_data),
+                                       num_loops, num_readers, reads_per_loop, reads_per_reader_per_loop);
+      break;
+    }
+    default: {
+      // we need to use memcpy for each block
+      std::vector<const uint8_t*> readers;
+      readers.resize(num_readers);
+
+      for (int64_t l = 0; l < num_loops; ++l) {
+        for (auto r = 0; r < num_readers; ++r) {
+          readers[r] = (input_data + (r * reads_per_reader_per_loop * bytes_per_read));
+        }
+
+        for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+          for (int64_t r = 0; r < num_readers; ++r) {
+            memcpy(output_data, readers[r], bytes_per_read);
+            readers[r] += bytes_per_read;
+            output_data += bytes_per_read;
+          }
+        }
+
+        input_data += reads_per_loop * bytes_per_read;
+      }
+    }
+  }
+}
+
+static void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                size_t from, size_t to) {
+  // TODO: We may want to fall back to the default implementation if the size of the axis being moved is large
+  // compared to the other axes.
+  // e.g. transpose {3, 2048} with permutation of {1, 0} would result in 2048 writers being created
+  //   (std::vector<uint8_t*> of size 2048) but only used in 3 loops. however that may still be cheaper than
+  //   calling ComputeOffset and IncrementIndex 6K times.
+
+  if (from > to) {
+    TranposeSingleAxisOutwards(permutations, input, output, from, to);
+  } else {
+    TranposeSingleAxisInwards(permutations, input, output, from, to);
+  }
+}
+
+static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, size_t& to) {
+  int moved_in = 0;   // number of axes that moved to an inner location (later entry in permutations)
+  int moved_out = 0;  // number of axes that moved to an outer location (earlier entry in permutations)
+  size_t last_moved_in_from = 0;
+  size_t last_moved_in_to = 0;
+  size_t last_moved_out_from = 0;
+  size_t last_moved_out_to = 0;
+
+  size_t i = 0;
+  for (auto axis : permutations) {
+    if (axis != i) {
+      // if this axis is larger it's an inner dimension moving outwards
+      if (axis > i) {
+        ++moved_out;
+        last_moved_out_to = i;
+        last_moved_out_from = axis;
+      } else {
+        ++moved_in;
+        last_moved_in_to = i;
+        last_moved_in_from = axis;
+      }
+    }
+
+    ++i;
+  }
+
+  bool single_axis_moved = true;
+
+  if (moved_out == 1) {
+    to = last_moved_out_to;
+    from = last_moved_out_from;
+  } else if (moved_in == 1) {
+    to = last_moved_in_to;
+    from = last_moved_in_from;
+  } else {
+    single_axis_moved = false;
+  }
+
+  return single_axis_moved;
+}
+
 Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
   Status status = Status::OK();
 
@@ -248,14 +510,21 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mismatched data types between input and output Tensors. ",
                              input_type, " != ", output_type);
   } else {
-    status = DoUntypedTranspose(permutations, input, output);
+    size_t from = 0, to = 0;
+    bool moving_single_axis = IsMovingSingleAxis(permutations, from, to);
+
+    if (moving_single_axis && input.GetElementType() != utils::GetONNXTensorElementDataType<std::string>()) {
+      SingleAxisTranspose(permutations, input, output, from, to);
+    } else {
+      // fall back to default implementation
+      status = DoUntypedTranspose(permutations, input, output);
+    }
   }
 
   return status;
 }
 
 Status Transpose::Compute(OpKernelContext* ctx) const {
-  // Get input and output:
   const auto* input_tensor_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& X = *input_tensor_ptr;
@@ -266,16 +535,24 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(rank);
   const std::vector<size_t>* p_perm;
   std::vector<size_t> default_perm(rank);
-  const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
+  Status status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;
 
   TensorShape output_shape{output_dims};
   Tensor& Y = *ctx->Output(0, output_shape);
 
-  DoUntypedTranspose(*p_perm, X, Y);
+  size_t from = 0, to = 0;
+  bool moving_single_axis = IsMovingSingleAxis(*p_perm, from, to);
 
-  return Status::OK();
+  if (moving_single_axis && X.GetElementType() != utils::GetONNXTensorElementDataType<std::string>()) {
+    SingleAxisTranspose(*p_perm, X, Y, from, to);
+  } else {
+    // fall back to default implementation
+    status = DoUntypedTranspose(*p_perm, X, Y);
+  }
+
+  return status;
 }
 
 ONNX_CPU_OPERATOR_KERNEL(

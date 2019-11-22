@@ -203,6 +203,38 @@ TEST(TransposeOpTest, ThreeDim) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
 }
 
+// test when the suffix size is > 1 (last dimension is not moved)
+TEST(TransposeOpTest, ThreeDimSuffix) {
+  std::vector<int64_t> input_shape({4, 2, 3});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      1.1f, 2.1f, 3.1f,
+      4.1f, 5.1f, 6.1f,
+
+      1.2f, 2.2f, 3.2f,
+      4.2f, 5.2f, 6.2f,
+
+      1.3f, 2.3f, 3.3f,
+      4.3f, 5.3f, 6.3f};
+
+  std::vector<int64_t> perm = {1, 0, 2};
+  std::vector<int64_t> expected_shape({2, 4, 3});
+  auto expected_vals = {
+      1.0f, 2.0f, 3.0f,
+      1.1f, 2.1f, 3.1f,
+      1.2f, 2.2f, 3.2f,
+      1.3f, 2.3f, 3.3f,
+
+      4.0f, 5.0f, 6.0f,
+      4.1f, 5.1f, 6.1f,
+      4.2f, 5.2f, 6.2f,
+      4.3f, 5.3f, 6.3f};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+}
+
 TEST(TransposeOpTest, ThreeDimStr) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<std::string> input_vals = {
@@ -240,7 +272,32 @@ TEST(TransposeOpTest, ThreeDimStr) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
 }
 
+template <typename T>
+static void NumericNCHW2NHWC() {
+  std::vector<int64_t> input_shape({1, 3, 2, 2});
+  std::vector<T> input_vals = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12};
+
+  std::vector<int64_t> perm = {0, 2, 3, 1};
+  std::vector<int64_t> expected_shape({1, 2, 2, 3});
+  std::initializer_list<T> expected_vals = {
+      1, 5, 9,
+      2, 6, 10,
+      3, 7, 11,
+      4, 8, 12};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+}
 TEST(TransposeOpTest, NCHW2NHWC) {
+  NumericNCHW2NHWC<int8_t>();
+  NumericNCHW2NHWC<int16_t>();
+  NumericNCHW2NHWC<uint32_t>();
+  NumericNCHW2NHWC<uint64_t>();
+}
+
+TEST(TransposeOpTest, NCHW2NHWCStr) {
   std::vector<int64_t> input_shape({1, 3, 2, 2});
   std::vector<std::string> input_vals = {
       "1", "2", "3", "4",
@@ -258,7 +315,48 @@ TEST(TransposeOpTest, NCHW2NHWC) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
+template <typename T>
+static void NumericNHWC2NCHW() {
+  std::vector<int64_t> input_shape({2, 2, 2, 2});
+  std::vector<T> input_vals = {
+      1, 2,
+      3, 4,
+
+      5, 6,
+      7, 8,
+
+      9, 10,
+      11, 12,
+
+      13, 14,
+      15, 16};
+
+  std::vector<int64_t> perm = {0, 3, 1, 2};
+  std::vector<int64_t> expected_shape({2, 2, 2, 2});
+  std::initializer_list<T> expected_vals = {
+      1, 3,
+      5, 7,
+
+      2, 4,
+      6, 8,
+
+      9, 11,
+      13, 15,
+
+      10, 12,
+      14, 16};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+}
+
 TEST(TransposeOpTest, NHWC2NCHW) {
+  NumericNHWC2NCHW<uint8_t>();
+  NumericNHWC2NCHW<int16_t>();
+  NumericNHWC2NCHW<uint32_t>();
+  NumericNHWC2NCHW<int64_t>();
+}
+
+TEST(TransposeOpTest, NHWC2NCHW_String) {
   std::vector<int64_t> input_shape({1, 2, 2, 3});
   std::vector<std::string> input_vals = {
       "1", "2", "3",
