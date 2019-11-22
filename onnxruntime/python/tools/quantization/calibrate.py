@@ -13,8 +13,9 @@ import numpy as np
 from PIL import Image
 import onnx
 import onnxruntime
-from onnx import helper, TensorProto
+from onnx import helper, TensorProto, numpy_helper
 from quantize import quantize, QuantizationMode
+from data_preprocess import load_batch
 
 import re
 import subprocess
@@ -48,73 +49,6 @@ def augment_graph(model):
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
-
-# Reading user input (images)
-def load_and_resize_image(image_filepath, height, width):
-    '''
-    Resizes image to NCHW format
-        parameter image_filepath: path to image files
-        parameter height: image height in pixels
-        parameter width: image width in pixels
-        return: matrix characterizing image
-    '''
-    pillow_img = Image.open(image_filepath).resize((width, height))
-    input_data = np.float32(pillow_img)/127.5 - 1.0 # normalization
-    input_data -= np.mean(input_data) # normalization
-    nhwc_data = np.expand_dims(input_data, axis=0)
-    nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
-    return nchw_data
-
-def set_preprocess(customized_preprocess, file_path):
-    '''
-    Set up the user defined data preprocess function. The function needs to handel data loading and processing.
-        parameter customized_preprocess: string with module name and function name
-        parameter file_path: path to the module
-        return: user defined data preprocessing function
-    '''
-    import importlib.util
-    if not customized_preprocess:
-        print("Warning: no customized data preporcess method is given. Using the default preprocess method.")
-        return load_and_resize_image
-    namelist = customized_preprocess.split('.')
-    if not file_path:
-        file_path = os.getcwd()
-    file_path = file_path + '\\'+ namelist[0] + '.py'
-    try:
-        spec = importlib.util.spec_from_file_location(namelist[0], file_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except FileNotFoundError:
-        sys.exit("Cannot found custromized preprocess file.")
-    return getattr(module, namelist[1])
-
-def load_batch(images_folder, height, width, size_limit=30,
-                customized_preprocess='', file_path=''):
-    '''
-    Loads a batch of images
-    parameter images_folder: path to folder storing images
-    parameter height: image height in pixels
-    parameter width: image width in pixels
-    parameter size_limit: number of images used to run inference
-    return: list of matrices characterizing multiple images
-    '''
-    image_names = os.listdir(images_folder)
-    if len(image_names) >= size_limit:
-        batch_filenames = [image_names[i] for i in range(size_limit)]
-    else:
-        batch_filenames = image_names
-    unconcatenated_batch_data = []
-
-    if customized_preprocess:
-        preprocess_func = set_preprocess(customized_preprocess, file_path)
-    else:
-        preprocess_func = load_and_resize_image
-    for image_name in batch_filenames:
-        image_filepath = images_folder + '/' + image_name
-        nchw_data = preprocess_func(image_filepath, height, width)
-        unconcatenated_batch_data.append(nchw_data)
-    batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
-    return batch_data
 
 # Using augmented outputs to generate inputs to quantize.py
 def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
@@ -229,6 +163,30 @@ def calculate_quantization_params(model, nbits=8, quantization_thresholds=None):
 
     return quantization_params
 
+
+def load_pb_file(data_file_name, dataset_size, height, width):
+    '''
+    Load tensor data from pb files.
+    :param data_file_name: path to the pb file
+    :param dataset_size: number of image-data in the pb file for data size check
+    :param height: image height for data size check
+    :param width: image width for data size check
+    :return input data for the model
+    '''
+    tensor = onnx.TensorProto()
+    inputs = np.empty(0)
+    with open(data_file_name, 'rb') as fin:
+        tensor.ParseFromString(fin.read())
+        inputs = numpy_helper.to_array(tensor)
+        try:
+            shape = inputs.shape
+            inputs = inputs.reshape(dataset_size, 1,3,height, width)
+        except:
+            sys.exit("Input .pb file contains incorrect input size. \nThe required size is: (%s). The real size is: (%s)"
+                        %((dataset_size, 1,3,height, width), shape))
+
+    return inputs
+
 def main():
     # Parsing command-line arguments
     parser = argparse.ArgumentParser(description='parsing model and test data set paths')
@@ -237,7 +195,6 @@ def main():
     parser.add_argument('--calib_mode', default='naive')
     parser.add_argument('--dataset_size', type=int, default=30)
     parser.add_argument('--data_preprocess', type=str, default='')
-    parser.add_argument('--data_preprocess_filepath', type=str, default='')
     args = parser.parse_args()
     model_path = args.model_path
     images_folder = args.dataset_path
@@ -255,7 +212,11 @@ def main():
     (samples, channels, height, width) = session.get_inputs()[0].shape
 
     # Generating inputs for quantization
-    inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess, args.data_preprocess_filepath)
+    if args.data_preprocess:
+        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)
+    else:
+        inputs = load_pb_file(images_folder, args.dataset_size, height, width)
+    print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
     calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict)
