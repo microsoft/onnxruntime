@@ -7,9 +7,13 @@
 #include "PheonixSingleton.h"
 #include "inc/LotusEnvironment.h"
 #include "inc/AbiCustomRegistryImpl.h"
+
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
 #include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
+#include "DmlOrtSessionBuilder.h"
+#endif USE_DML
 
 #include "LearningModelDevice.h"
 #include "TensorFeatureDescriptor.h"
@@ -17,7 +21,6 @@
 #include "api.image/inc/D3DDeviceCache.h"
 #include "Common/inc/WinMLTelemetryHelper.h"
 
-#include "DmlOrtSessionBuilder.h"
 #include "CpuOrtSessionBuilder.h"
 
 #include <io.h>
@@ -452,11 +455,15 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   }
 
   ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider* provider, void* allocation) override {
+#ifdef USE_DML
     auto d3dResource =
         Dml::GetD3D12ResourceFromAllocation(
             provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
             allocation);
     return d3dResource;
+#else
+    return nullptr;
+#endif USE_DML
   }
 
   static onnxruntime::MLDataType GetType(winml::TensorKind kind) {
@@ -477,10 +484,15 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     if (device == nullptr) {
       auto builder = wil::MakeOrThrow<CpuOrtSessionBuilder>();
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
-    } else {
+    }
+#ifdef USE_DML
+    else {
       auto builder = wil::MakeOrThrow<DmlOrtSessionBuilder>(device, queue);
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
     }
+#else
+    return E_NOTIMPL;
+#endif USE_DML
   }
 
   onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType() override {
@@ -615,52 +627,71 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   }
 
   HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) override {
+#ifdef USE_DML
     auto impl = wil::MakeOrThrow<AbiCustomRegistryImpl>();
     *registry = impl.Detach();
-    return S_OK;
-  }
+  return S_OK;
+#else
+  return E_NOTIMPL;
+#endif USE_DML
+}
 
-  void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
-    return Dml::CreateGPUAllocationFromD3DResource(pResource);
-  }
+void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
+#ifdef USE_DML
+  return Dml::CreateGPUAllocationFromD3DResource(pResource);
+#else
+  return nullptr;
+#endif USE_DML
+}
 
-  void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) override {
-    Dml::FreeGPUAllocation(ptr);
-  }
-  HRESULT STDMETHODCALLTYPE CopyTensor(
-      onnxruntime::IExecutionProvider* provider,
-      ITensor* src,
-      ITensor* dst) override {
-    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
-    return S_OK;
-  }
+void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) override {
+#ifdef USE_DML
+  Dml::FreeGPUAllocation(ptr);
+#endif USE_DML
+}
 
-  HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
-      void* execution_provider_allocated_resource,
-      onnxruntime::IExecutionProvider* provider,
-      std::vector<int64_t>* shape,
-      onnxruntime::MLDataType data_type,
-      IOrtValue** gpu_value) override {
-    THROW_HR_IF_MSG(WINML_ERR_INVALID_BINDING,
-                    "DmlExecutionProvider" != provider->Type(),
-                    "Cannot creat GPU tensor on CPU device");
+HRESULT STDMETHODCALLTYPE CopyTensor(
+    onnxruntime::IExecutionProvider* provider,
+    ITensor* src,
+    ITensor* dst) override {
+#ifdef USE_DML
+  ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
+  return S_OK;
+#else
+  return E_NOTIMPL;
+#endif USE_DML
+}
 
-    onnxruntime::TensorShape tensor_shape(*shape);
+HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
+    void* execution_provider_allocated_resource,
+    onnxruntime::IExecutionProvider* provider,
+    std::vector<int64_t>* shape,
+    onnxruntime::MLDataType data_type,
+    IOrtValue** gpu_value) override {
+#ifdef USE_DML
+  THROW_HR_IF_MSG(WINML_ERR_INVALID_BINDING,
+                  "DmlExecutionProvider" != provider->Type(),
+                  "Cannot creat GPU tensor on CPU device");
 
-    auto tensor = new onnxruntime::Tensor(
-        data_type,
-        tensor_shape,
-        execution_provider_allocated_resource,
-        provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault)->Info());
+  onnxruntime::TensorShape tensor_shape(*shape);
 
-    auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>();
-    ort_value->get()->Init(tensor,
-                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
+  auto tensor = new onnxruntime::Tensor(
+      data_type,
+      tensor_shape,
+      execution_provider_allocated_resource,
+      provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault)->Info());
 
-    *gpu_value = ort_value.Detach();
-    return S_OK;
-  }
+  auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>();
+  ort_value->get()->Init(tensor,
+                         onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
+                         onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
+
+  *gpu_value = ort_value.Detach();
+  return S_OK;
+#else
+  return E_NOTIMPL;
+#endif USE_DML
+}
 
   HRESULT STDMETHODCALLTYPE CreateCPUMLValue(
       std::vector<int64_t>* shape,
@@ -729,18 +760,23 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return S_OK;
   }
 
-  // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
-  // and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
-  // deferred until first evaluation.  It also prevents a situation where inference functions in externally
-  // registered schema are reachable only after upstream schema have been revised in a later OS release,
-  // which would be a compatibility risk.
-  HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
-    static std::once_flag schema_override_once_flag;
-    std::call_once(schema_override_once_flag, []() {
-      SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
-    });
-    return S_OK;
-  }
+// Override select shape inference functions which are incomplete in ONNX with versions that are complete,
+// and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
+// deferred until first evaluation.  It also prevents a situation where inference functions in externally
+// registered schema are reachable only after upstream schema have been revised in a later OS release,
+// which would be a compatibility risk.
+HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
+#ifdef USE_DML
+  static std::once_flag schema_override_once_flag;
+  std::call_once(schema_override_once_flag, []() {
+    SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
+  });
+  return S_OK;
+#else
+  return E_NOTIMPL;
+#endif USE_DML
+}
+
 };  // namespace Windows::AI::MachineLearning::Adapter
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) {
@@ -806,7 +842,9 @@ InferenceSession::InferenceSession(onnxruntime::InferenceSession* session) : ses
 }
 
 void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers(bool registerLotusTransforms) {
+#ifdef USE_DML
   GraphTransformerHelpers::RegisterGraphTransformers(session_.get(), registerLotusTransforms);
+#endif USE_DML
 }
 
 HRESULT STDMETHODCALLTYPE InferenceSession::NewIOBinding(IIOBinding** io_binding) {
@@ -856,15 +894,21 @@ InferenceSession::RegisterCustomRegistry(
 }
 
 void STDMETHODCALLTYPE InferenceSession::FlushContext(onnxruntime::IExecutionProvider* dml_provider) {
+#ifdef USE_DML
   Dml::FlushContext(dml_provider);
+#endif USE_DML
 }
 
 void STDMETHODCALLTYPE InferenceSession::TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) {
+#ifdef USE_DML
   Dml::TrimUploadHeap(dml_provider);
+#endif USE_DML
 }
 
 void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) {
+#ifdef USE_DML
   Dml::ReleaseCompletedReferences(dml_provider);
+#endif USE_DML
 }
 
 }  // namespace Windows::AI::MachineLearning::Adapter

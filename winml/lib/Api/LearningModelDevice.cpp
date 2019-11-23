@@ -3,8 +3,7 @@
 
 #include "pch.h"
 #include "LearningModelDevice.h"
-#include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
-#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+
 #include <D3d11_4.h>
 #include <d3d11on12.h>
 #include "D3DDeviceCache.h"
