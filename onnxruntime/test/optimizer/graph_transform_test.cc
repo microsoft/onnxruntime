@@ -1034,8 +1034,28 @@ TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 1);
 }
 
-TEST(GraphTransformationTests, EmbedLayerNormFusion) {
+TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
+  ASSERT_TRUE(op_to_count["Attention"] == 1);
+  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
+}
+
+TEST(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format2.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();

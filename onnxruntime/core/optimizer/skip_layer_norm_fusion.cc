@@ -38,11 +38,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     Node& add_node = *p_add;
     ORT_RETURN_IF_ERROR(Recurse(add_node, modified, graph_level, logger));
+    std::cout << "current Node: " << add_node.OpType() << std::endl;
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
         !graph_utils::IsSupportedProvider(add_node, GetCompatibleExecutionProviders()) ||
         add_node.GetOutputEdgesCount() != 1 ||
         !IsSupportedDataType(add_node)) {
+      std::cout << "Next! Current Node is not add. " << std::endl;
       continue;
     }
 
@@ -51,10 +53,12 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     const TensorShapeProto* add_input2_shape = add_node.MutableInputDefs()[1]->Shape();
 
     if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
+      std::cout << "Next! Can't find shape of the current node. " << std::endl;
       continue;
     }
     // "Add" inputs have to be 3d.
     if (add_input1_shape->dim_size() != 3 || add_input2_shape->dim_size() != 3) {
+      std::cout << "Next! Add inputs are not 3d. First input: " << add_input1_shape->dim_size() << " second input: " << add_input2_shape->dim_size() << std::endl;
       continue;
     }
     // "Add" inputs have to be of same dimensions. 
@@ -62,6 +66,10 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     for (int i = 0; i < 3; i++) {
       if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
         isValidInput = false;
+        std::cout << "Next! Add dimensions not the same at dim " << i << std::endl;
+        std::cout << "First input at dim i: " << add_input1_shape->dim(i).dim_value() << std::endl;
+        std::cout << "Second input at dim i: " << add_input2_shape->dim(i).dim_value() << std::endl;
+
         break;
       }
     }
@@ -76,6 +84,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
         ln_node.GetExecutionProviderType() != add_node.GetExecutionProviderType() ||
         !IsSupportedDataType(ln_node)) {
+      std::cout << "Next! Current Node is not LayerNorm. " << std::endl;
       continue;
     }
     nodes_to_remove.push_back(ln_node);

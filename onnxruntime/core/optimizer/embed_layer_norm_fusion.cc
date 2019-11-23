@@ -10,19 +10,6 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-// EmbedLayerNorm supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(int32)"};
-
-static bool IsSupportedDataType(const Node& node) {
-  for (const auto& input_arg : node.InputDefs()) {
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
 Embed Layer Normalization will fuse embeddings and mask processing into one node : 
 The embeddings before conversion:
@@ -45,37 +32,32 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& skip_ln_node = *p_skip_ln;
     ORT_RETURN_IF_ERROR(Recurse(skip_ln_node, modified, graph_level, logger));
-
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(skip_ln_node, "SkipLayerNormalization", {1}, kMSDomain) ||
         !graph_utils::IsSupportedProvider(skip_ln_node, GetCompatibleExecutionProviders()) ||
-        !IsSupportedDataType(skip_ln_node)) {
+        skip_ln_node.MutableInputDefs().size() == 5) {
       continue;
     }
     // Find Attention after SkipLayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(skip_ln_node, "Attention");
+    // Stop EmbedLayerNormalization fusion if Attention is not found. 
     if (p_attention == nullptr) {
-      continue;
+      return Status::OK();
     }
     Node& attention_node = *graph.GetNode(p_attention->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(attention_node, "Attention", {1}, kMSDomain) ||
-        !graph_utils::IsSupportedProvider(attention_node, GetCompatibleExecutionProviders()) ||
-        !IsSupportedDataType(attention_node)) {
+        !graph_utils::IsSupportedProvider(attention_node, GetCompatibleExecutionProviders())) {
       continue;
     }
     // Find ReduceSum --> Attention
     std::vector<const Node::EdgeEnd*> edges;
-    if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1}, kOnnxDomain}}, edges, logger)) {
+    if (!graph_utils::FindPath(attention_node, true, {{0, 3, "ReduceSum", {1, 11}, kOnnxDomain}}, edges, logger)) {
       continue;
     }
     Node& reduce_sum_node = *graph.GetNode(edges[0]->GetNode().Index());
-    if (reduce_sum_node.GetOutputEdgesCount() != 1) {
-      continue;
-    }
 
     // Traceback the SkipLayerNormalization node to find Gather --> SkipLayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> segment_embedding_path{
-        {0, 0, "Gather", {1}, kOnnxDomain}};
-    edges.clear();
+        {0, 0, "Gather", {1, 11}, kOnnxDomain}};
     if (!graph_utils::FindPath(skip_ln_node, true, segment_embedding_path, edges, logger)) {
       continue;
     }
@@ -87,8 +69,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     // Traceback the SkipLayerNormalization node to find Gather --> Add --> SkipLayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
         {0, 1, "Add", {7}, kOnnxDomain},
-        {0, 0, "Gather", {1}, kOnnxDomain}};
-    edges.clear();
+        {0, 0, "Gather", {1, 11}, kOnnxDomain}};
     if (!graph_utils::FindPath(skip_ln_node, true, word_embedding_path, edges, logger)) {
       continue;
     }
@@ -98,20 +79,29 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    // Traceback the Add node to find Shape --> Expand --> Gather --> Add
+    // Traceback the Add node to find (Shape --> Expand -->) Gather --> Add.
+    // Constant folding removes Shape and Expand nodes when input does not have symbolic shape. In that 
+    // case just look for Gather --> Add. 
     std::vector<graph_utils::EdgeEndToMatch> position_embedding_path{
-        {0, 1, "Gather", {1}, kOnnxDomain}};
-        //{0, 1, "Expand", {8}, kOnnxDomain},
-        //{0, 1, "Shape", {1}, kOnnxDomain}};
-    edges.clear();
+        {0, 1, "Gather", {1, 11}, kOnnxDomain}};
     if (!graph_utils::FindPath(add_node, true, position_embedding_path, edges, logger)) {
       continue;
     }
     Node& position_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
-    //Node& expand_node = *graph.GetNode(edges[1]->GetNode().Index());
-    //Node& shape_node = *graph.GetNode(edges[2]->GetNode().Index());
     if (position_gather_node.GetOutputEdgesCount() != 1) {
       continue;
+    }
+
+    std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_symbolic{
+      {0, 1, "Expand", {8}, kOnnxDomain},
+      {0, 1, "Shape", {1}, kOnnxDomain}};
+    Node* p_expand_node = nullptr;
+    Node* p_shape_node = nullptr;
+    if (graph_utils::FindPath(position_gather_node, true, position_embedding_path, edges, logger)) {
+      if (edges[0]->GetNode().GetOutputEdgesCount() == 1 && edges[1]->GetNode().GetOutputEdgesCount() == 1) {
+        p_expand_node = graph.GetNode(edges[0]->GetNode().Index());
+        p_shape_node = graph.GetNode(edges[1]->GetNode().Index());
+      }
     }
 
     // Get input "input_ids" from node.
@@ -157,25 +147,26 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     // Assign provider to this new node. Provider should be same as the provider for old node.
     embed_layer_norm_node.SetExecutionProviderType(skip_ln_node.GetExecutionProviderType());
 
-    // move input edges to add (first in list) across to the embed_layer_norm_node.
+    // move input edges to gather (first in list) across to the embed_layer_norm_node.
     // move output definitions and output edges to embed_layer_norm_node.
     // remove all the other nodes.
-    std::vector<Node*> nodes_to_remove{
-        graph.GetNode(word_gather_node.Index()),
-        graph.GetNode(position_gather_node.Index()),
-        //graph.GetNode(shape_node.Index()),
-        //graph.GetNode(expand_node.Index()),
-        graph.GetNode(segment_gather_node.Index()),
-        graph.GetNode(add_node.Index()),
-        graph.GetNode(reduce_sum_node.Index()),
-        graph.GetNode(skip_ln_node.Index())
-    };
+    std::vector<NodeIndex> nodes_to_remove;
+    if (p_shape_node != nullptr && p_expand_node != nullptr) {
+      nodes_to_remove.push_back(p_shape_node->Index());
+      nodes_to_remove.push_back(p_expand_node->Index());
+    }
+    nodes_to_remove.push_back(word_gather_node.Index());
+    nodes_to_remove.push_back(position_gather_node.Index());
+    nodes_to_remove.push_back(segment_gather_node.Index());
+    nodes_to_remove.push_back(add_node.Index());
+    nodes_to_remove.push_back(reduce_sum_node.Index());
+    nodes_to_remove.push_back(skip_ln_node.Index());
 
-    for (auto* node : nodes_to_remove) {
+    for (const auto& index : nodes_to_remove) {
+      Node* node = graph.GetNode(index);
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());
     }
-
     modified = true;
   }
   return Status::OK();
