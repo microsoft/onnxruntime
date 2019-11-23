@@ -865,38 +865,38 @@ TEST(GraphTransformationTests, ReshapeFusionTest) {
 
 // Test Reshape Fusion with one constant initializer for Concat inputs.
 TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
-    auto model_uri = MODEL_FOLDER "fusion/reshape_one_const.onnx";
-    std::shared_ptr<Model> p_model;
-    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
-    Graph& graph = p_model->MainGraph();
+  auto model_uri = MODEL_FOLDER "fusion/reshape_one_const.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
 
-    onnxruntime::GraphTransformerManager graph_transformation_mgr{ 5 };
-    graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
-    auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
-    ASSERT_TRUE(ret.IsOK());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
 
-    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-    ASSERT_TRUE(op_to_count["Shape"] == 0);
-    ASSERT_TRUE(op_to_count["Gather"] == 0);
-    ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
-    ASSERT_TRUE(op_to_count["Concat"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 1);
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 0);
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Concat"] == 0);
+  ASSERT_TRUE(op_to_count["Reshape"] == 1);
 
-    for (const Node& node : graph.Nodes()) {
-        if (node.OpType() == "Reshape") {
-            const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
-            ASSERT_TRUE(tensor_proto != nullptr);
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
 
-            auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
-            EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-            EXPECT_EQ(initializer->size(), 3);
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      EXPECT_EQ(initializer->size(), 3);
 
-            const int64_t* val = initializer->data<int64_t>();
-            EXPECT_EQ(val[0], 0);
-            EXPECT_EQ(val[1], 0);
-            EXPECT_EQ(val[2], 768);
-        }
+      const int64_t* val = initializer->data<int64_t>();
+      EXPECT_EQ(val[0], 0);
+      EXPECT_EQ(val[1], 0);
+      EXPECT_EQ(val[2], 768);
     }
+  }
 }
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -999,7 +999,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
     if (node.OpType() == "LayerNormalization") {
       // LayerNormalization should have three inputs.
       EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
-      // LayerNormalization input "scale" and "bias" should have the same dimension. 
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
       EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
@@ -1011,10 +1011,9 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   }
 }
 
-TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/skip_layer_norm.onnx";
+static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path) {
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
@@ -1033,7 +1032,13 @@ TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 1);
 }
-
+  
+TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx");
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx");
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx");
+}
+  
 TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
   auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm.onnx";
   std::shared_ptr<Model> p_model;
@@ -1075,6 +1080,8 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
 }
+
+
 #endif
 
 }  // namespace test

@@ -36,7 +36,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
+          docker build --pull -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
