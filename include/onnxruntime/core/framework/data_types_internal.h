@@ -218,7 +218,7 @@ struct CallableDispatchableHelper {
   int32_t dt_type_;  // Type currently dispatched
   size_t called_;
 
-  explicit CallableDispatchableHelper(int32_t dt_type) : dt_type_(dt_type), called_(0) {}
+  explicit CallableDispatchableHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0) {}
 
   // Must return integer to be in a expandable context
   template <class T, class Fn, class... Args>
@@ -246,7 +246,7 @@ struct CallableDispatchableRetHelper {
   size_t called_;
   Ret result_;
 
-  explicit CallableDispatchableRetHelper(int32_t dt_type) : dt_type_(dt_type), called_(0), result_() {}
+  explicit CallableDispatchableRetHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0), result_() {}
 
   Ret Get() {
     // See if there were multiple invocations.It is a bug.
@@ -295,7 +295,7 @@ class MLTypeCallDispatcher {
   int32_t dt_type_;
 
  public:
-  explicit MLTypeCallDispatcher(int32_t dt_type) : dt_type_(dt_type) {}
+  explicit MLTypeCallDispatcher(int32_t dt_type) noexcept : dt_type_(dt_type) {}
 
   template <typename... Args>
   void Invoke(Args&&... args) const {
@@ -316,7 +316,7 @@ class MLTypeCallDispatcherRet {
   int32_t dt_type_;
 
  public:
-  explicit MLTypeCallDispatcherRet(int32_t dt_type) : dt_type_(dt_type) {}
+  explicit MLTypeCallDispatcherRet(int32_t dt_type) noexcept : dt_type_(dt_type) {}
 
   template <typename... Args>
   Ret Invoke(Args&&... args) const {

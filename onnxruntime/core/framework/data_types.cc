@@ -44,6 +44,11 @@ MLDataType DataTypeImpl::GetType<SparseTensor>() {
   return SparseTensorTypeBase::Type();
 }
 
+template <>
+MLDataType DataTypeImpl::GetType<TensorSeq>() {
+  return SequenceTensorBase::Type();
+}
+
 static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
   int sz = tensor_type_proto.shape().dim_size();
   return sz == 0 || sz == 1;
@@ -62,7 +67,7 @@ struct TensorElementTypeSetter<T> {
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_map_type()->set_key_type(utils::ToTensorProtoElementType<T>());
   }
-  constexpr static int32_t GetElementType () {
+  constexpr static int32_t GetElementType() {
     return utils::ToTensorProtoElementType<T>();
   }
 };
@@ -391,6 +396,54 @@ MLDataType SparseTensorTypeBase::Type() {
   return &sparse_tensor_base;
 }
 
+///// SequenceTensorBase
+
+struct SequenceTensorBase::Impl : public data_types_internal::TypeProtoImpl {
+};
+
+SequenceTensorBase::SequenceTensorBase() : impl_(new Impl()) {}
+
+SequenceTensorBase::~SequenceTensorBase() {
+  delete impl_;
+}
+
+bool SequenceTensorBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
+  const auto* thisProto = GetTypeProto();
+  if (&type_proto == thisProto) {
+    return true;
+  }
+  if (type_proto.value_case() != TypeProto::ValueCase::kSequenceType) {
+    return false;
+  }
+
+  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
+  ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
+
+  return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
+}
+
+size_t SequenceTensorBase::Size() const {
+  return sizeof(TensorSeq);
+}
+
+DeleteFunc SequenceTensorBase::GetDeleteFunc() const {
+  return &Delete<TensorSeq>;
+}
+
+const ONNX_NAMESPACE::TypeProto* SequenceTensorBase::GetTypeProto() const {
+  return impl_->GetProto();
+}
+
+ONNX_NAMESPACE::TypeProto& SequenceTensorBase::mutable_type_proto() {
+  return impl_->mutable_type_proto();
+}
+
+MLDataType SequenceTensorBase::Type() {
+  static SequenceTensorBase sequence_tensor_base;
+  return &sequence_tensor_base;
+}
+
+
 /// NoTensorTypeBase
 struct NonTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {};
 
@@ -496,20 +549,18 @@ ORT_REGISTER_MAP(MapInt64ToInt64);
 ORT_REGISTER_MAP(MapInt64ToFloat);
 ORT_REGISTER_MAP(MapInt64ToDouble);
 
-// Register sequence of tensor types
-ORT_REGISTER_SEQ(TensorSeq)  // required to ensure GetType<TensorSeq> works
-ORT_REGISTER_SEQ_TENSOR_TYPE(int32_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(float);
-ORT_REGISTER_SEQ_TENSOR_TYPE(bool);
-ORT_REGISTER_SEQ_TENSOR_TYPE(std::string);
+ORT_REGISTER_SEQ_TENSOR_TYPE(double);
 ORT_REGISTER_SEQ_TENSOR_TYPE(int8_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(uint8_t);
-ORT_REGISTER_SEQ_TENSOR_TYPE(uint16_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(int16_t);
-ORT_REGISTER_SEQ_TENSOR_TYPE(int64_t);
-ORT_REGISTER_SEQ_TENSOR_TYPE(double);
+ORT_REGISTER_SEQ_TENSOR_TYPE(uint16_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(int32_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(uint32_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(int64_t);
 ORT_REGISTER_SEQ_TENSOR_TYPE(uint64_t);
+ORT_REGISTER_SEQ_TENSOR_TYPE(bool);
+ORT_REGISTER_SEQ_TENSOR_TYPE(std::string);
 ORT_REGISTER_SEQ_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
 
@@ -601,7 +652,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
 }
-} 
+}  // namespace data_types_internal
 
 void DataTypeImpl::RegisterDataType(MLDataType mltype) {
   data_types_internal::DataTypeRegistry::instance().RegisterDataType(mltype);
@@ -612,39 +663,42 @@ MLDataType DataTypeImpl::GetDataType(const std::string& data_type) {
 }
 
 const char* DataTypeImpl::ToString(MLDataType type) {
+  if (type == nullptr)
+    return "(null)";
+
   auto prim_type = type->AsPrimitiveDataType();
   if (prim_type != nullptr) {
     switch (prim_type->GetDataType()) {
-    case TensorProto_DataType_FLOAT:
+      case TensorProto_DataType_FLOAT:
         return "tensor(float)";
-    case TensorProto_DataType_BOOL:
-      return "tensor(bool)";
-    case TensorProto_DataType_DOUBLE:
-      return "tensor(double)";
-    case TensorProto_DataType_STRING:
-      return "tensor(string)";
-    case TensorProto_DataType_INT8:
-      return "tensor(int8)";
-    case TensorProto_DataType_UINT8:
-      return "tensor(uint8)";
-    case TensorProto_DataType_INT16:
-      return "tensor(int16)";
-    case TensorProto_DataType_UINT16:
-      return "tensor(uint16)";
-    case TensorProto_DataType_INT32:
-      return "tensor(int32)";
-    case TensorProto_DataType_UINT32:
-      return "tensor(uint32)";
-    case TensorProto_DataType_INT64:
-      return "tensor(int64)";
-    case TensorProto_DataType_UINT64:
-      return "tensor(uint64)";
-    case TensorProto_DataType_FLOAT16:
-      return "tensor(float16)";
-    case TensorProto_DataType_BFLOAT16:
-      return "tensor(bfloat16)";
-    default:
-      break;
+      case TensorProto_DataType_BOOL:
+        return "tensor(bool)";
+      case TensorProto_DataType_DOUBLE:
+        return "tensor(double)";
+      case TensorProto_DataType_STRING:
+        return "tensor(string)";
+      case TensorProto_DataType_INT8:
+        return "tensor(int8)";
+      case TensorProto_DataType_UINT8:
+        return "tensor(uint8)";
+      case TensorProto_DataType_INT16:
+        return "tensor(int16)";
+      case TensorProto_DataType_UINT16:
+        return "tensor(uint16)";
+      case TensorProto_DataType_INT32:
+        return "tensor(int32)";
+      case TensorProto_DataType_UINT32:
+        return "tensor(uint32)";
+      case TensorProto_DataType_INT64:
+        return "tensor(int64)";
+      case TensorProto_DataType_UINT64:
+        return "tensor(uint64)";
+      case TensorProto_DataType_FLOAT16:
+        return "tensor(float16)";
+      case TensorProto_DataType_BFLOAT16:
+        return "tensor(bfloat16)";
+      default:
+        break;
     }
   }
   auto type_proto = type->GetTypeProto();
@@ -1080,5 +1134,5 @@ bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name) {
   return false;
 }
 
-} // namespace utils
+}  // namespace utils
 }  // namespace onnxruntime

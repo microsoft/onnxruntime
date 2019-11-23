@@ -108,6 +108,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
     return Status::OK();
   }
   if (!ml_type->IsTensorType()) {
+    assert(ml_type->AsNonTensorTypeBase() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);
     auto creator = non_tensor_type->GetCreateFunc();
     ort_value.Init(creator(), non_tensor_type, non_tensor_type->GetDeleteFunc());

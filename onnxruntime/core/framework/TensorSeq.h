@@ -24,19 +24,4 @@ struct TensorSeq {
   std::vector<Tensor> tensors;
 };
 
-template <typename TensorElemType>
-class SequenceTensorType : public NonTensorType<TensorSeq> {
- public:
-  static MLDataType Type();
-
-  bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override {
-    return this->IsSequenceCompatible(type_proto);
-  }
-
- private:
-  SequenceTensorType() {
-    data_types_internal::SetSequenceType<TensorElemType>::Set(this->mutable_type_proto());
-  }
-};
-
 }  // namespace onnxruntime
