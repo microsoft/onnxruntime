@@ -70,6 +70,14 @@ class LoggingWrapper : public ISink {
 struct OrtEnv {
  public:
   struct LoggingManagerConstructionInfo {
+    LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
+                                   void* logger_param1,
+                                   OrtLoggingLevel default_warning_level1,
+                                   const char* logid1)
+        : logging_function(logging_function1),
+          logger_param(logger_param1),
+          default_warning_level(default_warning_level1),
+          logid(logid1) {}
     OrtLoggingFunction logging_function{};
     void* logger_param{};
     OrtLoggingLevel default_warning_level;
