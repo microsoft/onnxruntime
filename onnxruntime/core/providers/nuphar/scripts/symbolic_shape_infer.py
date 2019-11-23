@@ -115,7 +115,6 @@ class SymbolicShapeInference:
             'Sub'                   : self._infer_binary_ops,
             'Tile'                  : self._infer_Tile,
             'TopK'                  : self._infer_TopK,
-            'Upsample'              : self._infer_Upsample,
             'Unsqueeze'             : self._infer_Unsqueeze,
             'ZipMap'                : self._infer_ZipMap}
         self.run_ = True
@@ -1043,12 +1042,6 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[i_o]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[i_o], vi.type.tensor_type.elem_type, new_shape))
 
-    def _infer_Upsample(self, node):
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
-                                                  self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                                                  self._new_symbolic_shape(self._get_shape_rank(node, 0), node)))
-
     def _infer_Unsqueeze(self, node):
         self._pass_on_sympy_data(node)
 
@@ -1158,19 +1151,31 @@ class SymbolicShapeInference:
                     else:
                         self.run_ = False
 
-                    # try guess output rank for unknown ops
-                    if self.run_ == False and out_type_undefined and len(out_shape) == 0 and self.guess_output_rank_:
-                        new_shape = self._new_symbolic_shape(self._get_shape_rank(node, 0), node, i_o)
-                        vi.CopyFrom(helper.make_tensor_value_info(vi.name,
-                                                                  self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                                                                  new_shape))
+                    # create new dynamic dims for ops not handled by symbolic shape inference
+                    if self.run_ == False and not node.op_type in self.dispatcher_:
+                        is_unknown_op = (out_type_undefined and len(out_shape) == 0)
+                        if is_unknown_op:
+                            # unknown op to ONNX, maybe from higher opset or other domain
+                            # only guess the output rank from input 0 when using guess_output_rank option
+                            out_rank = self._get_shape_rank(node, 0) if self.guess_output_rank_ else -1
+                        else:
+                            # valid ONNX op, but not handled by symbolic shape inference, just assign dynamic shape
+                            out_rank = len(out_shape)
 
-                        if self.verbose_ > 0:
-                            print("Possible unknown op: {} node: {}, guessing {} shape".format(node.op_type, node.name, vi.name))
-                            print('  {}: {} {}'.format(node.output[i_o], str(new_shape), vi.type.tensor_type.elem_type))
+                        if out_rank >= 0:
+                            new_shape = self._new_symbolic_shape(out_rank, node, i_o)
+                            vi.CopyFrom(helper.make_tensor_value_info(vi.name,
+                                                                      self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                                                                      new_shape))
 
-                        self.run_ = True
-                        continue # continue the inference after guess, no need to stop as no merge is needed
+                            if self.verbose_ > 0:
+                                if is_unknown_op:
+                                    print("Possible unknown op: {} node: {}, guessing {} shape".format(node.op_type, node.name, vi.name))
+                                if self.verbose_ > 2:
+                                    print('  {}: {} {}'.format(node.output[i_o], str(new_shape), vi.type.tensor_type.elem_type))
+
+                            self.run_ = True
+                            continue # continue the inference after guess, no need to stop as no merge is needed
 
                     if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
                         print('Stopping at incomplete shape inference at ' + node.op_type + ': ' + node.name)
