@@ -58,7 +58,7 @@ class AbiSafeTensor : public Microsoft::WRL::RuntimeClass<
                           ITensor> {
  private:
   onnxruntime::Tensor& tensor_;  // weak ref
-  ComPtr<IOrtValue> value_;      // strong ref
+  Microsoft::WRL::ComPtr<IOrtValue> value_;  // strong ref
 
  public:
   AbiSafeTensor(onnxruntime::Tensor* tensor,
@@ -793,7 +793,7 @@ class IOBinding : public Microsoft::WRL::RuntimeClass<
  private:
   std::shared_ptr<onnxruntime::IOBinding> binding_;
   std::vector<IOrtValue*> outputs_weak_;
-  std::vector<ComPtr<IOrtValue>> outputs_;
+  std::vector<Microsoft::WRL::ComPtr<IOrtValue>> outputs_;
 
  public:
   IOBinding(onnxruntime::IOBinding* binding) : binding_(binding) {
@@ -883,12 +883,14 @@ InferenceSession::RegisterCustomRegistry(
     IMLOperatorRegistry* registry) {
   RETURN_HR_IF(S_OK, registry == nullptr);
 
+#ifdef USE_DML
   auto custom_registries = GetLotusCustomRegistries(registry);
 
   // Register
   for (auto& custom_registry : custom_registries) {
     ORT_THROW_IF_ERROR(session_->RegisterCustomRegistry(custom_registry));
   }
+#endif USE_DML
 
   return S_OK;
 }
