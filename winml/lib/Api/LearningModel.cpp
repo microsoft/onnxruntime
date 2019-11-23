@@ -5,10 +5,10 @@
 
 #include "LearningModel.h"
 
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
+#endif USE_DML
 #include "TelemetryEvent.h"
-
-#include "LotusEnvironment.h"
 
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
@@ -18,7 +18,7 @@ namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(WinML::Strings::UTF8FromHString(path),
-                                                                   op_provider) {
+                                                                                 op_provider) {
 }
 WINML_CATCH_ALL
 
@@ -57,7 +57,7 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
-    WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
+  WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
 }
 
 void LearningModel::LogCreationEvent(bool fromStream) {
@@ -161,6 +161,7 @@ LearningModel::GetOperatorRegistry() {
     return nullptr;
   }
 
+#ifdef USE_DML
   // Get the native winrt provider interface out of winrt operator provider.
   auto operator_provider_native =
       operator_provider_.as<ILearningModelOperatorProviderNative>();
@@ -170,6 +171,9 @@ LearningModel::GetOperatorRegistry() {
   operator_provider_native->GetRegistry(operator_registry.put());
 
   return operator_registry.get();
+#else
+  return nullptr;
+#endif USE_DML
 }
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
