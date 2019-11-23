@@ -23,77 +23,201 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
+static bool CheckFirstAdd(Node& add, ProviderType providertype) {
+  if (providertype != add.GetExecutionProviderType() ||
+      !IsSupportedDataType(add)) {
+    return false;
+  }
+
+  // Check the input dimensions of the "Add" node.
+  const TensorShapeProto* add_input1_shape = add.MutableInputDefs()[0]->Shape();
+  const TensorShapeProto* add_input2_shape = add.MutableInputDefs()[1]->Shape();
+
+  if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
+    return false;
+  }
+  // "Add" inputs have to be 3d.
+  if (add_input1_shape->dim_size() != 3 || add_input2_shape->dim_size() != 3) {
+    return false;
+  }
+  // "Add" inputs have to be of same dimensions.
+  bool is_valid_input = true;
+  for (int i = 0; i < 3; i++) {
+    if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
+      is_valid_input = false;
+      break;
+    }
+  }
+  return is_valid_input;
+}
+
+// Add2 is the 2nd add of the to be fused sub-graph
+// The 1st input should be a 3D tensor
+// The 2nd input should be a 1D constant value
+static bool CheckSecondAdd(Node& add, ProviderType providertype) {
+  if (providertype != add.GetExecutionProviderType() ||
+      !IsSupportedDataType(add)) {
+    return false;
+  }
+
+  // Check the input dimensions of the "Add" node.
+  const TensorShapeProto* add_input1_shape = add.MutableInputDefs()[0]->Shape();
+  const TensorShapeProto* add_input2_shape = add.MutableInputDefs()[1]->Shape();
+
+  if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
+    return false;
+  }
+
+  return add_input1_shape->dim_size() == 3 && add_input2_shape->dim_size() == 1;
+}
+
 /**
-Skip Layer Normalization will fuse Add + LayerNormalization into one node.
+Skip Layer Normalization will fuse Add + LayerNormalization into one node, and another Add if applicable
+
+Before fusion:
+Format 1:
+      [Sub1]   [Sub2]
+         \       /
+        Add2    /
+           \   /
+            Add1
+             |
+     LayerNormalization
+
+Format 2:
+      [Sub1]   [Sub2]
+         \       /
+          \    Add2
+           \   /
+            Add1
+             |
+     LayerNormalization
+
+Format 3:
+      [Sub1]   [Sub2]
+         \       /
+          \     /
+           \   /
+            Add1
+             |
+     LayerNormalization
+
+After fusion:
+       [Sub1]   [Sub1]
+         \      /
+          \    /
+    SkipLayerNormalization
+
+Note: This fusion doesn't consider the following case:
+      [Sub1]   [Sub2]
+         \       /
+        Add2  Add3
+           \   /
+            Add1
+             |
+     LayerNormalization
 */
+
 Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
-    auto* p_add = graph.GetNode(node_index);
-    if (p_add == nullptr)
+    Node* p_layernorm = graph.GetNode(node_index);
+    if (p_layernorm == nullptr)
       continue;  // we removed the node as part of an earlier fusion.
 
-    Node& add_node = *p_add;
-    ORT_RETURN_IF_ERROR(Recurse(add_node, modified, graph_level, logger));
-    std::cout << "current Node: " << add_node.OpType() << std::endl;
+    Node& ln_node = *p_layernorm;
+    ORT_RETURN_IF_ERROR(Recurse(ln_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7}) ||
-        !graph_utils::IsSupportedProvider(add_node, GetCompatibleExecutionProviders()) ||
-        add_node.GetOutputEdgesCount() != 1 ||
-        !IsSupportedDataType(add_node)) {
-      std::cout << "Next! Current Node is not add. " << std::endl;
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
+        !graph_utils::IsSupportedProvider(ln_node, GetCompatibleExecutionProviders()) ||
+        !IsSupportedDataType(ln_node)) {
       continue;
     }
 
-    // Check the input dimensions of the "Add" node.
-    const TensorShapeProto* add_input1_shape = add_node.MutableInputDefs()[0]->Shape();
-    const TensorShapeProto* add_input2_shape = add_node.MutableInputDefs()[1]->Shape();
+    enum class Format : int8_t {
+      Format1,
+      Format2,
+      Format3,
+      None
+    };
 
-    if (add_input1_shape == nullptr || add_input2_shape == nullptr) {
-      std::cout << "Next! Can't find shape of the current node. " << std::endl;
-      continue;
-    }
-    // "Add" inputs have to be 3d.
-    if (add_input1_shape->dim_size() != 3 || add_input2_shape->dim_size() != 3) {
-      std::cout << "Next! Add inputs are not 3d. First input: " << add_input1_shape->dim_size() << " second input: " << add_input2_shape->dim_size() << std::endl;
-      continue;
-    }
-    // "Add" inputs have to be of same dimensions. 
-    bool isValidInput = true;
-    for (int i = 0; i < 3; i++) {
-      if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
-        isValidInput = false;
-        std::cout << "Next! Add dimensions not the same at dim " << i << std::endl;
-        std::cout << "First input at dim i: " << add_input1_shape->dim(i).dim_value() << std::endl;
-        std::cout << "Second input at dim i: " << add_input2_shape->dim(i).dim_value() << std::endl;
+    Node* p_add1 = nullptr;
+    Node* p_add2 = nullptr;
+    Format matched_format = Format::None;
 
-        break;
+    // Format 1
+    std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
+        {0, 0, "Add", {7}, kOnnxDomain},
+        {0, 0, "Add", {7}, kOnnxDomain}};
+
+    std::vector<const Node::EdgeEnd*> edges;
+    if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
+      p_add1 = const_cast<Node*>(&edges[0]->GetNode());
+      p_add2 = const_cast<Node*>(&edges[1]->GetNode());
+
+      if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
+          CheckSecondAdd(*p_add2, ln_node.GetExecutionProviderType())) {
+        matched_format = Format::Format1;
       }
     }
-    if (!isValidInput) {
-      continue;
+
+    if (matched_format == Format::None) {
+      // Format 2
+      std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
+          {0, 0, "Add", {7}, kOnnxDomain},
+          {0, 1, "Add", {7}, kOnnxDomain}};
+
+      if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
+        p_add1 = const_cast<Node*>(&edges[0]->GetNode());
+        p_add2 = const_cast<Node*>(&edges[1]->GetNode());
+
+        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
+            CheckSecondAdd(*p_add2, ln_node.GetExecutionProviderType())) {
+          matched_format = Format::Format2;
+        }
+      }
     }
 
-    nodes_to_remove.push_back(add_node);
+    if (matched_format == Format::None) {
+      // Format 3
+      std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
+          {0, 0, "Add", {7}, kOnnxDomain}};
 
-    // Find "LayerNormalization" node after the "Add".
-    Node& ln_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
-        ln_node.GetExecutionProviderType() != add_node.GetExecutionProviderType() ||
-        !IsSupportedDataType(ln_node)) {
-      std::cout << "Next! Current Node is not LayerNorm. " << std::endl;
+      if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
+        p_add1 = const_cast<Node*>(&edges[0]->GetNode());
+
+        if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType())) {
+          matched_format = Format::Format3;
+        }
+      }
+    }
+
+    if (matched_format == Format::None) {
       continue;
     }
-    nodes_to_remove.push_back(ln_node);
 
     // Get the inputs for the new SkipLayerNormalization node.
-    const std::vector<NodeArg*> skip_layer_norm_input_defs{add_node.MutableInputDefs()[0],
-                                                           add_node.MutableInputDefs()[1],
-                                                           ln_node.MutableInputDefs()[1],
-                                                           ln_node.MutableInputDefs()[2]};
+    std::vector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
+                                                     p_add1->MutableInputDefs()[1],
+                                                     ln_node.MutableInputDefs()[1],
+                                                     ln_node.MutableInputDefs()[2]};
+
+    if (matched_format == Format::Format1) {
+      skip_layer_norm_input_defs[0] = p_add2->MutableInputDefs()[0];
+      skip_layer_norm_input_defs.push_back(p_add2->MutableInputDefs()[1]);
+      nodes_to_remove.push_back(*p_add2);
+    } else if (matched_format == Format::Format2) {
+      skip_layer_norm_input_defs[1] = p_add2->MutableInputDefs()[0];
+      skip_layer_norm_input_defs.push_back(p_add2->MutableInputDefs()[1]);
+      nodes_to_remove.push_back(*p_add2);
+    }
+
+    nodes_to_remove.push_back(*p_add1);
+    nodes_to_remove.push_back(ln_node);
+
     Node& skip_layer_norm_node = graph.AddNode(graph.GenerateNodeName("SkipLayerNormalization"),
                                                "SkipLayerNormalization",
                                                "fused SkipLayerNorm subgraphs ",
@@ -101,7 +225,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
                                                {}, {}, kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
-    skip_layer_norm_node.SetExecutionProviderType(add_node.GetExecutionProviderType());
+    skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
 
     // move input edges to add (first in list) across to the layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.

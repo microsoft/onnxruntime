@@ -65,6 +65,11 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (segment_gather_node.GetOutputEdgesCount() != 1) {
       continue;
     }
+    // The first input of segment_gather_node must be 2d.
+    auto sg_shape = segment_gather_node.MutableInputDefs()[0]->Shape();
+    if (sg_shape != nullptr && sg_shape->dim_size() != 2) {
+      continue;
+    }
 
     // Traceback the SkipLayerNormalization node to find Gather --> Add --> SkipLayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
@@ -76,6 +81,11 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& add_node = *graph.GetNode(edges[0]->GetNode().Index());
     Node& word_gather_node = *graph.GetNode(edges[1]->GetNode().Index());
     if (add_node.GetOutputEdgesCount() != 1 || word_gather_node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+    // The first input of word_gather_node must be 2d. 
+    auto wg_shape = word_gather_node.MutableInputDefs()[0]->Shape();
+    if (wg_shape != nullptr && wg_shape->dim_size() != 2) {
       continue;
     }
 
@@ -91,13 +101,18 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (position_gather_node.GetOutputEdgesCount() != 1) {
       continue;
     }
+    // The first input of position_gather_node must be 2d.
+    auto pg_shape = position_gather_node.MutableInputDefs()[0]->Shape();
+    if (pg_shape != nullptr && pg_shape->dim_size() != 2) {
+      continue;
+    }
 
     std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_symbolic{
       {0, 1, "Expand", {8}, kOnnxDomain},
       {0, 1, "Shape", {1}, kOnnxDomain}};
     Node* p_expand_node = nullptr;
     Node* p_shape_node = nullptr;
-    if (graph_utils::FindPath(position_gather_node, true, position_embedding_path, edges, logger)) {
+    if (graph_utils::FindPath(position_gather_node, true, position_embedding_path_symbolic, edges, logger)) {
       if (edges[0]->GetNode().GetOutputEdgesCount() == 1 && edges[1]->GetNode().GetOutputEdgesCount() == 1) {
         p_expand_node = graph.GetNode(edges[0]->GetNode().Index());
         p_shape_node = graph.GetNode(edges[1]->GetNode().Index());
@@ -106,24 +121,21 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     // Get input "input_ids" from node.
     NodeArg* input_ids = nullptr;
-    if (!graph_utils::NodeArgIsConstant(graph, *(word_gather_node.MutableInputDefs()[1])) &&
-        !graph_utils::IsGraphInput(graph, word_gather_node.MutableInputDefs()[1])) {
+    if (!graph_utils::IsGraphInput(graph, word_gather_node.MutableInputDefs()[1])) {
       continue;
     }
     input_ids = word_gather_node.MutableInputDefs()[1];
 
     // Get input "segment_ids" from node.
     NodeArg* segment_ids = nullptr;
-    if (!graph_utils::NodeArgIsConstant(graph, *(segment_gather_node.MutableInputDefs()[1])) &&
-        !graph_utils::IsGraphInput(graph, segment_gather_node.MutableInputDefs()[1])) {
+    if (!graph_utils::IsGraphInput(graph, segment_gather_node.MutableInputDefs()[1])) {
       continue;
     }
     segment_ids = segment_gather_node.MutableInputDefs()[1];
-
+    
     // Get input "mask" from "ReduceSum" node.
     NodeArg* mask = nullptr;
-    if (!graph_utils::NodeArgIsConstant(graph, *(reduce_sum_node.MutableInputDefs()[0])) &&
-        !graph_utils::IsGraphInput(graph, reduce_sum_node.MutableInputDefs()[0])) {
+    if (!graph_utils::IsGraphInput(graph, reduce_sum_node.MutableInputDefs()[0])) {
       continue;
     }
     mask = reduce_sum_node.MutableInputDefs()[0];
