@@ -61,8 +61,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     bool isValidInput = true;
     for (int i = 0; i < 3; i++) {
       if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
-        isValidInput = false
-
+        isValidInput = false;
         break;
       }
     }
