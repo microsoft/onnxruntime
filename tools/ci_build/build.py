@@ -597,9 +597,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           cmd += ['-d', '1']
 
         if config != 'Debug' and os.path.exists(model_dir):
-          # some models in opset9 and above are not supported by TensorRT yet
-          if provider == 'tensorrt':
-            model_dir = os.path.join(model_dir, "opset8")
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
@@ -611,6 +608,31 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         if enable_parallel_executor_test:
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
+# tensorrt function to run onnx test and model test.
+def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+    for config in configs:
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+           exe = os.path.join(cwd, config, 'onnx_test_runner')
+           model_dir = os.path.join(cwd, "models")
+        else:
+           exe = os.path.join(cwd, 'onnx_test_runner')
+           model_dir = os.path.join(build_dir, "models")
+        cmd_base = ['-e', 'tensorrt', '-j', '1'] 
+
+        #onnx test
+        if os.path.exists(onnx_test_data_dir):
+          onnx_test_cmd = cmd_base + [onnx_test_data_dir]
+          run_subprocess([exe] + onnx_test_cmd, cwd=cwd)
+
+        # model test
+        # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
+        if config != 'Debug' and os.path.exists(model_dir):
+          model_dir = os.path.join(model_dir, "opset8")
+          model_dir = glob.glob(os.path.join(model_dir, "test_*"))
+          for dir_path in model_dir:
+            model_test_cmd = cmd_base + [dir_path]
+            run_subprocess([exe] + model_test_cmd, cwd=cwd)
 
 # mkldnn temporary function for running onnx tests and model tests separately.
 def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
@@ -945,7 +967,7 @@ def main():
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
+                tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
             if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
