@@ -65,8 +65,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. ")
-    parser.add_argument("--download_test_data", action="store_true",
-                        help='''Downloads test data without running the tests''')
     parser.add_argument("--test_data_url", help="Test data URL.")
     parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
 
@@ -143,7 +141,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_eigenthreadpool", action="store_true", help="Build with eigenthreadpool")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
-    parser.add_argument("--azure_sas_key", help="Azure storage sas key, starts with '?'")
     parser.add_argument("--use_brainslice", action="store_true", help="Build with brain slice")
     parser.add_argument("--brain_slice_package_path", help="Path to brain slice packages")
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice packages")
@@ -260,53 +257,9 @@ def check_md5(filename, expected_md5):
         return False
     return True
 
-#the last part of src_url should be unique, across all the builds
-def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
-    cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
-    os.makedirs(cache_dir, exist_ok=True)
-    local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
-    if not check_md5(local_zip_file, expected_md5):
-        log.info("Downloading test data")
-        if azure_sas_key:
-            src_url += azure_sas_key
-        # try to avoid logging azure_sas_key
-        if shutil.which('aria2c'):
-            result = subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
-            if result.returncode != 0:
-                raise BuildError("aria2c exited with code {}.".format(result.returncode))
-        elif shutil.which('curl'):
-            result = subprocess.run(['curl', '-s', src_url, '-o', local_zip_file])
-            if result.returncode != 0:
-                raise BuildError("curl exited with code {}.".format(result.returncode))
-        else:
-            import urllib.request
-            import urllib.error
-            try:
-                urllib.request.urlretrieve(src_url, local_zip_file)
-            except urllib.error.URLError:
-                raise BuildError("urllib.request.urlretrieve() failed.")
-    models_dir = os.path.join(build_dir,'models')
-    if os.path.exists(models_dir):
-        log.info('deleting %s' % models_dir)
-        shutil.rmtree(models_dir)
-    if shutil.which('unzip'):
-        run_subprocess(['unzip','-qd', models_dir, local_zip_file])
-    elif shutil.which('7z'):  # 7-Zip
-        run_subprocess(['7z','x', local_zip_file, '-y', '-o' + models_dir])
-    elif shutil.which('7za'):  # 7-Zip standalone
-        run_subprocess(['7za', 'x', local_zip_file, '-y', '-o' + models_dir])
-    else:
-        #TODO: use python for unzip
-        log.error("No unzip tool for use")
-        return False
-    return True
 
-def setup_test_data(build_dir, configs, test_data_url, test_data_checksum, azure_sas_key):
-    if test_data_url is not None:
-        """Sets up the test data, downloading it if needed."""
-        if not download_test_data(build_dir, test_data_url, test_data_checksum, azure_sas_key):
-            raise BuildError("Failed to set up test data.")
 
+def setup_test_data(build_dir, configs):    
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
         src_model_dir = os.path.join(build_dir, 'models')
@@ -620,7 +573,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
 
-def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models):
+def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_multi_device_test, enable_parallel_executor_test, num_parallel_models, num_parallel_tests=0):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -632,12 +585,9 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         cmd = []
         if provider:
           cmd += ["-e", provider]
-          if provider == 'mkldnn':
-             cmd += ['-c', '1']
-          if provider == 'openvino':
-             cmd += ['-c', '1']
-          if provider == 'nuphar':
-             cmd += ['-c', '1']
+
+        if num_parallel_tests != 0:
+          cmd += ['-c', str(num_parallel_tests)]
 
         if num_parallel_models > 0:
           cmd += ["-j", str(num_parallel_models)]
@@ -677,8 +627,7 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           # /data/onnx
           run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
           run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
-
-        # models/opset7, models/opset8, models/opset9
+        
         if config != 'Debug' and os.path.exists(model_dir):
           opset7_model_dir = os.path.join(model_dir, 'opset7')
           opset7_cmd = cmd_base + [opset7_model_dir]
@@ -686,16 +635,20 @@ def mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           opset8_cmd = cmd_base + [opset8_model_dir]
           opset9_model_dir = os.path.join(model_dir, 'opset9')
           opset9_cmd = cmd_base + [opset9_model_dir]
+          opset10_model_dir = os.path.join(model_dir, 'opset10')
+          opset10_cmd = cmd_base + [opset10_model_dir]
           run_subprocess([exe] + opset7_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
           run_subprocess([exe] + opset8_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
           run_subprocess([exe] + opset9_cmd, cwd=cwd)
           run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+          run_subprocess([exe] + opset10_cmd, cwd=cwd)
+          run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
 
 
 # nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
-def nuphar_run_python_tests(build_dir, configs, azure_sas_key):
+def nuphar_run_python_tests(build_dir, configs):
     for config in configs:
         if config == 'Debug':
             continue
@@ -957,11 +910,8 @@ def main():
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
 
-        if args.enable_onnx_tests or args.download_test_data:
-            if args.download_test_data:
-                if not args.test_data_url or not args.test_data_checksum:
-                   raise UsageError("The test_data_url and test_data_checksum arguments are required.")
-            setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
+        if args.enable_onnx_tests:
+            setup_test_data(build_dir, configs)
 
         if args.path_to_protoc_exe:
             path_to_protoc_exe = args.path_to_protoc_exe
@@ -995,29 +945,33 @@ def main():
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
                 run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
-            elif args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)
-            elif args.x86 or platform.system() == 'Darwin':
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False, 1)
-            elif args.use_ngraph:
+
+            if args.use_cuda:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
+
+            if args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)
-            elif args.use_openvino:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1)
+
+            if args.use_openvino:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1, 1)
               # TODO: parallel executor test fails on MacOS
-            elif args.use_nuphar:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1)
-            else:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, True, 0)
+            if args.use_nuphar:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1, 1)
 
             if args.use_dml:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
 
-              if args.use_mkldnn:
-                mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+            #It could run out of memory because of memory leak
+            #if args.use_mkldnn:
+            #  mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+
+            run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
+              1 if args.x86 or platform.system() == 'Darwin' else 0,
+              1 if args.x86 or platform.system() == 'Darwin' else 0)                       
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
-            nuphar_run_python_tests(build_dir, configs, args.azure_sas_key)
+            nuphar_run_python_tests(build_dir, configs)
 
     if args.build_server:
         split_server_binary_and_symbol(build_dir, configs)
