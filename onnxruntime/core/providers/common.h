@@ -42,4 +42,42 @@ inline float clamp(float v, float lo, float hi) {
   return v;
 }
 
+/**
+Tries to call the given function parallelly, splitted into specified batch(es)
+**/
+template <typename F>
+inline void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
+  if (tp != nullptr)
+    if (batch_size <= 0) {
+      batch_size = tp->NumThreads();
+    }
+  if (batch_size == total) {
+    tp->ParallelFor(total, fn);
+  } else {
+    tp->ParallelFor(batch_size, [&](int batch_index) {
+      int start = batch_index * total / batch_size;
+      int end = (batch_index + 1) * total / batch_size;
+      for (int i = start; i < end; i++) {
+        fn(i);
+      }
+    });
+  }
+  else {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+    for (int32_t i = 0; i != total; ++i) {
+      fn(i);
+    }
+  }
+}
+
+/**
+Tries to call the given function parallelly
+**/
+template <typename F>
+inline void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn) {
+  TryBatchParallelFor(tp, total, fn, total);
+}
+
 }  // namespace onnxruntime

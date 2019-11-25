@@ -41,18 +41,6 @@ namespace onnxruntime {
 ADD_TYPED_ROIALIGN_OP(float);
 ADD_TYPED_ROIALIGN_OP(double);
 
-namespace {
-template <typename T>
-void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, T&& fn) {
-  if (tp != nullptr)
-    tp->ParallelFor(total, fn);
-  else {
-    for (int32_t i = 0; i != total; ++i) {
-      fn(i);
-    }
-  }
-}
-
 template <typename T>
 struct PreCalc {
   int64_t pos1;
