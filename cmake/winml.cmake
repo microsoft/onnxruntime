@@ -31,7 +31,7 @@ convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 # For winrt idl files:
 # 1) the file name must match the casing of the file on disk.
 # 2) for winrt idls the casing must match the namespaces within exactly (Window.AI.MachineLearning).
-# target_cppwinrt will attempt to create a winmd with the name and same casing as the supplied 
+# target_cppwinrt will attempt to create a winmd with the name and same casing as the supplied
 # idl file. If the name of the winmd file does not match the contained namespaces, cppwinrt.exe
 # will generate component template files with fully qualified names, which will not match the existing
 # generated component files.
@@ -90,6 +90,9 @@ add_library(winml_lib_telemetry STATIC
 # Compiler options
 target_compile_features(winml_lib_telemetry PRIVATE cxx_std_17)
 target_compile_options(winml_lib_telemetry PRIVATE /GR- /await /wd4238)
+if (onnxruntime_USE_TELEMETRY)
+  set_target_properties(winml_lib_telemetry PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+endif()
 
 # Compiler flags
 target_compile_definitions(winml_lib_telemetry PRIVATE PLATFORM_WINDOWS)
@@ -236,7 +239,7 @@ add_library(winml_lib_image STATIC
 )
 
 # Compiler options
-target_compile_features(winml_lib_image PRIVATE cxx_std_17) 
+target_compile_features(winml_lib_image PRIVATE cxx_std_17)
 target_compile_options(winml_lib_image PRIVATE /GR- /await /wd4238)
 
 # Compiler flags
@@ -323,7 +326,7 @@ add_library(winml_lib_api STATIC
 )
 
 # Compiler options
-target_compile_features(winml_lib_api PRIVATE cxx_std_17) 
+target_compile_features(winml_lib_api PRIVATE cxx_std_17)
 target_compile_options(winml_lib_api PRIVATE /GR- /await /bigobj /wd4238)
 
 # Compiler flags
@@ -400,7 +403,7 @@ add_library(winml_dll SHARED
 )
 
 # Compiler options
-target_compile_features(winml_dll PRIVATE cxx_std_17) 
+target_compile_features(winml_dll PRIVATE cxx_std_17)
 target_compile_options(winml_dll PRIVATE /GR- /await /bigobj /wd4238)
 
 # Compiler definitions
@@ -494,3 +497,7 @@ target_link_libraries(winml_dll PRIVATE ${DBGHELP})
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   set_target_properties(winml_dll PROPERTIES VS_GLOBAL_PreferredToolArchitecture "x64")
 endif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+
+if (onnxruntime_BUILD_WINML_TESTS)
+  include(winml_unittests.cmake)
+endif()
