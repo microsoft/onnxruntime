@@ -16,17 +16,24 @@ void TransposeTest(std::vector<int64_t>& input_shape,
                    std::vector<int64_t>* p_perm,
                    std::vector<int64_t> expected_shape,
                    std::initializer_list<T>& expected_vals,
-                   bool is_tensorrt_supported = true) {
+                   bool is_tensorrt_supported = true,
+                   bool is_openvino_supported = true) {
   OpTester test("Transpose");
   if (nullptr != p_perm)
     test.AddAttribute("perm", *p_perm);
   test.AddInput<T>("X", input_shape, input_vals);
   test.AddOutput<T>("Y", expected_shape, expected_vals);
+
   // Disable TensorRT on unsupported tests
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
+
+  if (!is_openvino_supported) {
+    excluded_providers.insert(kOpenVINOExecutionProvider);
+  }
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
@@ -288,7 +295,7 @@ static void NumericNCHW2NHWC() {
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -346,7 +353,7 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
@@ -405,7 +412,7 @@ TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
       7, 8,
       15, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 }  // namespace test
 }  // namespace onnxruntime
