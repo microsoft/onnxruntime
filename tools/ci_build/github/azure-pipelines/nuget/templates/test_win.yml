@@ -10,14 +10,19 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+  - group: ORT_TEST_DATA_SAS
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
+
   steps:
-  - template: ../../templates/set-test-data-variables-step.yml
+  - template: set-test-data-variables-step.yml
   - template: ../../templates/windows-build-tools-setup-steps.yml
     parameters:
       EnvSetupScript: 'setup_env.bat'
       buildArch: 'x64'
       setVcvars: true
+      DoDataDownload: false
+  - template: win-download-test-data.yml
 
   - task: BatchScript@1
     displayName: 'Setup VS2017 env vars'
@@ -34,12 +39,6 @@ jobs:
   - template: get-nuget-package-version-as-variable.yml
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
-    
-  - script: |
-     @echo "Running download_test_data.py"
-     $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-
-    displayName: 'Download Test Data'
 
   - script: |
      @echo "Running Runtest.bat"
