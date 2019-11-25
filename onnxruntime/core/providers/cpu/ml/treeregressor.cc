@@ -6,11 +6,19 @@
 namespace onnxruntime {
 namespace ml {
 
-ONNX_CPU_OPERATOR_ML_KERNEL(
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
+    float,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0), \
     TreeEnsembleRegressor<float>);
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    TreeEnsembleRegressor,
+    1,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0), \
+    TreeEnsembleRegressor<double>);
 
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
@@ -159,7 +167,7 @@ common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < in
     if (missing_tracks_true_.size() != nodes_truenodeids_.size()) {
       tracktrue = false;
     } else {
-      tracktrue = (missing_tracks_true_[treeindex] != 0) && std::isnan(val);
+      tracktrue = (missing_tracks_true_[treeindex] != 0) && std::isnan(static_cast<float>(val));
     }
     float threshold = nodes_values_[treeindex];
     if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_LEQ) {

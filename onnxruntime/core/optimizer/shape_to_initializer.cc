@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   // Store the statically inferred shape of the input to the Shape operator.
   const ONNX_NAMESPACE::TensorShapeProto* input_shape_proto = node.InputDefs()[0]->Shape();
   std::vector<int64_t> input_dims;
@@ -49,7 +49,7 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   return Status::OK();
 }
 
-bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1})) {
     return false;
   }
@@ -70,7 +70,7 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node) 
 
   // we're going to create an initializer with the same name as the node output
   const auto& new_initializer_name = node.OutputDefs()[0]->Name();
-  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_initializer_name)) {
+  if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_initializer_name, logger)) {
     return false;
   }
 

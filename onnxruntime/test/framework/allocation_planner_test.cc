@@ -12,6 +12,7 @@
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "test/test_environment.h"
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -162,7 +163,10 @@ class PlannerTest : public ::testing::Test {
 
  public:
   PlannerTest()
-      : model_("test"), graph_(model_.MainGraph()), tp_("test", 1), state_(execution_providers_, false, &tp_, nullptr) {
+      : model_("test", false, DefaultLoggingManager().DefaultLogger()),
+        graph_(model_.MainGraph()),
+        tp_("test", 1),
+        state_(execution_providers_, false, &tp_, nullptr) {
     std_kernel_ = KernelDefBuilder().SetName("Transpose").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
     in_place_kernel_ =
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
@@ -170,8 +174,6 @@ class PlannerTest : public ::testing::Test {
     auto execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
     execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
   }
-
-  ~PlannerTest() = default;
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
     auto iter = name_to_arg_.find(name);

@@ -87,69 +87,80 @@ void DumpNodeInputs(const OpKernelContext& context, const Node& node);
 void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionState& session_state);
 #endif
 
-#define DispatchOnTensorType(tensor_type, function, ...)        \
-  if (tensor_type == DataTypeImpl::GetType<float>())            \
-    function<float>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<double>())      \
-    function<double>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())      \
-    function<int8_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())     \
-    function<int16_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())     \
-    function<int32_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())     \
-    function<int64_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())     \
-    function<uint8_t>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())    \
-    function<uint16_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())    \
-    function<uint32_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())    \
-    function<uint64_t>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())        \
-    function<bool>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())   \
-    function<MLFloat16>(__VA_ARGS__);                           \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())    \
-    function<BFloat16>(__VA_ARGS__);                            \
-  else if (tensor_type == DataTypeImpl::GetType<std::string>()) \
-    function<std::string>(__VA_ARGS__);                         \
-  else                                                          \
-    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
+template <typename T>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
 
-#define DispatchOnTensorTypeWithReturn(tensor_type, retval, function, ...) \
-  if (tensor_type == DataTypeImpl::GetType<float>())                       \
-    retval = function<float>(__VA_ARGS__);                                 \
-  else if (tensor_type == DataTypeImpl::GetType<double>())                 \
-    retval = function<double>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())                 \
-    retval = function<int8_t>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())                \
-    retval = function<int16_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())                \
-    retval = function<int32_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())                \
-    retval = function<int64_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())                \
-    retval = function<uint8_t>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())               \
-    retval = function<uint16_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())               \
-    retval = function<uint32_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())               \
-    retval = function<uint64_t>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())                   \
-    retval = function<bool>(__VA_ARGS__);                                  \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())              \
-    retval = function<MLFloat16>(__VA_ARGS__);                             \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())               \
-    retval = function<BFloat16>(__VA_ARGS__);                              \
-  else if (tensor_type == DataTypeImpl::GetType<std::string>())            \
-    retval = function<std::string>(__VA_ARGS__);                           \
-  else                                                                     \
-    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<bool>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<double>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<MLFloat16>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<BFloat16>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int8_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint8_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int16_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint16_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int32_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint32_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+}
 
 }  // namespace utils
 }  // namespace onnxruntime

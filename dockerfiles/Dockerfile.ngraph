@@ -6,7 +6,7 @@
 FROM ubuntu:16.04
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_SERVER_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=master
 
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -18,7 +18,7 @@ ENV LD_LIBRARY_PATH=/opt/miniconda/lib:$LD_LIBRARY_PATH
 ENV LANG en_US.UTF-8
 
 WORKDIR /code
-RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime && \
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime && \
     cp onnxruntime/docs/Privacy.md /code/Privacy.md && \
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt && \
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt && \

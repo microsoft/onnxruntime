@@ -385,7 +385,7 @@ TEST(SliceTest, Slice3D_FlattenInnermostDimsIncopy) {
                          17, 6, 24},
                         {0, 0, 1},
                         {1000, 1000, 1000},
-                        {2, 1, 0}, // reverse the axes to test that's handled correctly by the flattening logic
+                        {2, 1, 0},  // reverse the axes to test that's handled correctly by the flattening logic
                         {1, 1, 2},
                         {1, 3, 3},
                         {0, 21, 6,
@@ -559,5 +559,21 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
                       true);
 }
 
+// test where we provide a subset of axes, we can flatten some dimensions, and we need to skip some input before
+// getting to the first value to output.
+TEST(SliceTest, Slice5D_SubsetOfAxes_Flatten2Dims_OffsetInput) {
+  RunSliceTest<float>({1, 2, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f},
+                      {0, 1, 1, 0},
+                      {1, 2, std::numeric_limits<int64_t>::max(), 6},
+                      {0, 1, 2, 3},
+                      {},
+                      {1, 1, 1, 2, 2},
+                      {-5.f, -6.f, -7.f, -8.f},
+                      true);
+}
 }  // namespace test
 }  // namespace onnxruntime

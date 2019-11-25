@@ -114,9 +114,10 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
                                                                       fetched_tensor.Shape(),
                                                                       allocator);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   output_mlvalue.Init(p_tensor.release(),
-                      DataTypeImpl::GetType<Tensor>(),
-                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                      ml_tensor,
+                      ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }
@@ -154,8 +155,6 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
   //  target_mlvalue = source_mlvalue;
   //  return Status::OK();
   //}
-
-  assert(source_mlvalue.IsTensor());
 
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
@@ -645,6 +644,8 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
                   std::cout << " failed to transfer data to cpu.\n";
                 }
               }
+#else
+              ORT_UNUSED_PARAMETER(session_state);
 #endif
             }
           }
