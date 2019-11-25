@@ -683,6 +683,18 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return &(edge->GetNode());
 }
 
+inline std::string ToString(const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  std::ostringstream output;
+  if (!versions.empty()) {
+    // Convert all but the last element to avoid a trailing ";"
+    std::copy(versions.begin(), versions.end() - 1,
+              std::ostream_iterator<ONNX_NAMESPACE::OperatorSetVersion>(output, ";"));
+    // Now add the last element with no delimiter
+    output << versions.back();
+  }
+  return output.str();
+}
+
 bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
   result.reserve(edges_to_match.size());
@@ -690,12 +702,22 @@ bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToM
   const Node* current_node = &node;
   for (const auto& edge : edges_to_match) {
     const Node::EdgeEnd* edge_found = nullptr;
-
+#ifndef NDEBUG
+    LOGS(logger, VERBOSE) << (is_input_edge ? "I:" : "O:") << edge.src_arg_index << "," << edge.dst_arg_index
+                           << "," << edge.op_type << "," << edge.domain << "," << ToString(edge.versions);
+#endif
     auto edges_begin = is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
     auto edges_end = is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
     for (auto it = edges_begin; it != edges_end; ++it) {
-
-      if (edge.dst_arg_index == it->GetDstArgIndex() && edge.src_arg_index == it->GetSrcArgIndex() && edge.op_type == it->GetNode().OpType() && MatchesOpSinceVersion(it->GetNode(), edge.versions) && MatchesOpSetDomain(it->GetNode(), edge.domain)) {
+#ifndef NDEBUG
+      LOGS(logger, VERBOSE) << "E:" << it->GetSrcArgIndex() << "," << it->GetDstArgIndex()
+                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << "," << it->GetNode().Op()->SinceVersion();
+#endif
+      if (edge.dst_arg_index == it->GetDstArgIndex() &&
+          edge.src_arg_index == it->GetSrcArgIndex() &&
+          edge.op_type == it->GetNode().OpType() &&
+          MatchesOpSinceVersion(it->GetNode(), edge.versions) &&
+          MatchesOpSetDomain(it->GetNode(), edge.domain)) {
         // For output edge, there could be multiple edges matched.
         // This function will return failure in such case by design.
         if (nullptr != edge_found) {
