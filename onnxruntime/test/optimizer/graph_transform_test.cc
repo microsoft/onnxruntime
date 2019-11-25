@@ -29,6 +29,8 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/util/math.h"
 #include "test/capturing_sink.h"
@@ -875,11 +877,11 @@ TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Shape"] == 0);
-  ASSERT_TRUE(op_to_count["Gather"] == 0);
-  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
-  ASSERT_TRUE(op_to_count["Concat"] == 0);
-  ASSERT_TRUE(op_to_count["Reshape"] == 1);
+  ASSERT_EQ(op_to_count["Shape"], 0);
+  ASSERT_EQ(op_to_count["Gather"], 0);
+  ASSERT_EQ(op_to_count["Unsqueeze"], 0);
+  ASSERT_EQ(op_to_count["Concat"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
 
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "Reshape") {
@@ -896,6 +898,167 @@ TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
       EXPECT_EQ(val[2], 768);
     }
   }
+}
+
+static void ValidateAttention(Graph& graph) {
+  // Validate the merged weights (initializer) input for Attention node.
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Attention") {
+      int64_t expected_heads = 2;
+      ASSERT_TRUE(optimizer_utils::IsAttributeWithExpectedValue(node, "num_heads", expected_heads));
+
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      EXPECT_EQ(initializer->size(), 192);
+
+      // Validate two rows (2x24 items) for sanity check.
+      std::vector<double> expected_value = {
+          -0.10791015625,
+          -0.04193115234375,
+          0.09051513671875,
+          0.025787353515625,
+          -0.11572265625,
+          -0.126953125,
+          -0.043304443359375,
+          -0.02984619140625,
+          0.022125244140625,
+          -0.017730712890625,
+          -0.03265380859375,
+          -0.05108642578125,
+          0.0423583984375,
+          0.112060546875,
+          0.080810546875,
+          0.09375,
+          -0.03643798828125,
+          0.02862548828125,
+          0.039764404296875,
+          0.06097412109375,
+          -0.002288818359375,
+          -0.10797119140625,
+          -0.01171875,
+          0.041717529296875,
+
+          0.033538818359375,
+          -0.05755615234375,
+          -0.04986572265625,
+          -0.01558685302734375,
+          -0.0352783203125,
+          0.03546142578125,
+          0.05218505859375,
+          0.005565643310546875,
+          -0.043182373046875,
+          -0.05010986328125,
+          -0.063720703125,
+          -0.00824737548828125,
+          0.1492919921875,
+          0.048431396484375,
+          -0.0482177734375,
+          -0.1123046875,
+          0.032196044921875,
+          0.0135650634765625,
+          0.020233154296875,
+          -0.05084228515625,
+          -0.011260986328125,
+          -0.1241455078125,
+          -0.0101165771484375,
+          -0.00490570068359375};
+
+      const float* data = initializer->data<float>();
+      for (size_t i = 0; i < expected_value.size(); i++) {
+        EXPECT_EQ(data[i], static_cast<float>(expected_value[i]));
+      }
+
+      tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+      auto initializer2 = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      EXPECT_EQ(initializer2->size(), 24);
+
+      std::vector<double> expected_value2 = {
+          -0.23681640625,
+          -0.16552734375,
+          0.2191162109375,
+          -0.1756591796875,
+          -0.03460693359375,
+          -0.05316162109375,
+          -0.336181640625,
+          -0.253662109375,
+          0.0246734619140625,
+          0.011993408203125,
+          0.0178375244140625,
+          0.00998687744140625,
+          0.0255126953125,
+          0.076416015625,
+          -0.040771484375,
+          0.0107879638671875,
+          -0.005893707275390625,
+          -0.00916290283203125,
+          0.04541015625,
+          0.0159454345703125,
+          -0.0029163360595703125,
+          -0.03472900390625,
+          0.0535888671875,
+          0.0091094970703125};
+
+      const float* data2 = initializer2->data<float>();
+      for (size_t i = 0; i < expected_value2.size(); i++) {
+        EXPECT_EQ(data2[i], static_cast<float>(expected_value2[i]));
+      }
+
+    }
+  }
+}
+
+// Test Attention Fusion with int32 mask
+TEST(GraphTransformationTests, AttentionFusionInt32Test) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_int32_mask.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Reshape"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+
+  ValidateAttention(graph);
+}
+
+// Test Attention Fusion with int64 mask and symbolic batch dimension
+TEST(GraphTransformationTests, AttentionFusionInt64Test) {
+  auto model_uri = MODEL_FOLDER "fusion/attention_symbolic_batch.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Transpose"], 0);
+  EXPECT_EQ(op_to_count["Reshape"], 0);
+  EXPECT_EQ(op_to_count["Cast"], 1);  // Cast for int64 mask to int32
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+
+  ValidateAttention(graph);
 }
 
 #ifndef DISABLE_CONTRIB_OPS

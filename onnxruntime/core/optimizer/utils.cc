@@ -16,9 +16,7 @@ namespace onnxruntime {
 namespace optimizer_utils {
 
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT
-      || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-      || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+  return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
 }
 
 inline bool IsScalar(const NodeArg& input_arg) {
@@ -44,7 +42,7 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
-  
+
   if (tensor_proto == nullptr) {
     return false;
   }
@@ -105,6 +103,74 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
   } else {
     // Not expected data types.
     return false;
+  }
+
+  return true;
+}
+
+bool IsAttributeWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_i()) {
+    return attr_proto->i() == expected_value;
+  }
+  return false;
+}
+
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+    return false;
+  }
+
+  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
+  const auto data_type = tensor_proto->data_type();
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    const int64_t* val = init_const->data<int64_t>();
+    data.reserve(data.size() + init_const->size());
+    data.insert(data.end(), val, val + init_const->size());
+  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    const int32_t* val = init_const->data<int32_t>();
+    data.reserve(data.size() + init_const->size());
+    for (int64_t i = 0; i < init_const->size(); i++) {
+      data.push_back(static_cast<int64_t>(val[i]));
+    }
+  } else {
+    return false;
+  }
+
+  return true;
+}
+
+bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>& expected_dim_values) {
+  auto shape = node_arg.Shape();
+  if (shape == nullptr || static_cast<size_t>(shape->dim_size()) != expected_dim_values.size()) {
+    return false;
+  }
+
+  int index = 0;
+  for (auto& expected_dim_value : expected_dim_values) {
+    if (expected_dim_value > 0) {
+      auto dim = shape->dim(index);
+      if (!utils::HasDimValue(dim) || expected_dim_value != dim.dim_value()) {
+        return false;
+      }
+    }
+    ++index;
+  }
+
+  return true;
+}
+
+bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size) {
+  auto shape = node_arg.Shape();
+  if (shape == nullptr || shape->dim_size() != expected_dim_size) {
+    return false;
+  }
+
+  for (int i = 0; i < expected_dim_size; i++) {
+    if (!utils::HasDimValue(shape->dim(i))) {
+      return false;
+    }
   }
 
   return true;
