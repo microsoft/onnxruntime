@@ -62,7 +62,7 @@ add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common
-  DEPENDS winml_api
+  DEPENDS winml_sdk_cppwinrt
 )
 target_precompiled_header(winml_test_api testPch.h)
 
