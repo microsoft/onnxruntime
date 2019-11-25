@@ -57,7 +57,7 @@ class AbiSafeTensor : public Microsoft::WRL::RuntimeClass<
                           Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                           ITensor> {
  private:
-  onnxruntime::Tensor& tensor_;  // weak ref
+  onnxruntime::Tensor& tensor_;              // weak ref
   Microsoft::WRL::ComPtr<IOrtValue> value_;  // strong ref
 
  public:
@@ -589,8 +589,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
       } else {
         THROW_HR(E_FAIL);
       }
-    }
-    else if (key_kind == TensorKind::String) {
+    } else if (key_kind == TensorKind::String) {
       if (value_kind == TensorKind::Int64) {
         return static_cast<void*>(ml_value->GetMutable<std::map<std::string, int64_t>>());
       } else if (value_kind == TensorKind::Float) {
@@ -630,68 +629,80 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #ifdef USE_DML
     auto impl = wil::MakeOrThrow<AbiCustomRegistryImpl>();
     *registry = impl.Detach();
-  return S_OK;
+    return S_OK;
 #else
-  return E_NOTIMPL;
+    return E_NOTIMPL;
 #endif USE_DML
-}
+  }
 
-void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
+  HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
 #ifdef USE_DML
-  return Dml::CreateGPUAllocationFromD3DResource(pResource);
+    // Retrieve the "operator abi" registry.
+    winrt::com_ptr<IMLOperatorRegistry> operator_registry;
+    operator_provider_native->GetRegistry(operator_registry.put());
+    *registry = operator_registry.detach();
+    return S_OK;
 #else
-  return nullptr;
+    return E_NOTIMPL;
 #endif USE_DML
-}
+  }
 
-void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) override {
+  void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
 #ifdef USE_DML
-  Dml::FreeGPUAllocation(ptr);
-#endif USE_DML
-}
-
-HRESULT STDMETHODCALLTYPE CopyTensor(
-    onnxruntime::IExecutionProvider* provider,
-    ITensor* src,
-    ITensor* dst) override {
-#ifdef USE_DML
-  ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
-  return S_OK;
+    return Dml::CreateGPUAllocationFromD3DResource(pResource);
 #else
-  return E_NOTIMPL;
+    return nullptr;
 #endif USE_DML
-}
+  }
 
-HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
-    void* execution_provider_allocated_resource,
-    onnxruntime::IExecutionProvider* provider,
-    std::vector<int64_t>* shape,
-    onnxruntime::MLDataType data_type,
-    IOrtValue** gpu_value) override {
+  void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) override {
 #ifdef USE_DML
-  THROW_HR_IF_MSG(WINML_ERR_INVALID_BINDING,
-                  "DmlExecutionProvider" != provider->Type(),
-                  "Cannot creat GPU tensor on CPU device");
-
-  onnxruntime::TensorShape tensor_shape(*shape);
-
-  auto tensor = new onnxruntime::Tensor(
-      data_type,
-      tensor_shape,
-      execution_provider_allocated_resource,
-      provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault)->Info());
-
-  auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>();
-  ort_value->get()->Init(tensor,
-                         onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                         onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
-
-  *gpu_value = ort_value.Detach();
-  return S_OK;
-#else
-  return E_NOTIMPL;
+    Dml::FreeGPUAllocation(ptr);
 #endif USE_DML
-}
+  }
+
+  HRESULT STDMETHODCALLTYPE CopyTensor(
+      onnxruntime::IExecutionProvider* provider,
+      ITensor* src,
+      ITensor* dst) override {
+#ifdef USE_DML
+    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
+    return S_OK;
+#else
+    return E_NOTIMPL;
+#endif USE_DML
+  }
+
+  HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
+      void* execution_provider_allocated_resource,
+      onnxruntime::IExecutionProvider* provider,
+      std::vector<int64_t>* shape,
+      onnxruntime::MLDataType data_type,
+      IOrtValue** gpu_value) override {
+#ifdef USE_DML
+    THROW_HR_IF_MSG(WINML_ERR_INVALID_BINDING,
+                    "DmlExecutionProvider" != provider->Type(),
+                    "Cannot creat GPU tensor on CPU device");
+
+    onnxruntime::TensorShape tensor_shape(*shape);
+
+    auto tensor = new onnxruntime::Tensor(
+        data_type,
+        tensor_shape,
+        execution_provider_allocated_resource,
+        provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault)->Info());
+
+    auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>();
+    ort_value->get()->Init(tensor,
+                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
+                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
+
+    *gpu_value = ort_value.Detach();
+    return S_OK;
+#else
+    return E_NOTIMPL;
+#endif USE_DML
+  }
 
   HRESULT STDMETHODCALLTYPE CreateCPUMLValue(
       std::vector<int64_t>* shape,
@@ -760,22 +771,22 @@ HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
     return S_OK;
   }
 
-// Override select shape inference functions which are incomplete in ONNX with versions that are complete,
-// and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
-// deferred until first evaluation.  It also prevents a situation where inference functions in externally
-// registered schema are reachable only after upstream schema have been revised in a later OS release,
-// which would be a compatibility risk.
-HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
+  // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
+  // and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
+  // deferred until first evaluation.  It also prevents a situation where inference functions in externally
+  // registered schema are reachable only after upstream schema have been revised in a later OS release,
+  // which would be a compatibility risk.
+  HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
 #ifdef USE_DML
-  static std::once_flag schema_override_once_flag;
-  std::call_once(schema_override_once_flag, []() {
-    SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
-  });
-  return S_OK;
+    static std::once_flag schema_override_once_flag;
+    std::call_once(schema_override_once_flag, []() {
+      SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
+    });
+    return S_OK;
 #else
-  return E_NOTIMPL;
+    return S_OK; // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
 #endif USE_DML
-}
+  }
 
 };  // namespace Windows::AI::MachineLearning::Adapter
 

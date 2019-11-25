@@ -5,9 +5,6 @@
 
 #include "LearningModel.h"
 
-#ifdef USE_DML
-#include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
-#endif USE_DML
 #include "TelemetryEvent.h"
 
 #include "MapFeatureDescriptor.h"
@@ -161,19 +158,13 @@ LearningModel::GetOperatorRegistry() {
     return nullptr;
   }
 
-#ifdef USE_DML
   // Get the native winrt provider interface out of winrt operator provider.
   auto operator_provider_native =
       operator_provider_.as<ILearningModelOperatorProviderNative>();
 
-  // Retrieve the "operator abi" registry.
-  winrt::com_ptr<IMLOperatorRegistry> operator_registry;
-  operator_provider_native->GetRegistry(operator_registry.put());
-
-  return operator_registry.get();
-#else
-  return nullptr;
-#endif USE_DML
+  IMLOperatorRegistry* registry = nullptr;
+  adapter_->GetOperatorRegistry(operator_provider_native.get(), &registry);
+  return registry;
 }
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
