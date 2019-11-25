@@ -8,10 +8,7 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
-
-//forward
-class CodeGenTarget;
-class Tensor;
+class CodeGenTarget;  //forward
 
 namespace nuphar {
 
@@ -25,6 +22,5 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
 
 std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target);
 
-bool TryCreateConstantScalar(tvm::Expr& scalar, const Tensor* tensor);
 }  // namespace nuphar
 }  //  namespace onnxruntime

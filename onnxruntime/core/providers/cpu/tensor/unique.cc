@@ -5,6 +5,7 @@
 
 #include <map>
 #include "gsl/gsl"
+#include "core/framework/utils.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -80,13 +81,13 @@ Status Unique::Compute(OpKernelContext* context) const {
   auto data_type = input.DataType();
 
   // arbitrary set of types to support initially
-  if (utils::IsPrimitiveDataType<float>(data_type))
+  if (data_type == DataTypeImpl::GetType<float>())
     status = ComputeImpl<float>(*context);
-  else if (utils::IsPrimitiveDataType<int64_t>(data_type))
+  else if (data_type == DataTypeImpl::GetType<int64_t>())
     status = ComputeImpl<int64_t>(*context);
-  else if (utils::IsPrimitiveDataType<int8_t>(data_type))
+  else if (data_type == DataTypeImpl::GetType<int8_t>())
     status = ComputeImpl<int8_t>(*context);
-  else if (utils::IsDataTypeString(data_type))
+  else if (data_type == DataTypeImpl::GetType<std::string>())
     status = ComputeImpl<std::string>(*context);
   else
     status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported tensor type of ", data_type);

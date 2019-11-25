@@ -12,7 +12,6 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/ort_value_tensor_slicer.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/providers/cpu/controlflow/scan.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -104,14 +103,12 @@ class OutputIterator {
                        bool is_loop_state_var,
                        bool is_v8,
                        TensorShape final_shape,
-                       const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                       const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                        std::unique_ptr<OutputIterator>& iterator,
                        ScanDirection direction = ScanDirection::kForward,
                        bool temporary = false,
                        MLDataType data_type = nullptr) {
     iterator.reset(new OutputIterator(context, output_index, is_loop_state_var, is_v8, final_shape,
-                                      create_slicer_func, zero_data_func, direction, temporary, data_type));
+                                      direction, temporary, data_type));
     return iterator->Initialize();
   }
 
@@ -126,11 +123,9 @@ class OutputIterator {
   Status AllocateFinalOutput(const TensorShape& shape);
 
   // set the output for the current iteration to zeros. used for short sequence lengths
-  Status ZeroOutCurrent() {
-    auto status = Status::OK();
+  void ZeroOutCurrent() {
     auto* tensor = (**this).GetMutable<Tensor>();
-    status = zero_data_func_(tensor->MutableDataRaw(), tensor->SizeInBytes());
-    return status;
+    memset(tensor->MutableDataRaw(), 0, tensor->SizeInBytes());
   }
 
   const OrtValue& GetOutput() const {
@@ -144,8 +139,6 @@ class OutputIterator {
                  bool is_loop_state_var,
                  bool is_v8,
                  TensorShape final_shape,
-                 const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                 const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                  ScanDirection direction,
                  bool temporary,
                  MLDataType data_type);
@@ -178,9 +171,6 @@ class OutputIterator {
   OrtValue temporary_final_output_mlvalue_;
 
   OrtValue* final_output_mlvalue_;
-
-  const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func_;
-  const scan::detail::DeviceHelpers::ZeroData& zero_data_func_;
 };
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
@@ -189,8 +179,6 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
                       std::unique_ptr<OutputIterator>& output_iterator,
-                      const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                      const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                       ScanDirection direction = ScanDirection::kForward,
                       bool temporary = false);
 

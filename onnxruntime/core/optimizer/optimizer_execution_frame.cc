@@ -121,8 +121,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
                                                               *shape,
                                                               allocator_ptr);
 
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   return Status::OK();
 }

@@ -7,17 +7,16 @@
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"
-#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-#define MODEL_FOLDER ORT_TSTR("testdata/transform/")
+static const std::string MODEL_FOLDER = "testdata/transform/";
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 TEST(TransformerTest, InsertCastGPUTest) {
-  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  auto model = std::make_shared<onnxruntime::Model>("test");
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_16;
@@ -39,7 +38,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
   InsertCastTransformer transformer("Test");
 
   bool modified = true;
-  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  status = transformer.Apply(graph, modified);
   EXPECT_TRUE(status.IsOK());
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -65,7 +64,7 @@ TEST(TransformerTest, InsertCastGPUTest) {
 }
 
 TEST(TransformerTest, InsertCastAllCPUTest) {
-  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  auto model = std::make_shared<onnxruntime::Model>("test");
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_16;
@@ -87,7 +86,7 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
   InsertCastTransformer transformer("Test");
 
   bool modified = true;
-  EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());
+  EXPECT_TRUE(transformer.Apply(graph, modified).IsOK());
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_EQ(graph.NumberOfNodes(), 7);
@@ -110,9 +109,9 @@ TEST(TransformerTest, InsertCastAllCPUTest) {
 
 // test that when there are 3 Cast ops in a row we remove the correct ones
 TEST(TransformerTest, ThreeInARowRemoval) {
-  auto model_uri = MODEL_FOLDER ORT_TSTR("triple-cast.onnx");
+  std::string model_uri = MODEL_FOLDER + "triple-cast.onnx";
   std::shared_ptr<Model> model;
-  auto status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+  auto status = Model::Load(model_uri, model);
   ASSERT_TRUE(status.IsOK()) << status;
 
   Graph& graph = model->MainGraph();
@@ -124,7 +123,7 @@ TEST(TransformerTest, ThreeInARowRemoval) {
   InsertCastTransformer transformer("Test");
 
   bool modified = false;
-  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  status = transformer.Apply(graph, modified);
   EXPECT_TRUE(status.IsOK()) << status;
   EXPECT_TRUE(modified) << "Transformer should have removed some Cast nodes";
   status = graph.Resolve();

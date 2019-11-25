@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <core/common/logging/logging.h>
 #include "core/framework/data_types.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
@@ -162,7 +161,8 @@ namespace test {
 
 std::string CreateModel() {
   RegisterCustomKernel();
-  Model model("ModelWithOpaque", false, logging::LoggingManager::DefaultLogger());
+
+  Model model("ModelWithOpaque", false);
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;

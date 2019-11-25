@@ -20,23 +20,25 @@ namespace Dml
     }
 
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
-        onnxruntime::Graph& graph,
+        onnxruntime::Graph& graph, 
         bool& modified,
-        int graph_level, const onnxruntime::logging::Logger&) const {
-      modified = false;
+        int graph_level) const
+    {
+        modified = false;
+        
+        // Perform fusion
+        {
+            bool transformModifiedGraph = false;
+            PerformOperatorFusion(&graph, &transformModifiedGraph);
+            modified |= transformModifiedGraph;
 
-      // Perform fusion
-      {
-        bool transformModifiedGraph = false;
-        PerformOperatorFusion(&graph, &transformModifiedGraph);
-        modified |= transformModifiedGraph;
-
-        if (modified) {
-          ORT_RETURN_IF_ERROR(graph.Resolve());
+            if (modified)
+            {
+                ORT_RETURN_IF_ERROR(graph.Resolve());
+            }
         }
-      }
 
-      return onnxruntime::common::Status::OK();
+        return onnxruntime::common::Status::OK();
     }
 
     static std::string GetUniqueNodeName(const onnxruntime::Node* node)

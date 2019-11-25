@@ -11,19 +11,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
     1,
     10,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Gather,
     11,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                        DataTypeImpl::GetTensorType<int64_t>()}),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()).TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -69,7 +63,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
     if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -axis_dim_limit, ",", axis_dim_limit - 1, "]");
+                             " must be within the inclusive range [", -axis_dim_limit,",", axis_dim_limit - 1, "]");
     }
   }
 
@@ -104,7 +98,7 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   const TensorShape& input_data_shape = p.input_tensor->Shape();
 
-  bool is_string_type = p.input_tensor->IsDataTypeString();
+  bool is_string_type = p.input_tensor->DataType() == DataTypeImpl::GetType<std::string>();
 
   const size_t element_bytes = p.input_tensor->DataType()->Size();
   const int64_t block = input_data_shape.SizeFromDimension(p.axis + 1);
@@ -118,11 +112,11 @@ Status Gather::Compute(OpKernelContext* context) const {
   auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());
 
   MLDataType Tind_type = p.indices_tensor->DataType();
-  if (utils::IsPrimitiveDataType<int32_t>(Tind_type)) {
+  if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
     return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }
-  if (utils::IsPrimitiveDataType<int64_t>(Tind_type)) {
+  if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
     return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis);
   }

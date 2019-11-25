@@ -11,12 +11,9 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-  - group: ORT_TEST_DATA_SAS
-  - name: OnnxRuntimeBuildDirectory
-    value: '$(Build.BinariesDirectory)'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
   steps:
-  - template: set-test-data-variables-step.yml
-  - template: linux-set-variables-and-download.yml
+  - template: ../../templates/linux-set-variables-and-download.yml
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Signed NuGet'

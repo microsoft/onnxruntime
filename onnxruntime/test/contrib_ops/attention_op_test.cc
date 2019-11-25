@@ -21,11 +21,7 @@ static void RunAttentionTest(
     int number_of_heads,
     bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
-
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_cpu = !use_float16;
-
-  if (enable_cpu || enable_cuda) {
+  if (HasCudaEnvironment(min_cuda_architecture)) {
     OpTester tester("Attention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
@@ -49,7 +45,9 @@ static void RunAttentionTest(
       tester.AddOutput<float>("output", output_dims, output_data);
     }
 
-    tester.Run();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

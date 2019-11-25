@@ -7,8 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
-template <typename T>
-void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_values, const std::vector<float>& results, const std::string& aggFunction)
+void GenTreeAndRunTest(const std::vector<float>& X, const std::vector<float>& base_values, const std::vector<float>& results, const std::string& aggFunction)
 {
   OpTester test("TreeEnsembleRegressor", 1, onnxruntime::kMLDomain);
 
@@ -52,7 +51,7 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<float>& base_v
   } // default function is SUM
 
   //fill input data
-  test.AddInput<T>("X", {8, 3}, X);
+  test.AddInput<float>("X", {8, 3}, X);
   test.AddOutput<float>("Y", {8, 2}, results);
   test.Run();
 }
@@ -61,30 +60,22 @@ TEST(MLOpTest, TreeRegressorMultiTargetAverage) {
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
   std::vector<float> results = {1.33333333f, 29.f, 3.f, 14.f, 2.f, 23.f, 2.f, 23.f, 2.f, 23.f, 2.66666667f, 17.f, 2.f, 23.f, 3.f, 14.f};
   std::vector<float> base_values{0.f, 0.f};
-  GenTreeAndRunTest<float>(X, base_values, results, "AVERAGE");
+  GenTreeAndRunTest(X, base_values, results, "AVERAGE");
 }
 
 TEST(MLOpTest, TreeRegressorMultiTargetMin) {
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
   std::vector<float> results = {5.f, 28.f, 8.f, 19.f, 7.f, 28.f, 7.f, 28.f, 7.f, 28.f, 7.f, 19.f, 7.f, 28.f, 8.f, 19.f};
   std::vector<float> base_values{5.f, 5.f};
-  GenTreeAndRunTest<float>(X, base_values, results, "MIN");
+  GenTreeAndRunTest(X, base_values, results, "MIN");
 }
 
 TEST(MLOpTest, TreeRegressorMultiTargetMax) {
   std::vector<float> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
   std::vector<float> results = {2.f, 41.f, 3.f, 14.f, 2.f, 23.f, 2.f, 23.f, 2.f, 23.f, 3.f, 23.f, 2.f, 23.f, 3.f, 14.f};
   std::vector<float> base_values{0.f, 0.f};
-  GenTreeAndRunTest<float>(X, base_values, results, "MAX");
+  GenTreeAndRunTest(X, base_values, results, "MAX");
 }
-
-TEST(MLOpTest, TreeRegressorMultiTargetMaxDouble) {
-  std::vector<double> X = {1.f, 0.0f, 0.4f, 3.0f, 44.0f, -3.f, 12.0f, 12.9f, -312.f, 23.0f, 11.3f, -222.f, 23.0f, 11.3f, -222.f, 23.0f, 3311.3f, -222.f, 23.0f, 11.3f, -222.f, 43.0f, 413.3f, -114.f};
-  std::vector<float> results = {2.f, 41.f, 3.f, 14.f, 2.f, 23.f, 2.f, 23.f, 2.f, 23.f, 3.f, 23.f, 2.f, 23.f, 3.f, 14.f};
-  std::vector<float> base_values{0.f, 0.f};
-  GenTreeAndRunTest<double>(X, base_values, results, "MAX");
-}
-
 
 TEST(MLOpTest, TreeRegressorSingleTargetSum) {
   OpTester test("TreeEnsembleRegressor", 1, onnxruntime::kMLDomain);

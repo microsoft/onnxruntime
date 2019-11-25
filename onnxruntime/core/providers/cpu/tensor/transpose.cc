@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/framework/utils.h"
 
 namespace onnxruntime {
 
@@ -180,7 +181,7 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   auto rank = input_shape.NumDimensions();
 
   const auto element_size = input.DataType()->Size();
-  const bool is_string_type = input.IsDataTypeString();
+  const bool is_string_type = input.DataType() == DataTypeImpl::GetType<std::string>();
 
   std::vector<size_t> stride(rank);
   for (size_t i = 0; i < rank; i++) {

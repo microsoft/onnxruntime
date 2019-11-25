@@ -70,7 +70,7 @@ TargetFeature GetTargetInfo(const codegen::CodeGenSettings& settings) {
   TargetFeature feature;
 
   std::string target_str = "";
-  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget) && settings.HasOption(nuphar::kNupharCachePath)) {
     target_str = settings.GetOptionValue(nuphar::kNupharCodeGenTarget);
   }
 

@@ -23,12 +23,6 @@
 
 #endif
 
-#ifdef USE_OPENVINO
-
-#include "core/providers/openvino/openvino_provider_factory.h"
-
-#endif
-
 namespace onnxruntime {
 namespace server {
 
@@ -78,12 +72,6 @@ void ServerEnvironment::RegisterExecutionProviders(){
   #ifdef USE_NUPHAR
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(options_, 1, ""));
   #endif
-  
-  #ifdef USE_OPENVINO
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(options_, "CPU"));
-  #endif
-  
-
 }
 
 void ServerEnvironment::InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version) {

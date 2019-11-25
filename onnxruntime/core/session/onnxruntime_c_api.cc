@@ -5,10 +5,8 @@
 #include "core/session/allocator_impl.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/utils.h"
 #include <cassert>
 #include <cstring>
-#include <functional>
 #include <sstream>
 
 #include "core/common/logging/logging.h"
@@ -27,7 +25,6 @@
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
-#include "core/platform/ort_mutex.h"
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -49,6 +46,33 @@ using namespace onnxruntime;
     if (_status) return _status;      \
   } while (0)
 
+struct OrtEnv {
+ public:
+  Environment* value;
+  LoggingManager* loggingManager;
+
+  OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
+  }
+  /**
+   * This function will call ::google::protobuf::ShutdownProtobufLibrary
+   */
+  ~OrtEnv() {
+    delete loggingManager;
+    delete value;
+  }
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
+};
+
+#define TENSOR_READ_API_BEGIN                          \
+  API_IMPL_BEGIN                                       \
+  auto v = reinterpret_cast<const ::OrtValue*>(value); \
+  auto& tensor = v->Get<onnxruntime::Tensor>();
+
+#define TENSOR_READWRITE_API_BEGIN \
+  API_IMPL_BEGIN                   \
+  auto v = (value);                \
+  auto tensor = v->GetMutable<onnxruntime::Tensor>();
+
 class LoggingWrapper : public ISink {
  public:
   LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
@@ -67,111 +91,20 @@ class LoggingWrapper : public ISink {
   void* logger_param_;
 };
 
-struct OrtEnv {
- public:
-  struct LoggingManagerConstructionInfo {
-    LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
-                                   void* logger_param1,
-                                   OrtLoggingLevel default_warning_level1,
-                                   const char* logid1)
-        : logging_function(logging_function1),
-          logger_param(logger_param1),
-          default_warning_level(default_warning_level1),
-          logid(logid1) {}
-    OrtLoggingFunction logging_function{};
-    void* logger_param{};
-    OrtLoggingLevel default_warning_level;
-    const char* logid{};
-  };
-
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, Status& status) {
-    std::lock_guard<OrtMutex> lock(m_);
-    if (!p_instance_) {
-      std::unique_ptr<Environment> env;
-      status = Environment::Create(env);
-      if (!status.IsOK()) {
-        return nullptr;
-      }
-
-      std::unique_ptr<LoggingManager> lmgr;
-      std::string name = lm_info.logid;
-      if (lm_info.logging_function) {
-        std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                                 lm_info.logger_param);
-        lmgr.reset(new LoggingManager(std::move(logger),
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      } else {
-        lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      }
-
-      p_instance_ = new OrtEnv(std::move(env), std::move(lmgr));
-    }
-    ++ref_count_;
-    return p_instance_;
-  }
-
-  static void Release(OrtEnv* env_ptr) {
-    if (!env_ptr) {
-      return;
-    }
-    std::lock_guard<OrtMutex> lock(m_);
-    ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
-    --ref_count_;
-    if (ref_count_ == 0) {
-      delete p_instance_;
-      p_instance_ = nullptr;
-    }
-  }
-
-  LoggingManager* GetLoggingManager() const {
-    return logging_manager_.get();
-  }
-
- private:
-  static OrtEnv* p_instance_;
-  static OrtMutex m_;
-  static int ref_count_;
-
-  std::unique_ptr<Environment> value_;
-  std::unique_ptr<LoggingManager> logging_manager_;
-
-  OrtEnv(std::unique_ptr<Environment> value1, std::unique_ptr<LoggingManager> logging_manager)
-      : value_(std::move(value1)), logging_manager_(std::move(logging_manager)) {
-  }
-
-  ~OrtEnv() = default;
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
-};
-
-OrtEnv* OrtEnv::p_instance_ = nullptr;
-int OrtEnv::ref_count_ = 0;
-OrtMutex OrtEnv::m_;
-
-#define TENSOR_READ_API_BEGIN                          \
-  API_IMPL_BEGIN                                       \
-  auto v = reinterpret_cast<const ::OrtValue*>(value); \
-  auto& tensor = v->Get<onnxruntime::Tensor>();
-
-#define TENSOR_READWRITE_API_BEGIN \
-  API_IMPL_BEGIN                   \
-  auto v = (value);                \
-  auto tensor = v->GetMutable<onnxruntime::Tensor>();
-
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_warning_level, logid};
-  Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  std::string name = logid;
+  std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(logging_function, logger_param);
+  auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::move(logger),
+                                                                          static_cast<Severity>(default_warning_level), false,
+                                                                          LoggingManager::InstanceType::Default,
+                                                                          &name);
+  std::unique_ptr<Environment> env;
+  Status status = Environment::Create(env);
+  if (status.IsOK())
+    *out = new OrtEnv(env.release(), default_logging_manager.release());
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -179,9 +112,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
 ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
-  Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  std::string name = logid;
+  auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
+                                                                          static_cast<Severity>(default_warning_level), false,
+                                                                          LoggingManager::InstanceType::Default,
+                                                                          &name);
+  std::unique_ptr<Environment> env;
+  Status status = Environment::Create(env);
+  if (status.IsOK()) {
+    *out = new OrtEnv(env.release(), default_logging_manager.release());
+    return nullptr;
+  }
+  *out = nullptr;
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -323,10 +265,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
     }
   }
   auto value = onnxruntime::make_unique<OrtValue>();
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value->Init(tensor.release(),
-              ml_tensor,
-              ml_tensor->GetDeleteFunc());
+              DataTypeImpl::GetType<Tensor>(),
+              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   *out = value.release();
   return nullptr;
   API_IMPL_END
@@ -390,10 +331,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
     }
   }
   auto value = onnxruntime::make_unique<OrtValue>();
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value->Init(tensor.release(),
-              ml_tensor,
-              ml_tensor->GetDeleteFunc());
+              DataTypeImpl::GetType<Tensor>(),
+              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   *out = value.release();
   return nullptr;
   API_IMPL_END
@@ -433,7 +373,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
-  OrtStatus* (ORT_API_CALL *RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+  OrtStatus* (*RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
   Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
   if (!RegisterCustomOps)
@@ -468,7 +408,7 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
   auto sess = onnxruntime::make_unique<::onnxruntime::InferenceSession>(
-      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->GetLoggingManager());
+      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
   Status status;
   if (options != nullptr) {
     if (!options->custom_op_domains_.empty()) {
@@ -857,6 +797,31 @@ static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index,
 }
 
 template <typename T>
+ONNXTensorElementDataType GetONNXTensorElementDataType() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<std::string>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<float>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<double>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+}
+
+template <>
+ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+}
+
+template <typename T>
 OrtStatus* PopulateTensorWithData(OrtValue* oval, const T* data_elem, size_t num_elems) {
   void* raw_data = nullptr;
   auto st = OrtApis::GetTensorMutableData(oval, &raw_data);
@@ -889,27 +854,9 @@ OrtStatus* OrtGetValueImplSeqOfTensorsHelper(OrtAllocator* allocator, const Tens
   const auto& shape = tensor.Shape();
   const auto* tensor_data = tensor.Data<TensorElemType>();
   OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
-                                                  onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
+                                                  GetONNXTensorElementDataType<TensorElemType>(), out);
   return st ? st : PopulateTensorWithData<TensorElemType>(*out, tensor_data, shape.Size());
 }
-
-namespace c_api_internal {
-template <class T>
-struct CallGetValueImpl {
-  OrtStatus* operator()(OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor, OrtValue** out) const {
-    return OrtGetValueImplSeqOfTensorsHelper<T>(allocator, one_tensor, out);
-  }
-};
-
-// Return status instead of throwing if unsupported type specified
-struct UnsupportedReturnFailStatus {
-  OrtStatus* operator()(int32_t dt_type) const {
-    std::string msg("Unsupported tensor element type in the input: ");
-    msg.append(std::to_string(dt_type));
-    return OrtApis::CreateStatus(ORT_FAIL, msg.c_str());
-  }
-};
-}  // namespace c_api_internal
 
 template <typename T>
 OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
@@ -917,11 +864,36 @@ OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, Or
   auto& data = p_ml_value->Get<T>();
   auto& one_tensor = data.tensors.at(index);
 
-  using namespace c_api_internal;
-  utils::MLTypeCallDispatcherRet<OrtStatus*, CallGetValueImpl, float, double, MLFloat16, BFloat16, bool, std::string,
-                                 int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-      t_disp(one_tensor.GetElementType());
-  return t_disp.template InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(allocator, one_tensor, out);
+  auto tensor_elem_type = one_tensor.DataType();
+  OrtStatus* st{};
+  if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<bool>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<float>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<MLFloat16>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<MLFloat16>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<double>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int8_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<uint8_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int16_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<uint16_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int32_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<uint32_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<int64_t>(allocator, one_tensor, out);
+  } else if (tensor_elem_type == DataTypeImpl::GetType<std::string>()) {
+    st = OrtGetValueImplSeqOfTensorsHelper<std::string>(allocator, one_tensor, out);
+  } else {
+    st = OrtApis::CreateStatus(ORT_FAIL, "Invalid tensor element type in the input.");
+  }
+  return st;
 }
 
 static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAllocator* allocator,
@@ -943,7 +915,6 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAlloca
 template <typename T>
 static OrtStatus* OrtGetValueImplMapHelper(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
                                            OrtValue** out) {
-  using namespace onnxruntime::utils;
   using TKey = typename T::key_type;
   using TVal = typename T::mapped_type;
   auto& data = p_ml_value->Get<T>();
@@ -1071,20 +1042,8 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
   return nullptr;
 }
 
-namespace c_api_internal {
-
-template <class T>
-struct CallCreateValueImpl {
-  OrtStatus* operator()(const onnxruntime::Tensor& one_tensor, onnxruntime::Tensor& out) const {
-    return OrtCreateValueImplSeqHelperTensor<T>(one_tensor, out);
-  }
-};
-
-}  // namespace c_api_internal
-
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                               OrtValue** out) {
-  using namespace c_api_internal;
   auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
   seq_ptr->tensors.resize(num_values);
 
@@ -1092,7 +1051,6 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   seq_ptr->dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
 
   for (size_t idx = 0; idx < num_values; ++idx) {
-    ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));
     auto& one_tensor = static_cast<const OrtValue*>(in[idx])->Get<Tensor>();
     auto tensor_elem_type = one_tensor.DataType();
 
@@ -1103,11 +1061,30 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
     }
 
     OrtStatus* st{};
-    utils::MLTypeCallDispatcherRet<OrtStatus*, CallCreateValueImpl, bool, float, double,
-                                   MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
-        t_disp(one_tensor.GetElementType());
-
-    st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, seq_ptr->tensors[idx]);
+    if (tensor_elem_type == DataTypeImpl::GetType<bool>()) {
+      st = OrtCreateValueImplSeqHelperTensor<bool>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<float>()) {
+      st = OrtCreateValueImplSeqHelperTensor<float>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<double>()) {
+      st = OrtCreateValueImplSeqHelperTensor<double>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int8_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int8_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<uint8_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<uint8_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int16_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int16_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<uint16_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<uint16_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int32_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int32_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<uint32_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<uint32_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else if (tensor_elem_type == DataTypeImpl::GetType<int64_t>()) {
+      st = OrtCreateValueImplSeqHelperTensor<int64_t>(one_tensor, seq_ptr->tensors[idx]);
+    } else {
+      std::string err_msg = std::string("Unsupported data type: ") + DataTypeImpl::ToString(tensor_elem_type);
+      st = OrtApis::CreateStatus(ORT_FAIL, err_msg.c_str());
+    }
 
     if (st) {
       return st;
@@ -1193,30 +1170,19 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
 template <typename KeyType>
 static OrtStatus* OrtCreateValueImplMapHelper(const Tensor& key_tensor, const Tensor& value_tensor,
                                               OrtValue** out) {
-  auto value_type = value_tensor.DataType()->AsPrimitiveDataType();
-  ORT_ENFORCE(value_type != nullptr, "Tensor must always contain primitive types. Found: ",
-              DataTypeImpl::ToString(value_tensor.DataType()));
-
-  switch (value_type->GetDataType()) {
-    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
-      return OrtCreateMapMLValue<KeyType, std::string>(key_tensor, value_tensor, out);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return OrtCreateMapMLValue<KeyType, int64_t>(key_tensor, value_tensor, out);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return OrtCreateMapMLValue<KeyType, float>(key_tensor, value_tensor, out);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return OrtCreateMapMLValue<KeyType, double>(key_tensor, value_tensor, out);
-      break;
-    default:
-      break;
+  auto value_type = value_tensor.DataType();
+  if (value_type == DataTypeImpl::GetType<std::string>()) {
+    return OrtCreateMapMLValue<KeyType, std::string>(key_tensor, value_tensor, out);
   }
-
-  std::string msg("Value type is not supported yet: ");
-  msg += DataTypeImpl::ToString(value_tensor.DataType());
-  return OrtApis::CreateStatus(ORT_FAIL, msg.c_str());
+  if (value_type == DataTypeImpl::GetType<int64_t>()) {
+    return OrtCreateMapMLValue<KeyType, int64_t>(key_tensor, value_tensor, out);
+  } else if (value_type == DataTypeImpl::GetType<float>()) {
+    return OrtCreateMapMLValue<KeyType, float>(key_tensor, value_tensor, out);
+  } else if (value_type == DataTypeImpl::GetType<double>()) {
+    return OrtCreateMapMLValue<KeyType, double>(key_tensor, value_tensor, out);
+  } else {
+    return OrtApis::CreateStatus(ORT_FAIL, "Value type is not supported yet.");
+  }
 }
 
 static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_values, OrtValue** out) {
@@ -1243,10 +1209,10 @@ static OrtStatus* OrtCreateValueImplMap(const OrtValue* const* in, size_t num_va
     return OrtApis::CreateStatus(ORT_FAIL, "Key and value tensors have unequal number of elements.");
   }
 
-  if (utils::IsDataTypeString(key_type)) {
+  if (key_type == DataTypeImpl::GetType<std::string>()) {
     return OrtCreateValueImplMapHelper<std::string>(key_tensor, value_tensor, out);
   }
-  if (utils::IsPrimitiveDataType<int64_t>(key_type)) {
+  if (key_type == DataTypeImpl::GetType<int64_t>()) {
     return OrtCreateValueImplMapHelper<int64_t>(key_tensor, value_tensor, out);
   }
   return OrtApis::CreateStatus(ORT_FAIL, "Key type is not supported yet.");
@@ -1444,10 +1410,7 @@ const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
   return &ort_api_base;
 }
 
-ORT_API(void, OrtApis::ReleaseEnv, _Frees_ptr_opt_ OrtEnv* value) {
-  OrtEnv::Release(value);
-}
-
+DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)

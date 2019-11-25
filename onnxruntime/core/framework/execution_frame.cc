@@ -9,7 +9,6 @@
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ort_value_pattern_planner.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -300,15 +299,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   //no memory pattern, or the pattern is not correct.
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
-  {
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-  }
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
   // placement new, we don't support it in memory pattern optimization.
-  if (!utils::IsDataTypeString(element_type)) {
+  if (element_type != DataTypeImpl::GetType<std::string>()) {
     TraceAllocate(ort_value_index, size);
   }
 
@@ -360,9 +356,8 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pBuffer, location);
-  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 
   return Status::OK();
 }
@@ -511,7 +506,7 @@ void ExecutionFrame::TraceFree(int ort_value_idx) {
       // tensors
       auto ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       // don't trace string tensors
-      if (!utils::IsDataTypeString(ml_data_type)) {
+      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
         auto status = planner_->TraceFree(ort_value_idx);
         if (!status.IsOK()) {
           LOGS(session_state_.Logger(), WARNING)

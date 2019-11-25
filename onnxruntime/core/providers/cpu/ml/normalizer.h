@@ -27,9 +27,6 @@ class Normalizer final : public OpKernel {
   template <typename T>
   void Normalize(OpKernelContext* context) const;
 
-  template<class>
-  struct CallNormalizerImpl;
-
   NORMALIZE normalization_;
 };
 

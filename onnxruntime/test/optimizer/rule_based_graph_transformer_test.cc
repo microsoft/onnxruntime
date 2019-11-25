@@ -18,12 +18,10 @@ namespace onnxruntime {
 namespace test {
 
 TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
-  auto model_uri = ORT_TSTR("testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx");
+  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-                          DefaultLoggingManager().DefaultLogger())
-                  .IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
   Graph& graph = model->MainGraph();
   
   // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider
@@ -46,8 +44,7 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level2);
   graph_transformation_mgr.Register(std::move(graph_transformer1), TransformerLevel::Level2);
 
-  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2,
-                                             DefaultLoggingManager().DefaultLogger());
+  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
 
   // Validate transformer registered with CUDA as compatible provider is not called.
   ASSERT_FALSE(dummy_rule_ptr->IsRewriteRuleInvoked());

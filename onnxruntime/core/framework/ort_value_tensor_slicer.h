@@ -93,12 +93,8 @@ class OrtValueTensorSlicer {
       return current_;
     }
 
-    virtual ~Iterator() = default;
-
    private:
-    // virtual so scenarios where the void* in OrtValue::data_ isn't just a raw pointer to data (e.g. it's a handle)
-    // can implement the correct handling
-    virtual void MaterializeMLValue() const;
+    void MaterializeMLValue() const;
 
     T* ort_value_;
     int64_t position_;

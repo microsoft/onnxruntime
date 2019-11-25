@@ -13,7 +13,6 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/status.h"
-#include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
@@ -823,7 +822,6 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        const logging::Logger& logger,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // internal use by the Graph class only
@@ -833,7 +831,6 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
-        const logging::Logger& logger,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Add node with specified <node_proto>.
@@ -1041,8 +1038,6 @@ class Graph {
 
   // number of times Resolve has run.
   int num_resolves_ = 0;
-
-  const logging::Logger& logger_;
 };
 
 }  // namespace onnxruntime

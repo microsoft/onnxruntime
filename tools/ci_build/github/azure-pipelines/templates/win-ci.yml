@@ -10,13 +10,12 @@ parameters:
   DoTestCoverage: 'false'
   BuildArch: 'x64'
   SetVcvars: 'false'
-  msbuildArchitecture: 'amd64'
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
   AgentPool: 'Win-CPU'
   AgentDemands: []
-  OrtPackageId: Microsoft.ML.OnnxRuntime
+
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 120
@@ -47,7 +46,7 @@ jobs:
     - template: windows-build-tools-setup-steps.yml
       parameters:
         EnvSetupScript: ${{ parameters.EnvSetupScript }}
-        buildArch: ${{ parameters.msbuildArchitecture }}
+        buildArch: ${{ parameters.BuildArch }}
         setVcvars: ${{ parameters.SetVcvars }}
 
     # Copy CUDA props files if needed
@@ -64,17 +63,9 @@ jobs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
         workingDirectory: "$(Build.BinariesDirectory)"
-        
+
     # Build Debug Mode
     - ${{ if eq(parameters['DoDebugBuild'], 'true') }}:
-      - task: DotNetCoreCLI@2
-        displayName: 'Restore nuget packages for debug build'
-        inputs:
-          command: restore
-          projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-          configuration: 'Debug'          
-          arguments: '--configuration Debug -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
       - task: VSBuild@1
         displayName: 'Build Debug'
         inputs:
@@ -95,14 +86,24 @@ jobs:
           arguments: '$(BuildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - task: DotNetCoreCLI@2
+      - task: MSBuild@1
         displayName: 'Build C# Debug'
         inputs:
-          command: build
-          projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-          configuration: 'Debug'          
-          arguments: '--configuration Debug -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'               
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
+          configuration: 'Debug'
+          msbuildArchitecture: 'x64'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
+
+      - task: MSBuild@1
+        displayName: 'Test C# Debug'
+        inputs:
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+          platform: 'Any CPU'
+          configuration: 'Debug'
+          msbuildArchitecture: 'x64'
+          msbuildArguments: '/t:RunTest'
+          workingFolder: '$(Build.SourcesDirectory)\csharp'
 
     # Run test coverage report
     - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
@@ -114,15 +115,6 @@ jobs:
     - script: |
        @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
 
-    - task: DotNetCoreCLI@2
-      displayName: 'Restore nuget packages for RelWithDebInfo build'
-      inputs:
-        command: restore
-        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: 'RelWithDebInfo'          
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
@@ -131,10 +123,8 @@ jobs:
         configuration: 'RelWithDebInfo'
         msbuildArgs: ${{ parameters.MsbuildArguments }}
         msbuildArchitecture: 'x64'
-        maximumCpuCount: true
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        createLogFile: true
 
     - task: BatchScript@1
       displayName: 'Test RelWithDebInfo'
@@ -143,23 +133,24 @@ jobs:
         arguments: '$(BuildCommand) --test --config RelWithDebInfo'
         workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: DotNetCoreCLI@2
+    - task: MSBuild@1
       displayName: 'Build C# RelWithDebInfo'
       inputs:
-        command: build
-        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: 'RelWithDebInfo'          
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x64'
+        workingFolder: '$(Build.SourcesDirectory)\csharp'
 
-    - task: DotNetCoreCLI@2
+    - task: MSBuild@1
       displayName: 'Test C# RelWithDebInfo'
       inputs:
-        command: test
-        projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
-        configuration: 'RelWithDebInfo'          
-        arguments: '--no-build --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: 'RelWithDebInfo'
+        msbuildArchitecture: 'x64'
+        msbuildArguments: '/t:RunTest'
+        workingfolder: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
@@ -175,8 +166,9 @@ jobs:
         displayName: 'Setup VS2017 env vars'
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: ${{ parameters.msbuildArchitecture }}
-          modifyEnvironment: true    
+          arguments: 'x64'
+          modifyEnvironment: true
+
       # Esrp signing
       - template: esrp_dll.yml
         parameters:
@@ -219,3 +211,4 @@ jobs:
       condition: succeeded()
 
     - template: clean-agent-build-directory-step.yml
+

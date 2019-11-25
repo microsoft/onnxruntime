@@ -8,7 +8,6 @@
 #include "core/graph/schema_registry.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
-#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -32,7 +31,7 @@ TEST(FormalParamTest, Success) {
 }
 
 TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
-  Model model("traditionalMl", false, DefaultLoggingManager().DefaultLogger());
+  Model model("traditionalMl");
   auto& graph = model.MainGraph();
 
   // Case: A traditional ml graph.

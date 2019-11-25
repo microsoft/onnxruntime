@@ -364,13 +364,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     }
-#if defined(__amd64__) || defined(_M_AMD64)
-#else
-    //out of memory
-    static const char* x86_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn", "vgg19"};
-    all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
-#endif
 
+#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
+    // Minimize mem consumption
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+              [&stat, &sf, &all_disabled_tests, &env](ITestCase* l) {
+                std::unique_ptr<ITestCase> test_case_ptr(l);
+                if (all_disabled_tests.find(l->GetTestCaseName()) != all_disabled_tests.end()) {
+                  return;
+                }
+                TestResultStat per_case_stat;
+                std::vector<ITestCase*> per_case_tests = {l};
+                TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
+                RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
+                stat += per_case_stat;
+              });
+#else
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               [&tests](ITestCase* l) { tests.push_back(l); });
@@ -394,6 +403,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     for (ITestCase* l : tests) {
       delete l;
     }
+#endif
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
@@ -413,7 +423,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
-      {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "1d convtranspose not supported yet"},
@@ -557,6 +566,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
+#endif
+
+#if defined(__GNUG__) && !defined(__LP64__)
+  broken_tests.insert(
+      {"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
+  broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
+  broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS

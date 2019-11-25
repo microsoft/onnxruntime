@@ -11,9 +11,7 @@ namespace tvm_codegen {
 tvm::Array<tvm::Expr>
 ComputeMatMulShape(
     const tvm::Array<tvm::Expr>& A_shape,
-    const tvm::Array<tvm::Expr>& B_shape,
-    bool trans_a = false,
-    bool trans_b = false);
+    const tvm::Array<tvm::Expr>& B_shape);
 
 tvm::Tensor MatMul2D(const tvm::Tensor& A, const tvm::Tensor& B, bool trans_a = false, bool trans_b = false, const std::string& name = "matmul2d");
 

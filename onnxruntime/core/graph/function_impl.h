@@ -2,13 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/logging/logging.h"
 #include "core/graph/function.h"
-#include "core/graph/model.h"
 
 namespace onnxruntime {
 class Graph;
 class Node;
+class Model;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -17,13 +16,11 @@ namespace onnxruntime {
 class FunctionImpl final : public Function {
  public:
   FunctionImpl(const onnxruntime::Graph& graph,
-               std::unique_ptr<IndexedSubGraph> customized_func,
-               const logging::Logger& logger);
+               std::unique_ptr<IndexedSubGraph> customized_func);
 
   FunctionImpl(const onnxruntime::Graph& graph,
                const onnxruntime::NodeIndex& node_index,
-               const ONNX_NAMESPACE::FunctionProto& onnx_func,
-               const logging::Logger& logger);
+               const ONNX_NAMESPACE::FunctionProto& onnx_func);
 
   ~FunctionImpl() override;
 
@@ -39,7 +36,7 @@ class FunctionImpl final : public Function {
   const onnxruntime::Graph* const parent_graph_;
   std::unique_ptr<IndexedSubGraph> customized_func_body_;
   std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
-  onnxruntime::Model body_;
+  std::unique_ptr<onnxruntime::Model> body_;
   ONNX_NAMESPACE::FunctionProto onnx_func_proto_;
 };
 

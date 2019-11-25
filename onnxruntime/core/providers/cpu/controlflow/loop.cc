@@ -293,9 +293,8 @@ static OrtValue MakeScalarMLValue(AllocatorPtr& allocator, T value, bool is_1d) 
 
   *p_tensor->MutableData<T>() = value;
 
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  return OrtValue{p_tensor.release(), ml_tensor,
-                  ml_tensor->GetDeleteFunc()};
+  return OrtValue{p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
 }
 
 Status LoopImpl::Initialize() {

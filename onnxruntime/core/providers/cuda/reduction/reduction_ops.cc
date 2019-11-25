@@ -13,20 +13,11 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-// opset 11 explicitly added support for negative axis. implementation already allowed it.
 #define REGISTER_KERNEL_TYPED(name, T)                                          \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       name,                                                                     \
       kOnnxDomain,                                                              \
-      11,                                                                       \
+      1,                                                                        \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

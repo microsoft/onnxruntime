@@ -16,8 +16,7 @@
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>    
     
     <!--- packaging properties -->
-    <OrtPackageId Condition=" '$(OrtPackageId)' == '' ">Microsoft.ML.OnnxRuntime</OrtPackageId>
-    <PackageId>$(OrtPackageId)</PackageId>
+    <PackageId>Microsoft.ML.OnnxRuntime</PackageId>
     <Authors>Microsoft</Authors>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
