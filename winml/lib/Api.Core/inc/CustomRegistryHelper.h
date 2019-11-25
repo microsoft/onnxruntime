@@ -3,6 +3,7 @@
 
 #pragma once
 
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
@@ -25,3 +26,5 @@ GetLotusCustomRegistries(
 }
 
 }  // namespace Windows::AI::MachineLearning::Adapter
+
+#endif USE_DML

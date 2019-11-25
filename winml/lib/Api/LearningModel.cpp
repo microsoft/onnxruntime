@@ -5,10 +5,7 @@
 
 #include "LearningModel.h"
 
-#include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
 #include "TelemetryEvent.h"
-
-#include "LotusEnvironment.h"
 
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
@@ -18,7 +15,7 @@ namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : LearningModel(WinML::Strings::UTF8FromHString(path),
-                                                                   op_provider) {
+                                                                                 op_provider) {
 }
 WINML_CATCH_ALL
 
@@ -57,7 +54,7 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
-    WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
+  WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
 }
 
 void LearningModel::LogCreationEvent(bool fromStream) {
@@ -165,11 +162,9 @@ LearningModel::GetOperatorRegistry() {
   auto operator_provider_native =
       operator_provider_.as<ILearningModelOperatorProviderNative>();
 
-  // Retrieve the "operator abi" registry.
-  winrt::com_ptr<IMLOperatorRegistry> operator_registry;
-  operator_provider_native->GetRegistry(operator_registry.put());
-
-  return operator_registry.get();
+  IMLOperatorRegistry* registry = nullptr;
+  WINML_THROW_IF_FAILED(adapter_->GetOperatorRegistry(operator_provider_native.get(), &registry));
+  return registry;
 }
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
