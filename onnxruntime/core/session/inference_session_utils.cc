@@ -113,7 +113,7 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
 
   for (const auto& metadata_field : model_proto.metadata_props()) {
     if (metadata_field.has_key() && metadata_field.key() == inference_session_utils::ort_config_key) {
-      LOGS(*logger_, INFO)
+      LOGS(logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
       try {
@@ -121,7 +121,7 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
         // set the flag indicating that the model has the ORT config json.
         is_json_available_ = true;
       } catch (const std::exception& e) {
-        LOGS(*logger_, ERROR) << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
+        LOGS(logger_, ERROR) << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Json stored in the `ort_config` key cannot be parsed. Error message: ", e.what());
       }
 
@@ -140,7 +140,7 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
   }
 
   if (!is_json_available_ || parsed_json_.contains(inference_session_utils::session_options_key)) {
-    LOGS(*logger_, INFO) << "Did not find session options in the model file to be used while running the model";
+    LOGS(logger_, INFO) << "Did not find session options in the model file to be used while running the model";
     return Status::OK();
   }
 
@@ -161,7 +161,7 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
                                "intra_op_num_threads option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetIntraOpNumThreads(session_options, it.value().get<int>(), *logger_));
+      ORT_RETURN_IF_ERROR(SetIntraOpNumThreads(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "inter_op_num_threads") {
       if (!value.is_number_integer()) {
@@ -169,7 +169,7 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
                                "inter_op_num_threads option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetInterOpNumThreads(session_options, it.value().get<int>(), *logger_));
+      ORT_RETURN_IF_ERROR(SetInterOpNumThreads(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "execution_mode") {
       if (!value.is_number_integer()) {
@@ -177,7 +177,7 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
                                "execution_mode option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetExecutionMode(session_options, it.value().get<int>(), *logger_));
+      ORT_RETURN_IF_ERROR(SetExecutionMode(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "graph_optimization_level") {
       if (!value.is_number_integer()) {
@@ -185,7 +185,7 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
                                "graph_optimization_level option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetGraphOptimizationLevel(session_options, it.value().get<int>(), *logger_));
+      ORT_RETURN_IF_ERROR(SetGraphOptimizationLevel(session_options, it.value().get<int>(), logger_));
 
     } else if (key == "enable_profiling") {
       if (!value.is_number_integer()) {
@@ -193,10 +193,10 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
                                "enable_profiling option in the model file must be an integer");
       }
 
-      ORT_RETURN_IF_ERROR(SetEnableProfiling(session_options, it.value().get<int>(), *logger_));
+      ORT_RETURN_IF_ERROR(SetEnableProfiling(session_options, it.value().get<int>(), logger_));
 
     } else {
-      LOGS(*logger_, INFO) << "Ignoring unsupported session option in ORT config: " << key;
+      LOGS(logger_, INFO) << "Ignoring unsupported session option in ORT config: " << key;
     }
   }
 

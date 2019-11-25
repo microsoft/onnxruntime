@@ -212,8 +212,14 @@ inline SessionOptions& SessionOptions::SetLogId(const char* logid) {
   ThrowOnError(Global<void>::api_.SetSessionLogId(p_, logid));
   return *this;
 }
+
 inline SessionOptions& SessionOptions::Add(OrtCustomOpDomain* custom_op_domain) {
   ThrowOnError(Global<void>::api_.AddCustomOpDomain(p_, custom_op_domain));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::EnableCheckModelForOrtConfig() {
+  ThrowOnError(Global<void>::api_.EnableCheckModelForOrtConfig(p_));
   return *this;
 }
 

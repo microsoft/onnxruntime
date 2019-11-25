@@ -574,6 +574,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                      R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
                      R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
+      .def_readwrite("check_model_for_ort_config", &SessionOptions::check_model_for_ort_config,
+                     R"pbdoc(Enable checking a given model for onnxruntime config options to be used (if found) for this session. Default is false.)pbdoc")
       .def_readwrite("execution_mode", &SessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
@@ -650,55 +652,57 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-        std::ostringstream res;
-        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          res << "[]";
-        } else {
-          res << "[";
-          for (int i = 0; i < shape->dim_size(); ++i) {
-            if (utils::HasDimValue(shape->dim(i))) {
-              res << shape->dim(i).dim_value();
-            } else if (utils::HasDimParam(shape->dim(i))) {
-              res << "'" << shape->dim(i).dim_param() << "'";
+      .def(
+          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+            std::ostringstream res;
+            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              res << "[]";
             } else {
-              res << "None";
+              res << "[";
+              for (int i = 0; i < shape->dim_size(); ++i) {
+                if (utils::HasDimValue(shape->dim(i))) {
+                  res << shape->dim(i).dim_value();
+                } else if (utils::HasDimParam(shape->dim(i))) {
+                  res << "'" << shape->dim(i).dim_param() << "'";
+                } else {
+                  res << "None";
+                }
+
+                if (i < shape->dim_size() - 1) {
+                  res << ", ";
+                }
+              }
+              res << "]";
+            }
+            res << ")";
+
+            return std::string(res.str());
+          },
+          "converts the node into a readable string")
+      .def_property_readonly(
+          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              return arr;
             }
 
-            if (i < shape->dim_size() - 1) {
-              res << ", ";
+            arr.resize(shape->dim_size());
+            for (int i = 0; i < shape->dim_size(); ++i) {
+              if (utils::HasDimValue(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_value());
+              } else if (utils::HasDimParam(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_param());
+              } else {
+                arr[i] = py::none();
+              }
             }
-          }
-          res << "]";
-        }
-        res << ")";
-
-        return std::string(res.str());
-      },
-           "converts the node into a readable string")
-      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          return arr;
-        }
-
-        arr.resize(shape->dim_size());
-        for (int i = 0; i < shape->dim_size(); ++i) {
-          if (utils::HasDimValue(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_value());
-          } else if (utils::HasDimParam(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_param());
-          } else {
-            arr[i] = py::none();
-          }
-        }
-        return arr;
-      },
-                             "node shape (assuming the node holds a tensor)");
+            return arr;
+          },
+          "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -710,12 +714,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
-        std::istringstream buffer(serializedModel);
-        OrtPybindThrowIfError(sess->Load(buffer));
-        InitializeSession(sess, provider_types);
-      },
-           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
+      .def(
+          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
+            std::istringstream buffer(serializedModel);
+            OrtPybindThrowIfError(sess->Load(buffer));
+            InitializeSession(sess, provider_types);
+          },
+          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -794,11 +799,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 }
 
 #ifdef USE_MIMALLOC
-  static struct {
-      PyMemAllocatorEx mem;
-      PyMemAllocatorEx raw;
-      PyMemAllocatorEx obj;
-  } allocators;
+static struct {
+  PyMemAllocatorEx mem;
+  PyMemAllocatorEx raw;
+  PyMemAllocatorEx obj;
+} allocators;
 #endif
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
@@ -807,36 +812,34 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #ifdef USE_MIMALLOC
   PyMemAllocatorEx alloc;
-  alloc.malloc = [] (void *ctx, size_t size) { 
+  alloc.malloc = [](void* ctx, size_t size) {
     ORT_UNUSED_PARAMETER(ctx);
-    return mi_malloc(size); 
+    return mi_malloc(size);
   };
 
-  alloc.calloc = [] (void *ctx, size_t nelem, size_t elsize) { 
+  alloc.calloc = [](void* ctx, size_t nelem, size_t elsize) {
     ORT_UNUSED_PARAMETER(ctx);
-    return mi_calloc(nelem, elsize); 
+    return mi_calloc(nelem, elsize);
   };
 
-  alloc.realloc = [] (void *ctx, void *ptr, size_t new_size) { 
-    if(mi_is_in_heap_region(ptr)) {
-      return mi_realloc(ptr, new_size); 
-    }
-    else {
-      PyMemAllocatorEx * a = (PyMemAllocatorEx *)ctx;
-      return a->realloc(ctx, ptr, new_size); 
+  alloc.realloc = [](void* ctx, void* ptr, size_t new_size) {
+    if (mi_is_in_heap_region(ptr)) {
+      return mi_realloc(ptr, new_size);
+    } else {
+      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
+      return a->realloc(ctx, ptr, new_size);
     }
   };
 
-  alloc.free = [] (void *ctx, void *ptr) { 
-    if(mi_is_in_heap_region(ptr)) {
+  alloc.free = [](void* ctx, void* ptr) {
+    if (mi_is_in_heap_region(ptr)) {
       mi_free(ptr);
-    }
-    else {
+    } else {
       PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
       a->free(ctx, ptr);
     }
   };
-  
+
   alloc.ctx = &allocators.raw;
   PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
   PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);

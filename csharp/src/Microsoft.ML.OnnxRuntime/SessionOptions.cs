@@ -337,6 +337,25 @@ namespace Microsoft.ML.OnnxRuntime
         private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
+        // Set flag to indicate that ORT must look in the model for any config options and if any is found, 
+        // use them for the specific session hosting the model 
+        // A value of 'true' means ORT will look in the given model file for any ORT config options, and vice versa 
+        /// </summary>
+        public bool CheckModelForOrtConfig
+        {
+            get
+            {
+                return _checkModelForOrtConfig;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableCheckModelForOrtConfig(_nativePtr));
+                _checkModelForOrtConfig = true;
+            }
+        }
+        private bool _checkModelForOrtConfig = false; // set to what is set in C++ SessionOptions by default;
+        
+        /// <summary>
         /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
         /// </summary>
         public GraphOptimizationLevel GraphOptimizationLevel

@@ -443,8 +443,14 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* /*env*/, _In_ const OrtSessionOp
 ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
-  auto sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
-      options == nullptr ? nullptr : &options->value, model_path, env->loggingManager);
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  try {
+    sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+        options == nullptr ? onnxruntime::SessionOptions() : options->value,
+        model_path, env->loggingManager);
+  } catch (const std::exception& e) {
+    return OrtApis::CreateStatus(ORT_FAIL, e.what());
+  }
   return CreateSessionImpl(env, options, sess, out);
   API_IMPL_END
 }
@@ -452,9 +458,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
-  auto sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
-      options == nullptr ? nullptr : &options->value, model_data, static_cast<int>(model_data_length), env->loggingManager);
-
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  try {
+    sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+        options == nullptr ? onnxruntime::SessionOptions() : options->value,
+        model_data, static_cast<int>(model_data_length), env->loggingManager);
+  } catch (const std::exception& e) {
+    return OrtApis::CreateStatus(ORT_FAIL, e.what());
+  }
   return CreateSessionImpl(env, options, sess, out);
   API_IMPL_END
 }
@@ -1285,6 +1296,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SetSessionGraphOptimizationLevel,
     &OrtApis::SetIntraOpNumThreads,
     &OrtApis::SetInterOpNumThreads,
+    &OrtApis::EnableCheckModelForOrtConfig,
 
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,

@@ -102,8 +102,7 @@ class InferenceSession {
 
   /**
     Create a new InferenceSession
-    @param session_options - Pointer to session options. If nullptr, will look in the model for session options,
-    if none found in the model, will create and use default SessionOptions instance.
+    @param session_options Session options.
     @param model_uri absolute path of the model file.
     @param logging_manager
     Optional logging manager instance that will enable per session logger output using
@@ -112,19 +111,18 @@ class InferenceSession {
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     */
-  explicit InferenceSession(const SessionOptions* session_options,
+  explicit InferenceSession(const SessionOptions& session_options,
                             const std::string& model_uri,
                             logging::LoggingManager* logging_manager = nullptr);
 #ifdef _WIN32
-  explicit InferenceSession(const SessionOptions* session_options,
+  explicit InferenceSession(const SessionOptions& session_options,
                             const std::wstring& model_uri,
                             logging::LoggingManager* logging_manager = nullptr);
 #endif
 
   /**
     Create a new InferenceSession
-    @param session_options - Pointer to session options. If nullptr, will look in the model for session options,
-    if none found in the model, will create and use default SessionOptions instance.
+    @param session_options Session options.
     @param istream object of the model.
     @param logging_manager
     Optional logging manager instance that will enable per session logger output using
@@ -133,14 +131,13 @@ class InferenceSession {
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     */
-  explicit InferenceSession(const SessionOptions* session_options,
+  explicit InferenceSession(const SessionOptions& session_options,
                             std::istream& model_istream,
                             logging::LoggingManager* logging_manager = nullptr);
 
   /**
     Create a new InferenceSession
-    @param session_options - Pointer to session options. If nullptr, will look in the model for session options,
-    if none found in the model, will create and use default SessionOptions instance.
+    @param session_options Session options.
     @param model_data Model data buffer.
     @param model_data_len Model data buffer size.
     @param logging_manager
@@ -150,7 +147,7 @@ class InferenceSession {
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     */
-  explicit InferenceSession(const SessionOptions* session_options,
+  explicit InferenceSession(const SessionOptions& session_options,
                             const void* model_data,
                             int model_data_len,
                             logging::LoggingManager* logging_manager = nullptr);

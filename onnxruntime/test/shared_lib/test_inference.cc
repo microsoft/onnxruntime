@@ -282,6 +282,7 @@ TEST_F(CApiTest, create_session_without_session_option) {
   ASSERT_NE(nullptr, ret);
 }
 #endif
+
 TEST_F(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;

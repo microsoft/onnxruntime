@@ -113,20 +113,40 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          logging::LoggingManager* logging_manager) {
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
-  session_options_ = session_options;
+
+  const SessionOptions* final_session_options;
+  // the model is to be checked for an ORT config json that may hold some/all session options
+  if (session_options.check_model_for_ort_config) {
+    // In theory should not throw on this line unless this internal class' APIs are being called incorrectly.
+    // It is a good sanity check to enforce this
+    ORT_ENFORCE(model_proto_, "Need model to be provided to check for ORT config within it");
+
+    SessionOptions constructed_session_options;
+
+    auto status = FinalizeSessionOptions(constructed_session_options, *model_proto_);
+    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
+                status.ErrorMessage());
+
+    final_session_options = &constructed_session_options;
+  } else {
+    // use provided session options instance
+    final_session_options = &session_options;
+  }
+
+  session_options_ = *final_session_options;
   graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
-      session_options.max_num_graph_transformation_steps);
+      session_options_.max_num_graph_transformation_steps);
   logging_manager_ = logging_manager;
   thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
-                                               session_options.intra_op_num_threads);
-  inter_op_thread_pool_ = session_options.execution_mode == ExecutionMode::ORT_PARALLEL
+                                               session_options_.intra_op_num_threads);
+  inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
                               ? concurrency::CreateThreadPool("inter_op_thread_pool",
-                                                              session_options.inter_op_num_threads)
+                                                              session_options_.inter_op_num_threads)
                               : nullptr;
 
   session_state_ = onnxruntime::make_unique<SessionState>(execution_providers_,
-                                                          session_options.enable_mem_pattern &&
-                                                              session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
+                                                          session_options_.enable_mem_pattern &&
+                                                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                                                           thread_pool_.get(),
                                                           inter_op_thread_pool_.get());
 
@@ -135,8 +155,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_state_->SetDataTransferMgr(&data_transfer_mgr_);
   session_profiler_.Initialize(session_logger_);
   session_state_->SetProfiler(session_profiler_);
-  if (session_options.enable_profiling) {
-    StartProfiling(session_options.profile_file_prefix);
+  if (session_options_.enable_profiling) {
+    StartProfiling(session_options_.profile_file_prefix);
   }
 
   // a monotonically increasing session id for use in telemetry
@@ -146,10 +166,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
+  // Initialize assets of this session instance
   ConstructorCommon(session_options, logging_manager);
 }
 
-InferenceSession::InferenceSession(const SessionOptions* session_options,
+InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::string& model_uri,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
@@ -159,23 +180,12 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
 
-  // No session options provided by user
-  if (session_options == nullptr) {
-    SessionOptions default_session_options;
-
-    status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
-                status.ErrorMessage());
-
-    ConstructorCommon(default_session_options, logging_manager);
-  } else {
-    // Explicit session options provided by user - honor that
-    ConstructorCommon(*session_options, logging_manager);
-  }
+  // Finalize session options and initialize assets of this session instance
+  ConstructorCommon(session_options, logging_manager);
 }
 
 #ifdef _WIN32
-InferenceSession::InferenceSession(const SessionOptions* session_options,
+InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const std::wstring& model_uri,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
@@ -185,23 +195,12 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
 
-  // No session options provided by user
-  if (session_options == nullptr) {
-    SessionOptions default_session_options;
-
-    status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
-                status.ErrorMessage());
-
-    ConstructorCommon(default_session_options, logging_manager);
-  } else {
-    // Explicit session options provided by user - honor that
-    ConstructorCommon(*session_options, logging_manager);
-  }
+  // Finalize session options and initialize assets of this session instance
+  ConstructorCommon(session_options, logging_manager);
 }
 #endif
 
-InferenceSession::InferenceSession(const SessionOptions* session_options,
+InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    std::istream& model_istream,
                                    logging::LoggingManager* logging_manager)
     : insert_cast_transformer_("CastFloat16Transformer") {
@@ -210,22 +209,11 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   const bool result = model_proto_->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
 
-  // No session options provided by user
-  if (session_options == nullptr) {
-    SessionOptions default_session_options;
-
-    auto status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
-                status.ErrorMessage());
-
-    ConstructorCommon(default_session_options, logging_manager);
-  } else {
-    // Explicit session options provided by user - honor that
-    ConstructorCommon(*session_options, logging_manager);
-  }
+  // Finalize session options and initialize assets of this session instance
+  ConstructorCommon(session_options, logging_manager);
 }
 
-InferenceSession::InferenceSession(const SessionOptions* session_options,
+InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const void* model_data,
                                    int model_data_len,
                                    logging::LoggingManager* logging_manager)
@@ -234,19 +222,8 @@ InferenceSession::InferenceSession(const SessionOptions* session_options,
   const bool result = model_proto_->ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
 
-  // No session options provided by user
-  if (session_options == nullptr) {
-    SessionOptions default_session_options;
-
-    auto status = FinalizeSessionOptions(default_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
-                status.ErrorMessage());
-
-    ConstructorCommon(default_session_options, logging_manager);
-  } else {
-    // Explicit session options provided by user - honor that
-    ConstructorCommon(*session_options, logging_manager);
-  }
+  // Finalize session options and initialize assets of this session instance
+  ConstructorCommon(session_options, logging_manager);
 }
 
 InferenceSession::~InferenceSession() {

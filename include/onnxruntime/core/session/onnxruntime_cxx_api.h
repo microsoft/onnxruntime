@@ -177,6 +177,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetLogId(const char* logid);
 
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
+
+  SessionOptions& EnableCheckModelForOrtConfig();
 };
 
 struct Session : Base<OrtSession> {

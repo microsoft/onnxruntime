@@ -21,8 +21,7 @@ static const std::string session_options_key = "session_options";
 
 class InferenceSessionUtils {
  public:
-  InferenceSessionUtils(const logging::Logger& logger) {
-    logger_ = &logger;
+  InferenceSessionUtils(const logging::Logger& logger) : logger_(logger) {
   }
 
   Status ParseOrtConfigJsonInModelProto(const ONNX_NAMESPACE::ModelProto& model_proto);
@@ -33,7 +32,7 @@ class InferenceSessionUtils {
 
  private:
   // Logger instance that will be used to log events along the parsing steps
-  const logging::Logger* logger_;
+  const logging::Logger& logger_;
 
   // Flag indicating if the model has been checked for ort config json existence
   bool is_model_checked_for_ort_config_json_ = false;
