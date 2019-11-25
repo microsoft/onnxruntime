@@ -1,4 +1,5 @@
 #include "testPch.h"
+
 #include "APITest.h"
 
 #include <winrt/Windows.Graphics.Imaging.h>
@@ -26,7 +27,12 @@ protected:
 };
 
 class LearningModelAPITestGpu : public LearningModelAPITest
-{};
+{
+protected:
+    void SetUp() override {
+        GPUTEST
+    }
+};
 
 TEST_F(LearningModelAPITest, CreateModelFromFilePath)
 {
@@ -227,6 +233,7 @@ TEST_F(LearningModelAPITest, CloseModelCheckMetadata)
 
 TEST_F(LearningModelAPITestGpu, CloseModelCheckEval)
 {
+    GPUTEST
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
     LearningModelSession session = nullptr;
     EXPECT_NO_THROW(session = LearningModelSession(m_model));

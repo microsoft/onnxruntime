@@ -1,4 +1,5 @@
 #include "testPch.h"
+
 #include "APITest.h"
 #include "SqueezeNetValidator.h"
 
@@ -18,7 +19,12 @@ class LearningModelBindingAPITest : public APITest
 {};
 
 class LearningModelBindingAPITestGpu : public LearningModelBindingAPITest
-{};
+{
+protected:
+    void SetUp() override {
+        GPUTEST
+    }
+};
 
 TEST_F(LearningModelBindingAPITest, CpuSqueezeNet)
 {
@@ -289,7 +295,7 @@ TEST_F(LearningModelBindingAPITest, ZipMapString)
 
 TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
 {
-
+    GPUTEST
     std::string gpuInstance("GPU");
     WinML::Engine::Test::ModelValidator::SqueezeNet(
         gpuInstance,
@@ -299,7 +305,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
 
 TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
 {
-
+    GPUTEST
     std::string gpuInstance("GPU");
     WinML::Engine::Test::ModelValidator::SqueezeNet(
         gpuInstance,
@@ -311,7 +317,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
 
 TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
 {
-
+    GPUTEST
     std::string gpuInstance("GPU");
     WinML::Engine::Test::ModelValidator::SqueezeNet(
         gpuInstance,
@@ -324,6 +330,7 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
 // Validates that when the input image is the same as the model expects, the binding step is executed correctly.
 TEST_F(LearningModelBindingAPITestGpu, ImageBindingDimensions)
 {
+    GPUTEST
     LearningModelBinding m_binding = nullptr;
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
     // load a model with expected input size: 224 x 224
@@ -357,7 +364,7 @@ TEST_F(LearningModelBindingAPITestGpu, ImageBindingDimensions)
 
 TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
 {
-
+    GPUTEST
     EXPECT_NO_THROW(LoadModel(L"zipmap-int64.onnx"));
 
     LearningModelSession session(m_model);
@@ -471,6 +478,7 @@ TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
 // Verify that it throws an error when binding an invalid name.
 TEST_F(LearningModelBindingAPITestGpu, BindInvalidInputName)
 {
+    GPUTEST
     LearningModelBinding m_binding = nullptr;
     std::wstring modelPath = FileHelpers::GetModulePath() + L"Add_ImageNet1920.onnx";
     EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(modelPath));

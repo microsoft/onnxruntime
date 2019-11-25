@@ -173,8 +173,6 @@ struct LocalCustomOperatorProvider :
 {
     LocalCustomOperatorProvider()
     {
-        using namespace OperatorHelper;
-
         EXPECT_HRESULT_SUCCEEDED(MLCreateOperatorRegistry(m_registry.put()));
     }
 
