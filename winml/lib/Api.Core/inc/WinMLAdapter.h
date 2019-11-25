@@ -6,6 +6,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
+TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
     // model metadata
@@ -39,13 +40,13 @@ MIDL_INTERFACE("a848faf6-5a2e-4a7f-b622-cc036f71e28a") IModelProto : IUnknown{
 MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnknown {
     virtual onnxruntime::InferenceSession* STDMETHODCALLTYPE get() = 0;
     virtual void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) = 0;
-    virtual HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry* registry) = 0;
+    virtual HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry * registry) = 0;
     virtual HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) = 0;
     virtual HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) = 0;
     virtual HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) = 0;
     virtual HRESULT STDMETHODCALLTYPE StartProfiling() = 0;
     virtual HRESULT STDMETHODCALLTYPE EndProfiling() = 0;
-    virtual void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider* dml_provider) = 0;
+    virtual void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider * dml_provider) = 0;
     virtual void STDMETHODCALLTYPE TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) = 0;
     virtual void STDMETHODCALLTYPE ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) = 0;
     virtual HRESULT STDMETHODCALLTYPE CopyOneInputAcrossDevices(const char* input_name,
@@ -79,7 +80,7 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
         IModelProto* p_model_proto,
         bool is_float16_supported) = 0;
 
-    virtual ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider* provider, void* allocation) = 0;
+    virtual ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider * provider, void* allocation) = 0;
 
 
     // factory method for creating an ortsessionbuilder from a device
@@ -98,6 +99,7 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
 
     // custom ops
     virtual HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative * operator_provider_native, IMLOperatorRegistry * *registry) = 0;
 
     // dml ep hooks
     virtual void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) = 0;

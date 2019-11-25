@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
+
+#ifdef USE_DML
+
 #include "inc/AbiCustomRegistryImpl.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
@@ -80,3 +83,5 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
 CATCH_RETURN();
 
 }  // namespace Windows::AI::MachineLearning::Adapter
+
+#endif USE_DML

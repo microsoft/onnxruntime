@@ -7,18 +7,20 @@
 #include "PheonixSingleton.h"
 #include "inc/LotusEnvironment.h"
 #include "inc/AbiCustomRegistryImpl.h"
+
+#ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
 #include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
+#include "DmlOrtSessionBuilder.h"
+#endif USE_DML
 
 #include "LearningModelDevice.h"
 #include "TensorFeatureDescriptor.h"
 #include "ImageFeatureDescriptor.h"
 #include "api.image/inc/D3DDeviceCache.h"
+#include "Common/inc/WinMLTelemetryHelper.h"
 
-#include "PheonixSingleton.h"
-
-#include "DmlOrtSessionBuilder.h"
 #include "CpuOrtSessionBuilder.h"
 
 #include <io.h>
@@ -32,6 +34,12 @@
 using namespace winrt::Windows::AI::MachineLearning;
 
 namespace Windows::AI::MachineLearning::Adapter {
+
+// Define winml trace logging provider with WinML GUID
+TRACELOGGING_DEFINE_PROVIDER(
+    winml_trace_logging_provider,
+    WINML_PROVIDER_DESC,
+    WINML_PROVIDER_GUID);
 
 // ORT intentionally requires callers derive from their session class to access
 // the protected methods used below.
@@ -378,11 +386,15 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   }
 
   ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider* provider, void* allocation) override {
+#ifdef USE_DML
     auto d3dResource =
         Dml::GetD3D12ResourceFromAllocation(
             provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
             allocation);
     return d3dResource;
+#else
+    return nullptr;
+#endif USE_DML
   }
 
   static onnxruntime::MLDataType GetType(winml::TensorKind kind) {
@@ -403,10 +415,15 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     if (device == nullptr) {
       auto builder = wil::MakeOrThrow<CpuOrtSessionBuilder>();
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
-    } else {
+    }
+#ifdef USE_DML
+    else {
       auto builder = wil::MakeOrThrow<DmlOrtSessionBuilder>(device, queue);
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
     }
+#else
+    return E_NOTIMPL;
+#endif USE_DML
   }
 
   HRESULT STDMETHODCALLTYPE GetMapType(const OrtValue* ort_value, ONNXTensorElementDataType* key_type, ONNXTensorElementDataType* value_type) override {
@@ -454,27 +471,51 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   }
 
   HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) override {
+#ifdef USE_DML
     auto impl = wil::MakeOrThrow<AbiCustomRegistryImpl>();
     *registry = impl.Detach();
     return S_OK;
+#else
+    return E_NOTIMPL;
+#endif USE_DML
   }
 
+HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
+#ifdef USE_DML
+    // Retrieve the "operator abi" registry.
+    winrt::com_ptr<IMLOperatorRegistry> operator_registry;
+    THROW_IF_FAILED(operator_provider_native->GetRegistry(operator_registry.put()));
+    *registry = operator_registry.detach();
+    return S_OK;
+#else
+    return E_NOTIMPL;
+#endif USE_DML
+}
+
   void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
+#ifdef USE_DML
     return Dml::CreateGPUAllocationFromD3DResource(pResource);
+#else
+    return nullptr;
+#endif USE_DML
   }
 
   void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) override {
+#ifdef USE_DML
     Dml::FreeGPUAllocation(ptr);
+#endif USE_DML
   }
+
   HRESULT STDMETHODCALLTYPE CopyTensor(
       onnxruntime::IExecutionProvider* provider,
-      OrtValue* src,
-      OrtValue* dst) override {
-    ORT_THROW_IF_ERROR(Dml::CopyTensor(
-        provider,
-        src->Get<onnxruntime::Tensor>(),
-        *(dst->GetMutable<onnxruntime::Tensor>())));
+      ITensor* src,
+      ITensor* dst) override {
+#ifdef USE_DML
+    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
     return S_OK;
+#else
+    return E_NOTIMPL;
+#endif USE_DML
   }
 
   // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
@@ -483,11 +524,15 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   // registered schema are reachable only after upstream schema have been revised in a later OS release,
   // which would be a compatibility risk.
   HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
+#ifdef USE_DML
     static std::once_flag schema_override_once_flag;
     std::call_once(schema_override_once_flag, []() {
       SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
     });
     return S_OK;
+#else
+    return S_OK; // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
+#endif USE_DML
   }
 
   HRESULT STDMETHODCALLTYPE GetProviderMemoryInfo(
@@ -610,7 +655,9 @@ InferenceSession::InferenceSession(onnxruntime::InferenceSession* session) : ses
 }
 
 void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers(bool registerLotusTransforms) {
+#ifdef USE_DML
   GraphTransformerHelpers::RegisterGraphTransformers(session_.get(), registerLotusTransforms);
+#endif USE_DML
 }
 
 HRESULT STDMETHODCALLTYPE InferenceSession::NewIOBinding(IIOBinding** io_binding) {
@@ -649,26 +696,34 @@ InferenceSession::RegisterCustomRegistry(
     IMLOperatorRegistry* registry) {
   RETURN_HR_IF(S_OK, registry == nullptr);
 
+#ifdef USE_DML
   auto custom_registries = GetLotusCustomRegistries(registry);
 
   // Register
   for (auto& custom_registry : custom_registries) {
     ORT_THROW_IF_ERROR(session_->RegisterCustomRegistry(custom_registry));
   }
+#endif USE_DML
 
   return S_OK;
 }
 
 void STDMETHODCALLTYPE InferenceSession::FlushContext(onnxruntime::IExecutionProvider* dml_provider) {
+#ifdef USE_DML
   Dml::FlushContext(dml_provider);
+#endif USE_DML
 }
 
 void STDMETHODCALLTYPE InferenceSession::TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) {
+#ifdef USE_DML
   Dml::TrimUploadHeap(dml_provider);
+#endif USE_DML
 }
 
 void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) {
+#ifdef USE_DML
   Dml::ReleaseCompletedReferences(dml_provider);
+#endif USE_DML
 }
 
 HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(

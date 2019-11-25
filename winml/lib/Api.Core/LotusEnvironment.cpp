@@ -3,7 +3,6 @@
 
 #include "pch.h"
 #include "inc/LotusEnvironment.h"
-#include <TraceLoggingProvider.h>
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 
@@ -12,12 +11,11 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
     const onnxruntime::logging::Timestamp& timestamp,
     const std::string& logger_id,
     const onnxruntime::logging::Capture& message) {
-#ifdef LAYERING_DONE
   // ORT Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
   switch (message.Severity()) {
     case (onnxruntime::logging::Severity::kFATAL):  //Telemetry
       TraceLoggingWrite(
-          winml_trace_logging_provider,
+          _winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
@@ -31,7 +29,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       break;
     case (onnxruntime::logging::Severity::kERROR):  //Telemetry
       TraceLoggingWrite(
-          winml_trace_logging_provider,
+          _winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
@@ -45,7 +43,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       break;
     case (onnxruntime::logging::Severity::kWARNING):
       TraceLoggingWrite(
-          winml_trace_logging_provider,
+          _winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
           TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
@@ -57,7 +55,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       break;
     case (onnxruntime::logging::Severity::kINFO):
       TraceLoggingWrite(
-          winml_trace_logging_provider,
+          _winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
           TraceLoggingLevel(WINEVENT_LEVEL_INFO),
@@ -71,7 +69,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       __fallthrough;  //Default is Verbose too.
     default:
       TraceLoggingWrite(
-          winml_trace_logging_provider,
+          _winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
           TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
@@ -81,17 +79,15 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
           TraceLoggingString(message.Message().c_str()),
           TraceLoggingString(message.Location().ToString(onnxruntime::CodeLocation::kFilenameAndPath).c_str()));
   }
-#endif
   if (debug_output_) {
     OutputDebugStringA(std::string(message.Message() + "\r\n").c_str());
   }
 }
 
 void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::profiling::EventRecord& eventRecord) const {
-#ifdef LAYERING_DONE
   if (eventRecord.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) {
     TraceLoggingWrite(
-        winml_trace_logging_provider,
+        _winmla::winml_trace_logging_provider,
         "OnnxRuntimeProfiling",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_LOTUS_PROFILING),
         TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
@@ -106,7 +102,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::
         TraceLoggingString(eventRecord.args["provider"].c_str(), "Execution Provider"));
   } else {
     TraceLoggingWrite(
-        winml_trace_logging_provider,
+        _winmla::winml_trace_logging_provider,
         "OnnxRuntimeProfiling",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_LOTUS_PROFILING),
         TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
@@ -118,5 +114,4 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::
         TraceLoggingInt32(eventRecord.pid, "Process ID"),
         TraceLoggingInt32(eventRecord.tid, "Thread ID"));
   }
-#endif
 }

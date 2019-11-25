@@ -301,7 +301,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
     if (IsOfTensorType(ort_value, TensorKind::Float)) {
       if (descriptor.Kind() == LearningModelFeatureKind::Image) {
         using namespace Windows::Graphics::Imaging;
-        // TODO: this format for unbound ouput needs more discussion
+        // TODO: this format for unbound output needs more discussion
         BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();        
         uint32_t width = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[3]);
         uint32_t height = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[2]);

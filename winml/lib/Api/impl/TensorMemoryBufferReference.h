@@ -5,7 +5,7 @@
 
 #include "Tensor.h"
 #include <type_traits>
-#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+
 #include <Memorybuffer.h>
 #include "WinMLAdapter.h"
 

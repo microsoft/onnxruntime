@@ -31,7 +31,7 @@ convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 # For winrt idl files:
 # 1) the file name must match the casing of the file on disk.
 # 2) for winrt idls the casing must match the namespaces within exactly (Window.AI.MachineLearning).
-# target_cppwinrt will attempt to create a winmd with the name and same casing as the supplied 
+# target_cppwinrt will attempt to create a winmd with the name and same casing as the supplied
 # idl file. If the name of the winmd file does not match the contained namespaces, cppwinrt.exe
 # will generate component template files with fully qualified names, which will not match the existing
 # generated component files.
@@ -90,6 +90,9 @@ add_library(winml_lib_telemetry STATIC
 # Compiler options
 target_compile_features(winml_lib_telemetry PRIVATE cxx_std_17)
 target_compile_options(winml_lib_telemetry PRIVATE /GR- /await /wd4238)
+if (onnxruntime_USE_TELEMETRY)
+  set_target_properties(winml_lib_telemetry PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+endif()
 
 # Compiler flags
 target_compile_definitions(winml_lib_telemetry PRIVATE PLATFORM_WINDOWS)
@@ -119,26 +122,33 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 ###########################
 
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_core STATIC
-  ${winml_lib_api_core_dir}/inc/AbiCustomRegistryImpl.h
+list(APPEND winml_lib_core_files
   ${winml_lib_api_core_dir}/inc/CustomRegistryHelper.h
   ${winml_lib_api_core_dir}/inc/LotusEnvironment.h
   ${winml_lib_api_core_dir}/inc/MLValueHelpers.h
   ${winml_lib_api_core_dir}/inc/TensorBaseHelpers.h
   ${winml_lib_api_core_dir}/inc/WinMLAdapter.h
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.h
-  ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.h
   ${winml_lib_api_core_dir}/FeatureDescriptorFactory.h
   ${winml_lib_api_core_dir}/FeatureDescriptorFactory.cpp
   ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.h
   ${winml_lib_api_core_dir}/pch.h
-  ${winml_lib_api_core_dir}/AbiCustomRegistryImpl.cpp
   ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.cpp
-  ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
   ${winml_lib_api_core_dir}/LotusEnvironment.cpp
   ${winml_lib_api_core_dir}/WinMLAdapter.cpp
   ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.cpp
 )
+
+if (onnxruntime_USE_DML)
+  list(APPEND winml_lib_core_files
+    ${winml_lib_api_core_dir}/inc/AbiCustomRegistryImpl.h
+    ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.h
+    ${winml_lib_api_core_dir}/AbiCustomRegistryImpl.cpp
+    ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
+  )
+endif(onnxruntime_USE_DML)
+
+add_library(winml_lib_core STATIC ${winml_lib_core_files})
 
 # Compiler options
 target_compile_features(winml_lib_core PRIVATE cxx_std_17)
@@ -194,7 +204,9 @@ add_dependencies(winml_lib_core winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_core PRIVATE wil)
-target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
+if (onnxruntime_USE_DML)
+  target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
+endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml windowsapp.lib -WHOLEARCHIVE:$<TARGET_FILE:winml_lib_core>)
@@ -227,7 +239,7 @@ add_library(winml_lib_image STATIC
 )
 
 # Compiler options
-target_compile_features(winml_lib_image PRIVATE cxx_std_17) 
+target_compile_features(winml_lib_image PRIVATE cxx_std_17)
 target_compile_options(winml_lib_image PRIVATE /GR- /await /wd4238)
 
 # Compiler flags
@@ -314,7 +326,7 @@ add_library(winml_lib_api STATIC
 )
 
 # Compiler options
-target_compile_features(winml_lib_api PRIVATE cxx_std_17) 
+target_compile_features(winml_lib_api PRIVATE cxx_std_17)
 target_compile_options(winml_lib_api PRIVATE /GR- /await /bigobj /wd4238)
 
 # Compiler flags
@@ -391,7 +403,7 @@ add_library(winml_dll SHARED
 )
 
 # Compiler options
-target_compile_features(winml_dll PRIVATE cxx_std_17) 
+target_compile_features(winml_dll PRIVATE cxx_std_17)
 target_compile_options(winml_dll PRIVATE /GR- /await /bigobj /wd4238)
 
 # Compiler definitions
@@ -485,3 +497,7 @@ target_link_libraries(winml_dll PRIVATE ${DBGHELP})
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   set_target_properties(winml_dll PROPERTIES VS_GLOBAL_PreferredToolArchitecture "x64")
 endif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+
+if (onnxruntime_BUILD_WINML_TESTS)
+  include(winml_unittests.cmake)
+endif()
