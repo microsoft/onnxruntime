@@ -73,8 +73,14 @@ class TensorBuffer {
     return std::shared_ptr<TensorBuffer>(new TensorBuffer(size, buffer));
   }
 
+  // this is the count of elements
   auto Size() {
     return m_size;
+  }
+
+  // this is the size in bytes
+  auto SizeInBytes() {
+    return m_size * sizeof(T);
   }
 
   auto Buffer() {
@@ -115,6 +121,11 @@ class TensorBuffer<std::string> {
   }
 
   auto Size() {
+    return m_buffer.size();
+  }
+
+  // this is the size in bytes
+  auto SizeInBytes() {
     return m_buffer.size();
   }
 

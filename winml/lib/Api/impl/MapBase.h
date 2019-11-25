@@ -47,7 +47,8 @@ struct MapBase : winrt::implements<
 
   using LotusKey = typename ValidLotusType<TKey>::Type;
   using LotusValue = typename ValidLotusType<TValue>::Type;
-  using LotusMap = std::map<LotusKey, LotusValue>;
+  //using LotusMap = std::map<LotusKey, LotusValue>;
+  using LotusMap = std::pair<std::vector<LotusKey>, std::vector<LotusValue>>;
   using ABIMap = ::winrt::Windows::Foundation::Collections::IMap<TKey, TValue>;
   using ABIMapView = ::winrt::Windows::Foundation::Collections::IMapView<TKey, TValue>;
 
@@ -72,7 +73,7 @@ struct MapBase : winrt::implements<
     return WinML::Strings::HStringFromUTF8(lotusValue);
   }
 
-  MapBase(ABIMap const& data) : m_data(data) {}
+  MapBase(ABIMap const& data) : data_(data) {}
 
   static winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue Create() {
     auto abiMap = winrt::single_threaded_map<TKey, TValue>();
@@ -114,42 +115,48 @@ struct MapBase : winrt::implements<
     return S_OK;
   }
 
-  static LotusMap ConvertToLotusMap(const ABIMap& map) {
-    LotusMap lotusMap;
+  void ConvertToLotusMap(const ABIMap& map) {
+    std::vector<LotusKey> keys;
+    std::vector<LotusValue> values;
     for (const auto& pair : map) {
       auto key = ConvertToValidLotusType(pair.Key());
       auto value = ConvertToValidLotusType(pair.Value());
-      lotusMap[key] = value;
+      keys.push_back(key);
+      values.push_back(value);
     }
-    return lotusMap;
+    lotus_data_ = std::make_unique<LotusMap>(std::make_pair(keys, values));
   }
 
   template <typename TLotusKey, typename TLotusValue>
   static onnxruntime::MLDataType GetLotusType(_winmla::IWinMLAdapter* adapter) {
-      return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
+    return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
   }
 
-  STDMETHOD(GetOrtValue)(WinML::BindingContext& context, _winmla::IOrtValue** ml_value) {
+  template <typename TLotusKey, typename TLotusValue>
+  static Ort::Value CreateOrtMap(TLotusKey * keys, TLotusValue * values, size_t len) {
+    // now create OrtValue wrappers over the buffers
+    auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    std::vector<int64_t> shape = {static_cast<int64_t>(len)};
+    auto keys_ort_value = Ort::Value::CreateTensor<TLotusKey>(cpu_memory, keys, len, shape.data(), shape.size());
+    auto values_ort_value = Ort::Value::CreateTensor<TLotusValue>(cpu_memory, values, len, shape.data(), shape.size());
+    // make the map
+    return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
+  }
+
+  STDMETHOD(GetOrtValue)
+  (WinML::BindingContext& context, OrtValue** ort_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
     if (context.type == WinML::BindingType::kOutput) {
-      *ml_value = nullptr;
       return S_OK;
     }
 
-    // Create a copy of the map
-    lotus_data_ = std::make_unique<LotusMap>(ConvertToLotusMap(m_data));
+    // handle inputs, create and store a copy of the map
+    ConvertToLotusMap(data_);
 
-    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
-    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-
-    auto lotus_type = GetLotusType<TKey, TValue>(adapter.get());
-
-    winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
-    adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
-
-    *ml_value = ml_value_out.detach();
+    // and make the map
+    *ort_value = CreateOrtMap(lotus_data_->first.data(), lotus_data_->second.data(), lotus_data_->first.size());
     return S_OK;
   }
 
@@ -160,22 +167,20 @@ struct MapBase : winrt::implements<
     return S_OK;
   }
 
-  STDMETHOD(UpdateSourceResourceData)(BindingContext& context, _winmla::IOrtValue* mlValue) {
-    m_data.Clear();
+  STDMETHOD(UpdateSourceResourceData)
+  (BindingContext& context, OrtValue* ort_value) {
+    data_.Clear();
 
-    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
-    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    void* pResource = nullptr;
+    Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_value, &pResource));
 
-    const LotusMap& map = *static_cast<LotusMap*>(adapter->GetMapData(
-        mlValue,
-        TensorKindFrom<TKey>::Type,
-        TensorKindFrom<TValue>::Type));
-
-    for (const auto& pair : map) {
-      auto key = ConvertToABIType<TKey>(pair.first);
-      auto value = ConvertToABIType<TValue>(pair.second);
-      m_data.Insert(key, value);
-    }
+    // TODO: code this
+    //const LotusMap& map = *static_cast<LotusMap*>(pResource);
+    //for (const auto& pair : map) {
+    //  auto key = ConvertToABIType<TKey>(pair.first);
+    //  auto value = ConvertToABIType<TValue>(pair.second);
+    //  data_.Insert(key, value);
+    //}
 
     return S_OK;
   }
@@ -183,12 +188,12 @@ struct MapBase : winrt::implements<
   STDMETHOD(AbiRepresentation)
   (
       winrt::Windows::Foundation::IInspectable& abiRepresentation) {
-    m_data.as(abiRepresentation);
+    data_.as(abiRepresentation);
     return S_OK;
   }
 
  private:
-  ABIMap m_data;
+  ABIMap data_;
   std::unique_ptr<LotusMap> lotus_data_;
 };
 

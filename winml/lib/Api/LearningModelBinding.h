@@ -36,7 +36,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second);
 
-  std::tuple<std::string, _winmla::IOrtValue*, WinML::BindingType> CreateBinding(
+  std::tuple<std::string, OrtValue*, WinML::BindingType> CreateBinding(
       const std::string& name,
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
@@ -54,13 +54,13 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
-  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, _winmla::IOrtValue* mlValue);
+  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, Ort::Value& ort_value);
   ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
-      _winmla::IOrtValue* mlValue,
+      const Ort::Value& ort_value,
       ILearningModelFeatureDescriptor& descriptor);
-  bool IsOfTensorType(_winmla::ITensor* tensorValue, TensorKind kind);
-  bool IsOfMapType(_winmla::IOrtValue* mlValue, TensorKind key_kind, TensorKind value_kind);
-  bool IsOfVectorMapType(_winmla::IOrtValue* mlValue, TensorKind key_kind, TensorKind value_kind);
+  bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
+  bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
+  bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
 
 
  private:

@@ -8,6 +8,11 @@
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
+IOBinding::~IOBinding() {
+  feeds_.clear();
+  outputs_.clear();
+}
+
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
