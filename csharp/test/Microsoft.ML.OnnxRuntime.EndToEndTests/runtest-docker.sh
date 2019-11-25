@@ -10,7 +10,7 @@ SOURCE_ROOT=$1
 BUILD_DIR=$2
 NUGET_REPO_DIRNAME=$3   # path relative to BUILD_DIR
 CurrentOnnxRuntimeVersion=$4
-UseCentos6=${5:-false}
+UseCentos7=${5:-false}
 Arch=${6:-x64}          # x32, x64
 PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
@@ -22,7 +22,7 @@ OldDir=$(pwd)
 
 cd $SOURCE_ROOT/tools/ci_build/github/linux/docker
 
-if [ $UseCentos6 = "false" ]; then
+if [ $UseCentos7 = "false" ]; then
   echo "Image used for testing is onnxruntime-$IMAGE"
   if [ $Arch = "x86" ]; then
     docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
@@ -30,9 +30,11 @@ if [ $UseCentos6 = "false" ]; then
     docker build -t "onnxruntime-$IMAGE" --build-arg OS_VERSION=16.04 --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
   fi
 else
-  IMAGE="centos"
+  IMAGE="centos7"
+  PYTHON_VER=3.6
   echo "Image used for testing is onnxruntime-$IMAGE"
-  docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+
+  docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.centos .
 fi
 
 docker rm -f "onnxruntime-cpu" || true
