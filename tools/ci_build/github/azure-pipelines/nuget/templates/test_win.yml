@@ -49,10 +49,6 @@ jobs:
     displayName: 'Download Test Data'
 
   - script: |
-     @echo contents of Build.Binariesdirectory\testdata
-     pushd $(Build.BinariesDirectory)\testdata
-     dir /s
-     popd
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
