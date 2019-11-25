@@ -508,10 +508,10 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
 
   HRESULT STDMETHODCALLTYPE CopyTensor(
       onnxruntime::IExecutionProvider* provider,
-      ITensor* src,
-      ITensor* dst) override {
-#ifdef USE_DML
-    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
+      OrtValue* src,
+      OrtValue* dst) override {
+#ifdef USE_DML       
+    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>())));
     return S_OK;
 #else
     return E_NOTIMPL;
