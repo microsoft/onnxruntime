@@ -158,7 +158,6 @@ LearningModel::GetOperatorRegistry() {
     return nullptr;
   }
 
-#ifdef USE_DML
   // Get the native winrt provider interface out of winrt operator provider.
   auto operator_provider_native =
       operator_provider_.as<ILearningModelOperatorProviderNative>();
