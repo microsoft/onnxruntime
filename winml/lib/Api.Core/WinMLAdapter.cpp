@@ -639,7 +639,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #ifdef USE_DML
     // Retrieve the "operator abi" registry.
     winrt::com_ptr<IMLOperatorRegistry> operator_registry;
-    operator_provider_native->GetRegistry(operator_registry.put());
+    THROW_IF_FAILED(operator_provider_native->GetRegistry(operator_registry.put()));
     *registry = operator_registry.detach();
     return S_OK;
 #else

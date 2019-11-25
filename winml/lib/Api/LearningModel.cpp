@@ -163,7 +163,7 @@ LearningModel::GetOperatorRegistry() {
       operator_provider_.as<ILearningModelOperatorProviderNative>();
 
   IMLOperatorRegistry* registry = nullptr;
-  adapter_->GetOperatorRegistry(operator_provider_native.get(), &registry);
+  WINML_THROW_IF_FAILED(adapter_->GetOperatorRegistry(operator_provider_native.get(), &registry));
   return registry;
 }
 
