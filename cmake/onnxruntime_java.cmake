@@ -60,12 +60,22 @@ target_link_libraries(onnxruntime4j_jni PUBLIC
     onnxruntime4j_generated
     )
 
+# Now the jar, jni binary and shared lib binary have been built, now to build the jar with the binaries added.
+
+# This blob creates the new jar name
 get_property(onnxruntime_jar_name TARGET onnxruntime4j PROPERTY JAR_FILE)
+get_filename_component(onnxruntime_jar_abs ${onnxruntime_jar_name} ABSOLUTE)
+get_filename_component(jar_path ${onnxruntime_jar_abs} DIRECTORY)
+set(onnxruntime_jar_binaries_name "${jar_path}/onnxruntime4j-${ORT_VERSION}-with-binaries.jar")
+set(onnxruntime_jar_binaries_platform "$<SHELL_PATH:${onnxruntime_jar_binaries_name}>")
 
-# Now the jar, jni binary and shared lib binary have been built, but the jar does not contain the necessary binaries.
+add_custom_command(TARGET onnxruntime4j POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_jar_name}
+        ${onnxruntime_jar_binaries_platform})
 
-add_custom_target(TARGET onnxruntime4j_jni POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib)
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib")
 
 add_custom_command(
         TARGET onnxruntime4j_jni POST_BUILD
@@ -82,7 +92,7 @@ add_custom_command(
 add_custom_command(
             TARGET onnxruntime4j_jni POST_BUILD
             OUTPUT ${_JAVA_JAR_OUTPUT_PATH}
-            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_name} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_LINKER_FILE_NAME:onnxruntime>
+            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_binaries_platform} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_LINKER_FILE_NAME:onnxruntime>
             DEPENDS onnxruntime4j
             COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
             VERBATIM
