@@ -664,6 +664,11 @@ class SequenceTensorBase : public DataTypeImpl {
     return this;
   }
 
+  virtual MLDataType GetElementType() const {
+    // should never reach here.
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
+
   size_t Size() const override;
 
   DeleteFunc GetDeleteFunc() const override;
@@ -698,6 +703,11 @@ template <typename TensorElemType>
 class SequenceTensorType : public SequenceTensorBase {
  public:
   static MLDataType Type();
+
+  /// Return a MLDataType representing the element-type
+  MLDataType GetElementType() const override {
+    return DataTypeImpl::GetType<TensorElemType>();
+  }
 
  private:
   SequenceTensorType() {

@@ -182,10 +182,8 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
   const auto& seq_tensors = val.Get<TensorSeq>();
-  size_t num_tensors = seq_tensors.tensors.size();
   py::list py_list;
-  for (size_t i = 0; i < num_tensors; ++i) {
-    const auto& rtensor = seq_tensors.tensors[i];
+  for (const auto& rtensor : seq_tensors) {
     py::object obj;
     GetPyObjFromTensor(rtensor, obj);
     py_list.append(obj);

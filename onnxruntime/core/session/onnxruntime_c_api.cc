@@ -761,7 +761,7 @@ OrtStatus* OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
 template <>
 OrtStatus* OrtGetNumSequenceElements<TensorSeq>(const OrtValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<TensorSeq>();
-  *out = data.tensors.size();
+  *out = data.Size();
   return nullptr;
 }
 
@@ -874,7 +874,7 @@ template <typename T>
 OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
                                        OrtValue** out) {
   auto& data = p_ml_value->Get<T>();
-  auto& one_tensor = data.tensors.at(index);
+  auto& one_tensor = data.Get(index);
 
   using namespace c_api_internal;
   utils::MLTypeCallDispatcherRet<OrtStatus*, CallGetValueImpl, float, double, MLFloat16, BFloat16, bool, std::string,
@@ -1046,11 +1046,9 @@ struct CallCreateValueImpl {
 static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                               OrtValue** out) {
   using namespace c_api_internal;
-  auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
-  seq_ptr->tensors.resize(num_values);
-
-  // use the data type of the first tensor as the data type of the seq
-  seq_ptr->dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+  std::vector<Tensor> tensors;
+  tensors.resize(num_values);
+  auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
 
   for (size_t idx = 0; idx < num_values; ++idx) {
     ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));
@@ -1058,7 +1056,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
     auto tensor_elem_type = one_tensor.DataType();
 
     // sequences must have tensors of the same data type
-    if (idx > 0 && (tensor_elem_type != seq_ptr->dtype)) {
+    if (idx > 0 && (tensor_elem_type != dtype)) {
       return OrtApis::CreateStatus(ORT_FAIL,
                                    "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
     }
@@ -1068,7 +1066,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
                                    MLFloat16, BFloat16, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
         t_disp(one_tensor.GetElementType());
 
-    st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, seq_ptr->tensors[idx]);
+    st = t_disp.InvokeWithUnsupportedPolicy<UnsupportedReturnFailStatus>(one_tensor, tensors[idx]);
 
     if (st) {
       return st;
@@ -1077,6 +1075,10 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   // create OrtValue with this vector
   auto value = onnxruntime::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<TensorSeq>();
+  auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
+  // use the data type of the first tensor as the data type of the seq
+  seq_ptr->SetType(dtype);
+  seq_ptr->SetElements(std::move(tensors));
   value->Init(seq_ptr.release(),
               ml_type,
               ml_type->GetDeleteFunc());

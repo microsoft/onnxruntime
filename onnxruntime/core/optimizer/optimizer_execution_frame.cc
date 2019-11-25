@@ -12,6 +12,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/callback.h"
+#include "core/framework/TensorSeq.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {
@@ -107,6 +108,15 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
     ort_value.Init(sparse.release(), container_type, container_type->GetDeleteFunc());
     return Status::OK();
   }
+
+  if (ml_type->IsTensorSequenceType()) {
+    auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();
+    auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+    auto p_sequence = onnxruntime::make_unique<TensorSeq>(element_type);
+    ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+    return Status::OK();
+  }
+
   if (!ml_type->IsTensorType()) {
     assert(ml_type->AsNonTensorTypeBase() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);

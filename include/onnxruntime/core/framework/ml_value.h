@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 class SparseTensor;
-struct TensorSeq;
+class TensorSeq;
 }
 
 /**

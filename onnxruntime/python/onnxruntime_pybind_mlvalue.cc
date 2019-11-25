@@ -217,29 +217,30 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
     throw std::runtime_error("Either type_proto was null or it was not of sequence type");
   }
 
-  // set the seq type
-  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>();
-  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
-      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto->sequence_type().elem_type().tensor_type().elem_type()));
-  p_seq_tensors->dtype = seq_dtype;
-
   // populate the seq
+  std::vector<Tensor> tensors;
   auto list_size = PyList_Size(pylist_obj);
   if (list_size > 0) {
-    p_seq_tensors->tensors.resize(list_size);
+    tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
       if (!PyObjectCheck_Array(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
-      p_seq_tensors->tensors[i] = std::move(*(p_tensor.release()));
+      tensors[i] = std::move(*p_tensor);
     }
   }
 
+    // set the seq type
+  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto->sequence_type().elem_type().tensor_type().elem_type()));
+  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>(seq_dtype);
+  p_seq_tensors->SetElements(std::move(tensors));
+  auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
-                  DataTypeImpl::GetType<TensorSeq>(),
-                  DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc());
+                  ml_tensor_sequence,
+                  ml_tensor_sequence->GetDeleteFunc());
 }
 
 void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
@@ -248,9 +249,11 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
   if (!p_tensor) {
     throw std::runtime_error("Got exception while creating tensor for input: " + name_input);
   }
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   p_mlvalue->Init(p_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                  ml_tensor,
+                  ml_tensor->GetDeleteFunc());
 }
 
 std::string _get_type_name(int64_t&) {
