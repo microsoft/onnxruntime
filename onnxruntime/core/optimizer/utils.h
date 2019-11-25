@@ -47,10 +47,10 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, s
 bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>& expected_dim_values);
 
 /** Check check whether each dimension is known for shape of node_arg
-@returns false when shape is nullptr, or total dimension is not same as expected_dim_known length,
-         or any dim(i) is unknown and expected_dim_known[i] is true, or dim(i) is known and expected_dim_known[i] is false.
+@returns false when shape is nullptr, or total dimension is not same as expected_dim_size length,
+         or any dim is unknown (without dim value).
 */
-bool IsShapeKnownOnAllDims(const NodeArg& node_arg, const int expected_dim_size);
+bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size);
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

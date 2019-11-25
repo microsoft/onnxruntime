@@ -151,8 +151,7 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
   for (auto& expected_dim_value : expected_dim_values) {
     if (expected_dim_value > 0) {
       auto dim = shape->dim(index);
-      bool is_unknown = utils::HasDimParam(dim) || (!utils::HasDimParam(dim) && !utils::HasDimValue(dim));
-      if (is_unknown || expected_dim_value != dim.dim_value()) {
+      if (!utils::HasDimValue(dim) || expected_dim_value != dim.dim_value()) {
         return false;
       }
     }
@@ -162,16 +161,14 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
   return true;
 }
 
-bool IsShapeKnownOnAllDims(const NodeArg& node_arg, const int expected_dim_size) {
+bool IsShapeKnownOnAllDims(const NodeArg& node_arg, int expected_dim_size) {
   auto shape = node_arg.Shape();
   if (shape == nullptr || shape->dim_size() != expected_dim_size) {
     return false;
   }
 
   for (int i = 0; i < expected_dim_size; i++) {
-    auto dim = shape->dim(i);
-    bool is_unknown = utils::HasDimParam(dim) || (!utils::HasDimParam(dim) && !utils::HasDimValue(dim));
-    if (is_unknown) {
+    if (!utils::HasDimValue(shape->dim(i))) {
       return false;
     }
   }
