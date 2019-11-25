@@ -34,7 +34,7 @@ cd $SCRIPT_DIR/docker
 if [ $BUILD_OS = "android" ]; then
     IMAGE="android"
     DOCKER_FILE=Dockerfile.ubuntu_for_android
-    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+    docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 elif [ $BUILD_OS = "manylinux2010" ]; then
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="manylinux2010-cuda10.1"
@@ -43,11 +43,11 @@ elif [ $BUILD_OS = "manylinux2010" ]; then
         IMAGE="manylinux2010"
         DOCKER_FILE=Dockerfile.manylinux2010
     fi
-    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+    docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 elif [ $BUILD_OS = "centos7" ]; then
     IMAGE="centos7"
     DOCKER_FILE=Dockerfile.centos
-    docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+    docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
@@ -55,23 +55,23 @@ else
         if [ $CUDA_VER = "cuda9.1-cudnn7.1" ]; then
         DOCKER_FILE=Dockerfile.ubuntu_gpu_cuda9
         fi
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 19.09
         IMAGE="$BUILD_OS-cuda10.1-cudnn7.6-tensorrt6.0"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then
         IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
+        docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} -f $DOCKER_FILE .
     else
         IMAGE="$BUILD_OS"
         if [ $BUILD_ARCH = "x86" ]; then
             IMAGE="$IMAGE.x86"
-            docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
+            docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu_x86 .
         else
-            docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
+            docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.ubuntu .
         fi
     fi
 fi
