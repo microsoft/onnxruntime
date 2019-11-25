@@ -97,7 +97,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options
   bool is_cond_1d = options.subgraph_cond_1d_tensor;
   bool is_iter_num_1d = options.subgraph_iter_num_1d_tensor;
 
-  Model model("Loop subgraph");
+  Model model("Loop subgraph", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -474,7 +474,7 @@ TEST(Loop, ZeroIterations) {
 
 TEST(Loop, InfiniteLoopTermination) {
   auto create_subgraph = [](const RunOptions&) {
-    Model model("Infinite Loop subgraph");
+    Model model("Infinite Loop subgraph", false, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
 
     std::vector<NodeArg*> inputs;
@@ -632,7 +632,7 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
 
 TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
   auto create_subgraph = []() {
-    Model model("Loop opset 11 op body graph");
+    Model model("Loop opset 11 op body graph", false, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
 
     std::vector<NodeArg*> inputs;

@@ -35,7 +35,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                             DataTypeImpl::GetTensorType<uint32_t>(),
                                             DataTypeImpl::GetTensorType<uint64_t>(),
                                             DataTypeImpl::GetTensorType<bool>()})
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 
 Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tensor, const int64_t* repeats, TensorAxisCounters& input_counters, const TensorPitches& output_pitches, size_t element_size) {
@@ -114,34 +114,33 @@ Status Tile::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  const auto& dtype = input_tensor.DataType();
   TensorAxisCounters input_counters(input_tensor);
   TensorPitches output_pitches(output_tensor);
 
   static_assert(sizeof(float) == sizeof(int32_t), "Float and Int32 are of different sizes");
   static_assert(sizeof(double) == sizeof(int64_t), "Double and Int64 are of different sizes");
 
-  if (dtype == DataTypeImpl::GetType<float>() ||
-      dtype == DataTypeImpl::GetType<int32_t>() ||
-      dtype == DataTypeImpl::GetType<uint32_t>())
+  if (input_tensor.IsDataType<float>() ||
+      input_tensor.IsDataType<int32_t>() ||
+      input_tensor.IsDataType<uint32_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(float));
 
-  if (dtype == DataTypeImpl::GetType<double>() || dtype == DataTypeImpl::GetType<int64_t>() ||
-      dtype == DataTypeImpl::GetType<uint64_t>())
+  if (input_tensor.IsDataType<double>() || input_tensor.IsDataType<int64_t>() ||
+      input_tensor.IsDataType<uint64_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(double));
 
-  else if (dtype == DataTypeImpl::GetType<int8_t>() ||
-           dtype == DataTypeImpl::GetType<uint8_t>())
+  else if (input_tensor.IsDataType<int8_t>() ||
+           input_tensor.IsDataType<uint8_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int8_t));
 
-  if (dtype == DataTypeImpl::GetType<int16_t>() || dtype == DataTypeImpl::GetType<uint16_t>())
+  if (input_tensor.IsDataType<int16_t>() || input_tensor.IsDataType<uint16_t>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(int16_t));
 
-  else if (dtype == DataTypeImpl::GetType<bool>())
+  else if (input_tensor.IsDataType<bool>())
     return TileCoreForFixedSizeTypes(input_tensor, output_tensor, repeats, input_counters, output_pitches, sizeof(bool));
 
   // TODO: Support 'string' and 'float16' types for completeness
   else
-    ORT_THROW("Tile doesn't have an implementation yet for the type: ", dtype);
+    ORT_THROW("Tile doesn't have an implementation yet for the type: ", input_tensor.DataType());
 }
 }  // namespace onnxruntime

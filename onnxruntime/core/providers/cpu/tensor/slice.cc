@@ -289,7 +289,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   if (nullptr != steps_tensor)
     input_steps.resize(size);
 
-  if (dtype == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimitiveDataType<int32_t>(dtype)) {
     std::copy(start_tensor->Data<int32_t>(), start_tensor->Data<int32_t>() + size, input_starts.begin());
     std::copy(ends_tensor->Data<int32_t>(), ends_tensor->Data<int32_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
@@ -299,7 +299,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
       std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
   }
 
-  else if (dtype == DataTypeImpl::GetType<int64_t>()) {
+  else if (utils::IsPrimitiveDataType<int64_t>(dtype)) {
     std::copy(start_tensor->Data<int64_t>(), start_tensor->Data<int64_t>() + size, input_starts.begin());
     std::copy(ends_tensor->Data<int64_t>(), ends_tensor->Data<int64_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
@@ -332,22 +332,34 @@ Status SliceImpl(OpKernelContext* ctx,
   auto* output = output_tensor.template MutableData<T>();
   const auto* output_end = output + output_tensor.Shape().Size();
 
-  SliceIterator<T> input_iterator =
-      flattened_output_dims != nullptr
-          ? SliceIterator<T>(input_tensor, *flattened_output_dims, starts, *flattened_output_dims, steps)
-          : SliceIterator<T>(input_tensor, starts, output_dims, steps);
-
-  if (input_iterator.SolitaryInnerStep()) {
-    while (output < output_end) {
-      output = input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
+  auto create_output = [&output, &output_end](SliceIterator<T>& input_iterator) {
+    if (input_iterator.SolitaryInnerStep()) {
+      while (output < output_end) {
+        output = input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
+      }
+    } else {
+      while (output < output_end) {
+        output = input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
+      }
     }
+
+    ORT_ENFORCE(output == output_end);
+  };
+
+  if (flattened_output_dims) {
+    // if we have flattened output dims we need to also flatten the input dims.
+    // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
+    std::vector<int64_t> flattened_input_dims(input_tensor.Shape().GetDims());
+    flattened_input_dims.resize(flattened_output_dims->size());
+    flattened_input_dims.back() = flattened_output_dims->back();
+    TensorShape input_shape(std::move(flattened_input_dims));
+
+    auto input_iterator = SliceIterator<T>(input_tensor, input_shape, starts, *flattened_output_dims, steps);
+    create_output(input_iterator);
   } else {
-    while (output < output_end) {
-      output = input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
-    }
+    auto input_iterator = SliceIterator<T>(input_tensor, starts, output_dims, steps);
+    create_output(input_iterator);
   }
-
-  ORT_ENFORCE(output == output_end);
 
   return Status::OK();
 }

@@ -254,7 +254,6 @@ class OnnxModelInfo : public TestModelInfo {
   const std::string& GetOutputName(size_t i) const override { return output_value_info_[i].name(); }
 };
 
-template <typename PATH_CHAR_TYPE>
 static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_pb_files) {
   if (input_pb_files.size() <= 1) return;
   std::sort(input_pb_files.begin(), input_pb_files.end(),
@@ -265,10 +264,15 @@ static void SortTensorFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& 
               int right1 = ExtractFileNo(rightname);
               return left1 < right1;
             });
+
   for (size_t i = 0; i != input_pb_files.size(); ++i) {
     int fileno = ExtractFileNo(GetLastComponent(input_pb_files[i]));
     if (static_cast<size_t>(fileno) != i) {
-      ORT_THROW("illegal input file name:", ToMBString(input_pb_files[i]));
+      std::basic_ostringstream<PATH_CHAR_TYPE> oss;
+      oss << input_pb_files[0];
+      for (size_t j = 1; j != input_pb_files.size(); ++j)
+        oss << ORT_TSTR(" ") << input_pb_files[j];
+      ORT_THROW("illegal input file name:", ToMBString(oss.str()));
     }
   }
 }

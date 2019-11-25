@@ -13,10 +13,10 @@ namespace nuphar {
 bool TVM_SCHEDULER_CLASS(Extern, NupharX86TVMRule)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   bool status = InsertRootScheduleAndClosure(tensor, ctx_sched);
-  bool status_input = InputRootScheduleWithVectorizationX86(tensor, ctx_sched);
+  bool status_input = InputRootScheduleWithVectorizationX86(tensor, ctx_codegen, ctx_sched);
   return status || status_input;
 }
 
