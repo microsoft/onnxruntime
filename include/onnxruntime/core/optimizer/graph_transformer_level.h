@@ -12,9 +12,10 @@ enum class TransformerLevel : int {
   Level1,
   Level2,
   Level3,
+  Level4,
   // Convenience enum to always get the max available value.
   // This way when we add more levels code which iterates over this enum does not need to change.
-  MaxTransformerLevel
+  MaxLevel = Level4
 };
 
 }  // namespace onnxruntime

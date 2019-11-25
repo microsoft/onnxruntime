@@ -404,7 +404,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
-  for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
@@ -1134,8 +1134,8 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   };
 
-  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
-              "Allowed values are 1 and 2. Current level is set to " +
+  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+              "Allowed values are 0, 1, 2, 3 and 4. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
@@ -1148,6 +1148,10 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
 
   if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
     add_transformers(TransformerLevel::Level3);
+  }
+
+  if ((graph_optimization_level >= TransformerLevel::Level4) || !custom_list.empty()) {
+    add_transformers(TransformerLevel::Level4);
   }
 }
 

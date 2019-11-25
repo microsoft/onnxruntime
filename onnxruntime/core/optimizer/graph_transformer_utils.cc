@@ -20,6 +20,7 @@
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/add_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -139,6 +140,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
+#endif
+    } break;
+
+    case TransformerLevel::Level4: {
+      // Level 4 is for approximation
+#ifndef DISABLE_CONTRIB_OPS
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>());
 #endif
 
     } break;
