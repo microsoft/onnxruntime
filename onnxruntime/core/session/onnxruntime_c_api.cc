@@ -27,6 +27,7 @@
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
+#include "core/platform/ort_mutex.h"
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -48,33 +49,6 @@ using namespace onnxruntime;
     if (_status) return _status;      \
   } while (0)
 
-struct OrtEnv {
- public:
-  Environment* value;
-  LoggingManager* loggingManager;
-
-  OrtEnv(Environment* value1, LoggingManager* loggingManager1) : value(value1), loggingManager(loggingManager1) {
-  }
-  /**
-   * This function will call ::google::protobuf::ShutdownProtobufLibrary
-   */
-  ~OrtEnv() {
-    delete loggingManager;
-    delete value;
-  }
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
-};
-
-#define TENSOR_READ_API_BEGIN                          \
-  API_IMPL_BEGIN                                       \
-  auto v = reinterpret_cast<const ::OrtValue*>(value); \
-  auto& tensor = v->Get<onnxruntime::Tensor>();
-
-#define TENSOR_READWRITE_API_BEGIN \
-  API_IMPL_BEGIN                   \
-  auto v = (value);                \
-  auto tensor = v->GetMutable<onnxruntime::Tensor>();
-
 class LoggingWrapper : public ISink {
  public:
   LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
@@ -93,20 +67,111 @@ class LoggingWrapper : public ISink {
   void* logger_param_;
 };
 
+struct OrtEnv {
+ public:
+  struct LoggingManagerConstructionInfo {
+    LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
+                                   void* logger_param1,
+                                   OrtLoggingLevel default_warning_level1,
+                                   const char* logid1)
+        : logging_function(logging_function1),
+          logger_param(logger_param1),
+          default_warning_level(default_warning_level1),
+          logid(logid1) {}
+    OrtLoggingFunction logging_function{};
+    void* logger_param{};
+    OrtLoggingLevel default_warning_level;
+    const char* logid{};
+  };
+
+  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, Status& status) {
+    std::lock_guard<OrtMutex> lock(m_);
+    if (!p_instance_) {
+      std::unique_ptr<Environment> env;
+      status = Environment::Create(env);
+      if (!status.IsOK()) {
+        return nullptr;
+      }
+
+      std::unique_ptr<LoggingManager> lmgr;
+      std::string name = lm_info.logid;
+      if (lm_info.logging_function) {
+        std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
+                                                                                 lm_info.logger_param);
+        lmgr.reset(new LoggingManager(std::move(logger),
+                                      static_cast<Severity>(lm_info.default_warning_level),
+                                      false,
+                                      LoggingManager::InstanceType::Default,
+                                      &name));
+      } else {
+        lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
+                                      static_cast<Severity>(lm_info.default_warning_level),
+                                      false,
+                                      LoggingManager::InstanceType::Default,
+                                      &name));
+      }
+
+      p_instance_ = new OrtEnv(std::move(env), std::move(lmgr));
+    }
+    ++ref_count_;
+    return p_instance_;
+  }
+
+  static void Release(OrtEnv* env_ptr) {
+    if (!env_ptr) {
+      return;
+    }
+    std::lock_guard<OrtMutex> lock(m_);
+    ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
+    --ref_count_;
+    if (ref_count_ == 0) {
+      delete p_instance_;
+      p_instance_ = nullptr;
+    }
+  }
+
+  LoggingManager* GetLoggingManager() const {
+    return logging_manager_.get();
+  }
+
+ private:
+  static OrtEnv* p_instance_;
+  static OrtMutex m_;
+  static int ref_count_;
+
+  std::unique_ptr<Environment> value_;
+  std::unique_ptr<LoggingManager> logging_manager_;
+
+  OrtEnv(std::unique_ptr<Environment> value1, std::unique_ptr<LoggingManager> logging_manager)
+      : value_(std::move(value1)), logging_manager_(std::move(logging_manager)) {
+  }
+
+  ~OrtEnv() = default;
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
+};
+
+OrtEnv* OrtEnv::p_instance_ = nullptr;
+int OrtEnv::ref_count_ = 0;
+OrtMutex OrtEnv::m_;
+
+#define TENSOR_READ_API_BEGIN                          \
+  API_IMPL_BEGIN                                       \
+  auto v = reinterpret_cast<const ::OrtValue*>(value); \
+  auto& tensor = v->Get<onnxruntime::Tensor>();
+
+#define TENSOR_READWRITE_API_BEGIN \
+  API_IMPL_BEGIN                   \
+  auto v = (value);                \
+  auto tensor = v->GetMutable<onnxruntime::Tensor>();
+
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid,
                     _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  std::string name = logid;
-  std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(logging_function, logger_param);
-  auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::move(logger),
-                                                                          static_cast<Severity>(default_warning_level), false,
-                                                                          LoggingManager::InstanceType::Default,
-                                                                          &name);
-  std::unique_ptr<Environment> env;
-  Status status = Environment::Create(env);
-  if (status.IsOK())
-    *out = new OrtEnv(env.release(), default_logging_manager.release());
+  OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, default_warning_level, logid};
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status);
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -114,18 +179,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
 ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
-  std::string name = logid;
-  auto default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                                          static_cast<Severity>(default_warning_level), false,
-                                                                          LoggingManager::InstanceType::Default,
-                                                                          &name);
-  std::unique_ptr<Environment> env;
-  Status status = Environment::Create(env);
-  if (status.IsOK()) {
-    *out = new OrtEnv(env.release(), default_logging_manager.release());
-    return nullptr;
-  }
-  *out = nullptr;
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, default_warning_level, logid};
+  Status status;
+  *out = OrtEnv::GetInstance(lm_info, status);
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -412,7 +468,7 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
   auto sess = onnxruntime::make_unique<::onnxruntime::InferenceSession>(
-      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->loggingManager);
+      options == nullptr ? onnxruntime::SessionOptions() : options->value, env->GetLoggingManager());
   Status status;
   if (options != nullptr) {
     if (!options->custom_op_domains_.empty()) {
@@ -1388,7 +1444,10 @@ const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
   return &ort_api_base;
 }
 
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Env, OrtEnv)
+ORT_API(void, OrtApis::ReleaseEnv, _Frees_ptr_opt_ OrtEnv* value) {
+  OrtEnv::Release(value);
+}
+
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)

@@ -24,6 +24,7 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/attention_fusion.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -126,6 +127,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<AddGeluFusion>(cuda_execution_providers));
