@@ -70,7 +70,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
 
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
-  if (X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
+  if (utils::IsPrimitiveDataType<MLFloat16>(X->DataType())) {
     CudnnTensor scale_desc;
     ORT_RETURN_IF_ERROR(scale_desc.Set(new_dims, CudnnTensor::GetDataType<float>()));
     CudnnTensor bn_tensor_desc;

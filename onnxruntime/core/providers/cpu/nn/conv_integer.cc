@@ -21,7 +21,6 @@ ONNX_OPERATOR_KERNEL_EX(
     ConvInteger);
 
 Status ConvInteger::Compute(OpKernelContext* context) const {
-
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -90,23 +89,44 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
                           output_shape.GetDims().end());
 
+  const size_t kernel_rank = kernel_shape.size();
+
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      math::Im2colNd<uint8_t, CPUMathUtil, StorageOrder::NCHW>()(
-          Xdata + group_id * X_offset,
-          image_shape.GetDims().data(),
-          col_buffer_shape.data(),
-          C * input_image_size,
-          col_buffer_size,
-          kernel_shape.data(),
-          strides.data(),
-          dilations.data(),
-          pads.data(),
-          static_cast<int>(kernel_shape.size()),
-          col_buffer_data,
-          &CPUMathUtil::Instance(),
-          false,
-          input_offset);
+      if (kernel_rank == 2) {
+        math::Im2col<uint8_t, StorageOrder::NCHW>()(
+            Xdata + group_id * X_offset,
+            C / conv_attrs_.group,
+            input_shape[0],
+            input_shape[1],
+            kernel_shape[0],
+            kernel_shape[1],
+            dilations[0],
+            dilations[1],
+            pads[0],
+            pads[1],
+            pads[2],
+            pads[3],
+            strides[0],
+            strides[1],
+            col_buffer_data,
+            input_offset);
+      } else {
+        math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
+            Xdata + group_id * X_offset,
+            image_shape.GetDims().data(),
+            col_buffer_shape.data(),
+            C * input_image_size,
+            col_buffer_size,
+            kernel_shape.data(),
+            strides.data(),
+            dilations.data(),
+            pads.data(),
+            static_cast<int>(kernel_shape.size()),
+            col_buffer_data,
+            false,
+            input_offset);
+      }
 
       QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
                     static_cast<int>(output_image_size),

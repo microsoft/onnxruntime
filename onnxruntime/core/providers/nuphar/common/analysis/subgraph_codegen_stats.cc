@@ -41,8 +41,41 @@ bool CodeGenUnitStats::IsCheapNodeReuse(const onnxruntime::Node* node) const {
   if (IsAliasNode(*node))
     return false;
 
-  // Define cheap nodes include Add / Sub / Mul
-  if (node->OpType() == "Add" || node->OpType() == "Sub" || node->OpType() == "Mul")
+  // always inline tensor ops that do not involve computation
+  static const std::unordered_set<std::string> trivial_tensor_ops = {
+      "Cast",
+      "Concat",
+      "Crop",
+      "Expand",
+      "Gather",
+      "GatherElements",
+      "Pad",
+      "Shape",
+      "Slice",
+      "Split",
+      "Tile",
+      "Transpose",
+  };
+  if (trivial_tensor_ops.count(node->OpType()) > 0)
+    return false;
+
+  // always inline cheap compute ops if reuse count is low
+  static const std::unordered_set<std::string> trivial_compute_ops = {
+      "Abs",
+      "Add",
+      "Ceil",
+      "Clip",
+      "Equal",
+      "Floor",
+      "Greater",
+      "Less",
+      "Mul",
+      "Neg",
+      "Relu",
+      "Sub",
+      "Where",
+  };
+  if (trivial_compute_ops.count(node->OpType()) > 0)
     return Promote<NupharUseCountAnalysis>(passes_[UseCountAnalysisOffset])->NodeUseCount(node) > CheapNodeTrueReuseCount;
 
   // Otherwise return true and use count is determined by NodeUseCount

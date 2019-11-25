@@ -14,6 +14,7 @@
 #include "core/framework/tensor_shape.h"
 #include "onnxruntime_config.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
@@ -90,6 +91,25 @@ class Tensor final {
   MLDataType DataType() const { return dtype_; }
 
   /**
+     Returns the data type enum contant
+  */
+  int32_t GetElementType() const {
+    return dtype_->GetDataType();
+  }
+
+  // Check if contains string data. This is a separate
+  // interface bc it is frequently used.
+  bool IsDataTypeString() const {
+    return utils::IsPrimitiveDataType<std::string>(dtype_);
+  }
+
+  // Checks if the Tensor contains data type T
+  template<class T>
+  bool IsDataType () const {
+    return utils::IsPrimitiveDataType<T>(dtype_);
+  }
+
+  /**
      Returns the shape of the tensor.
   */
   const TensorShape& Shape() const noexcept { return shape_; }
@@ -105,8 +125,8 @@ class Tensor final {
   template <typename T>
   T* MutableData() {
     // Type check
-    ORT_ENFORCE(DataTypeImpl::GetType<T>() == dtype_, "Tensor type mismatch. ",
-                DataTypeImpl::GetType<T>(), "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
+                "T ", "!=", dtype_);
     return reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
   }
 
@@ -116,8 +136,8 @@ class Tensor final {
   template <typename T>
   gsl::span<T> MutableDataAsSpan() {
     // Type check
-    ORT_ENFORCE(DataTypeImpl::GetType<T>() == dtype_, "Tensor type mismatch. ",
-                DataTypeImpl::GetType<T>(), "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
+                "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
     return gsl::make_span(data, shape_.Size());
   }
@@ -125,16 +145,16 @@ class Tensor final {
   template <typename T>
   const T* Data() const {
     // Type check
-    ORT_ENFORCE(DataTypeImpl::GetType<T>() == dtype_, "Tensor type mismatch. ",
-                DataTypeImpl::GetType<T>(), "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
+                "T ", "!=", dtype_);
     return reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
   }
 
   template <typename T>
   gsl::span<const T> DataAsSpan() const {
     // Type check
-    ORT_ENFORCE(DataTypeImpl::GetType<T>() == dtype_, "Tensor type mismatch. ",
-                DataTypeImpl::GetType<T>(), "!=", dtype_);
+    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
+                "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
     return gsl::make_span(data, shape_.Size());
   }
@@ -193,7 +213,7 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
-  MLDataType dtype_;
+  const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   int64_t byte_offset_;
 };
