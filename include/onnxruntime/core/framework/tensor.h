@@ -91,7 +91,8 @@ class Tensor final {
   MLDataType DataType() const { return dtype_; }
 
   /**
-     Returns the data type enum contant
+     Returns the data type enum constant
+     @remarks Use utils::ToTensorProtoElementType<T> for comparison.
   */
   int32_t GetElementType() const {
     return dtype_->GetDataType();
@@ -104,8 +105,8 @@ class Tensor final {
   }
 
   // Checks if the Tensor contains data type T
-  template<class T>
-  bool IsDataType () const {
+  template <class T>
+  bool IsDataType() const {
     return utils::IsPrimitiveDataType<T>(dtype_);
   }
 

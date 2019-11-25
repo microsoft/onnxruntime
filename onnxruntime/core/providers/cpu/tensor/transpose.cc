@@ -460,41 +460,69 @@ static void SingleAxisTranspose(const std::vector<size_t>& permutations, const T
 }
 
 static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, size_t& to) {
-  int moved_in = 0;   // number of axes that moved to an inner location (later entry in permutations)
-  int moved_out = 0;  // number of axes that moved to an outer location (earlier entry in permutations)
-  size_t last_moved_in_from = 0;
-  size_t last_moved_in_to = 0;
-  size_t last_moved_out_from = 0;
-  size_t last_moved_out_to = 0;
+  // if a single axis moved to an outer dimension, the values should be one lower than the index until the slot the
+  // axis was moved from, and equal to the index after that.
+  // e.g. axis 3 moves out to 1 would be: 0, 3, 1, 2, 4
+  auto check_moved_outwards = [&permutations](size_t cur, size_t moved_from) {
+    // we start processing with the slot after the moved one, so the expected value is one less than the index
+    size_t expected = cur - 1;
+    for (size_t end = permutations.size(); cur < end; ++cur) {
+      if (permutations[cur] != expected) {
+        return false;
+      }
 
-  size_t i = 0;
-  for (auto axis : permutations) {
-    if (axis != i) {
-      // if this axis is larger it's an inner dimension moving outwards
-      if (axis > i) {
-        ++moved_out;
-        last_moved_out_to = i;
-        last_moved_out_from = axis;
+      // we are at the slot the axis moved from, so do an additional increment before checking the next value
+      if (cur == moved_from) {
+        ++expected;
+      }
+
+      ++expected;
+    }
+
+    return true;
+  };
+
+  // if a single axis moved to an inner dimension, the values should be one higher than the index until the slot the
+  // axis was moved to, and equal to the index after that.
+  // e.g. axis 1 moves inwards to 3 would be: 0, 2, 3, 1, 4
+  auto check_moved_inwards = [&permutations](size_t cur, size_t& moved_to) {
+    size_t started_at = cur;
+    size_t expected = cur + 1;
+    moved_to = std::numeric_limits<size_t>::max();
+
+    for (size_t end = permutations.size(); cur < end; ++cur) {
+      if (permutations[cur] != expected) {
+        // if a single axis moved it must have come from the location we started at
+        if (started_at != permutations[cur]) {
+          return false;
+        }
+
+        moved_to = cur;
       } else {
-        ++moved_in;
-        last_moved_in_to = i;
-        last_moved_in_from = axis;
+        ++expected;
       }
     }
 
-    ++i;
-  }
+    return moved_to != std::numeric_limits<size_t>::max();
+  };
 
-  bool single_axis_moved = true;
+  bool single_axis_moved = false;
+  // check axis moving outwards (earlier entry in permutations)
+  for (size_t i = 0, end = permutations.size(); i < end; ++i) {
+    size_t axis = permutations[i];
 
-  if (moved_out == 1) {
-    to = last_moved_out_to;
-    from = last_moved_out_from;
-  } else if (moved_in == 1) {
-    to = last_moved_in_to;
-    from = last_moved_in_from;
-  } else {
-    single_axis_moved = false;
+    if (axis != i) {
+      if (check_moved_outwards(i + 1, axis)) {
+        single_axis_moved = true;
+        to = i;
+        from = axis;
+      } else if (check_moved_inwards(i, to)) {
+        single_axis_moved = true;
+        from = i;
+      }
+
+      break;
+    }
   }
 
   return single_axis_moved;
@@ -513,7 +541,7 @@ Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const
     size_t from = 0, to = 0;
     bool moving_single_axis = IsMovingSingleAxis(permutations, from, to);
 
-    if (moving_single_axis && input.GetElementType() != utils::GetONNXTensorElementDataType<std::string>()) {
+    if (moving_single_axis && !input.IsDataTypeString()) {
       SingleAxisTranspose(permutations, input, output, from, to);
     } else {
       // fall back to default implementation
@@ -542,10 +570,13 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor& Y = *ctx->Output(0, output_shape);
 
+  if (output_shape.Size() == 0)
+    return Status::OK();
+
   size_t from = 0, to = 0;
   bool moving_single_axis = IsMovingSingleAxis(*p_perm, from, to);
 
-  if (moving_single_axis && X.GetElementType() != utils::GetONNXTensorElementDataType<std::string>()) {
+  if (moving_single_axis && !X.IsDataTypeString()) {
     SingleAxisTranspose(*p_perm, X, Y, from, to);
   } else {
     // fall back to default implementation

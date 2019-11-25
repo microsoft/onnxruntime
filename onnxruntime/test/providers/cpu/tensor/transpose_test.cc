@@ -374,5 +374,38 @@ TEST(TransposeOpTest, NHWC2NCHW_String) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
 }
 
+// test to cover memcpy from single axis moving inwards path
+TEST(TransposeOpTest, SingleAxisMovingInwardsBlockCopy) {
+  std::vector<int64_t> input_shape({2, 2, 2, 2});
+  std::vector<uint64_t> input_vals = {
+      1, 2,
+      3, 4,
+
+      5, 6,
+      7, 8,
+
+      9, 10,
+      11, 12,
+
+      13, 14,
+      15, 16};
+
+  std::vector<int64_t> perm = {1, 2, 0, 3};
+  std::vector<int64_t> expected_shape({2, 2, 2, 2});
+  std::initializer_list<uint64_t> expected_vals = {
+      1, 2,
+      9, 10,
+
+      3, 4,
+      11, 12,
+
+      5, 6,
+      13, 14,
+
+      7, 8,
+      15, 16};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+}
 }  // namespace test
 }  // namespace onnxruntime
