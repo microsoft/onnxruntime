@@ -44,17 +44,6 @@ namespace contrib {
 ADD_TYPED_CROPANDRESIZE_OP(float);
 
 template <typename T>
-static void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, T&& fn) {
-  if (tp != nullptr)
-    tp->ParallelFor(total, fn);
-  else {
-    for (int32_t i = 0; i != total; ++i) {
-      fn(i);
-    }
-  }
-}
-
-template <typename T>
 void CropAndResizeForward(const TensorShape& output_shape,
                           const T* bottom_data,
                           float extrapolation_value,
