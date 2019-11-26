@@ -796,3 +796,18 @@ endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+
+add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
+target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+if(UNIX)
+  if (APPLE)
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --no-undefined -Xlinker --gc-sections")
+  endif()
+else()
+  set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.def /IGNORE:4199")
+  # need to ignore the linker warning 4199, due to some global linker flags failing here
+endif()
+set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
