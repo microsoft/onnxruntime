@@ -148,7 +148,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level4: {
       // Level 4 is for approximation
 #ifndef DISABLE_CONTRIB_OPS
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>());
+      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
 #endif
 
     } break;
