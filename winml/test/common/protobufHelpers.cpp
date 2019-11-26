@@ -182,7 +182,7 @@ winrt::Windows::AI::MachineLearning::LearningModel ProtobufHelpers::CreateModel(
     uint32_t num_elements)
 {
     onnx::ModelProto model;
-
+    model.set_ir_version(onnx::Version::IR_VERSION);
     // Set opset import
     auto opsetimportproto = model.add_opset_import();
     opsetimportproto->set_version(7);
