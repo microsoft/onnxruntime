@@ -574,8 +574,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip = "This test is failing. Skipping this test to be able to test the changes in my PR. Will undo this change before PR checkin")]
-        private void TestRegisterCustopOpLibrary()
+        [Fact]
+        private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
             {
