@@ -22,7 +22,7 @@
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
 
 using namespace onnxruntime::concurrency;
 
@@ -41,6 +41,7 @@ namespace onnxruntime {
 ADD_TYPED_ROIALIGN_OP(float);
 ADD_TYPED_ROIALIGN_OP(double);
 
+namespace {
 template <typename T>
 struct PreCalc {
   int64_t pos1;

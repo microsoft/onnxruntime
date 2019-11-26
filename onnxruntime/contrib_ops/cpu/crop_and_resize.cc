@@ -21,7 +21,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
 #include "core/providers/cpu/object_detection/roialign.h"
 
 using namespace onnxruntime::concurrency;
