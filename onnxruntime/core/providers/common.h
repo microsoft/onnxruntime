@@ -50,22 +50,9 @@ template <typename F>
 inline void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
   if (tp != nullptr) {
     if (batch_size <= 0) {
-      // concurrency::ThreadPool has numThreads worker threads.
-      // the current ParallelFor() implementation will use the calling thread to execute fn(0)
-      // so there are (numThreads + 1) threads to run the tasks.
-      batch_size = tp->NumThreads() + 1;
+      batch_size = NumThreads() + 1;
     }
-    if (batch_size == total) {
-      tp->ParallelFor(total, fn);
-    } else {
-      tp->ParallelFor(batch_size, [&](int batch_index) {
-        int start = batch_index * total / batch_size;
-        int end = (batch_index + 1) * total / batch_size;
-        for (int i = start; i < end; i++) {
-          fn(i);
-        }
-      });
-    }
+    tp->BatchParallelFor(total, batch_size, fn);
   } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for
@@ -81,7 +68,16 @@ Tries to call the given function parallelly
 **/
 template <typename F>
 inline void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn) {
-  TryBatchParallelFor(tp, total, fn, total);
+  if (tp != nullptr) {
+    tp->ParallelFor(total, fn);
+  } else {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+    for (int32_t i = 0; i < total; ++i) {
+      fn(i);
+    }
+  }
 }
 
 }  // namespace onnxruntime

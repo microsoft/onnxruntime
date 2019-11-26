@@ -47,6 +47,11 @@ class ThreadPool {
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn);
 
   /*
+  Schedule work in the interval [0, total), splitted into the specified batch(es).
+  */
+  void BatchParallelFor(int32_t total, int32_t batch_size, std::function<void(int32_t)> fn);
+
+  /*
   Schedule work in the interval [first, last].
   */
   void ParallelForRange(int64_t first, int64_t last, std::function<void(int64_t, int64_t)> fn);
