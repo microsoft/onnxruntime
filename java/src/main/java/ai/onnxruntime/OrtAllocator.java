@@ -18,7 +18,7 @@ import java.nio.ShortBuffer;
 /**
  * An ONNX runtime memory allocator.
  */
-public class ONNXAllocator implements AutoCloseable {
+public class OrtAllocator implements AutoCloseable {
 
     final long handle;
 
@@ -36,11 +36,11 @@ public class ONNXAllocator implements AutoCloseable {
      * Constructs the default CPU allocator.
      * @throws ONNXException If the onnx runtime threw an error.
      */
-    public ONNXAllocator() throws ONNXException {
+    public OrtAllocator() throws ONNXException {
         handle = createAllocator(ONNX.ortApiHandle);
     }
 
-    ONNXAllocator(long handle) {
+    OrtAllocator(long handle) {
         this.handle = handle;
     }
 
