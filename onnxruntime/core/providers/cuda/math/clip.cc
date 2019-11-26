@@ -12,7 +12,8 @@ namespace cuda {
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Clip,                                                       \
       kOnnxDomain,                                                \
-      6, 10,                                                      \
+      6,                                                          \
+      10,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
