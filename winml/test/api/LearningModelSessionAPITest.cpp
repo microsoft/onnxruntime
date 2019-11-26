@@ -22,7 +22,8 @@ class LearningModelSessionAPITests : public APITest
 class LearningModelSessionAPITestsGpu : public APITest
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
+    {
         GPUTEST
     }
 };
@@ -30,7 +31,8 @@ protected:
 class LearningModelSessionAPITestsSkipEdgeCore : public LearningModelSessionAPITestsGpu
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
+    {
         LearningModelSessionAPITestsGpu::SetUp();
         SKIP_EDGECORE
     }

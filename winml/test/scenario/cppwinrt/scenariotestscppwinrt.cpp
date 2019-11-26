@@ -61,7 +61,7 @@ protected:
 class ScenarioCppWinrtGpuTest : public ScenarioCppWinrtTest
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
     {
         GPUTEST
     }
@@ -70,7 +70,7 @@ protected:
 class ScenarioCppWinrtGpuSkipEdgeCoreTest : public ScenarioCppWinrtTest
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
     {
         ScenarioCppWinrtTest::SetUp();
         SKIP_EDGECORE

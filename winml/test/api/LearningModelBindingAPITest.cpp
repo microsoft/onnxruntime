@@ -21,7 +21,8 @@ class LearningModelBindingAPITest : public APITest
 class LearningModelBindingAPITestGpu : public LearningModelBindingAPITest
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
+    {
         GPUTEST
     }
 };

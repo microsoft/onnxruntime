@@ -29,7 +29,8 @@ protected:
 class LearningModelAPITestGpu : public LearningModelAPITest
 {
 protected:
-    void SetUp() override {
+    void SetUp() override
+    {
         GPUTEST
     }
 };
