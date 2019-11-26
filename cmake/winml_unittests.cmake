@@ -62,6 +62,7 @@ add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common
+  DEPENDS winml_api
 )
 target_precompiled_header(winml_test_api testPch.h)
 
@@ -70,6 +71,7 @@ add_winml_test(
   TARGET winml_test_scenario
   SOURCES ${winml_test_scenario_src}
   LIBS winml_test_common onnxruntime_providers_dml
+  DEPENDS winml_api
 )
 target_precompiled_header(winml_test_scenario testPch.h)
 set_target_properties(winml_test_scenario PROPERTIES LINK_FLAGS
