@@ -344,6 +344,7 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 }
 
 void addGlobalMethods(py::module& m) {
+  m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
@@ -706,21 +707,25 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
-      .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
-      .def(py::init<SessionOptions, SessionObjectInitializer>())
+      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char* without any conversion.
+      // So this init method can be used for model file path (string) and model content (bytes)
+      .def(py::init([](const SessionOptions& so, const std::string& arg,
+                       const SessionObjectInitializer& so_initializer, bool is_arg_file_name) {
+        // Given arg is the file path. Invoke the corresponding ctor().
+        if (is_arg_file_name) {
+          return onnxruntime::make_unique<InferenceSession>(so, arg, so_initializer);
+        }
+
+        // Given arg is the model content as bytes. Invoke the corresponding ctor().
+        std::istringstream buffer(arg);
+        return onnxruntime::make_unique<InferenceSession>(so, buffer, so_initializer);
+      }))
       .def(
-          "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
-            OrtPybindThrowIfError(sess->Load(path));
+          "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
+            OrtPybindThrowIfError(sess->Load());
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
-            std::istringstream buffer(serializedModel);
-            OrtPybindThrowIfError(sess->Load(buffer));
-            InitializeSession(sess, provider_types);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {

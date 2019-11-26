@@ -98,9 +98,9 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
-Status InferenceSession::FinalizeSessionOptions(SessionOptions& session_options,
-                                                const ONNX_NAMESPACE::ModelProto& model_proto) {
-  InferenceSessionUtils inference_session_utils(logging::LoggingManager ::DefaultLogger());
+static Status FinalizeSessionOptions(SessionOptions& session_options,
+                                     const ONNX_NAMESPACE::ModelProto& model_proto) {
+  InferenceSessionUtils inference_session_utils(logging::LoggingManager::DefaultLogger());
 
   ORT_RETURN_IF_ERROR(inference_session_utils.ParseOrtConfigJsonInModelProto(model_proto));
 
@@ -114,14 +114,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
 
+  // Will eventually point to the final session options to be used to initialize this session instance with
   const SessionOptions* final_session_options;
+
+  // Initially contains default session option values
+  SessionOptions constructed_session_options;
+
   // the model is to be checked for an ORT config json that may hold some/all session options
   if (session_options.check_model_for_ort_config) {
     // In theory should not throw on this line unless this internal class' APIs are being called incorrectly.
     // It is a good sanity check to enforce this
     ORT_ENFORCE(model_proto_, "Need model to be provided to check for ORT config within it");
-
-    SessionOptions constructed_session_options;
 
     auto status = FinalizeSessionOptions(constructed_session_options, *model_proto_);
     ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",

@@ -112,7 +112,7 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
   }
 
   for (const auto& metadata_field : model_proto.metadata_props()) {
-    if (metadata_field.has_key() && metadata_field.key() == inference_session_utils::ort_config_key) {
+    if (metadata_field.has_key() && metadata_field.key() == inference_session_utils::kOrtConfigKey) {
       LOGS(logger_, INFO)
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
@@ -139,13 +139,13 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The Model Proto hasn't been checked for the ORT config json.");
   }
 
-  if (!is_json_available_ || parsed_json_.contains(inference_session_utils::session_options_key)) {
+  if (!is_json_available_ || parsed_json_.contains(inference_session_utils::kSessionOptionsKey)) {
     LOGS(logger_, INFO) << "Did not find session options in the model file to be used while running the model";
     return Status::OK();
   }
 
   const auto& session_options_from_model =
-      parsed_json_.at(inference_session_utils::session_options_key);
+      parsed_json_.at(inference_session_utils::kSessionOptionsKey);
 
   // TODO: Support all valid session options
   // Only the following config options from the json will be supported in this version

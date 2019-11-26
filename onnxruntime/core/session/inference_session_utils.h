@@ -14,8 +14,8 @@ namespace onnxruntime {
 
 namespace inference_session_utils {
 
-static const std::string ort_config_key = "ort_config";
-static const std::string session_options_key = "session_options";
+static const std::string kOrtConfigKey = "ort_config";
+static const std::string kSessionOptionsKey = "session_options";
 
 }  // namespace inference_session_utils
 
