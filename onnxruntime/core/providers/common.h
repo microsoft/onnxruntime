@@ -50,7 +50,10 @@ template <typename F>
 inline void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
   if (tp != nullptr) {
     if (batch_size <= 0) {
-      batch_size = tp->NumThreads();
+      // concurrency::ThreadPool has numThreads worker threads.
+      // the current ParallelFor() implementation will use the calling thread to execute fn(0)
+      // so there are (numThreads + 1) threads to run the tasks.
+      batch_size = tp->NumThreads() + 1;
     }
     if (batch_size == total) {
       tp->ParallelFor(total, fn);
