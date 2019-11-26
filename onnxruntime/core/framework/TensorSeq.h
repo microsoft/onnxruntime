@@ -13,15 +13,18 @@ namespace onnxruntime {
 class TensorSeq {
  public:
   TensorSeq() = default;
-  explicit TensorSeq(MLDataType elem_type) noexcept : elem_type_(elem_type) {}
+  explicit TensorSeq(MLDataType elem_type) noexcept {
+    SetType(elem_type);
+  }
 
   using const_iterator = std::vector<Tensor>::const_iterator;
 
   // Sets the element type after construction.
   // Expects sequence to be empty at the time.
-  void SetType(MLDataType elem_type) noexcept {
+  void SetType(MLDataType elem_type) {
     assert(tensors_.empty());
-    elem_type_ = elem_type;
+    elem_type_ = elem_type->AsPrimitiveDataType();
+    ORT_ENFORCE(elem_type_ != nullptr, "Tensor sequence must contain only primitive types");
   }
 
   void SetElements(std::vector<Tensor>&& tensors) {
@@ -31,19 +34,27 @@ class TensorSeq {
 
   MLDataType DataType() const noexcept { return elem_type_; }
 
+  bool IsSameDataType(const TensorSeq& o) const noexcept {
+    return elem_type_ == o.elem_type_;
+  }
+
+  bool IsSameDataType (const Tensor& o) const noexcept {
+    return elem_type_ == o.DataType()->AsPrimitiveDataType();
+  }
+
   size_t Size() const noexcept { return tensors_.size(); }
 
   // Suitable for for range loop
-  const_iterator begin () const noexcept {
+  const_iterator begin() const noexcept {
     return tensors_.cbegin();
   }
 
-  const_iterator end () const noexcept {
+  const_iterator end() const noexcept {
     return tensors_.cend();
   }
 
   // Get by index
-  const Tensor& Get (size_t i) const {
+  const Tensor& Get(size_t i) const {
     ORT_ENFORCE(i < tensors_.size());
     return tensors_[i];
   }
@@ -54,7 +65,7 @@ class TensorSeq {
   // The current design follows the Tensor methodology.
   // We also require this because the SequenceEmpty op expects the creation of a seq of a specific type
   // and the SequenceInsert op expects validation of tensors to be added to the seq against this type.
-  MLDataType elem_type_{};
+  const PrimitiveDataTypeBase* elem_type_{};
 
   // TODO: optimization opportunity - if all tensors in the seq are scalars, we can potentially represent them
   // as vector<primitive type>

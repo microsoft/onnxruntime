@@ -448,7 +448,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
-  OrtStatus* (ORT_API_CALL *RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
+  OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
   Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps", (void**)&RegisterCustomOps);
   if (!RegisterCustomOps)
@@ -459,9 +459,8 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
 }
 
 namespace {
-template <typename Loader>
 OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
-                             Loader loader, _Outptr_ OrtSession** out) {
+                             std::unique_ptr<::onnxruntime::InferenceSession>& out) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   auto session_options = options == nullptr ? onnxruntime::SessionOptions() : options->value;
@@ -500,13 +499,7 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
     }
   }
 
-  status = loader(*sess);
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-  status = sess->Initialize();
-  if (!status.IsOK())
-    return ToOrtStatus(status);
-  *out = reinterpret_cast<OrtSession*>(sess.release());
+  out = std::move(sess);
   return nullptr;
 }
 }  // namespace
@@ -514,20 +507,39 @@ OrtStatus* CreateSessionImpl(_In_ const OrtEnv* env, _In_ const OrtSessionOption
 ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
-  const auto loader = [model_path](InferenceSession& sess) {
-    return sess.Load(model_path);
-  };
-  return CreateSessionImpl(env, options, loader, out);
+  std::unique_ptr<::onnxruntime::InferenceSession> sess;
+  auto ort_status = CreateSessionImpl(env, options, sess);
+  if (ort_status != nullptr) {
+    return ort_status;
+  }
+  auto status = sess->Load(model_path);
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+  status = sess->Initialize();
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+  *out = reinterpret_cast<OrtSession*>(sess.release());
+  return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
-  const auto loader = [model_data, model_data_length](InferenceSession& sess) {
-    return sess.Load(model_data, static_cast<int>(model_data_length));
-  };
-  return CreateSessionImpl(env, options, loader, out);
+  std::unique_ptr<::onnxruntime::InferenceSession> sess;
+  auto ort_status = CreateSessionImpl(env, options, sess);
+  if (ort_status != nullptr) {
+    return ort_status;
+  }
+
+  auto status = sess->Load(model_data, static_cast<int>(model_data_length));
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+  status = sess->Initialize();
+  if (!status.IsOK())
+    return ToOrtStatus(status);
+  *out = reinterpret_cast<OrtSession*>(sess.release());
+  return nullptr;
   API_IMPL_END
 }
 
@@ -833,7 +845,7 @@ static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
     auto v = reinterpret_cast<const OrtValue*>(value);
     auto type = v->Type();
     // Note: keep these in sync with the registered types in data_types.h
-    if (type == DataTypeImpl::GetType<TensorSeq>()) {
+    if (type->IsTensorSequenceType()) {
       return OrtGetNumSequenceElements<TensorSeq>(v, out);
     } else if (utils::IsSequenceOf<std::map<std::string, float>>(type)) {
       return OrtGetNumSequenceElements<VectorMapStringToFloat>(v, out);
@@ -864,27 +876,26 @@ static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index,
   auto& data_elem = data_vec.at(index);
   auto copy_data_elem = onnxruntime::make_unique<MapType>(data_elem);
   auto value = onnxruntime::make_unique<OrtValue>();
+  auto ml_type = DataTypeImpl::GetType<MapType>();
   value->Init(copy_data_elem.release(),
-              DataTypeImpl::GetType<MapType>(),
-              DataTypeImpl::GetType<MapType>()->GetDeleteFunc());
+              ml_type,
+              ml_type->GetDeleteFunc());
   *out = value.release();
   return nullptr;
 }
 
-template <typename T>
-OrtStatus* PopulateTensorWithData(OrtValue* oval, const T* data_elem, size_t num_elems) {
+OrtStatus* PopulateTensorWithData(OrtValue* oval, const void* data_elem, size_t num_elems, size_t elem_size) {
   void* raw_data = nullptr;
   auto st = OrtApis::GetTensorMutableData(oval, &raw_data);
   if (st) {
     return st;
   }
-  memcpy(raw_data, data_elem, sizeof(T) * num_elems);
+  memcpy(raw_data, data_elem, elem_size * num_elems);
   return nullptr;
 }
 
-template <>
-OrtStatus* PopulateTensorWithData<std::string>(OrtValue* oval, const std::string* data_elem,
-                                               size_t num_elems) {
+OrtStatus* PopulateTensorWithData(OrtValue* oval, const std::string* data_elem,
+                                               size_t num_elems, size_t /* elem_size */) {
   auto v = reinterpret_cast<OrtValue*>(oval);
   auto tensor = v->GetMutable<Tensor>();
   auto* dst = tensor->MutableData<std::string>();
@@ -898,21 +909,15 @@ OrtStatus* PopulateTensorWithData<std::string>(OrtValue* oval, const std::string
   return nullptr;
 }
 
-template <typename TensorElemType>
-OrtStatus* OrtGetValueImplSeqOfTensorsHelper(OrtAllocator* allocator, const Tensor& tensor,
-                                             OrtValue** out) {
-  const auto& shape = tensor.Shape();
-  const auto* tensor_data = tensor.Data<TensorElemType>();
-  OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
-                                                  onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
-  return st ? st : PopulateTensorWithData<TensorElemType>(*out, tensor_data, shape.Size());
-}
-
 namespace c_api_internal {
-template <class T>
+template <class TensorElemType>
 struct CallGetValueImpl {
-  OrtStatus* operator()(OrtAllocator* allocator, const onnxruntime::Tensor& one_tensor, OrtValue** out) const {
-    return OrtGetValueImplSeqOfTensorsHelper<T>(allocator, one_tensor, out);
+  OrtStatus* operator()(OrtAllocator* allocator, const onnxruntime::Tensor& tensor, OrtValue** out) const {
+    const auto& shape = tensor.Shape();
+    const auto* tensor_data = tensor.Data<TensorElemType>();
+    OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
+                                                    onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
+    return st ? st : PopulateTensorWithData(*out, tensor_data, shape.Size(), sizeof(TensorElemType));
   }
 };
 
@@ -926,10 +931,9 @@ struct UnsupportedReturnFailStatus {
 };
 }  // namespace c_api_internal
 
-template <typename T>
 OrtStatus* OrtGetValueImplSeqOfTensors(const OrtValue* p_ml_value, int index, OrtAllocator* allocator,
                                        OrtValue** out) {
-  auto& data = p_ml_value->Get<T>();
+  auto& data = p_ml_value->Get<TensorSeq>();
   auto& one_tensor = data.Get(index);
 
   using namespace c_api_internal;
@@ -944,8 +948,8 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAlloca
   auto p_ml_value = reinterpret_cast<const OrtValue*>(value);
   auto type = p_ml_value->Type();
   // Note: keep these in sync with the registered types in data_types.h
-  if (type == DataTypeImpl::GetType<TensorSeq>()) {
-    return OrtGetValueImplSeqOfTensors<TensorSeq>(p_ml_value, index, allocator, out);
+  if (type->IsTensorSequenceType()) {
+    return OrtGetValueImplSeqOfTensors(p_ml_value, index, allocator, out);
   } else if (utils::IsSequenceOf<std::map<std::string, float>>(type)) {
     return OrtGetValueImplSeqOfMap<VectorMapStringToFloat>(p_ml_value, index, out);
   } else if (utils::IsSequenceOf<std::map<int64_t, float>>(type)) {
@@ -973,7 +977,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const OrtValue* p_ml_value, int index
       std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                       GetONNXTensorElementDataType<TKey>(), out);
-      return st ? st : PopulateTensorWithData<TKey>(*out, vec.data(), num_kv_pairs);
+      return st ? st : PopulateTensorWithData(*out, vec.data(), num_kv_pairs, sizeof(TKey));
     }
     case 1: {  // user is requesting values
       std::vector<TVal> vec;
@@ -984,7 +988,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const OrtValue* p_ml_value, int index
       std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                       GetONNXTensorElementDataType<TVal>(), out);
-      return st ? st : PopulateTensorWithData<TVal>(*out, vec.data(), num_kv_pairs);
+      return st ? st : PopulateTensorWithData(*out, vec.data(), num_kv_pairs, sizeof(TVal));
     }
     default:
       return OrtApis::CreateStatus(ORT_FAIL, "Invalid index requested for map type.");
@@ -1131,9 +1135,7 @@ static OrtStatus* OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t 
   // create OrtValue with this vector
   auto value = onnxruntime::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<TensorSeq>();
-  auto seq_ptr = onnxruntime::make_unique<TensorSeq>();
-  // use the data type of the first tensor as the data type of the seq
-  seq_ptr->SetType(dtype);
+  auto seq_ptr = onnxruntime::make_unique<TensorSeq>(dtype);
   seq_ptr->SetElements(std::move(tensors));
   value->Init(seq_ptr.release(),
               ml_type,

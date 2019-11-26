@@ -111,8 +111,8 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
 
   if (ml_type->IsTensorSequenceType()) {
     auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();
-    auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
     auto p_sequence = onnxruntime::make_unique<TensorSeq>(element_type);
+    auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
     ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
     return Status::OK();
   }

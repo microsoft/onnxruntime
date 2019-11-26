@@ -199,7 +199,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X != nullptr, "Got nullptr for input tensor.");
 
   // Data type of the input tensor MUST be same as that of the input sequence
-  if (S->DataType() != X->DataType()) {
+  if (!S->IsSameDataType(*X)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Data type of the input tensor MUST be same as that of the input sequence. Sequence data type (",
                            DataTypeImpl::ToString(S->DataType()), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
@@ -222,7 +222,6 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   ORT_ENFORCE(Y != nullptr, "SequenceInsert: Got nullptr for output sequence");
-  Y->SetType(S->DataType());
   std::vector<Tensor> tensors;
   tensors.reserve(num_tensors_input_seq + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
@@ -237,6 +236,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
     CreateCopyAndAppendCpuTensor(*X, context, tensors);
   }
 
+  Y->SetType(S->DataType());
   Y->SetElements(std::move(tensors));
 
   return Status::OK();
