@@ -23,7 +23,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\InferenceTest.cs"/>
     <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\OnnxMl.cs"/>
 
-    <None Include="$(NativeBuildOutputDir)\custom_op*.dll;$(NativeBuildOutputDir)\custom_op*.pdb;$(NativeBuildOutputDir)\libcustom*.so;$(NativeBuildOutputDir)\libcustom*.dylib">
+    <None Include="$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.dll;$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.pdb;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.so;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.dylib">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

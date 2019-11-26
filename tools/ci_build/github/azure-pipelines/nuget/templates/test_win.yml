@@ -30,11 +30,18 @@ jobs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'amd64'
       modifyEnvironment: true
+  
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
     inputs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - testdata'
+    inputs:
+      artifactName: 'drop-nuget'
+      targetPath: '$(Build.BinariesDirectory)\testdata'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
