@@ -677,7 +677,15 @@ HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* r
   ORT_THROW_IF_ERROR(this->session_->Run(*run_options, *(io_binding->get())));
   return S_OK;
 }
-HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() {
+
+HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, const char** feed_names,
+    const OrtValue** feeds, const char** output_names,
+    OrtValue** p_fetches)
+{
+    return E_NOTIMPL;
+}
+
+    HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() {
   this->session_->StartProfiling(PheonixSingleton<WinML::LotusEnvironment>()->GetDefaultLogger());
   return S_OK;
 }

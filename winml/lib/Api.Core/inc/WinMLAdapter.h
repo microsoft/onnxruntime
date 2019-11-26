@@ -44,6 +44,9 @@ MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnkn
     virtual HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) = 0;
     virtual HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) = 0;
     virtual HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, const char** feed_names,
+                                          const OrtValue** feeds, const char** output_names,
+                                          OrtValue** p_fetches) = 0;
     virtual HRESULT STDMETHODCALLTYPE StartProfiling() = 0;
     virtual HRESULT STDMETHODCALLTYPE EndProfiling() = 0;
     virtual void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider * dml_provider) = 0;
@@ -139,6 +142,9 @@ public:
     HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) override;
     HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) override;
     HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) override;
+    HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, const char** feed_names,
+                                                    const OrtValue** feeds, const char** output_names,
+                                                    OrtValue** p_fetches) override;
     HRESULT STDMETHODCALLTYPE StartProfiling() override;
     HRESULT STDMETHODCALLTYPE EndProfiling() override;
     void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider* dml_provider) override;
