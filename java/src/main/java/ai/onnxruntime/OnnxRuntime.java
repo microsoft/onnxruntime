@@ -18,8 +18,8 @@ import java.util.logging.Logger;
 /**
  * Static loader for the JNI binding.
  */
-final class ONNX {
-    private static final Logger logger = Logger.getLogger(ONNX.class.getName());
+final class OnnxRuntime {
+    private static final Logger logger = Logger.getLogger(OnnxRuntime.class.getName());
 
     // The initial release of the ORT API.
     private static final int ORT_API_VERSION_1 = 1;
@@ -44,7 +44,7 @@ final class ONNX {
      */
     private static final List<String> libraryNames = Arrays.asList("onnxruntime","onnxruntime4j_jni");
 
-    private ONNX() {}
+    private OnnxRuntime() {}
 
     /**
      * Loads the native C library.
@@ -68,7 +68,7 @@ final class ONNX {
                         System.loadLibrary(libraryName);
                     }
                 } catch (UnsatisfiedLinkError e) {
-                    logger.log(Level.SEVERE, "Failed to load ONNX library from library path.");
+                    logger.log(Level.SEVERE, "Failed to load onnx-runtime library from library path.");
                     throw e;
                 }
             } else {
@@ -104,7 +104,7 @@ final class ONNX {
                         }
                     }
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Failed to load ONNX library from jar");
+                    logger.log(Level.SEVERE, "Failed to load onnx-runtime library from jar");
                     throw e;
                 }
             }
@@ -137,7 +137,7 @@ final class ONNX {
                     throw new FileNotFoundException("File " + temp.getAbsolutePath() + " does not exist.");
                 } else {
                     byte[] buffer = new byte[1024];
-                    try (InputStream is = ONNX.class.getResourceAsStream(path)) {
+                    try (InputStream is = OnnxRuntime.class.getResourceAsStream(path)) {
                         if (is == null) {
                             throw new FileNotFoundException("File " + path + " was not found inside JAR.");
                         } else {

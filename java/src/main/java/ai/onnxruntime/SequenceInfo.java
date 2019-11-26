@@ -15,9 +15,9 @@ public class SequenceInfo implements ValueInfo {
     public final boolean sequenceOfMaps;
 
     /**
-     * The type of the sequence if it does not contain a map, {@link ONNXJavaType#UNKNOWN} if it does.
+     * The type of the sequence if it does not contain a map, {@link OnnxJavaType#UNKNOWN} if it does.
      */
-    public final ONNXJavaType sequenceType;
+    public final OnnxJavaType sequenceType;
 
     /**
      * The type of the map if it contains a map, null otherwise.
@@ -29,7 +29,7 @@ public class SequenceInfo implements ValueInfo {
      */
     public final int length;
 
-    SequenceInfo(int length, ONNXJavaType sequenceType) {
+    SequenceInfo(int length, OnnxJavaType sequenceType) {
         this.length = length;
         this.sequenceType = sequenceType;
         this.sequenceOfMaps = false;
@@ -40,12 +40,12 @@ public class SequenceInfo implements ValueInfo {
         this.length = length;
         this.sequenceOfMaps = true;
         this.mapInfo = mapInfo;
-        this.sequenceType = ONNXJavaType.UNKNOWN;
+        this.sequenceType = OnnxJavaType.UNKNOWN;
     }
 
-    SequenceInfo(int length, ONNXJavaType keyType, ONNXJavaType valueType) {
+    SequenceInfo(int length, OnnxJavaType keyType, OnnxJavaType valueType) {
         this.length = length;
-        this.sequenceType = ONNXJavaType.UNKNOWN;
+        this.sequenceType = OnnxJavaType.UNKNOWN;
         this.sequenceOfMaps = true;
         this.mapInfo = new MapInfo(keyType,valueType);
     }

@@ -10,33 +10,33 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A container for a map returned by an ONNX call.
+ * A container for a map returned by an onnx-runtime call.
  * <p>
  * Supported types are those mentioned in "onnxruntime_c_api.h",
  * keys: String and Long, values: String, Long, Float, Double.
  */
-public class ONNXMap implements ONNXValue {
+public class OnnxMap implements OnnxValue {
 
     static {
         try {
-            ONNX.init();
+            OnnxRuntime.init();
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load ONNX library",e);
+            throw new RuntimeException("Failed to load onnx-runtime library",e);
         }
     }
 
     /**
-     * An enum representing the type of the values stored in an {@link ONNXMap}.
+     * An enum representing the type of the values stored in an {@link OnnxMap}.
      */
-    public enum ONNXMapValueType {
+    public enum OnnxMapValueType {
         INVALID(0), STRING(1), LONG(2), FLOAT(3), DOUBLE(4);
         final int value;
-        ONNXMapValueType(int value) {
+        OnnxMapValueType(int value) {
             this.value = value;
         }
-        private static final ONNXMapValueType[] values = new ONNXMapValueType[4];
+        private static final OnnxMapValueType[] values = new OnnxMapValueType[5];
         static {
-            for (ONNXMapValueType ot : ONNXMapValueType.values()) {
+            for (OnnxMapValueType ot : OnnxMapValueType.values()) {
                 values[ot.value] = ot;
             }
         }
@@ -46,7 +46,7 @@ public class ONNXMap implements ONNXValue {
          * @param value The integer id.
          * @return The enum instance.
          */
-        public static ONNXMapValueType mapFromInt(int value) {
+        public static OnnxMapValueType mapFromInt(int value) {
             if ((value > 0) && (value < values.length)) {
                 return values[value];
             } else {
@@ -55,28 +55,28 @@ public class ONNXMap implements ONNXValue {
         }
 
         /**
-         * Maps a {@link ONNXJavaType} into a map value type. If it's not a valid
-         * map type return {@link ONNXMapValueType#INVALID}.
+         * Maps a {@link OnnxJavaType} into a map value type. If it's not a valid
+         * map type return {@link OnnxMapValueType#INVALID}.
          * @param type The Java type.
          * @return The equivalent Map value type.
          */
-        public static ONNXMapValueType mapFromONNXJavaType(ONNXJavaType type) {
+        public static OnnxMapValueType mapFromOnnxJavaType(OnnxJavaType type) {
             switch (type) {
                 case FLOAT:
-                    return ONNXMapValueType.FLOAT;
+                    return OnnxMapValueType.FLOAT;
                 case DOUBLE:
-                    return ONNXMapValueType.DOUBLE;
+                    return OnnxMapValueType.DOUBLE;
                 case INT64:
-                    return ONNXMapValueType.LONG;
+                    return OnnxMapValueType.LONG;
                 case STRING:
-                    return ONNXMapValueType.STRING;
+                    return OnnxMapValueType.STRING;
                 case INT8:
                 case INT16:
                 case INT32:
                 case BOOL:
                 case UNKNOWN:
                 default:
-                    return ONNXMapValueType.INVALID;
+                    return OnnxMapValueType.INVALID;
             }
         }
     }
@@ -89,14 +89,14 @@ public class ONNXMap implements ONNXValue {
 
     private final boolean stringKeys;
 
-    private final ONNXMapValueType valueType;
+    private final OnnxMapValueType valueType;
 
-    ONNXMap(long nativeHandle, long allocatorHandle, MapInfo info) {
+    OnnxMap(long nativeHandle, long allocatorHandle, MapInfo info) {
         this.nativeHandle = nativeHandle;
         this.allocatorHandle = allocatorHandle;
         this.info = info;
-        this.stringKeys = info.keyType == ONNXJavaType.STRING;
-        this.valueType = ONNXMapValueType.mapFromONNXJavaType(info.valueType);
+        this.stringKeys = info.keyType == OnnxJavaType.STRING;
+        this.valueType = OnnxMapValueType.mapFromOnnxJavaType(info.valueType);
     }
 
     /**
@@ -108,17 +108,17 @@ public class ONNXMap implements ONNXValue {
     }
 
     @Override
-    public ONNXValueType getType() {
-        return ONNXValueType.ONNX_TYPE_MAP;
+    public OnnxValueType getType() {
+        return OnnxValueType.ONNX_TYPE_MAP;
     }
 
     /**
      * Returns a weakly typed Map containing all the elements.
      * @return A map.
-     * @throws ONNXException If the onnx runtime failed to read the entries.
+     * @throws OrtException If the onnx runtime failed to read the entries.
      */
     @Override
-    public Map<Object,Object> getValue() throws ONNXException {
+    public Map<Object,Object> getValue() throws OrtException {
         HashMap<Object,Object> map = new HashMap<>();
         Object[] keys = getMapKeys();
         Object[] values = getMapValues();
@@ -131,31 +131,31 @@ public class ONNXMap implements ONNXValue {
     /**
      * Extracts the map keys, boxing the longs if necessary.
      * @return The keys from the map as an array.
-     * @throws ONNXException If the onnx runtime failed to read the keys.
+     * @throws OrtException If the onnx runtime failed to read the keys.
      */
-    private Object[] getMapKeys() throws ONNXException {
+    private Object[] getMapKeys() throws OrtException {
         if (stringKeys) {
-            return getStringKeys(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
+            return getStringKeys(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
         } else {
-            return Arrays.stream(getLongKeys(ONNX.ortApiHandle,nativeHandle,allocatorHandle)).boxed().toArray();
+            return Arrays.stream(getLongKeys(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle)).boxed().toArray();
         }
     }
 
     /**
      * Extracts the map values, boxing primitives if necessary.
      * @return The values from the map as an array.
-     * @throws ONNXException If the onnx runtime failed to read the values.
+     * @throws OrtException If the onnx runtime failed to read the values.
      */
-    private Object[] getMapValues() throws ONNXException {
+    private Object[] getMapValues() throws OrtException {
         switch (valueType) {
             case STRING: {
-                return getStringValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
+                return getStringValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
             }
             case LONG:{
-                return Arrays.stream(getLongValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle)).boxed().toArray();
+                return Arrays.stream(getLongValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle)).boxed().toArray();
             }
             case FLOAT:{
-                float[] floats = getFloatValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
+                float[] floats = getFloatValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
                 Float[] boxed = new Float[floats.length];
                 for (int i = 0; i < floats.length; i++) {
                     // cast float to Float
@@ -164,7 +164,7 @@ public class ONNXMap implements ONNXValue {
                 return boxed;
             }
             case DOUBLE:{
-                return Arrays.stream(getDoubleValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle)).boxed().toArray();
+                return Arrays.stream(getDoubleValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle)).boxed().toArray();
             }
             default:
                 throw new RuntimeException("Invalid or unknown valueType: " + valueType);
@@ -186,16 +186,16 @@ public class ONNXMap implements ONNXValue {
      */
     @Override
     public void close() {
-        close(ONNX.ortApiHandle,nativeHandle);
+        close(OnnxRuntime.ortApiHandle,nativeHandle);
     }
 
-    private native String[] getStringKeys(long apiHandle,long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native long[] getLongKeys(long apiHandle,long nativeHandle,long allocatorHandle) throws ONNXException;
+    private native String[] getStringKeys(long apiHandle,long nativeHandle,long allocatorHandle) throws OrtException;
+    private native long[] getLongKeys(long apiHandle,long nativeHandle,long allocatorHandle) throws OrtException;
 
-    private native String[] getStringValues(long apiHandle,long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native long[] getLongValues(long apiHandle,long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native float[] getFloatValues(long apiHandle,long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native double[] getDoubleValues(long apiHandle,long nativeHandle,long allocatorHandle) throws ONNXException;
+    private native String[] getStringValues(long apiHandle,long nativeHandle,long allocatorHandle) throws OrtException;
+    private native long[] getLongValues(long apiHandle,long nativeHandle,long allocatorHandle) throws OrtException;
+    private native float[] getFloatValues(long apiHandle,long nativeHandle,long allocatorHandle) throws OrtException;
+    private native double[] getDoubleValues(long apiHandle,long nativeHandle,long allocatorHandle) throws OrtException;
 
     private native void close(long apiHandle,long nativeHandle);
 }

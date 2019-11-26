@@ -4,51 +4,51 @@
  */
 package ai.onnxruntime;
 
-import ai.onnxruntime.ONNXSession.SessionOptions;
+import ai.onnxruntime.OrtSession.SessionOptions;
 
 import java.io.IOException;
 
 /**
- * The host object for an ONNX system. Can create {@link ONNXSession}s
+ * The host object for the onnx-runtime system. Can create {@link OrtSession}s
  * which encapsulate specific models.
  */
-public class ONNXEnvironment implements AutoCloseable {
+public class OrtEnvironment implements AutoCloseable {
 
     static {
         try {
-            ONNX.init();
+            OnnxRuntime.init();
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load ONNX library",e);
+            throw new RuntimeException("Failed to load onnx-runtime library",e);
         }
     }
 
     final long nativeHandle;
 
     /**
-     * Create an ONNXEnvironment using a default name.
-     * @throws ONNXException If the environment couldn't be created.
+     * Create an OrtEnvironment using a default name.
+     * @throws OrtException If the environment couldn't be created.
      */
-    public ONNXEnvironment() throws ONNXException {
+    public OrtEnvironment() throws OrtException {
         this("java-default");
     }
 
     /**
-     * Create an ONNXEnvironment using the specified name and default log level of {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
+     * Create an OrtEnvironment using the specified name and default log level of {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
      * @param name The environment name.
-     * @throws ONNXException If the environment couldn't be created.
+     * @throws OrtException If the environment couldn't be created.
      */
-    public ONNXEnvironment(String name) throws ONNXException {
+    public OrtEnvironment(String name) throws OrtException {
         this(LoggingLevel.ORT_LOGGING_LEVEL_WARNING,name);
     }
 
     /**
-     * Create an ONNXEnvironment using the specified name and log level.
+     * Create an OrtEnvironment using the specified name and log level.
      * @param loggingLevel The logging level to use.
      * @param name The environment name.
-     * @throws ONNXException If the environment couldn't be created.
+     * @throws OrtException If the environment couldn't be created.
      */
-    public ONNXEnvironment(LoggingLevel loggingLevel, String name) throws ONNXException {
-        nativeHandle = createHandle(ONNX.ortApiHandle,loggingLevel.getValue(),name);
+    public OrtEnvironment(LoggingLevel loggingLevel, String name) throws OrtException {
+        nativeHandle = createHandle(OnnxRuntime.ortApiHandle,loggingLevel.getValue(),name);
     }
 
     /**
@@ -56,11 +56,11 @@ public class ONNXEnvironment implements AutoCloseable {
      * @param modelPath Path on disk to load the model from.
      * @param allocator The memory allocator to use.
      * @param options The session options.
-     * @return An ONNXSession with the specified model.
-     * @throws ONNXException If the model failed to load, wasn't compatible or caused an error.
+     * @return An {@link OrtSession} with the specified model.
+     * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
      */
-    public ONNXSession createSession(String modelPath, ONNXAllocator allocator, SessionOptions options) throws ONNXException {
-        return new ONNXSession(this,modelPath,allocator,options);
+    public OrtSession createSession(String modelPath, OrtAllocator allocator, SessionOptions options) throws OrtException {
+        return new OrtSession(this,modelPath,allocator,options);
     }
 
     /**
@@ -68,20 +68,20 @@ public class ONNXEnvironment implements AutoCloseable {
      * @param modelArray Byte array representing an ONNX model.
      * @param allocator The memory allocator to use.
      * @param options The session options.
-     * @return An ONNXSession with the specified model.
-     * @throws ONNXException If the model failed to parse, wasn't compatible or caused an error.
+     * @return An {@link OrtSession} with the specified model.
+     * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
      */
-    public ONNXSession createSession(byte[] modelArray, ONNXAllocator allocator, SessionOptions options) throws ONNXException {
-        return new ONNXSession(this,modelArray,allocator,options);
+    public OrtSession createSession(byte[] modelArray, OrtAllocator allocator, SessionOptions options) throws OrtException {
+        return new OrtSession(this,modelArray,allocator,options);
     }
 
     /**
-     * Closes the ONNXEnvironment freeing it's resources.
-     * @throws ONNXException If the close failed.
+     * Closes the OrtEnvironment freeing it's resources.
+     * @throws OrtException If the close failed.
      */
     @Override
-    public void close() throws ONNXException {
-        close(ONNX.ortApiHandle,nativeHandle);
+    public void close() throws OrtException {
+        close(OnnxRuntime.ortApiHandle,nativeHandle);
     }
 
     /**
@@ -90,17 +90,17 @@ public class ONNXEnvironment implements AutoCloseable {
      * @param loggingLevel The logging level.
      * @param name The name of the environment.
      * @return The pointer to the native object.
-     * @throws ONNXException If the creation failed.
+     * @throws OrtException If the creation failed.
      */
-    private native long createHandle(long apiHandle, int loggingLevel, String name) throws ONNXException;
+    private native long createHandle(long apiHandle, int loggingLevel, String name) throws OrtException;
 
     /**
-     * Closes the ONNX environment, frees the handle.
+     * Closes the OrtEnvironment, frees the handle.
      * @param apiHandle The API pointer.
      * @param nativeHandle The handle to free.
-     * @throws ONNXException If an error was caused by freeing the handle.
+     * @throws OrtException If an error was caused by freeing the handle.
      */
-    private native void close(long apiHandle, long nativeHandle) throws ONNXException;
+    private native void close(long apiHandle, long nativeHandle) throws OrtException;
 
     public enum LoggingLevel {
         ORT_LOGGING_LEVEL_VERBOSE(0),

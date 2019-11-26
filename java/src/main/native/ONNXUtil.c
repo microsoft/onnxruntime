@@ -14,7 +14,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 }
 
 /**
- * Must be kept in sync with ORT_LOGGING_LEVEL and ONNXEnvironment#LoggingLevel
+ * Must be kept in sync with ORT_LOGGING_LEVEL and OrtEnvironment#LoggingLevel
  */
 OrtLoggingLevel convertLoggingLevel(jint level) {
     switch (level) {
@@ -173,12 +173,12 @@ jfloat convertHalfToFloat(uint16_t half) {
 
 jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * info) {
     ONNXType type;
-    checkONNXStatus(jniEnv,api,api->GetOnnxTypeFromTypeInfo(info,&type));
+    checkOrtStatus(jniEnv,api,api->GetOnnxTypeFromTypeInfo(info,&type));
 
     switch (type) {
         case ONNX_TYPE_TENSOR: {
             const OrtTensorTypeAndShapeInfo* tensorInfo;
-            checkONNXStatus(jniEnv,api,api->CastTypeInfoToTensorInfo(info,&tensorInfo));
+            checkOrtStatus(jniEnv,api,api->CastTypeInfoToTensorInfo(info,&tensorInfo));
             return convertToTensorInfo(jniEnv, api, (const OrtTensorTypeAndShapeInfo *) tensorInfo);
         }
         case ONNX_TYPE_SEQUENCE: {
@@ -191,7 +191,7 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * inf
         case ONNX_TYPE_OPAQUE:
         case ONNX_TYPE_SPARSETENSOR:
         default: {
-            throwONNXException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"Invalid ONNXType found.");
+            throwOrtException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"Invalid ONNXType found.");
             return NULL;
         }
     }
@@ -200,12 +200,12 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * inf
 jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorTypeAndShapeInfo * info) {
     // Extract the information from the info struct.
     ONNXTensorElementDataType onnxType;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(info,&onnxType));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxType));
     size_t numDim;
-    checkONNXStatus(jniEnv,api,api->GetDimensionsCount(info,&numDim));
+    checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&numDim));
     //printf("numDim %d\n",numDim);
     int64_t* dimensions = (int64_t*) malloc(sizeof(int64_t)*numDim);
-    checkONNXStatus(jniEnv,api,api->GetDimensions(info, dimensions, numDim));
+    checkOrtStatus(jniEnv,api,api->GetDimensions(info, dimensions, numDim));
     jint onnxTypeInt = convertFromONNXDataFormat(onnxType);
 
     // Create the long array for the shape.
@@ -216,23 +216,23 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
     dimensions = NULL;
 
     // Create the ONNXTensorType enum
-    char *onnxTensorTypeClassName = "ai/onnxruntime/TensorInfo$ONNXTensorType";
+    char *onnxTensorTypeClassName = "ai/onnxruntime/TensorInfo$OnnxTensorType";
     jclass clazz = (*jniEnv)->FindClass(jniEnv, onnxTensorTypeClassName);
-    jmethodID onnxTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromInt", "(I)Lai/onnxruntime/TensorInfo$ONNXTensorType;");
+    jmethodID onnxTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromInt", "(I)Lai/onnxruntime/TensorInfo$OnnxTensorType;");
     jobject onnxTensorTypeJava = (*jniEnv)->CallStaticObjectMethod(jniEnv,clazz,onnxTensorTypeMapFromInt,onnxTypeInt);
     //printf("ONNXTensorType class %p, methodID %p, object %p\n",clazz,onnxTensorTypeMapFromInt,onnxTensorTypeJava);
 
     // Create the ONNXJavaType enum
-    char *javaDataTypeClassName = "ai/onnxruntime/ONNXJavaType";
+    char *javaDataTypeClassName = "ai/onnxruntime/OnnxJavaType";
     clazz = (*jniEnv)->FindClass(jniEnv, javaDataTypeClassName);
-    jmethodID javaDataTypeMapFromONNXTensorType = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromONNXTensorType", "(Lai/onnxruntime/TensorInfo$ONNXTensorType;)Lai/onnxruntime/ONNXJavaType;");
+    jmethodID javaDataTypeMapFromONNXTensorType = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromOnnxTensorType", "(Lai/onnxruntime/TensorInfo$OnnxTensorType;)Lai/onnxruntime/OnnxJavaType;");
     jobject javaDataType = (*jniEnv)->CallStaticObjectMethod(jniEnv,clazz,javaDataTypeMapFromONNXTensorType,onnxTensorTypeJava);
     //printf("JavaDataType class %p, methodID %p, object %p\n",clazz,javaDataTypeMapFromONNXTensorType,javaDataType);
 
     // Create the TensorInfo object
     char *tensorInfoClassName = "ai/onnxruntime/TensorInfo";
     clazz = (*jniEnv)->FindClass(jniEnv, tensorInfoClassName);
-    jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([JLai/onnxruntime/ONNXJavaType;Lai/onnxruntime/TensorInfo$ONNXTensorType;)V");
+    jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([JLai/onnxruntime/OnnxJavaType;Lai/onnxruntime/TensorInfo$OnnxTensorType;)V");
     //printf("TensorInfo class %p, methodID %p\n",clazz,tensorInfoConstructor);
     jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, javaDataType, onnxTensorTypeJava);
     return tensorInfo;
@@ -242,14 +242,14 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
 // As map info isn't available at this point, it creates an empty map info type.
 jobject createEmptyMapInfo(JNIEnv *jniEnv) {
     // Create the ONNXJavaType enum
-    char *onnxJavaTypeClassName = "ai/onnxruntime/ONNXJavaType";
+    char *onnxJavaTypeClassName = "ai/onnxruntime/OnnxJavaType";
     jclass clazz = (*jniEnv)->FindClass(jniEnv, onnxJavaTypeClassName);
-    jmethodID onnxJavaTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromInt", "(I)Lai/onnxruntime/ONNXJavaType;");
+    jmethodID onnxJavaTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromInt", "(I)Lai/onnxruntime/OnnxJavaType;");
     jobject unknownType = (*jniEnv)->CallStaticObjectMethod(jniEnv,clazz,onnxJavaTypeMapFromInt,0);
 
     char *mapInfoClassName = "ai/onnxruntime/MapInfo";
     clazz = (*jniEnv)->FindClass(jniEnv, mapInfoClassName);
-    jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz,"<init>","(Lai/onnxruntime/ONNXJavaType;Lai/onnxruntime/ONNXJavaType;)V");
+    jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz,"<init>","(Lai/onnxruntime/OnnxJavaType;Lai/onnxruntime/OnnxJavaType;)V");
     jobject mapInfo = (*jniEnv)->NewObject(jniEnv,clazz,mapInfoConstructor,unknownType,unknownType);
 
     return mapInfo;
@@ -259,14 +259,14 @@ jobject createEmptyMapInfo(JNIEnv *jniEnv) {
 // As sequence info isn't available at this point, it creates an empty sequence info type.
 jobject createEmptySequenceInfo(JNIEnv *jniEnv) {
     // Create the ONNXJavaType enum
-    char *onnxJavaTypeClassName = "ai/onnxruntime/ONNXJavaType";
+    char *onnxJavaTypeClassName = "ai/onnxruntime/OnnxJavaType";
     jclass clazz = (*jniEnv)->FindClass(jniEnv, onnxJavaTypeClassName);
-    jmethodID onnxJavaTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromInt", "(I)Lai/onnxruntime/ONNXJavaType;");
+    jmethodID onnxJavaTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,clazz, "mapFromInt", "(I)Lai/onnxruntime/OnnxJavaType;");
     jobject unknownType = (*jniEnv)->CallStaticObjectMethod(jniEnv,clazz,onnxJavaTypeMapFromInt,0);
 
     char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
     clazz = (*jniEnv)->FindClass(jniEnv, sequenceInfoClassName);
-    jmethodID sequenceInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz,"<init>","(ILai/onnxruntime/ONNXJavaType;)V");
+    jmethodID sequenceInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz,"<init>","(ILai/onnxruntime/OnnxJavaType;)V");
     jobject sequenceInfo = (*jniEnv)->NewObject(jniEnv,clazz,sequenceInfoConstructor,-1,unknownType);
 
     return sequenceInfo;
@@ -301,7 +301,7 @@ size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
             return consumedSize;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-            throwONNXException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "16-bit float not supported.");
+            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "16-bit float not supported.");
             return 0;
             /*
             float *floatArr = malloc(sizeof(float) * inputLength);
@@ -326,7 +326,7 @@ size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
             return consumedSize;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: { // maps to c++ type std::string
-            throwONNXException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported.");
+            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported.");
             return 0;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
@@ -339,7 +339,7 @@ size_t copyJavaToPrimitiveArray(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
         default: {
-            throwONNXException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Invalid tensor element type.");
+            throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Invalid tensor element type.");
             return 0;
         }
     }
@@ -416,7 +416,7 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
             return consumedSize;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: { // maps to c++ type std::string
-            throwONNXException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported.");
+            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported.");
             return 0;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
@@ -429,7 +429,7 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
         default: {
-            throwONNXException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid tensor element type.");
+            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid tensor element type.");
             return 0;
         }
     }
@@ -459,23 +459,23 @@ size_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, uint
 jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
     // Get the buffer size needed
     size_t totalStringLength;
-    checkONNXStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,&totalStringLength));
+    checkOrtStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,&totalStringLength));
 
     // Create the character and offset buffers
     char * characterBuffer;
-    checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char)*(totalStringLength+1),(void**)&characterBuffer));
+    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char)*(totalStringLength+1),(void**)&characterBuffer));
     size_t * offsets;
-    checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(size_t),(void**)&offsets));
+    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(size_t),(void**)&offsets));
 
     // Get a view on the String data
-    checkONNXStatus(jniEnv,api,api->GetStringTensorContent(tensor,characterBuffer,totalStringLength,offsets,1));
+    checkOrtStatus(jniEnv,api,api->GetStringTensorContent(tensor,characterBuffer,totalStringLength,offsets,1));
 
     size_t curSize = (offsets[0]) + 1;
     characterBuffer[curSize-1] = '\0';
     jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,characterBuffer);
 
-    checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
-    checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,offsets));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,offsets));
 
     return tempString;
 }
@@ -483,28 +483,28 @@ jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllo
 void copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor, size_t length, jobjectArray outputArray) {
     // Get the buffer size needed
     size_t totalStringLength;
-    checkONNXStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,&totalStringLength));
+    checkOrtStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,&totalStringLength));
 
     // Create the character and offset buffers
     char * characterBuffer;
-    checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char)*(totalStringLength+length),(void**)&characterBuffer));
+    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(char)*(totalStringLength+length),(void**)&characterBuffer));
     // length + 1 as we need to write out the final offset
     size_t * offsets;
-    checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(size_t)*(length+1),(void**)&offsets));
+    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(size_t)*(length+1),(void**)&offsets));
 
     // Get a view on the String data
-    checkONNXStatus(jniEnv,api,api->GetStringTensorContent(tensor,characterBuffer,totalStringLength,offsets,length));
+    checkOrtStatus(jniEnv,api,api->GetStringTensorContent(tensor,characterBuffer,totalStringLength,offsets,length));
 
     // Get the final offset, write to the end of the array.
-    checkONNXStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,offsets+length));
+    checkOrtStatus(jniEnv,api,api->GetStringTensorDataLength(tensor,offsets+length));
 
     char * tempBuffer = NULL;
     size_t bufferSize = 0;
     for (size_t i = 0; i < length; i++) {
         size_t curSize = (offsets[i+1] - offsets[i]) + 1;
         if (curSize > bufferSize) {
-            checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
-            checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,curSize,(void**)&tempBuffer));
+            checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
+            checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,curSize,(void**)&tempBuffer));
             bufferSize = curSize;
         }
         memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
@@ -514,20 +514,20 @@ void copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* a
     }
 
     if (tempBuffer != NULL) {
-        checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
+        checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,tempBuffer));
     }
-    checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
-    checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,offsets));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,characterBuffer));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,offsets));
 }
 
 jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
     // Extract tensor info
     OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
 
     // Get the element count of this tensor
     size_t length;
-    checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
     // Create the java array
@@ -542,18 +542,18 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
 jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
     // Extract tensor type
     OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
     ONNXTensorElementDataType value;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
 
     // Get the element count of this tensor
     size_t length;
-    checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
     // Extract the values
     uint8_t* arr;
-    checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
+    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
 
     // Create the java array and copy to it.
     jlongArray outputArray = (*jniEnv)->NewLongArray(jniEnv,length);
@@ -564,18 +564,18 @@ jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
 jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
     // Extract tensor type
     OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
     ONNXTensorElementDataType value;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
 
     // Get the element count of this tensor
     size_t length;
-    checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
     // Extract the values
     uint8_t* arr;
-    checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
+    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
 
     // Create the java array and copy to it.
     jfloatArray outputArray = (*jniEnv)->NewFloatArray(jniEnv,length);
@@ -586,18 +586,18 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
 jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
     // Extract tensor type
     OrtTensorTypeAndShapeInfo* tensorInfo;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor,&tensorInfo));
     ONNXTensorElementDataType value;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo,&value));
 
     // Get the element count of this tensor
     size_t length;
-    checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo,&length));
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
 
     // Extract the values
     uint8_t* arr;
-    checkONNXStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
+    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)tensor,(void**)&arr));
 
     // Create the java array and copy to it.
     jdoubleArray outputArray = (*jniEnv)->NewDoubleArray(jniEnv,length);
@@ -608,7 +608,7 @@ jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
 jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
     // Extract the type information
     OrtTensorTypeAndShapeInfo* info;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
 
     // Construct the TensorInfo object
     jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
@@ -617,7 +617,7 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
     api->ReleaseTensorTypeAndShapeInfo(info);
 
     // Construct the ONNXTensor object
-    char *tensorClassName = "ai/onnxruntime/ONNXTensor";
+    char *tensorClassName = "ai/onnxruntime/OnnxTensor";
     jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
     jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "(JJLai/onnxruntime/TensorInfo;)V");
     jobject javaTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, tensorInfo);
@@ -628,14 +628,14 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence) {
     // Setup
     // Get the ONNXTensorType enum static method
-    char *onnxTensorTypeClassName = "ai/onnxruntime/TensorInfo$ONNXTensorType";
+    char *onnxTensorTypeClassName = "ai/onnxruntime/TensorInfo$OnnxTensorType";
     jclass onnxTensorTypeClazz = (*jniEnv)->FindClass(jniEnv, onnxTensorTypeClassName);
-    jmethodID onnxTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,onnxTensorTypeClazz, "mapFromInt", "(I)Lai/onnxruntime/TensorInfo$ONNXTensorType;");
+    jmethodID onnxTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,onnxTensorTypeClazz, "mapFromInt", "(I)Lai/onnxruntime/TensorInfo$OnnxTensorType;");
 
     // Get the ONNXJavaType enum static method
-    char *javaDataTypeClassName = "ai/onnxruntime/ONNXJavaType";
+    char *javaDataTypeClassName = "ai/onnxruntime/OnnxJavaType";
     jclass onnxJavaTypeClazz = (*jniEnv)->FindClass(jniEnv, javaDataTypeClassName);
-    jmethodID onnxJavaTypeMapFromONNXTensorType = (*jniEnv)->GetStaticMethodID(jniEnv,onnxJavaTypeClazz, "mapFromONNXTensorType", "(Lai/onnxruntime/TensorInfo$ONNXTensorType;)Lai/onnxruntime/ONNXJavaType;");
+    jmethodID onnxJavaTypeMapFromONNXTensorType = (*jniEnv)->GetStaticMethodID(jniEnv,onnxJavaTypeClazz, "mapFromOnnxTensorType", "(Lai/onnxruntime/TensorInfo$OnnxTensorType;)Lai/onnxruntime/OnnxJavaType;");
 
     // Get the sequence info class
     char *sequenceInfoClassName = "ai/onnxruntime/SequenceInfo";
@@ -643,21 +643,21 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
 
     // Get the element count of this sequence
     size_t count;
-    checkONNXStatus(jniEnv,api,api->GetValueCount(sequence,&count));
+    checkOrtStatus(jniEnv,api,api->GetValueCount(sequence,&count));
 
     // Extract the first element
     OrtValue* firstElement;
-    checkONNXStatus(jniEnv,api,api->GetValue(sequence,0,allocator,&firstElement));
+    checkOrtStatus(jniEnv,api,api->GetValue(sequence,0,allocator,&firstElement));
     ONNXType elementType;
-    checkONNXStatus(jniEnv,api,api->GetValueType(firstElement,&elementType));
+    checkOrtStatus(jniEnv,api,api->GetValueType(firstElement,&elementType));
     jobject sequenceInfo;
     switch (elementType) {
         case ONNX_TYPE_TENSOR: {
             // Figure out element type
             OrtTensorTypeAndShapeInfo* firstElementInfo;
-            checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(firstElement,&firstElementInfo));
+            checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(firstElement,&firstElementInfo));
             ONNXTensorElementDataType element;
-            checkONNXStatus(jniEnv,api,api->GetTensorElementType(firstElementInfo,&element));
+            checkOrtStatus(jniEnv,api,api->GetTensorElementType(firstElementInfo,&element));
             api->ReleaseTensorTypeAndShapeInfo(firstElementInfo);
 
             // Convert element type into ONNXTensorType
@@ -666,24 +666,24 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
             jobject onnxJavaType = (*jniEnv)->CallStaticObjectMethod(jniEnv,onnxJavaTypeClazz,onnxJavaTypeMapFromONNXTensorType,onnxTensorTypeJava);
 
             // Construct sequence info
-            jmethodID sequenceInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,sequenceInfoClazz,"<init>","(ILai/onnxruntime/ONNXJavaType;)V");
+            jmethodID sequenceInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,sequenceInfoClazz,"<init>","(ILai/onnxruntime/OnnxJavaType;)V");
             sequenceInfo = (*jniEnv)->NewObject(jniEnv,sequenceInfoClazz,sequenceInfoConstructor,(jint)count,onnxJavaType);
             break;
         }
         case ONNX_TYPE_MAP: {
             // Extract key
             OrtValue* keys;
-            checkONNXStatus(jniEnv,api,api->GetValue(firstElement,0,allocator,&keys));
+            checkOrtStatus(jniEnv,api,api->GetValue(firstElement,0,allocator,&keys));
 
             // Extract key type
             OrtTensorTypeAndShapeInfo* keysInfo;
-            checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(keys,&keysInfo));
+            checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(keys,&keysInfo));
             ONNXTensorElementDataType key;
-            checkONNXStatus(jniEnv,api,api->GetTensorElementType(keysInfo,&key));
+            checkOrtStatus(jniEnv,api,api->GetTensorElementType(keysInfo,&key));
 
             // Get the element count of this map
             size_t mapCount;
-            checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(keysInfo,&mapCount));
+            checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(keysInfo,&mapCount));
 
             api->ReleaseTensorTypeAndShapeInfo(keysInfo);
 
@@ -694,13 +694,13 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
 
             // Extract value
             OrtValue* values;
-            checkONNXStatus(jniEnv,api,api->GetValue(firstElement,1,allocator,&values));
+            checkOrtStatus(jniEnv,api,api->GetValue(firstElement,1,allocator,&values));
 
             // Extract value type
             OrtTensorTypeAndShapeInfo* valuesInfo;
-            checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(values,&valuesInfo));
+            checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(values,&valuesInfo));
             ONNXTensorElementDataType value;
-            checkONNXStatus(jniEnv,api,api->GetTensorElementType(valuesInfo,&value));
+            checkOrtStatus(jniEnv,api,api->GetTensorElementType(valuesInfo,&value));
             api->ReleaseTensorTypeAndShapeInfo(valuesInfo);
 
             // Convert value type to java
@@ -712,7 +712,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
             char *mapInfoClassName = "ai/onnxruntime/MapInfo";
             jclass mapInfoClazz = (*jniEnv)->FindClass(jniEnv, mapInfoClassName);
             // Construct map info
-            jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,mapInfoClazz,"<init>","(ILai/onnxruntime/ONNXJavaType;Lai/onnxruntime/ONNXJavaType;)V");
+            jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,mapInfoClazz,"<init>","(ILai/onnxruntime/OnnxJavaType;Lai/onnxruntime/OnnxJavaType;)V");
             jobject mapInfo = (*jniEnv)->NewObject(jniEnv,mapInfoClazz,mapInfoConstructor,(jint)mapCount,onnxJavaTypeKey,onnxJavaTypeValue);
 
             // Free the intermediate tensors.
@@ -726,7 +726,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
         }
         default: {
             sequenceInfo = createEmptySequenceInfo(jniEnv);
-            throwONNXException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"Invalid element type found in sequence");
+            throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"Invalid element type found in sequence");
             break;
         }
     }
@@ -735,7 +735,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
     api->ReleaseValue(firstElement);
 
     // Construct the ONNXSequence object
-    char *sequenceClassName = "ai/onnxruntime/ONNXSequence";
+    char *sequenceClassName = "ai/onnxruntime/OnnxSequence";
     jclass sequenceClazz = (*jniEnv)->FindClass(jniEnv, sequenceClassName);
     jmethodID sequenceConstructor = (*jniEnv)->GetMethodID(jniEnv,sequenceClazz, "<init>", "(JJLai/onnxruntime/SequenceInfo;)V");
     jobject javaSequence = (*jniEnv)->NewObject(jniEnv, sequenceClazz, sequenceConstructor, (jlong)sequence, (jlong)allocator, sequenceInfo);
@@ -746,14 +746,14 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
 jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* map) {
     // Setup
     // Get the ONNXTensorType enum static method
-    char *onnxTensorTypeClassName = "ai/onnxruntime/TensorInfo$ONNXTensorType";
+    char *onnxTensorTypeClassName = "ai/onnxruntime/TensorInfo$OnnxTensorType";
     jclass onnxTensorTypeClazz = (*jniEnv)->FindClass(jniEnv, onnxTensorTypeClassName);
-    jmethodID onnxTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,onnxTensorTypeClazz, "mapFromInt", "(I)Lai/onnxruntime/TensorInfo$ONNXTensorType;");
+    jmethodID onnxTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv,onnxTensorTypeClazz, "mapFromInt", "(I)Lai/onnxruntime/TensorInfo$OnnxTensorType;");
 
     // Get the ONNXJavaType enum static method
-    char *javaDataTypeClassName = "ai/onnxruntime/ONNXJavaType";
+    char *javaDataTypeClassName = "ai/onnxruntime/OnnxJavaType";
     jclass onnxJavaTypeClazz = (*jniEnv)->FindClass(jniEnv, javaDataTypeClassName);
-    jmethodID onnxJavaTypeMapFromONNXTensorType = (*jniEnv)->GetStaticMethodID(jniEnv,onnxJavaTypeClazz, "mapFromONNXTensorType", "(Lai/onnxruntime/TensorInfo$ONNXTensorType;)Lai/onnxruntime/ONNXJavaType;");
+    jmethodID onnxJavaTypeMapFromONNXTensorType = (*jniEnv)->GetStaticMethodID(jniEnv,onnxJavaTypeClazz, "mapFromOnnxTensorType", "(Lai/onnxruntime/TensorInfo$OnnxTensorType;)Lai/onnxruntime/OnnxJavaType;");
 
     // Get the map info class
     char *mapInfoClassName = "ai/onnxruntime/MapInfo";
@@ -761,17 +761,17 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
 
     // Extract key
     OrtValue* keys;
-    checkONNXStatus(jniEnv,api,api->GetValue(map,0,allocator,&keys));
+    checkOrtStatus(jniEnv,api,api->GetValue(map,0,allocator,&keys));
 
     // Extract key type
     OrtTensorTypeAndShapeInfo* keysInfo;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(keys,&keysInfo));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(keys,&keysInfo));
     ONNXTensorElementDataType key;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(keysInfo,&key));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(keysInfo,&key));
 
     // Get the element count of this map
     size_t mapCount;
-    checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(keysInfo,&mapCount));
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(keysInfo,&mapCount));
 
     api->ReleaseTensorTypeAndShapeInfo(keysInfo);
 
@@ -782,13 +782,13 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
 
     // Extract value
     OrtValue* values;
-    checkONNXStatus(jniEnv,api,api->GetValue(map,1,allocator,&values));
+    checkOrtStatus(jniEnv,api,api->GetValue(map,1,allocator,&values));
 
     // Extract value type
     OrtTensorTypeAndShapeInfo* valuesInfo;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(values,&valuesInfo));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(values,&valuesInfo));
     ONNXTensorElementDataType value;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(valuesInfo,&value));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(valuesInfo,&value));
     api->ReleaseTensorTypeAndShapeInfo(valuesInfo);
 
     // Convert value type to java
@@ -797,15 +797,15 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
     jobject onnxJavaTypeValue = (*jniEnv)->CallStaticObjectMethod(jniEnv,onnxJavaTypeClazz,onnxJavaTypeMapFromONNXTensorType,onnxTensorTypeJavaValue);
 
     // Construct map info
-    jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,mapInfoClazz,"<init>","(ILai/onnxruntime/ONNXJavaType;Lai/onnxruntime/ONNXJavaType;)V");
+    jmethodID mapInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,mapInfoClazz,"<init>","(ILai/onnxruntime/OnnxJavaType;Lai/onnxruntime/OnnxJavaType;)V");
     jobject mapInfo = (*jniEnv)->NewObject(jniEnv,mapInfoClazz,mapInfoConstructor,(jint)mapCount,onnxJavaTypeKey,onnxJavaTypeValue);
 
     // Free the intermediate tensors.
-    checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,keys));
-    checkONNXStatus(jniEnv,api,api->AllocatorFree(allocator,values));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,keys));
+    checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,values));
 
     // Construct the ONNXMap object
-    char *mapClassName = "ai/onnxruntime/ONNXMap";
+    char *mapClassName = "ai/onnxruntime/OnnxMap";
     jclass mapClazz = (*jniEnv)->FindClass(jniEnv, mapClassName);
     jmethodID mapConstructor = (*jniEnv)->GetMethodID(jniEnv,mapClazz, "<init>", "(JJLai/onnxruntime/MapInfo;)V");
     jobject javaMap = (*jniEnv)->NewObject(jniEnv, mapClazz, mapConstructor, (jlong)map, (jlong) allocator, mapInfo);
@@ -816,15 +816,13 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
 jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* onnxValue) {
     // Note this is the ONNXType C enum
     ONNXType valueType;
-    checkONNXStatus(jniEnv,api,api->GetValueType(onnxValue,&valueType));
+    checkOrtStatus(jniEnv,api,api->GetValueType(onnxValue,&valueType));
     switch (valueType) {
         case ONNX_TYPE_TENSOR: {
             return createJavaTensorFromONNX(jniEnv, api, allocator, onnxValue);
         }
         case ONNX_TYPE_SEQUENCE: {
             return createJavaSequenceFromONNX(jniEnv, api, allocator, onnxValue);
-            //throwONNXException(jniEnv,"Sequence is not yet implemented.");
-            //break;
         }
         case ONNX_TYPE_MAP: {
             return createJavaMapFromONNX(jniEnv, api, allocator, onnxValue);
@@ -832,17 +830,17 @@ jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
         case ONNX_TYPE_UNKNOWN:
         case ONNX_TYPE_OPAQUE:
         case ONNX_TYPE_SPARSETENSOR: {
-            throwONNXException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"These types are unsupported - ONNX_TYPE_UNKNOWN, ONNX_TYPE_OPAQUE, ONNX_TYPE_SPARSETENSOR.");
+            throwOrtException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"These types are unsupported - ONNX_TYPE_UNKNOWN, ONNX_TYPE_OPAQUE, ONNX_TYPE_SPARSETENSOR.");
             break;
         }
     }
     return NULL;
 }
 
-jint throwONNXException(JNIEnv *jniEnv, int messageId, const char *message) {
+jint throwOrtException(JNIEnv *jniEnv, int messageId, const char *message) {
     jstring messageStr = (*jniEnv)->NewStringUTF(jniEnv, message);
 
-    char *className = "ai/onnxruntime/ONNXException";
+    char *className = "ai/onnxruntime/OrtException";
     jclass exClazz = (*jniEnv)->FindClass(jniEnv,className);
     jmethodID exConstructor = (*jniEnv)->GetMethodID(jniEnv, exClazz, "<init>", "(ILjava/lang/String;)V");
     jobject javaException = (*jniEnv)->NewObject(jniEnv, exClazz, exConstructor, messageId, messageStr);
@@ -881,7 +879,7 @@ jint convertErrorCode(OrtErrorCode code) {
     }
 }
 
-void checkONNXStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
+void checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
     if (status != NULL) {
         const char* message = api->GetErrorMessage(status);
         int len = strlen(message)+1;
@@ -889,6 +887,6 @@ void checkONNXStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
         memcpy(copy,message,len);
         int messageId = convertErrorCode(api->GetErrorCode(status));
         api->ReleaseStatus(status);
-        throwONNXException(jniEnv,messageId,copy);
+        throwOrtException(jniEnv,messageId,copy);
     }
 }

@@ -5,21 +5,21 @@
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "ai_onnxruntime_ONNXMap.h"
+#include "ai_onnxruntime_OnnxMap.h"
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    getStringKeys
  * Signature: (J)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringKeys
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxMap_getStringKeys
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract key
     OrtValue* keys;
-    checkONNXStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
+    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
 
     // Convert to Java String array
     jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
@@ -30,18 +30,18 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringKeys
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    getLongKeys
  * Signature: (JJ)[J
  */
-JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongKeys
+JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxMap_getLongKeys
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract key
     OrtValue* keys;
-    checkONNXStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
+    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
 
     jlongArray output = createLongArrayFromTensor(jniEnv, api, keys);
 
@@ -51,18 +51,18 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongKeys
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    getStringValues
  * Signature: (JJ)[Ljava/lang/String;
  */
-JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringValues
+JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxMap_getStringValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkONNXStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
 
     // Convert to Java String array
     jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, values);
@@ -73,18 +73,18 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_ONNXMap_getStringValues
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    getLongValues
  * Signature: (JJ)[J
  */
-JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongValues
+JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxMap_getLongValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkONNXStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
 
     jlongArray output = createLongArrayFromTensor(jniEnv, api, values);
 
@@ -94,18 +94,18 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_ONNXMap_getLongValues
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    getFloatValues
  * Signature: (JJ)[F
  */
-JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXMap_getFloatValues
+JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_OnnxMap_getFloatValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkONNXStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
 
     jfloatArray output = createFloatArrayFromTensor(jniEnv, api, values);
 
@@ -115,18 +115,18 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_ONNXMap_getFloatValues
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    getDoubleValues
  * Signature: (JJ)[D
  */
-JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXMap_getDoubleValues
+JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxMap_getDoubleValues
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong allocatorHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkONNXStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
 
     jdoubleArray output = createDoubleArrayFromTensor(jniEnv, api, values);
 
@@ -136,11 +136,11 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_ONNXMap_getDoubleValues
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXMap
+ * Class:     ai_onnxruntime_OnnxMap
  * Method:    close
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_ONNXMap_close
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxMap_close
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;

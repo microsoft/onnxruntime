@@ -5,28 +5,28 @@
 #include <jni.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ONNXUtil.h"
-#include "ai_onnxruntime_ONNXAllocator.h"
+#include "ai_onnxruntime_OrtAllocator.h"
 
 /*
- * Class:     ai_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_OrtAllocator
  * Method:    createAllocator
  * Signature: ()J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createAllocator
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtAllocator_createAllocator
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator;
-    checkONNXStatus(jniEnv,api,api->GetAllocatorWithDefaultOptions(&allocator));
+    checkOrtStatus(jniEnv,api,api->GetAllocatorWithDefaultOptions(&allocator));
     return (jlong)allocator;
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_OrtAllocator
  * Method:    createTensor
  * Signature: (JJLjava/lang/Object;[JI)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensor
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtAllocator_createTensor
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject dataObj, jlongArray shape, jint onnxTypeJava) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
@@ -41,22 +41,22 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensor
 
     // Create the OrtValue
     OrtValue* ortValue;
-    checkONNXStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,(int64_t*)shapeArr,shapeLen,onnxType,&ortValue));
+    checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,(int64_t*)shapeArr,shapeLen,onnxType,&ortValue));
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,shape,shapeArr,JNI_ABORT);
 
     // Get a reference to the OrtValue's data
     uint8_t* tensorData;
-    checkONNXStatus(jniEnv, api, api->GetTensorMutableData(ortValue, (void**) &tensorData));
+    checkOrtStatus(jniEnv, api, api->GetTensorMutableData(ortValue, (void**) &tensorData));
 
     // Extract the tensor shape information
     OrtTensorTypeAndShapeInfo* info;
-    checkONNXStatus(jniEnv,api,api->GetTensorTypeAndShape(ortValue, &info));
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(ortValue, &info));
     size_t dimensions;
-    checkONNXStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
+    checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&dimensions));
     size_t arrSize;
-    checkONNXStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
     ONNXTensorElementDataType onnxTypeEnum;
-    checkONNXStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
     api->ReleaseTensorTypeAndShapeInfo(info);
 
     // Copy the java array into the tensor
@@ -67,17 +67,17 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensor
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_OrtAllocator
  * Method:    createTensorFromBuffer
  * Signature: (JJLjava/nio/Buffer;J[JI)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensorFromBuffer
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtAllocator_createTensorFromBuffer
         (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     const OrtMemoryInfo* allocatorInfo;
-    checkONNXStatus(jniEnv, api, api->AllocatorGetInfo(allocator,&allocatorInfo));
+    checkOrtStatus(jniEnv, api, api->AllocatorGetInfo(allocator,&allocatorInfo));
 
     // Convert type to ONNX C enum
     ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeJava);
@@ -92,7 +92,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensorFromBuffer
 
     // Create the OrtValue
     OrtValue* ortValue;
-    checkONNXStatus(jniEnv, api, api->CreateTensorWithDataAsOrtValue(allocatorInfo,bufferArr,bufferSize,(int64_t*)shapeArr,shapeLen,onnxType,&ortValue));
+    checkOrtStatus(jniEnv, api, api->CreateTensorWithDataAsOrtValue(allocatorInfo,bufferArr,bufferSize,(int64_t*)shapeArr,shapeLen,onnxType,&ortValue));
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,shape,shapeArr,JNI_ABORT);
 
     // Return the pointer to the OrtValue
@@ -100,11 +100,11 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createTensorFromBuffer
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_OrtAllocator
  * Method:    createString
  * Signature: (JJLjava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createString
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtAllocator_createString
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jstring input) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
@@ -112,21 +112,21 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createString
 
     // Extract the shape information
     int64_t* shapeArr;
-    checkONNXStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t),(void**)&shapeArr));
+    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t),(void**)&shapeArr));
     shapeArr[0] = 1;
 
     // Create the OrtValue
     OrtValue* ortValue;
-    checkONNXStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,shapeArr,1,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
+    checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,shapeArr,1,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
 
     // Release the shape
-    checkONNXStatus(jniEnv, api, api->AllocatorFree(allocator,shapeArr));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator,shapeArr));
 
     // Create the buffer for the Java string
     const char* stringBuffer = (*jniEnv)->GetStringUTFChars(jniEnv,input,NULL);
 
     // Assign the strings into the Tensor
-    checkONNXStatus(jniEnv, api, api->FillStringTensor(ortValue,&stringBuffer,1));
+    checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue,&stringBuffer,1));
 
     // Release the Java string
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,input,stringBuffer);
@@ -135,11 +135,11 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createString
 }
 
 /*
- * Class:     ai_onnxruntime_ONNXAllocator
+ * Class:     ai_onnxruntime_OrtAllocator
  * Method:    createStringTensor
  * Signature: (JJ[Ljava/lang/Object;[J)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createStringTensor
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtAllocator_createStringTensor
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobjectArray stringArr, jlongArray shape) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
@@ -155,14 +155,14 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createStringTensor
 
     // Create the OrtValue
     OrtValue* ortValue;
-    checkONNXStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,(int64_t*)shapeArr,shapeLen,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
+    checkOrtStatus(jniEnv, api, api->CreateTensorAsOrtValue(allocator,(int64_t*)shapeArr,shapeLen,ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,&ortValue));
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,shape,shapeArr,JNI_ABORT);
 
     // Create the buffers for the Java strings
     const char** strings;
-    checkONNXStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(char*)*length,(void**)&strings));
+    checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(char*)*length,(void**)&strings));
     jobject* javaStrings;
-    checkONNXStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(jobject)*length,(void**)&javaStrings));
+    checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(jobject)*length,(void**)&javaStrings));
 
     // Copy the java strings into the buffers
     for (int i = 0; i < length; i++) {
@@ -171,7 +171,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createStringTensor
     }
 
     // Assign the strings into the Tensor
-    checkONNXStatus(jniEnv, api, api->FillStringTensor(ortValue,strings,length));
+    checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue,strings,length));
 
     // Release the Java strings
     for (int i = 0; i < length; i++) {
@@ -179,8 +179,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_ONNXAllocator_createStringTensor
     }
 
     // Release the buffers
-    checkONNXStatus(jniEnv, api, api->AllocatorFree(allocator, strings));
-    checkONNXStatus(jniEnv, api, api->AllocatorFree(allocator, javaStrings));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, strings));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaStrings));
 
     return (jlong) ortValue;
 }

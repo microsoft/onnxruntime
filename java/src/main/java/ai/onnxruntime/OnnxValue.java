@@ -6,17 +6,17 @@ package ai.onnxruntime;
 
 /**
  * Top interface for input and output values from ONNX models.
- * Currently implemented by {@link ONNXTensor}, {@link ONNXSequence} and {@link ONNXMap}. Will be sealed to
+ * Currently implemented by {@link OnnxTensor}, {@link OnnxSequence} and {@link OnnxMap}. Will be sealed to
  * these types one day.
  *
  * Does not support sparse tensors.
  */
-public interface ONNXValue extends AutoCloseable {
+public interface OnnxValue extends AutoCloseable {
 
     /**
-     * The type of the ONNXValue, mirroring the id in the C API.
+     * The type of the {@link OnnxValue}, mirroring the id in the C API.
      */
-    public enum ONNXValueType {
+    public enum OnnxValueType {
         ONNX_TYPE_UNKNOWN(0),
         ONNX_TYPE_TENSOR(1),
         ONNX_TYPE_SEQUENCE(2),
@@ -28,16 +28,16 @@ public interface ONNXValue extends AutoCloseable {
          * The id number of this type in the C API.
          */
         public final int value;
-        ONNXValueType(int value) {
+        OnnxValueType(int value) {
             this.value = value;
         }
     }
 
     /**
-     * Gets the type of this ONNXValue.
+     * Gets the type of this OnnxValue.
      * @return The value type.
      */
-    public ONNXValueType getType();
+    public OnnxValueType getType();
 
     /**
      * Returns the value as a POJO copying it out of the native heap.
@@ -45,28 +45,28 @@ public interface ONNXValue extends AutoCloseable {
      *
      * Overridden by the subclasses with a more specific type.
      * @return The value.
-     * @throws ONNXException If an error occurred reading the value.
+     * @throws OrtException If an error occurred reading the value.
      */
-    public Object getValue() throws ONNXException;
+    public Object getValue() throws OrtException;
 
     /**
-     * Gets the info object associated with this ONNXValue.
+     * Gets the info object associated with this OnnxValue.
      * @return The info.
      */
     public ValueInfo getInfo();
 
     /**
-     * Closes the ONNXValue, freeing it's native memory.
+     * Closes the OnnxValue, freeing it's native memory.
      */
     @Override
     public void close();
 
     /**
      * Calls close on each element of the iterable.
-     * @param itr An iterable of closeable ONNXValues.
+     * @param itr An iterable of closeable OnnxValues.
      */
-    public static void close(Iterable<? extends ONNXValue> itr) {
-        for (ONNXValue t : itr) {
+    public static void close(Iterable<? extends OnnxValue> itr) {
+        for (OnnxValue t : itr) {
             t.close();
         }
     }

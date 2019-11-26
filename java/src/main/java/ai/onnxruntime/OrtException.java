@@ -5,7 +5,7 @@
 package ai.onnxruntime;
 
 /**
- * An exception which contains any error messages out of ONNX.
+ * An exception which contains any error messages out of the onnx-runtime.
  */
 public class OrtException extends Exception {
     private static final long serialVersionUID = 1L;
@@ -13,7 +13,7 @@ public class OrtException extends Exception {
     private final OrtErrorCode errorCode;
 
     /**
-     * Creates an ONNXException with a default Java error code and the specified message.
+     * Creates an OrtException with a default Java error code and the specified message.
      * @param message The message to use.
      */
     public OrtException(String message) {
@@ -31,7 +31,7 @@ public class OrtException extends Exception {
     }
 
     /**
-     * Creates an ONNXException using the specified error code and message.
+     * Creates an OrtException using the specified error code and message.
      * @param code The error code from the native runtime.
      * @param message The error message.
      */

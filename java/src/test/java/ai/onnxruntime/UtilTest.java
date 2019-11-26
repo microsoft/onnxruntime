@@ -18,7 +18,7 @@ public class UtilTest {
 
         long[] candidateShape = new long[]{1,3,2,5};
 
-        float[][][][] reshapedArray = (float[][][][]) ONNXUtil.reshape(input,candidateShape);
+        float[][][][] reshapedArray = (float[][][][]) OrtUtil.reshape(input,candidateShape);
 
         float[] firstTestArray = new float[]{0,1,2,3,4};
         float[] secondTestArray = new float[]{5,6,7,8,9};
@@ -41,7 +41,7 @@ public class UtilTest {
 
         long[] candidateShape = new long[]{3,3,2,2};
 
-        float[][][][] reshapedArray = (float[][][][]) ONNXUtil.reshape(input,candidateShape);
+        float[][][][] reshapedArray = (float[][][][]) OrtUtil.reshape(input,candidateShape);
 
         float[] oneTestArray = new float[]{0,1};
         float[] twoTestArray = new float[]{2,3};

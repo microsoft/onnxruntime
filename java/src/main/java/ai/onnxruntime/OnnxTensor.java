@@ -8,16 +8,16 @@ import java.io.IOException;
 import java.nio.Buffer;
 
 /**
- * A Java object wrapping an ONNX Tensor. Tensors are the main input to the library,
+ * A Java object wrapping an OnnxTensor. Tensors are the main input to the library,
  * and can also be returned as outputs.
  */
-public class ONNXTensor implements ONNXValue {
+public class OnnxTensor implements OnnxValue {
 
     static {
         try {
-            ONNX.init();
+            OnnxRuntime.init();
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load ONNX library",e);
+            throw new RuntimeException("Failed to load onnx-runtime library",e);
         }
     }
 
@@ -29,11 +29,11 @@ public class ONNXTensor implements ONNXValue {
 
     private final Buffer buffer; // This reference is held to ensure the Tensor's backing store doesn't go out of scope.
 
-    ONNXTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
+    OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info) {
         this(nativeHandle,allocatorHandle,info,null);
     }
 
-    ONNXTensor(long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer) {
+    OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer) {
         this.nativeHandle = nativeHandle;
         this.allocatorHandle = allocatorHandle;
         this.info = info;
@@ -41,8 +41,8 @@ public class ONNXTensor implements ONNXValue {
     }
 
     @Override
-    public ONNXValueType getType() {
-        return ONNXValueType.ONNX_TYPE_TENSOR;
+    public OnnxValueType getType() {
+        return OnnxValueType.ONNX_TYPE_TENSOR;
     }
 
     long getNativeHandle() {
@@ -53,35 +53,35 @@ public class ONNXTensor implements ONNXValue {
      * Either returns a boxed primitive if the Tensor is a scalar, or a multidimensional array of
      * primitives if it has multiple dimensions.
      * @return A Java value.
-     * @throws ONNXException If the value could not be extracted as the Tensor is invalid, or if the native code encountered an error.
+     * @throws OrtException If the value could not be extracted as the Tensor is invalid, or if the native code encountered an error.
      */
     @Override
-    public Object getValue() throws ONNXException {
+    public Object getValue() throws OrtException {
         if (info.isScalar()) {
             switch (info.type) {
                 case FLOAT:
-                    return getFloat(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getFloat(OnnxRuntime.ortApiHandle,nativeHandle,info.onnxType.value);
                 case DOUBLE:
-                    return getDouble(ONNX.ortApiHandle,nativeHandle);
+                    return getDouble(OnnxRuntime.ortApiHandle,nativeHandle);
                 case INT8:
-                    return getByte(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getByte(OnnxRuntime.ortApiHandle,nativeHandle,info.onnxType.value);
                 case INT16:
-                    return getShort(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getShort(OnnxRuntime.ortApiHandle,nativeHandle,info.onnxType.value);
                 case INT32:
-                    return getInt(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getInt(OnnxRuntime.ortApiHandle,nativeHandle,info.onnxType.value);
                 case INT64:
-                    return getLong(ONNX.ortApiHandle,nativeHandle,info.onnxType.value);
+                    return getLong(OnnxRuntime.ortApiHandle,nativeHandle,info.onnxType.value);
                 case BOOL:
-                    return getBool(ONNX.ortApiHandle,nativeHandle);
+                    return getBool(OnnxRuntime.ortApiHandle,nativeHandle);
                 case STRING:
-                    return getString(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
+                    return getString(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
                 case UNKNOWN:
                 default:
-                    throw new ONNXException("Extracting the value of an invalid Tensor.");
+                    throw new OrtException("Extracting the value of an invalid Tensor.");
             }
         } else {
             Object carrier = info.makeCarrier();
-            getArray(ONNX.ortApiHandle,nativeHandle, allocatorHandle, carrier);
+            getArray(OnnxRuntime.ortApiHandle,nativeHandle, allocatorHandle, carrier);
             return carrier;
         }
     }
@@ -93,7 +93,7 @@ public class ONNXTensor implements ONNXValue {
 
     @Override
     public String toString() {
-        return "ONNXTensor(info="+info.toString()+")";
+        return "OnnxTensor(info="+info.toString()+")";
     }
 
     /**
@@ -101,19 +101,19 @@ public class ONNXTensor implements ONNXValue {
      */
     @Override
     public void close() {
-        close(ONNX.ortApiHandle,nativeHandle);
+        close(OnnxRuntime.ortApiHandle,nativeHandle);
     }
 
-    private native float getFloat(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native double getDouble(long apiHandle, long nativeHandle) throws ONNXException;
-    private native byte getByte(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native short getShort(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native int getInt(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native long getLong(long apiHandle, long nativeHandle, int onnxType) throws ONNXException;
-    private native String getString(long apiHandle, long nativeHandle, long allocatorHandle) throws ONNXException;
-    private native boolean getBool(long apiHandle, long nativeHandle) throws ONNXException;
+    private native float getFloat(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
+    private native double getDouble(long apiHandle, long nativeHandle) throws OrtException;
+    private native byte getByte(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
+    private native short getShort(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
+    private native int getInt(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
+    private native long getLong(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
+    private native String getString(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
+    private native boolean getBool(long apiHandle, long nativeHandle) throws OrtException;
 
-    private native void getArray(long apiHandle, long nativeHandle, long allocatorHandle, Object carrier) throws ONNXException;
+    private native void getArray(long apiHandle, long nativeHandle, long allocatorHandle, Object carrier) throws OrtException;
 
     private native void close(long apiHandle, long nativeHandle);
 

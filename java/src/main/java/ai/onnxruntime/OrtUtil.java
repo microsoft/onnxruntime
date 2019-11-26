@@ -10,14 +10,14 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Util code for interacting with shape arrays.
+ * Util code for interacting with Java arrays.
  */
-public final class ONNXUtil {
+public final class OrtUtil {
 
     /**
      * Private constructor for static util class.
      */
-    private ONNXUtil() {}
+    private OrtUtil() {}
 
     /**
      * Converts an long shape into a int shape.
@@ -154,7 +154,7 @@ public final class ONNXUtil {
      * @return An n-dimensional boolean array.
      */
     public static Object reshape(boolean[] input, long[] shape) {
-        Object output = ONNXUtil.newBooleanArray(shape);
+        Object output = OrtUtil.newBooleanArray(shape);
         reshape(input,output,0);
         return output;
     }
@@ -167,7 +167,7 @@ public final class ONNXUtil {
      * @return An n-dimensional byte array.
      */
     public static Object reshape(byte[] input, long[] shape) {
-        Object output = ONNXUtil.newByteArray(shape);
+        Object output = OrtUtil.newByteArray(shape);
         reshape(input,output,0);
         return output;
     }
@@ -180,7 +180,7 @@ public final class ONNXUtil {
      * @return An n-dimensional short array.
      */
     public static Object reshape(short[] input, long[] shape) {
-        Object output = ONNXUtil.newShortArray(shape);
+        Object output = OrtUtil.newShortArray(shape);
         reshape(input,output,0);
         return output;
     }
@@ -193,7 +193,7 @@ public final class ONNXUtil {
      * @return An n-dimensional int array.
      */
     public static Object reshape(int[] input, long[] shape) {
-        Object output = ONNXUtil.newIntArray(shape);
+        Object output = OrtUtil.newIntArray(shape);
         reshape(input,output,0);
         return output;
     }
@@ -206,7 +206,7 @@ public final class ONNXUtil {
      * @return An n-dimensional long array.
      */
     public static Object reshape(long[] input, long[] shape) {
-        Object output = ONNXUtil.newLongArray(shape);
+        Object output = OrtUtil.newLongArray(shape);
         reshape(input,output,0);
         return output;
     }
@@ -219,7 +219,7 @@ public final class ONNXUtil {
      * @return An n-dimensional float array.
      */
     public static Object reshape(float[] input, long[] shape) {
-        Object output = ONNXUtil.newFloatArray(shape);
+        Object output = OrtUtil.newFloatArray(shape);
         reshape(input,output,0);
         return output;
     }
@@ -232,7 +232,7 @@ public final class ONNXUtil {
      * @return An n-dimensional double array.
      */
     public static Object reshape(double[] input, long[] shape) {
-        Object output = ONNXUtil.newDoubleArray(shape);
+        Object output = OrtUtil.newDoubleArray(shape);
         reshape(input,output,0);
         return output;
     }

@@ -12,18 +12,18 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * A sequence of ONNXValue all of the same type.
+ * A sequence of OnnxValue all of the same type.
  *
  * Supports the types mentioned in "onnxruntime_c_api.h",
  * currently String, Long, Float, Double, Map&gt;String,Float&lt;, Map&gt;Long,Float&lt;.
  */
-public class ONNXSequence implements ONNXValue {
+public class OnnxSequence implements OnnxValue {
 
     static {
         try {
-            ONNX.init();
+            OnnxRuntime.init();
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load ONNX library",e);
+            throw new RuntimeException("Failed to load onnx-runtime library",e);
         }
     }
 
@@ -33,15 +33,15 @@ public class ONNXSequence implements ONNXValue {
 
     private final SequenceInfo info;
 
-    ONNXSequence(long nativeHandle, long allocatorHandle, SequenceInfo info) {
+    OnnxSequence(long nativeHandle, long allocatorHandle, SequenceInfo info) {
         this.nativeHandle = nativeHandle;
         this.allocatorHandle = allocatorHandle;
         this.info = info;
     }
 
     @Override
-    public ONNXValueType getType() {
-        return ONNXValueType.ONNX_TYPE_SEQUENCE;
+    public OnnxValueType getType() {
+        return OnnxValueType.ONNX_TYPE_SEQUENCE;
     }
 
     /**
@@ -49,10 +49,10 @@ public class ONNXSequence implements ONNXValue {
      *
      * Returns either a {@link List} of primitives, {@link String}s, or {@link java.util.Map}s.
      * @return A Java object containing the value.
-     * @throws ONNXException If the runtime failed to read an element.
+     * @throws OrtException If the runtime failed to read an element.
      */
     @Override
-    public List<Object> getValue() throws ONNXException {
+    public List<Object> getValue() throws OrtException {
         if (info.sequenceOfMaps) {
             List<Object> outputSequence = new ArrayList<>();
             for (int i = 0; i < info.length; i++) {
@@ -68,7 +68,7 @@ public class ONNXSequence implements ONNXValue {
         } else {
             switch (info.sequenceType) {
                 case FLOAT:
-                    float[] floats = getFloats(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
+                    float[] floats = getFloats(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
                     ArrayList<Object> boxed = new ArrayList<>(floats.length);
                     for (int i = 0; i < floats.length; i++) {
                         // cast float to Float
@@ -76,11 +76,11 @@ public class ONNXSequence implements ONNXValue {
                     }
                     return boxed;
                 case DOUBLE:
-                    return Arrays.stream(getDoubles(ONNX.ortApiHandle,nativeHandle,allocatorHandle)).boxed().collect(Collectors.toList());
+                    return Arrays.stream(getDoubles(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle)).boxed().collect(Collectors.toList());
                 case INT64:
-                    return Arrays.stream(getLongs(ONNX.ortApiHandle,nativeHandle,allocatorHandle)).boxed().collect(Collectors.toList());
+                    return Arrays.stream(getLongs(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle)).boxed().collect(Collectors.toList());
                 case STRING:
-                    String[] strings = getStrings(ONNX.ortApiHandle,nativeHandle,allocatorHandle);
+                    String[] strings = getStrings(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
                     ArrayList<Object> list = new ArrayList<>(strings.length);
                     list.addAll(Arrays.asList(strings));
                     return list;
@@ -90,7 +90,7 @@ public class ONNXSequence implements ONNXValue {
                 case INT32:
                 case UNKNOWN:
                 default:
-                    throw new ONNXException("Unsupported type in a sequence, found " + info.sequenceType);
+                    throw new OrtException("Unsupported type in a sequence, found " + info.sequenceType);
             }
         }
     }
@@ -102,7 +102,7 @@ public class ONNXSequence implements ONNXValue {
 
     @Override
     public String toString() {
-        return "ONNXSequence(info="+info.toString()+")";
+        return "OnnxSequence(info="+info.toString()+")";
     }
 
     /**
@@ -110,27 +110,27 @@ public class ONNXSequence implements ONNXValue {
      */
     @Override
     public void close() {
-        close(ONNX.ortApiHandle,nativeHandle);
+        close(OnnxRuntime.ortApiHandle,nativeHandle);
     }
 
-    private Object[] getMapKeys(int index) throws ONNXException {
-        if (info.mapInfo.keyType == ONNXJavaType.STRING) {
-            return getStringKeys(ONNX.ortApiHandle,nativeHandle,allocatorHandle,index);
+    private Object[] getMapKeys(int index) throws OrtException {
+        if (info.mapInfo.keyType == OnnxJavaType.STRING) {
+            return getStringKeys(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index);
         } else {
-            return Arrays.stream(getLongKeys(ONNX.ortApiHandle,nativeHandle,allocatorHandle,index)).boxed().toArray();
+            return Arrays.stream(getLongKeys(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index)).boxed().toArray();
         }
     }
 
-    private Object[] getMapValues(int index) throws ONNXException {
+    private Object[] getMapValues(int index) throws OrtException {
         switch (info.mapInfo.valueType) {
             case STRING: {
-                return getStringValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle,index);
+                return getStringValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index);
             }
             case INT64:{
-                return Arrays.stream(getLongValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle,index)).boxed().toArray();
+                return Arrays.stream(getLongValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index)).boxed().toArray();
             }
             case FLOAT:{
-                float[] floats = getFloatValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle,index);
+                float[] floats = getFloatValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index);
                 Float[] boxed = new Float[floats.length];
                 for (int i = 0; i < floats.length; i++) {
                     // cast float to Float
@@ -139,7 +139,7 @@ public class ONNXSequence implements ONNXValue {
                 return boxed;
             }
             case DOUBLE:{
-                return Arrays.stream(getDoubleValues(ONNX.ortApiHandle,nativeHandle,allocatorHandle,index)).boxed().toArray();
+                return Arrays.stream(getDoubleValues(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index)).boxed().toArray();
             }
             default:
                 throw new RuntimeException("Invalid or unknown valueType: " + info.mapInfo.valueType);
@@ -147,18 +147,18 @@ public class ONNXSequence implements ONNXValue {
     }
 
 
-    private native String[] getStringKeys(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws ONNXException;
-    private native long[] getLongKeys(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws ONNXException;
+    private native String[] getStringKeys(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws OrtException;
+    private native long[] getLongKeys(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws OrtException;
 
-    private native String[] getStringValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws ONNXException;
-    private native long[] getLongValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws ONNXException;
-    private native float[] getFloatValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws ONNXException;
-    private native double[] getDoubleValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws ONNXException;
+    private native String[] getStringValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws OrtException;
+    private native long[] getLongValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws OrtException;
+    private native float[] getFloatValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws OrtException;
+    private native double[] getDoubleValues(long apiHandle, long nativeHandle,long allocatorHandle, int index) throws OrtException;
 
-    private native String[] getStrings(long apiHandle, long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native long[] getLongs(long apiHandle, long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native float[] getFloats(long apiHandle, long nativeHandle,long allocatorHandle) throws ONNXException;
-    private native double[] getDoubles(long apiHandle, long nativeHandle,long allocatorHandle) throws ONNXException;
+    private native String[] getStrings(long apiHandle, long nativeHandle,long allocatorHandle) throws OrtException;
+    private native long[] getLongs(long apiHandle, long nativeHandle,long allocatorHandle) throws OrtException;
+    private native float[] getFloats(long apiHandle, long nativeHandle,long allocatorHandle) throws OrtException;
+    private native double[] getDoubles(long apiHandle, long nativeHandle,long allocatorHandle) throws OrtException;
 
     private native void close(long apiHandle, long nativeHandle);
 }

@@ -5,7 +5,7 @@
 package ai.onnxruntime;
 
 /**
- * Describes an {@link ONNXMap} object or output node.
+ * Describes an {@link OnnxMap} object or output node.
  */
 public class MapInfo implements ValueInfo {
 
@@ -17,20 +17,20 @@ public class MapInfo implements ValueInfo {
     /**
      * The Java type of the keys.
      */
-    public final ONNXJavaType keyType;
+    public final OnnxJavaType keyType;
 
     /**
      * The Java type of the values.
      */
-    public final ONNXJavaType valueType;
+    public final OnnxJavaType valueType;
 
-    MapInfo(ONNXJavaType keyType, ONNXJavaType valueType) {
+    MapInfo(OnnxJavaType keyType, OnnxJavaType valueType) {
         this.size = -1;
         this.keyType = keyType;
         this.valueType = valueType;
     }
 
-    MapInfo(int size, ONNXJavaType keyType, ONNXJavaType valueType) {
+    MapInfo(int size, OnnxJavaType keyType, OnnxJavaType valueType) {
         this.size = size;
         this.keyType = keyType;
         this.valueType = valueType;

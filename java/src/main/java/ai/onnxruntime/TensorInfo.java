@@ -21,7 +21,7 @@ public class TensorInfo implements ValueInfo {
     /**
      * The native element types supported by the ONNX runtime.
      */
-    public enum ONNXTensorType {
+    public enum OnnxTensorType {
         ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED(0),
         ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8(1),   // maps to c type uint8_t
         ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8(2),    // maps to c type int8_t
@@ -45,15 +45,15 @@ public class TensorInfo implements ValueInfo {
          */
         public final int value;
 
-        private static final ONNXTensorType[] values = new ONNXTensorType[17];
+        private static final OnnxTensorType[] values = new OnnxTensorType[17];
 
         static {
-            for (ONNXTensorType ot : ONNXTensorType.values()) {
+            for (OnnxTensorType ot : OnnxTensorType.values()) {
                 values[ot.value] = ot;
             }
         }
 
-        ONNXTensorType(int value) {
+        OnnxTensorType(int value) {
             this.value = value;
         }
 
@@ -62,7 +62,7 @@ public class TensorInfo implements ValueInfo {
          * @param value The index of the Java enum.
          * @return The Java enum.
          */
-        public static ONNXTensorType mapFromInt(int value) {
+        public static OnnxTensorType mapFromInt(int value) {
             if ((value > 0) && (value < values.length)) {
                 return values[value];
             } else {
@@ -71,31 +71,31 @@ public class TensorInfo implements ValueInfo {
         }
 
         /**
-         * Maps a ONNXJavaType into the appropriate native element type.
+         * Maps a OnnxJavaType into the appropriate native element type.
          * @param type The type of the Java input/output.
          * @return The native element type.
          */
-        public static ONNXTensorType mapFromJavaType(ONNXJavaType type) {
+        public static OnnxTensorType mapFromJavaType(OnnxJavaType type) {
             switch (type) {
                 case FLOAT:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
                 case DOUBLE:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
                 case INT8:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
                 case INT16:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
                 case INT32:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
                 case INT64:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
                 case BOOL:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
                 case STRING:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
                 case UNKNOWN:
                 default:
-                    return ONNXTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+                    return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
             }
         }
     }
@@ -105,14 +105,14 @@ public class TensorInfo implements ValueInfo {
     /**
      * The Java type of this tensor.
      */
-    public final ONNXJavaType type;
+    public final OnnxJavaType type;
 
     /**
      * The native type of this tensor.
      */
-    public final ONNXTensorType onnxType;
+    public final OnnxTensorType onnxType;
 
-    TensorInfo(long[] shape, ONNXJavaType type, ONNXTensorType onnxType) {
+    TensorInfo(long[] shape, OnnxJavaType type, OnnxTensorType onnxType) {
         this.shape = shape;
         this.type = type;
         this.onnxType = onnxType;
@@ -144,39 +144,39 @@ public class TensorInfo implements ValueInfo {
      * @return True if the shape is valid.
      */
     private boolean validateShape() {
-        return ONNXUtil.validateShape(shape);
+        return OrtUtil.validateShape(shape);
     }
 
     /**
      * Constructs an array the right shape and type to hold this tensor.
      * @return A multidimensional array of the appropriate primitive type (or String).
-     * @throws ONNXException If the shape isn't representable in Java (i.e. if one of it's indices is greater than an int).
+     * @throws OrtException If the shape isn't representable in Java (i.e. if one of it's indices is greater than an int).
      */
-    public Object makeCarrier() throws ONNXException {
+    public Object makeCarrier() throws OrtException {
         if (!validateShape()) {
-            throw new ONNXException("This tensor is not representable in Java, it's too big - shape = " + Arrays.toString(shape));
+            throw new OrtException("This tensor is not representable in Java, it's too big - shape = " + Arrays.toString(shape));
         }
         switch (type) {
             case FLOAT:
-                return ONNXUtil.newFloatArray(shape);
+                return OrtUtil.newFloatArray(shape);
             case DOUBLE:
-                return ONNXUtil.newDoubleArray(shape);
+                return OrtUtil.newDoubleArray(shape);
             case INT8:
-                return ONNXUtil.newByteArray(shape);
+                return OrtUtil.newByteArray(shape);
             case INT16:
-                return ONNXUtil.newShortArray(shape);
+                return OrtUtil.newShortArray(shape);
             case INT32:
-                return ONNXUtil.newIntArray(shape);
+                return OrtUtil.newIntArray(shape);
             case INT64:
-                return ONNXUtil.newLongArray(shape);
+                return OrtUtil.newLongArray(shape);
             case BOOL:
-                return ONNXUtil.newBooleanArray(shape);
+                return OrtUtil.newBooleanArray(shape);
             case STRING:
-                return new String[(int) ONNXUtil.elementCount(shape)];
+                return new String[(int) OrtUtil.elementCount(shape)];
             case UNKNOWN:
-                throw new ONNXException("Can't construct a carrier for an invalid type.");
+                throw new OrtException("Can't construct a carrier for an invalid type.");
             default:
-                throw new ONNXException("Unsupported type - " + type);
+                throw new OrtException("Unsupported type - " + type);
         }
     }
 
@@ -185,12 +185,12 @@ public class TensorInfo implements ValueInfo {
      * used to allocate the appropriate amount of native memory.
      * @param obj The object to inspect.
      * @return A TensorInfo which can be used to make the right size Tensor.
-     * @throws ONNXException If the supplied Object isn't an array, or is an invalid type.
+     * @throws OrtException If the supplied Object isn't an array, or is an invalid type.
      */
-    public static TensorInfo constructFromJavaArray(Object obj) throws ONNXException {
+    public static TensorInfo constructFromJavaArray(Object obj) throws OrtException {
         Class<?> objClass = obj.getClass();
         if (!objClass.isArray() && !objClass.isPrimitive() && !objClass.equals(String.class)) {
-            throw new ONNXException("Cannot convert " + objClass + " to a ONNXTensor.");
+            throw new OrtException("Cannot convert " + objClass + " to a OnnxTensor.");
         }
         // Figure out base type and number of dimensions.
         int dimensions = 0;
@@ -199,11 +199,11 @@ public class TensorInfo implements ValueInfo {
             dimensions++;
         }
         if (!objClass.isPrimitive() && !objClass.equals(String.class)) {
-            throw new ONNXException("Cannot create an ONNXTensor from a base type of " + objClass);
+            throw new OrtException("Cannot create an OnnxTensor from a base type of " + objClass);
         } else if (dimensions > MAX_DIMENSIONS) {
-            throw new ONNXException("Cannot create an ONNXTensor with more than " + MAX_DIMENSIONS + " dimensions. Found " + dimensions + " dimensions.");
+            throw new OrtException("Cannot create an OnnxTensor with more than " + MAX_DIMENSIONS + " dimensions. Found " + dimensions + " dimensions.");
         }
-        ONNXJavaType javaType = ONNXJavaType.mapFromClass(objClass);
+        OnnxJavaType javaType = OnnxJavaType.mapFromClass(objClass);
 
         // Now we extract the shape and validate that the java array is rectangular (i.e. not ragged).
         // this is pretty nasty as we have to look at every object array recursively.
@@ -211,7 +211,7 @@ public class TensorInfo implements ValueInfo {
         long[] shape = new long[dimensions];
         extractShape(shape,0,obj);
 
-        return new TensorInfo(shape,javaType, ONNXTensorType.mapFromJavaType(javaType));
+        return new TensorInfo(shape,javaType, OnnxTensorType.mapFromJavaType(javaType));
     }
 
     /**
@@ -220,22 +220,22 @@ public class TensorInfo implements ValueInfo {
      * @param shape The shape of the tensor.
      * @param type The Java type.
      * @return A TensorInfo for a tensor.
-     * @throws ONNXException If the supplied buffer doesn't match the shape.
+     * @throws OrtException If the supplied buffer doesn't match the shape.
      */
-    public static TensorInfo constructFromBuffer(Buffer buffer, long[] shape, ONNXJavaType type) throws ONNXException {
-        if ((type == ONNXJavaType.STRING) || (type == ONNXJavaType.UNKNOWN)) {
-            throw new ONNXException("Cannot create a tensor from a string or unknown buffer.");
+    public static TensorInfo constructFromBuffer(Buffer buffer, long[] shape, OnnxJavaType type) throws OrtException {
+        if ((type == OnnxJavaType.STRING) || (type == OnnxJavaType.UNKNOWN)) {
+            throw new OrtException("Cannot create a tensor from a string or unknown buffer.");
         }
 
-        long elementCount = ONNXUtil.elementCount(shape);
+        long elementCount = OrtUtil.elementCount(shape);
 
         long bufferCapacity = buffer.capacity();
 
         if (elementCount != bufferCapacity) {
-            throw new ONNXException("Shape " + Arrays.toString(shape) + ", requires " + elementCount + " elements but the buffer has " + bufferCapacity + " elements.");
+            throw new OrtException("Shape " + Arrays.toString(shape) + ", requires " + elementCount + " elements but the buffer has " + bufferCapacity + " elements.");
         }
 
-        return new TensorInfo(Arrays.copyOf(shape,shape.length),type,ONNXTensorType.mapFromJavaType(type));
+        return new TensorInfo(Arrays.copyOf(shape,shape.length),type, OnnxTensorType.mapFromJavaType(type));
     }
 
     /**
@@ -243,17 +243,17 @@ public class TensorInfo implements ValueInfo {
      * @param shape The shape array to write to.
      * @param curDim The current dimension to check.
      * @param obj The multidimensional array to inspect.
-     * @throws ONNXException If the array has a zero dimension, or is ragged.
+     * @throws OrtException If the array has a zero dimension, or is ragged.
      */
-    private static void extractShape(long[] shape, int curDim, Object obj) throws ONNXException {
+    private static void extractShape(long[] shape, int curDim, Object obj) throws OrtException {
         if (shape.length != curDim) {
             int curLength = Array.getLength(obj);
             if (curLength == 0) {
-                throw new ONNXException("Supplied array has a zero dimension at " + curDim + ", all dimensions must be positive");
+                throw new OrtException("Supplied array has a zero dimension at " + curDim + ", all dimensions must be positive");
             } else if (shape[curDim] == 0L) {
                 shape[curDim] = curLength;
             } else if (shape[curDim] != curLength) {
-                throw new ONNXException("Supplied array is ragged, expected " + shape[curDim] + ", found " + curLength);
+                throw new OrtException("Supplied array is ragged, expected " + shape[curDim] + ", found " + curLength);
             }
             for (int i = 0; i < curLength; i++) {
                 extractShape(shape,curDim+1,Array.get(obj,i));

@@ -64,11 +64,11 @@ jobject createJavaMapFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* 
 
 jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* onnxValue);
 
-jint throwONNXException(JNIEnv *env, int messageId, const char *message);
+jint throwOrtException(JNIEnv *env, int messageId, const char *message);
 
 jint convertErrorCode(OrtErrorCode code);
 
-void checkONNXStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
+void checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
 
 #ifdef __cplusplus
 }
