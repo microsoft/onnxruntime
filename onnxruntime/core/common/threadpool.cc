@@ -66,7 +66,7 @@ void ThreadPool::BatchParallelFor(int32_t total, std::function<void(int32_t)> fn
     return;
   }
 
-  if (batch_size == total) {
+  if (batch_size >= total) {
     ParallelFor(total, fn);
     return;
   }
