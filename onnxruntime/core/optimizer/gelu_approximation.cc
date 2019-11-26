@@ -25,27 +25,40 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
-static bool CheckInputShape(const NodeArg& input, const NodeArg& bias) {
-  const TensorShapeProto* input_shape = input.Shape();
+static bool CheckInputShape(Graph& graph, Node& node, const NodeArg& input, const NodeArg& bias) {
   const TensorShapeProto* bias_shape = bias.Shape();
+  if (nullptr == bias_shape ||
+      bias_shape->dim_size() != 1 || 
+      !utils::HasDimValue(bias_shape->dim(0))) {
+    return false;
+  }
+  auto bias_length = bias_shape->dim(0).dim_value();
 
-  if (nullptr == input_shape || nullptr == bias_shape) {
+  const TensorShapeProto* input_shape = input.Shape();
+  if (nullptr != input_shape) {
+    if (input_shape->dim_size() >= 1) {
+      int last_dim = input_shape->dim_size() - 1;
+      if (utils::HasDimValue(input_shape->dim(last_dim)) &&
+          input_shape->dim(last_dim).dim_value() == bias_length) {
+        return true;
+      }
+    }
     return false;
   }
 
-  if (input_shape->dim_size() < 1 ||
-      bias_shape->dim_size() != 1) {
-    return false;
+  // Input does not have shape. We will check its parent node.
+  // When the parent is MatMul and its 2nd input has shape like {*, bias_length},
+  // it means that the shape of MatMul output is good for FastGelu.
+  const Node* parent_node = graph_utils::GetInputNode(node, 0);
+  if (nullptr != parent_node &&
+      graph_utils::IsSupportedOptypeVersionAndDomain(*parent_node, "MatMul", {1, 9}, kOnnxDomain)) {
+    const NodeArg& input_b = *(parent_node->InputDefs()[1]);
+    if (optimizer_utils::ValidateShape(input_b, {-1, bias_length})) {
+      return true;
+    }
   }
 
-  int last_dim = input_shape->dim_size() - 1;
-  if (!utils::HasDimValue(input_shape->dim(last_dim)) ||
-      !utils::HasDimValue(bias_shape->dim(0)) ||
-      input_shape->dim(last_dim).dim_value() != bias_shape->dim(0).dim_value()) {
-    return false;
-  }
-
-  return true;
+  return false;
 }
 
 static bool CheckInputShape(const NodeArg& input) {
@@ -61,11 +74,11 @@ static bool CheckInputShape(const NodeArg& input) {
   return true;
 }
 
-static bool IsCandidateNode(Node& node, const std::unordered_set<std::string>& compatible_providers) {
+static bool IsCandidateNode(Graph& graph, Node& node, const std::unordered_set<std::string>& compatible_providers) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "AddGeluFusion", {1}, kMSDomain)) {
     return graph_utils::IsSupportedProvider(node, compatible_providers) &&
            IsSupportedDataType(node) &&
-           CheckInputShape(*(node.InputDefs()[0]), *(node.InputDefs()[1]));
+           CheckInputShape(graph, node, *(node.InputDefs()[0]), *(node.InputDefs()[1]));
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {1}, kMSDomain)) {
     return graph_utils::IsSupportedProvider(node, compatible_providers) &&
            IsSupportedDataType(node) &&
@@ -78,6 +91,7 @@ Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_leve
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  int count = 0;
   for (auto node_index : node_topology_list) {
     auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -86,7 +100,7 @@ Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (IsCandidateNode(node, GetCompatibleExecutionProviders())) {
+    if (IsCandidateNode(graph, node, GetCompatibleExecutionProviders())) {
       Node& fastgelu = graph.AddNode(
           graph.GenerateNodeName("FastGelu"),
           "FastGelu",
@@ -99,8 +113,13 @@ Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       graph_utils::RemoveNodeOutputEdges(graph, node);
       graph.RemoveNode(node.Index());
 
-      modified = true;
+      count++;
     }
+  }
+
+  if (count > 0) {
+    modified = true;
+    LOGS(logger, INFO) << "Total Gelu Approximation (FastGelu) node count: " << count;
   }
 
   return Status::OK();
