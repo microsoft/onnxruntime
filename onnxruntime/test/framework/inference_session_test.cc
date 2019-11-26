@@ -37,7 +37,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -133,16 +132,17 @@ class InferenceSessionGetGraphWrapper : public InferenceSession {
 namespace test {
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
-static const std::string MODEL_URI = "testdata/mul_1.onnx";
-static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.noopset.onnx";
+static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
+static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
 //static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
-  p_model = onnxruntime::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                         domain_to_version);
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  p_model = onnxruntime::make_unique<Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                                  domain_to_version, model_specific_functions, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -172,15 +172,21 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
+template <typename T = float>
+void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
+                   const std::vector<T>& expected_values) {
+  TensorShape expected_shape(expected_dims);
+  ASSERT_EQ(expected_shape, tensor.Shape());
+  const std::vector<T> found(tensor.template Data<T>(),
+                             tensor.template Data<T>() + expected_values.size());
+  ASSERT_EQ(expected_values, found);
+}
+
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
-  TensorShape expected_shape(expected_dims);
-  ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<float> found(rtensor.template Data<float>(),
-                                 rtensor.template Data<float>() + expected_values.size());
-  ASSERT_EQ(expected_values, found);
+  VerifyOutputs(rtensor, expected_dims, expected_values);
 }
 
 void RunModel(InferenceSession& session_object,
@@ -449,11 +455,11 @@ TEST(InferenceSessionTests, ModelMetadata) {
 
   so.session_logid = "InferenceSessionTests.ModelMetadata";
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  string model_uri = "../models/opset8/test_squeezenet/model.onnx";
+  auto model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<onnxruntime::Model> p_model;
-  Status st = onnxruntime::Model::Load(model_uri, p_model);
+  Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(st.IsOK());
   const onnxruntime::Graph& graph = p_model->MainGraph();
 
@@ -1023,7 +1029,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -1110,7 +1116,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 }
 
 TEST(ExecutionProviderTest, FunctionInlineTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
 
   ONNX_NAMESPACE::FunctionProto fc_proto;
   fc_proto.set_name("FC");
@@ -1535,6 +1541,61 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 }
 
 #endif
+
+// The model being tested here triggers a case where the allocation planner (AP) tries to reuse a tensor of type
+// double for a string tensor. The reuse logic of AP works correctly on Windows and Ubuntu 16.x
+// since there the sizeof(double) != sizeof(std::string). However, on CentOS (gcc 4.8.x), the 2 sizes are equal.
+TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTensorForStringTensor) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.ModelThatTriggersAllocationPlannerBug";
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status st;
+  ASSERT_TRUE((st = session_object.Load("testdata/test_cast_back_to_back_non_const_mixed_types_origin.onnx")).IsOK())
+      << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+
+  // prepare inputs
+  std::vector<int64_t> dims_x = {1, 2, 3};
+  std::vector<float> values_x = {1.6f, -0.6f, -0.5f, -1.0f, 0.8f, -2.3f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+                       &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("u", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("res");
+  output_names.push_back("res2");
+  output_names.push_back("res3");
+  std::vector<OrtValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_res = {1, 2, 3};
+  std::vector<int64_t> expected_values_res = {1, 0, 0, -1, 0, -2};
+
+  std::vector<int64_t> expected_dims_res2 = {1, 2, 3};
+  std::vector<int64_t> expected_values_res2 = {1, 0, 0, -1, 0, -2};
+
+  std::vector<int64_t> expected_dims_res3 = {1, 2, 3};
+  std::vector<int8_t> expected_values_res3 = {1, 0, 0, 1, 0, 1};
+
+  // Now run
+  st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  ASSERT_EQ(3, fetches.size());
+  VerifyOutputs(fetches[0].Get<Tensor>(), expected_dims_res, expected_values_res);
+  VerifyOutputs(fetches[1].Get<Tensor>(), expected_dims_res2, expected_values_res2);
+  VerifyOutputs(fetches[2].Get<Tensor>(), expected_dims_res3, expected_values_res3);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -28,9 +28,9 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
 
 Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
                                                    const std::vector<std::reference_wrapper<const RewriteRule>>& rules,
-                                                   RuleEffect& rule_effect) const {
+                                                   RuleEffect& rule_effect, const logging::Logger& logger) const {
   for (const RewriteRule& rule : rules) {
-    ORT_RETURN_IF_ERROR(rule.CheckConditionAndApply(graph, node, rule_effect));
+    ORT_RETURN_IF_ERROR(rule.CheckConditionAndApply(graph, node, rule_effect, logger));
     // If the current node was removed as a result of a rule, stop rule application for that node.
     if (rule_effect == RuleEffect::kRemovedCurrentNode) {
       break;
@@ -39,7 +39,7 @@ Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
   return Status::OK();
 }
 
-Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -65,13 +65,13 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
     rules = GetRewriteRulesForOpType(node->OpType());
     if (rules) {
-      ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect));
+      ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect, logger));
     }
 
     if (rule_effect != RuleEffect::kRemovedCurrentNode) {
       rules = GetAnyOpRewriteRules();
       if (rules) {
-        ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect));
+        ORT_RETURN_IF_ERROR(ApplyRulesOnNode(graph, *node, *rules, rule_effect, logger));
       }
     }
 
@@ -81,7 +81,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     }
 
     if (rule_effect != RuleEffect::kRemovedCurrentNode) {
-      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+      ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
     }
   }
 

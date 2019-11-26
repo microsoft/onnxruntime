@@ -51,7 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 static int64_t GetSeqIdx(const Tensor& idx_tensor) {
   int64_t seq_idx = INT_MAX;
-  auto idx_tensor_dtype = utils::GetTensorProtoType(idx_tensor);
+  auto idx_tensor_dtype = idx_tensor.GetElementType();
   switch (idx_tensor_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       const auto* idx_data = idx_tensor.Data<int32_t>();
@@ -348,13 +348,13 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
   Status status;
   auto data_type = input.DataType();
 
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (utils::IsPrimitiveDataType<float>(data_type))
     status = ComputeImpl<float>(*context, input, p_split_input);
-  else if (data_type == DataTypeImpl::GetType<double>())
+  else if (utils::IsPrimitiveDataType<double>(data_type))
     status = ComputeImpl<double>(*context, input, p_split_input);
-  else if (data_type == DataTypeImpl::GetType<int32_t>())
+  else if (utils::IsPrimitiveDataType<int32_t>(data_type))
     status = ComputeImpl<int32_t>(*context, input, p_split_input);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (utils::IsDataTypeString(data_type))
     status = ComputeImpl<std::string>(*context, input, p_split_input);
   else
     ORT_THROW("SplitToSequence operator does not support ", data_type, " yet");
@@ -422,9 +422,9 @@ inline void copy_data<std::string>(const std::string* src, std::string* dst, siz
 static int64_t GetScalarSplitInput(const Tensor& tensor) {
   int64_t retval = INT_MAX;
   auto data_type = tensor.DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimitiveDataType<int32_t>(data_type)) {
     retval = *(tensor.Data<int32_t>());
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (utils::IsPrimitiveDataType<int64_t>(data_type)) {
     retval = *(tensor.Data<int64_t>());
   } else {
     ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(data_type));
@@ -435,15 +435,14 @@ static int64_t GetScalarSplitInput(const Tensor& tensor) {
 static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split_sizes) {
   auto num_elems = tensor.Shape().Size();
   split_sizes.reserve(num_elems);
-  auto data_type = tensor.DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
+  if (tensor.IsDataType<int32_t>()) {
     const int32_t* data_ptr = tensor.Data<int32_t>();
     std::copy(data_ptr, data_ptr + num_elems, std::back_inserter(split_sizes));
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+  } else if (tensor.IsDataType<int64_t>()) {
     const int64_t* data_ptr = tensor.Data<int64_t>();
     std::copy(data_ptr, data_ptr + num_elems, std::back_inserter(split_sizes));
   } else {
-    ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(data_type));
+    ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(tensor.DataType()));
   }
 }
 

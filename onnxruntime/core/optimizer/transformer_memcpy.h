@@ -23,7 +23,7 @@ class MemcpyTransformer : public GraphTransformer {
       : GraphTransformer("MemcpyTransformer"), provider_types_(provider_types), registry_manager_(std::cref(registry_manager)) {}
 
  private:
-  common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   const std::vector<std::string> provider_types_;
   std::reference_wrapper<const KernelRegistryManager> registry_manager_;

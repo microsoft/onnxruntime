@@ -171,7 +171,7 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
   Tensor* output_tensor = ctx->Output(0, input_shape);
 
   const MLDataType keys_type = keys->DataType();
-  const bool is_string = keys_type == DataTypeImpl::GetType<std::string>();
+  const bool is_string = utils::IsDataTypeString(keys_type);
 
   const auto input_element_bytes = keys->DataType()->Size();
   const auto output_element_bytes = output_tensor->DataType()->Size();

@@ -4,6 +4,7 @@
 #include "core/providers/nuphar/kernel.h"
 
 #include "core/codegen/passes/utils/codegen_context.h"
+#include "core/codegen/common/profile.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 #include "core/providers/nuphar/compiler/initializer_info.h"
@@ -117,6 +118,7 @@ Status NupharKernelState::Compute(OpKernelContext* op_kernel_context) const {
   compute_ctx->Bind(op_kernel_context);
 
   for (auto* call : exec_block_calls_) {
+    CODEGEN_PROFILER_EVENT(call->Name());
     call->Run(compute_ctx);
   }
 

@@ -23,7 +23,7 @@ class FreeDimensionOverrideTransformer : public GraphTransformer {
   explicit FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply);
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   std::map<std::string, int64_t> dimension_override_by_denotation_;
 };

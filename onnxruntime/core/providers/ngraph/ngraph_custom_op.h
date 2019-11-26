@@ -29,12 +29,12 @@ class NGRAPHCustomOp {
                  const ONNX_NAMESPACE::ModelProto& model_proto,
                  const std::shared_ptr<ngraph::runtime::Backend>& ng_backend);
 
-  Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const;
+  Status Compute(const OrtApi* api, OrtKernelContext* context) const;
 
   ~NGRAPHCustomOp();
 
  private:
-  Status Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const;
+  Status Initialize(const OrtApi* api, OrtKernelContext* context) const;
 
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 

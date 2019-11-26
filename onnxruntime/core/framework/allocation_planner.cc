@@ -258,7 +258,7 @@ class PlannerImpl {
       const auto& val1 = shape1.dim(i);
       const auto& val2 = shape2.dim(i);
       if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
-         (val1.dim_value() == val2.dim_value()))
+          (val1.dim_value() == val2.dim_value()))
         continue;  // same known dimension
       if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
         const auto& val1_param = val1.dim_param();
@@ -281,9 +281,20 @@ class PlannerImpl {
     return elt_type->Size();
   }
 
-  static bool SameSize(const TensorShapeProto& shape1, const DataType& ptype1, const TensorShapeProto& shape2,
-                       const DataType& ptype2) {
-    return (GetElementSize(ptype1) == GetElementSize(ptype2)) && SameShape(shape1, shape2);
+  static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1, const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
+    const auto& ptype1 = arg1.Type();
+    const auto& ptype2 = arg2.Type();
+    auto type1_size = GetElementSize(ptype1);
+    auto type2_size = GetElementSize(ptype2);
+    bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+
+    // sizeof(std::string) = sizeof(double) on gcc 4.8.x on CentOS. This causes the allocation planner to reuse
+    // a tensor of type double. This won't work for string tensors since they need to be placement new'ed.
+    // If either of the tensors is a string, don't treat them the same. Moreover, reusing a string tensor for a string
+    // tensor without releasing the previous memory can cause memory leaks; hence we don't allow reuse across string
+    // tensors as well.
+    return !(is_type1_string || is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
 
     /* TODO: we can improve this if the concrete shapes are known for both as below.
        Unclear whether this is worthwhile though.
@@ -305,14 +316,13 @@ class PlannerImpl {
     auto p_shape2 = context_.GetShape(arg2);
     // If the shapes are unknown, we conservatively assume they may be of different size.
     if ((nullptr == p_shape1) || (nullptr == p_shape2)) return false;
-    return SameSize(*p_shape1, arg1.Type(), *p_shape2, arg2.Type());
+    return SameSize(*p_shape1, arg1, *p_shape2, arg2);
   }
 
   // Find if freelist contains a buffer of the same size as output_arg
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     auto p_required_buffer_shape = context_.GetShape(output_arg);
     if (nullptr == p_required_buffer_shape) return false;
-    auto required_buffer_type = output_arg.Type();
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
     for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
@@ -322,9 +332,8 @@ class PlannerImpl {
       if (!(available_memory_info == required_memory_info)) continue;
       auto p_available_buffer_shape = context_.GetShape(*p_node_arg);
       if (nullptr != p_available_buffer_shape) {
-        auto available_buffer_type = p_node_arg->Type();
-        if (SameSize(*p_available_buffer_shape, available_buffer_type,
-                     *p_required_buffer_shape, required_buffer_type)) {
+        if (SameSize(*p_available_buffer_shape, *p_node_arg,
+                     *p_required_buffer_shape, output_arg)) {
           *reusable_tensor = it->ml_value;
           freelist_.erase(it);
           return true;

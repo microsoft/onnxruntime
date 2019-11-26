@@ -14,7 +14,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos7 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos .
+          docker build --pull -t onnxruntime-centos7 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
