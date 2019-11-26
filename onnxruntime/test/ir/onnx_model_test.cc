@@ -72,14 +72,6 @@ TEST(ONNXModelsTest, future_opset) {
   ASSERT_EQ(st.Code(), common::INVALID_GRAPH);
 }
 
-TEST(ONNXModelsTest, future_opset) {
-    // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
-    std::shared_ptr<Model> model;
-    common::Status st = Model::Load("./testdata/add_opset_314159.onnx", model);
-    ASSERT_FALSE(st.IsOK());
-    ASSERT_EQ(st.Code(), common::INVALID_GRAPH);
-}
-
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   using ::google::protobuf::io::CodedInputStream;
