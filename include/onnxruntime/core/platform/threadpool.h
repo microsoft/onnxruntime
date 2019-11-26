@@ -68,7 +68,7 @@ class ThreadPool {
       if (batch_size <= 0) {
         batch_size = tp->NumThreads() + 1;
       }
-      tp->BatchParallelFor(total, std::move(fn), batch_size);
+      tp->BatchParallelFor(total, std::forward<F>(fn), batch_size);
     } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for
@@ -85,7 +85,7 @@ class ThreadPool {
   template <typename F>
   inline static void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn) {
     if (tp != nullptr) {
-      tp->ParallelFor(total, std::move(fn));
+      tp->ParallelFor(total, std::forward<F>(fn));
     } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for
