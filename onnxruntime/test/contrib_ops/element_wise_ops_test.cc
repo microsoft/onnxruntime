@@ -100,6 +100,7 @@ static void RunBiasGeluTest(
     tester.AddOutput<float>("C", output_dims, output_data);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
@@ -114,18 +115,6 @@ TEST(BiasGeluTest, Two_One_Dim) {
       -0.5f, 0.6f, 1.2f, 2.1f};
 
   RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {4});
-}
-
-TEST(BiasGeluTest, Two_Two_Dim) {
-  std::vector<float> input_a_data = {
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
-
-  std::vector<float> input_b_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f,
-      0.4f, 0.6f, 0.2f, -0.4f};
-
-  RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {2, 4});
 }
 
 }  // namespace test
