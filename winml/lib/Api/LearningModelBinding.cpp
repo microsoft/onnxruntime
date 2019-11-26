@@ -497,14 +497,13 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
     std::tie(bindingName, binding_value_ptr, bindingType) = CreateBinding(featureName, to, nullptr);
-    Ort::Value bindingValue(binding_value_ptr);
-
+    Ort::Value ortValue = binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr);
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_FAILED(BindInput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(BindInput(bindingName, ortValue));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_FAILED(BindOutput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(BindOutput(bindingName, ortValue));
         break;
       default:
         FAIL_FAST();
@@ -547,13 +546,14 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_
 
 HRESULT LearningModelBinding::BindOutput(const std::string& name, Ort::Value& ml_value) {
   auto rc = Contains(output_names_, name);
+  OrtValue* ml_value_data = ml_value.release();
   if (rc.first) {
-    outputs_[rc.second] = Ort::Value(ml_value.release());
+    outputs_[rc.second] = ml_value_data ? Ort::Value(ml_value_data) : Ort::Value(nullptr);
     return S_OK;
   }
 
   output_names_.push_back(name);
-  outputs_.push_back(Ort::Value(ml_value.release()));
+  outputs_.push_back(ml_value_data ? Ort::Value(ml_value_data) : Ort::Value(nullptr));
   return S_OK;
 }
 
