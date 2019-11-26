@@ -55,6 +55,8 @@ endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
+add_dependencies(winml_test_common onnx)
+add_dependencies(winml_test_common winml_api)
 set_winml_target_properties(winml_test_common)
 
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
@@ -62,7 +64,6 @@ add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common
-  DEPENDS winml_sdk_cppwinrt
 )
 target_precompiled_header(winml_test_api testPch.h)
 
