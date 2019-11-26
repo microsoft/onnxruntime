@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 
 // IUnknown must be declared before winrt/base.h is included to light up support for native COM
 // interfaces with C++/WinRT types (e.g. winrt::com_ptr<ITensorNative>).
@@ -58,12 +59,12 @@
     if (auto noGpuTests = RuntimeParameters::Parameters.find("noGPUtests");             \
         noGpuTests != RuntimeParameters::Parameters.end() && noGpuTests->second != "0") \
     {                                                                                   \
-        GTEST_SKIP << "GPU tests disabled";                                             \
+        GTEST_SKIP() << "GPU tests disabled";                                           \
     }
 
 #define SKIP_EDGECORE \
     if (auto isEdgeCore = RuntimeParameters::Parameters.find("EdgeCore");               \
         isEdgeCore != RuntimeParameters::Parameters.end() && isEdgeCore->second != "0") \
     {                                                                                   \
-        GTEST_SKIP << "Test can't be run in EdgeCore";                                  \
+        GTEST_SKIP() << "Test can't be run in EdgeCore";                                \
     }

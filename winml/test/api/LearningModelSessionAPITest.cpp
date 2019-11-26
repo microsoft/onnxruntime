@@ -73,7 +73,6 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithModelLoadedFromStream)
 
 TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
 {
-    GPUTEST
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectX));
@@ -82,7 +81,6 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
 
 TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
 {
-    GPUTEST
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
@@ -91,7 +89,6 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformanc
 
 TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
 {
-    GPUTEST
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower));
@@ -100,8 +97,6 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
 
 TEST_F(LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
 {
-    GPUTEST
-    SKIP_EDGECORE
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     com_ptr<IDXGIFactory6> factory;

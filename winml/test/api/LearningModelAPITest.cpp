@@ -234,7 +234,6 @@ TEST_F(LearningModelAPITest, CloseModelCheckMetadata)
 
 TEST_F(LearningModelAPITestGpu, CloseModelCheckEval)
 {
-    GPUTEST
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
     LearningModelSession session = nullptr;
     EXPECT_NO_THROW(session = LearningModelSession(m_model));

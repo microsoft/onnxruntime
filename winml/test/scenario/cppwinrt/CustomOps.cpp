@@ -11,8 +11,8 @@
 #include <winrt/Windows.Storage.Streams.h>
 #include <MemoryBuffer.h>
 #include <gsl/gsl>
-// #include "dml/api/DirectML.h"
 #include "CustomOperatorProvider.h"
+#include "runtimeParameters.h"
 
 // For custom operator and shape inferencing support
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
@@ -41,6 +41,11 @@ protected:
 
 class CustomOpsScenarioGpuTest : public CustomOpsScenarioTest
 {
+protected:
+    void SetUp() override
+    {
+        GPUTEST
+    }
 };
 
 // Tests that the execution provider correctly fuses operators together when custom ops are involved.
