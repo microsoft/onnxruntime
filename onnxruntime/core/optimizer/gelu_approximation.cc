@@ -25,7 +25,7 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
-static bool CheckInputShape(Graph& graph, Node& node, const NodeArg& input, const NodeArg& bias) {
+static bool CheckInputShape(Node& node, const NodeArg& input, const NodeArg& bias) {
   const TensorShapeProto* bias_shape = bias.Shape();
   if (nullptr == bias_shape ||
       bias_shape->dim_size() != 1 || 
@@ -61,28 +61,20 @@ static bool CheckInputShape(Graph& graph, Node& node, const NodeArg& input, cons
   return false;
 }
 
-static bool CheckInputShape(const NodeArg& input) {
+static bool CheckGeluInputShape(const NodeArg& input) {
   const TensorShapeProto* input_shape = input.Shape();
-  if (nullptr == input_shape) {
-    return false;
-  }
-
-  if (input_shape->dim_size() < 1) {
-    return false;
-  }
-
-  return true;
+  return nullptr != input_shape && input_shape->dim_size() >= 1;
 }
 
-static bool IsCandidateNode(Graph& graph, Node& node, const std::unordered_set<std::string>& compatible_providers) {
+static bool IsCandidateNode(Node& node, const std::unordered_set<std::string>& compatible_providers) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "AddGeluFusion", {1}, kMSDomain)) {
     return graph_utils::IsSupportedProvider(node, compatible_providers) &&
            IsSupportedDataType(node) &&
-           CheckInputShape(graph, node, *(node.InputDefs()[0]), *(node.InputDefs()[1]));
+           CheckInputShape(node, *(node.InputDefs()[0]), *(node.InputDefs()[1]));
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {1}, kMSDomain)) {
     return graph_utils::IsSupportedProvider(node, compatible_providers) &&
            IsSupportedDataType(node) &&
-           CheckInputShape(*(node.InputDefs()[0]));
+           CheckGeluInputShape(*(node.InputDefs()[0]));
   }
   return false;
 }
@@ -100,7 +92,7 @@ Status GeluApproximation::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (IsCandidateNode(graph, node, GetCompatibleExecutionProviders())) {
+    if (IsCandidateNode(node, GetCompatibleExecutionProviders())) {
       Node& fastgelu = graph.AddNode(
           graph.GenerateNodeName("FastGelu"),
           "FastGelu",
