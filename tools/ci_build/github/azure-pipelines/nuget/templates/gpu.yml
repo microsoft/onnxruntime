@@ -43,7 +43,7 @@ jobs:
     EnvSetupScript: 'setup_env_cuda.bat'
     ArtifactName: drop-nuget-dml
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.Gpu.Dml
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.DirectML
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 - job: 'Linux_CI_GPU_Dev'
@@ -82,9 +82,9 @@ jobs:
 - job: NuGet_Packaging
   pool: $(AgentPoolWin)
   dependsOn:
-  #- Windows_CI_GPU_CUDA_Dev
-  #- Windows_CI_GPU_DML_Dev
-  #- Linux_CI_GPU_Dev
+  - Windows_CI_GPU_CUDA_Dev
+  - Windows_CI_GPU_DML_Dev
+  - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:  
   - task: DownloadPipelineArtifact@0
