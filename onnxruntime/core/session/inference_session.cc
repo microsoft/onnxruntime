@@ -105,11 +105,11 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 #ifdef USE_OPENMP
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
+#endif
       inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::ORT_PARALLEL
                                 ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
                                 : nullptr),
-#endif
       session_state_(execution_providers_,
                      session_options.enable_mem_pattern && session_options.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
                      thread_pool_.get(),

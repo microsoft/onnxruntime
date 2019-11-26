@@ -34,7 +34,7 @@ Options:
         
 	-x: [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes. A value of 0 means the test will auto-select a default. Must >=0. If OpenMP is enabled, this configuration will be ignored.
 	
-	-y: [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means the test will auto-select a default. Must >=0. If OpenMP is enabled, this configuration will be ignored.
+	-y: [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means the test will auto-select a default. Must >=0.
 	
 	-h: help.
 

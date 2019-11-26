@@ -60,7 +60,6 @@ struct SessionOptions {
 
   // controls the size of the thread pool used to parallelize the execution of nodes (ops)
   // configuring this makes sense only when you're using parallel executor
-  // if OpenMP is enabled, this configuration will be ignored
   int inter_op_num_threads = 0;
 
   // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
