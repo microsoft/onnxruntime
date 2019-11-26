@@ -47,7 +47,7 @@ class ThreadPool {
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn);
 
   /*
-  Schedule work in the interval [0, total), splitted into the specified batch(es).
+  Schedule work in the interval [0, total), with calls split into batches of the specified size.
   */
   void BatchParallelFor(int32_t total, std::function<void(int32_t)> fn, int32_t batch_size = 0);
 
@@ -60,7 +60,7 @@ class ThreadPool {
   // void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);
 
   /**
-  Tries to call the given function parallelly, splitted into specified batch(es).
+  Tries to call the given function in parallel, with calls split into batches of the specified size.
   **/
   template <typename F>
   inline static void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
@@ -80,7 +80,7 @@ class ThreadPool {
   }
 
   /**
-  Tries to call the given function parallelly.
+  Tries to call the given function in parallel.
   **/
   template <typename F>
   inline static void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn) {
