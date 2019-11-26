@@ -49,7 +49,7 @@ class ThreadPool {
   /*
   Schedule work in the interval [0, total), splitted into the specified batch(es).
   */
-  void BatchParallelFor(int32_t total, int32_t batch_size, std::function<void(int32_t)> fn);
+  void BatchParallelFor(int32_t total, std::function<void(int32_t)> fn, int32_t batch_size = 0);
 
   /*
   Schedule work in the interval [first, last].
@@ -58,6 +58,43 @@ class ThreadPool {
 
   // This is not supported until the latest Eigen
   // void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);
+
+  /**
+  Tries to call the given function parallelly, splitted into specified batch(es).
+  **/
+  template <typename F>
+  inline static void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
+    if (tp != nullptr) {
+      if (batch_size <= 0) {
+        batch_size = tp->NumThreads() + 1;
+      }
+      tp->BatchParallelFor(total, batch_size, std::move(fn));
+    } else {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int32_t i = 0; i < total; ++i) {
+        fn(i);
+      }
+    }
+  }
+
+  /**
+  Tries to call the given function parallelly.
+  **/
+  template <typename F>
+  inline static void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn) {
+    if (tp != nullptr) {
+      tp->ParallelFor(total, std::move(fn));
+    } else {
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int32_t i = 0; i < total; ++i) {
+        fn(i);
+      }
+    }
+  }
 
   int NumThreads() const;
 

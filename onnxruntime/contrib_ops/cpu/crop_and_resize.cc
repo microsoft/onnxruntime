@@ -21,7 +21,7 @@ limitations under the License.
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/providers/common.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/cpu/object_detection/roialign.h"
 
 using namespace onnxruntime::concurrency;
@@ -173,7 +173,7 @@ void CropAndResizeForward(const TensorShape& output_shape,
     }    // for ph
   };     // for n
 
-  TryParallelFor(ttp, static_cast<int32_t>(n_rois), work_object);
+  ThreadPool::TryParallelFor(ttp, static_cast<int32_t>(n_rois), std::move(work_object));
 }
 
 template <typename T>

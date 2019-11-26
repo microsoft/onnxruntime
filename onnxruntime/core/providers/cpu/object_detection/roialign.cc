@@ -22,7 +22,7 @@
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/providers/common.h"
+#include "core/platform/threadpool.h"
 
 using namespace onnxruntime::concurrency;
 
@@ -272,7 +272,7 @@ void RoiAlignForward(const TensorShape& output_shape,
     }      // for c
   };       // for n
 
-  TryParallelFor(ttp, static_cast<int32_t>(n_rois), work_object);
+  ThreadPool::TryParallelFor(ttp, static_cast<int32_t>(n_rois), std::move(work_object));
 }
 }  // namespace
 

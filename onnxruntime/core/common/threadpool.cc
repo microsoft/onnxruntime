@@ -57,7 +57,7 @@ void ThreadPool::ParallelFor(int32_t total, std::function<void(int32_t)> fn) {
   barrier.Wait();
 }
 
-void ThreadPool::BatchParallelFor(int32_t total, int32_t batch_size, std::function<void(int32_t)> fn) {
+void ThreadPool::BatchParallelFor(int32_t total, std::function<void(int32_t)> fn, int32_t batch_size) {
   if (total <= 0)
     return;
 

@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -41,43 +40,6 @@ inline float clamp(float v, float lo, float hi) {
   if (v < lo) return lo;
   if (v > hi) return hi;
   return v;
-}
-
-/**
-Tries to call the given function parallelly, splitted into specified batch(es)
-**/
-template <typename F>
-inline void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
-  if (tp != nullptr) {
-    if (batch_size <= 0) {
-      batch_size = NumThreads() + 1;
-    }
-    tp->BatchParallelFor(total, batch_size, fn);
-  } else {
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for (int32_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-  }
-}
-
-/**
-Tries to call the given function parallelly
-**/
-template <typename F>
-inline void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn) {
-  if (tp != nullptr) {
-    tp->ParallelFor(total, fn);
-  } else {
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
-    for (int32_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-  }
 }
 
 }  // namespace onnxruntime
