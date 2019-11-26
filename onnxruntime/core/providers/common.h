@@ -70,7 +70,7 @@ inline void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& 
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
-    for (int32_t i = 0; i != total; ++i) {
+    for (int32_t i = 0; i < total; ++i) {
       fn(i);
     }
   }
