@@ -23,7 +23,7 @@ else
   yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
   # install dotnet runtimes
   yum install -y https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
-  yum install -y dotnet-runtime-3.0
+  yum install dotnet-sdk-3.0
 
 fi
 
