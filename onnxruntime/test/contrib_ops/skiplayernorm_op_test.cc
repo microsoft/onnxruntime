@@ -37,6 +37,9 @@ static void RunTest(
     std::vector<int64_t> bias_dims = gamma_dims;
     std::vector<int64_t> output_dims = input_dims;
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+
     if (use_float16) {
       test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
       test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
@@ -57,10 +60,10 @@ static void RunTest(
       }
 
       test.AddOutput<float>("output", output_dims, output_data);
+
+      execution_providers.push_back(DefaultCpuExecutionProvider());
     }
 
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
