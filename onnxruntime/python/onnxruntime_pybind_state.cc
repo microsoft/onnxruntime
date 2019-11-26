@@ -575,8 +575,6 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                      R"pbdoc(Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.)pbdoc")
       .def_readwrite("inter_op_num_threads", &SessionOptions::inter_op_num_threads,
                      R"pbdoc(Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.)pbdoc")
-      .def_readwrite("check_model_for_ort_config", &SessionOptions::check_model_for_ort_config,
-                     R"pbdoc(Enable checking a given model for onnxruntime config options to be used (if found) for this session. Default is false.)pbdoc")
       .def_readwrite("execution_mode", &SessionOptions::execution_mode,
                      R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
       .def_property(
@@ -707,18 +705,18 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
-      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char* without any conversion.
-      // So this init method can be used for model file path (string) and model content (bytes)
-      .def(py::init([](const SessionOptions& so, const std::string& arg,
-                       const SessionObjectInitializer& so_initializer, bool is_arg_file_name) {
+      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
+      // without any conversion. So this init method can be used for model file path (string)
+      // and model content (bytes)
+      .def(py::init([](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
         // Given arg is the file path. Invoke the corresponding ctor().
         if (is_arg_file_name) {
-          return onnxruntime::make_unique<InferenceSession>(so, arg, so_initializer);
+          return onnxruntime::make_unique<InferenceSession>(so, arg, SessionObjectInitializer::Get());
         }
 
         // Given arg is the model content as bytes. Invoke the corresponding ctor().
         std::istringstream buffer(arg);
-        return onnxruntime::make_unique<InferenceSession>(so, buffer, so_initializer);
+        return onnxruntime::make_unique<InferenceSession>(so, buffer, SessionObjectInitializer::Get());
       }))
       .def(
           "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {

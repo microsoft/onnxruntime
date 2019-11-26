@@ -64,8 +64,5 @@ struct SessionOptions {
   // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
   // free dimensions with, keyed by dimension denotation.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
-
-  // flag indicating if the given model should be checked for the ORT config parameters
-  bool check_model_for_ort_config = false;
 };
 }  // namespace onnxruntime

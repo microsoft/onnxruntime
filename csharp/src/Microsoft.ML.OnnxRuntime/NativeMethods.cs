@@ -42,8 +42,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SetSessionLogSeverityLevel;
         public IntPtr SetSessionGraphOptimizationLevel;
         public IntPtr SetIntraOpNumThreads;
-        public IntPtr SetInterOpNumThreads;
-        public IntPtr EnableCheckModelForOrtConfig;        
+        public IntPtr SetInterOpNumThreads;     
 
         public IntPtr CreateCustomOpDomain;
         public IntPtr CustomOpDomain_Add;

@@ -319,11 +319,6 @@ struct OrtApi {
   // A value of 0 means ORT will pick a default
   OrtStatus*(ORT_API_CALL* SetInterOpNumThreads)(_Inout_ OrtSessionOptions* options, int inter_op_num_threads);
 
-  /** Set flag to indicate that ORT must look in the model for any config options and if any is found, 
-   * use them for the specific session hosting the model 
-   */
-  OrtStatus*(ORT_API_CALL* EnableCheckModelForOrtConfig)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
-
   /*
   Create a custom op domain. After all sessions using it are released, call OrtReleaseCustomOpDomain
   */

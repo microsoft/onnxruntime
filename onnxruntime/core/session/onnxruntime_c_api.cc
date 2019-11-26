@@ -1296,7 +1296,6 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SetSessionGraphOptimizationLevel,
     &OrtApis::SetIntraOpNumThreads,
     &OrtApis::SetInterOpNumThreads,
-    &OrtApis::EnableCheckModelForOrtConfig,
 
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,

@@ -79,9 +79,13 @@ static Status SetGraphOptimizationLevel(SessionOptions& session_options,
       return Status::OK();
 
     default:
-      LOGS(logger, ERROR) << "Unsupported graph_optimization_level value in ORT config: " << value;
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Unsupported graph_optimization_level value in ORT config: ", value);
+      std::ostringstream message_stream;
+      message_stream << "Unsupported graph_optimization_level value in ORT config: " << value;
+
+      std::string message = message_stream.str();
+
+      LOGS(logger, ERROR) << message;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
   }
 }
 
@@ -121,8 +125,13 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
         // set the flag indicating that the model has the ORT config json.
         is_json_available_ = true;
       } catch (const std::exception& e) {
-        LOGS(logger_, ERROR) << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Json stored in the `ort_config` key cannot be parsed. Error message: ", e.what());
+        std::ostringstream message_stream;
+        message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
+
+        std::string message = message_stream.str();
+
+        LOGS(logger_, ERROR) << message;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, message);
       }
 
       break;
@@ -140,8 +149,9 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
   }
 
   if (!is_json_available_ || parsed_json_.contains(inference_session_utils::kSessionOptionsKey)) {
-    LOGS(logger_, INFO) << "Did not find session options in the model file to be used while running the model";
-    return Status::OK();
+    std::string message("Did not find session options in the model file to be used while running the model");
+    LOGS(logger_, INFO) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   const auto& session_options_from_model =

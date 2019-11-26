@@ -98,13 +98,67 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
-static Status FinalizeSessionOptions(SessionOptions& session_options,
-                                     const ONNX_NAMESPACE::ModelProto& model_proto) {
-  InferenceSessionUtils inference_session_utils(logging::LoggingManager::DefaultLogger());
+static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
+                                     const ONNX_NAMESPACE::ModelProto* model_proto,
+                                     /*out*/ SessionOptions& finalalized_session_options) {
+  const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
-  ORT_RETURN_IF_ERROR(inference_session_utils.ParseOrtConfigJsonInModelProto(model_proto));
+  // By now the environment should have initialized. (It is enforced prior to this.)
+  const Env& env_instance = Env::Default();
 
-  ORT_RETURN_IF_ERROR(inference_session_utils.ParseSessionOptionsFromModelProto(session_options));
+  bool read_model_for_ort_config = false;
+
+  // Get the value held by the environment variable - kOrtLoadConfigFromModelEnvVar
+  const std::string& load_config_from_model_env_var_value =
+      env_instance.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar);
+
+  // Ascertain if the model is to be read for the ORT config from the afore parsed env var
+  if (!load_config_from_model_env_var_value.empty()) {
+    // Check if the the env var contains an unsupported value
+    if (load_config_from_model_env_var_value.length() > 1 ||
+        (load_config_from_model_env_var_value[0] != '0' && load_config_from_model_env_var_value[0] != '1')) {
+      std::ostringstream oss;
+      oss << "The only supported values for the environment variable " << inference_session_utils::kOrtLoadConfigFromModelEnvVar
+          << " are '0' and '1'. "
+          << "The environment variable contained the value: " << load_config_from_model_env_var_value;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, oss.str());
+    }
+
+    if (load_config_from_model_env_var_value[0] == '1') {
+      LOGS(default_logger, INFO) << "Reading the provided model for the ORT config";
+      read_model_for_ort_config = true;
+    }
+  }
+
+  // The model is to be read for an ORT config json that may hold some/all session options
+  if (read_model_for_ort_config) {
+    SessionOptions constructed_session_options;
+
+    // In theory we should not hit this condition unless this internal class' APIs are being called incorrectly.
+    // This is a good sanity check to enforce that the model has been parsed prior to looking into it for ort config.
+    if (!model_proto) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model needs to be provided to check for ORT config within it");
+    }
+
+    // Use default logger as the session_logger_ hasn't been initialized yet.
+    InferenceSessionUtils inference_session_utils(default_logger);
+
+    auto status = inference_session_utils.ParseOrtConfigJsonInModelProto(*model_proto);
+    if (!status.IsOK()) {
+      return status;
+    }
+
+    status = inference_session_utils.ParseSessionOptionsFromModelProto(constructed_session_options);
+    if (!status.IsOK()) {
+      return status;
+    }
+
+    // use the constructed session options
+    finalalized_session_options = constructed_session_options;
+  } else {
+    // use user provided session options instance
+    finalalized_session_options = user_provided_session_options;
+  }
 
   return Status::OK();
 }
@@ -114,29 +168,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   ORT_ENFORCE(Environment::IsInitialized(),
               "Environment must be initialized before creating an InferenceSession.");
 
-  // Will eventually point to the final session options to be used to initialize this session instance with
-  const SessionOptions* final_session_options;
+  auto status = FinalizeSessionOptions(session_options, model_proto_.get(), session_options_);
+  ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
+              status.ErrorMessage());
 
-  // Initially contains default session option values
-  SessionOptions constructed_session_options;
-
-  // the model is to be checked for an ORT config json that may hold some/all session options
-  if (session_options.check_model_for_ort_config) {
-    // In theory should not throw on this line unless this internal class' APIs are being called incorrectly.
-    // It is a good sanity check to enforce this
-    ORT_ENFORCE(model_proto_, "Need model to be provided to check for ORT config within it");
-
-    auto status = FinalizeSessionOptions(constructed_session_options, *model_proto_);
-    ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
-                status.ErrorMessage());
-
-    final_session_options = &constructed_session_options;
-  } else {
-    // use provided session options instance
-    final_session_options = &session_options;
-  }
-
-  session_options_ = *final_session_options;
   graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
       session_options_.max_num_graph_transformation_steps);
   logging_manager_ = logging_manager;

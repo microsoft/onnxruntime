@@ -16,6 +16,7 @@ namespace inference_session_utils {
 
 static const std::string kOrtConfigKey = "ort_config";
 static const std::string kSessionOptionsKey = "session_options";
+static const std::string kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FROM_MODEL";
 
 }  // namespace inference_session_utils
 

@@ -154,8 +154,3 @@ ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions
   options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
   return nullptr;
 }
-
-ORT_API_STATUS_IMPL(OrtApis::EnableCheckModelForOrtConfig, _Inout_ OrtSessionOptions* options) {
-  options->value.check_model_for_ort_config = true;
-  return nullptr;
-}
