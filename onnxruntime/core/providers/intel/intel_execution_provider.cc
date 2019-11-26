@@ -198,8 +198,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     device_id = "VPU";
   #endif
 
-  if(IsUnsupportedOp(optype,device_id))
+  if(IsUnsupportedOp(optype,device_id)){
+    if(intel_ep::IsDebugEnabled())
+      std::cout << "Node is in the unsupported list" << std::endl;
     return true;
+  }
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
@@ -213,12 +216,17 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     auto it = initializers.find(name);
     if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
       if (node_inputs[i]->Shape()->dim_size() == 0){
+        if(intel_ep::IsDebugEnabled()){
+          std::cout << "Zero dimensions check failed" << std::endl;
+        }
         return true;
       }
       else{
         auto num_dims = node_inputs[i]->Shape()->dim_size();
         for(int j = 0; j < num_dims; j++){
           if(node_inputs[i]->Shape()->dim(j).dim_value() == 0){
+              if(intel_ep::IsDebugEnabled())
+                std::cout << "Zero dimensions check failed" << std::endl;
               return true;
           }
         }
