@@ -71,6 +71,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   _winmla::IIOBinding*
   CreateSessionBinding();
 
+  _winmla::IInferenceSession*
+  GetIInferenceSession();
+
  private:
   void
   Initialize();

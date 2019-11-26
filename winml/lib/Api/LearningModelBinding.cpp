@@ -8,7 +8,7 @@
 #include "LearningModelBinding.h"
 #include "LearningModelSession.h"
 #include "TelemetryEvent.h"
-
+#include <onnxruntime_c_api.h>
 using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
@@ -159,10 +159,10 @@ void LearningModelBinding::Bind(
 
   switch (bindingType) {
     case BindingType::kInput:
-      WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, binding_value));
+      WINML_THROW_IF_FAILED(BindInput(bindingName, *binding_value));
       break;
     case BindingType::kOutput:
-      WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, binding_value));
+      WINML_THROW_IF_FAILED(BindOutput(bindingName, *binding_value));
       break;
     default:
       FAIL_FAST();
@@ -501,10 +501,10 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(BindInput(bindingName, *bindingValue));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(BindOutput(bindingName, *bindingValue));
         break;
       default:
         FAIL_FAST();
@@ -513,4 +513,51 @@ STDMETHODIMP LearningModelBinding::Bind(
   }
   WINML_CATCH_ALL_COM
 }
+
+static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, const std::string& name) {
+  auto it = std::find(std::begin(names), std::end(names), name);
+  if (it == std::end(names)) {
+    return {false, 0};
+  }
+  return {true, it - std::begin(names)};
+}
+
+HRESULT LearningModelBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
+  auto rc = Contains(feed_names_, name);
+
+  auto add_or_replace = [this, &name](const bool exists, size_t index, const OrtValue& value) {
+    if (exists) {
+      feeds_[index] = &value;
+    } else {
+      feed_names_.push_back(name);
+      feeds_.push_back(&value);
+    }
+  };
+  const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ONNXType onnxType;
+  g_ort->GetValueType(&ml_value, &onnxType);
+  if (onnxType == ONNXType::ONNX_TYPE_TENSOR) {
+    OrtValue* new_mlvalue;
+    m_session.as<LearningModelSession>()
+      ->GetIInferenceSession()
+      ->CopyOneInputAcrossDevices(name.c_str(), &ml_value, &new_mlvalue);
+    add_or_replace(rc.first, rc.second, *new_mlvalue);
+  } else {
+    add_or_replace(rc.first, rc.second, ml_value);
+  }
+  return S_OK;
+}
+
+HRESULT LearningModelBinding::BindOutput(const std::string& name, const OrtValue& ml_value) {
+  auto rc = Contains(output_names_, name);
+  if (rc.first) {
+    outputs_[rc.second] = &ml_value;
+    return S_OK;
+  }
+
+  output_names_.push_back(name);
+  outputs_.push_back(&ml_value);
+  return S_OK;
+}
+
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

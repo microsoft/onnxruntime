@@ -450,6 +450,11 @@ LearningModelSession::GetExecutionProvider() {
   return cached_execution_provider_;
 }
 
+_winmla::IInferenceSession*
+LearningModelSession::GetIInferenceSession() {
+  return inference_session_.get();
+}
+
 void LearningModelSession::CheckClosed() {
   if (!inference_session_) {
     WINML_THROW_HR(RO_E_CLOSED);

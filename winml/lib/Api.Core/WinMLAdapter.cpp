@@ -30,6 +30,8 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 
 #include "FeatureDescriptorFactory.h"
+#include "core\framework\utils.h"
+#include "core\framework\session_state.h"
 
 using namespace winrt::Windows::AI::MachineLearning;
 
@@ -50,7 +52,7 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
     return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
   }
   const onnxruntime::SessionState& GetSessionState() {
-    return session_state_;
+    return onnxruntime::InferenceSession::session_state_;
   }
 };
 
@@ -480,7 +482,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #endif USE_DML
   }
 
-HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
+  HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
 #ifdef USE_DML
     // Retrieve the "operator abi" registry.
     winrt::com_ptr<IMLOperatorRegistry> operator_registry;
@@ -490,7 +492,7 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
 #else
     return E_NOTIMPL;
 #endif USE_DML
-}
+  }
 
   void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
 #ifdef USE_DML
@@ -510,7 +512,7 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
       onnxruntime::IExecutionProvider* provider,
       OrtValue* src,
       OrtValue* dst) override {
-#ifdef USE_DML       
+#ifdef USE_DML
     ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>())));
     return S_OK;
 #else
@@ -531,7 +533,7 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
     });
     return S_OK;
 #else
-    return S_OK; // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
+    return S_OK;  // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
 #endif USE_DML
   }
 
@@ -594,6 +596,10 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
     return S_OK;
   }
 
+  HRESULT STDMETHODCALLTYPE IsValueTensor(const OrtValue* ort_value, bool* isTensor) {
+    *isTensor = ort_value->IsTensor();
+    return S_OK;
+  }
 };  // namespace Windows::AI::MachineLearning::Adapter
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) {
@@ -727,10 +733,14 @@ void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime:
 }
 
 HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(
-  const char* input_name,
-  const OrtValue* orig_mlvalue, 
-  OrtValue** new_mlvalue) {
-  return E_NOTIMPL;
+    const char* input_name,
+    const OrtValue* orig_mlvalue,
+    OrtValue** new_mlvalue) {
+  auto session_protected_load_accessor =
+      static_cast<InferenceSessionProtectedLoadAccessor*>(session_.get());
+  const onnxruntime::SessionState& sessionState = session_protected_load_accessor->GetSessionState();
+  *new_mlvalue = new OrtValue;
+  ORT_THROW_IF_ERROR(onnxruntime::utils::CopyOneInputAcrossDevices(sessionState, input_name, *orig_mlvalue, **new_mlvalue));
+  return S_OK;
 }
-
 }  // namespace Windows::AI::MachineLearning::Adapter

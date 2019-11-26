@@ -61,7 +61,8 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
   bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
-
+  HRESULT BindInput(const std::string& name, const OrtValue& ml_value);
+  HRESULT BindOutput(const std::string& name, const OrtValue& ml_value);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
@@ -70,6 +71,10 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
   com_ptr<_winmla::IIOBinding> m_lotusBinding;
   com_ptr<_winmla::IWinMLAdapter> adapter_;
+  std::vector<std::string> feed_names_;
+  std::vector<const OrtValue*> feeds_;
+  std::vector<std::string> output_names_;
+  std::vector<const OrtValue*> outputs_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 
