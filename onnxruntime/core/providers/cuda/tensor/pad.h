@@ -6,11 +6,13 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/tensor/pad.h"
 
+using onnxruntime::PadBase;
+
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-class Pad final : public PadBase, public CudaKernel {
+class Pad : public PadBase, public CudaKernel {
  public:
   Pad(const OpKernelInfo& info) : PadBase(info), CudaKernel(info) {}
 
