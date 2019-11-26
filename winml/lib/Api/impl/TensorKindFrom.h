@@ -63,6 +63,11 @@ template <>
 struct TensorKindFrom<onnxruntime::MLFloat16> { static const winml::TensorKind Type = winml::TensorKind::Float16; };
 
 template <typename T>
+struct ONNXTensorElementDataTypeFrom {};
+
+
+
+template <typename T>
 struct TensorFeatureDescriptorFrom {
   static winml::ILearningModelFeatureDescriptor
   CreateAnonymous(

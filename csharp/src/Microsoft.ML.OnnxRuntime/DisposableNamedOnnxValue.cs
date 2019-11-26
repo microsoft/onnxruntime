@@ -205,7 +205,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (typeof(T) == typeof(string))
             {
-                var nativeTensorWrapper = new NativeOnnxTensorMemory<byte>(nativeOnnxValue, true);
+                var nativeTensorWrapper = new NativeOnnxTensorMemory<string>(nativeOnnxValue);
                 var dt = new DenseTensor<string>(nativeTensorWrapper.GetBytesAsStringMemory(), nativeTensorWrapper.Dimensions);
                 return new DisposableNamedOnnxValue(name, dt, nativeTensorWrapper);
             }
@@ -225,7 +225,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (typeof(K) == typeof(string))
             {
                 var map = new Dictionary<string, V>();
-                var nativeTensorWrapper = new NativeOnnxTensorMemory<byte>(nativeOnnxValueKeys, true);
+                var nativeTensorWrapper = new NativeOnnxTensorMemory<string>(nativeOnnxValueKeys);
                 var denseTensorKeys = new DenseTensor<string>(nativeTensorWrapper.GetBytesAsStringMemory(), nativeTensorWrapper.Dimensions);
                 for (var i = 0; i < denseTensorKeys.Length; i++)
                 {

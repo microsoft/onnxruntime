@@ -254,9 +254,9 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
   Status status;
 
   auto data_type = X.DataType();
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (utils::IsPrimitiveDataType<float>(data_type))
     status = ComputeImpl<float>(*context);
-  else if (data_type == DataTypeImpl::GetType<double>()) {
+  else if (utils::IsPrimitiveDataType<double>(data_type)) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
     ORT_NOT_IMPLEMENTED("GRU operator does not support double yet");

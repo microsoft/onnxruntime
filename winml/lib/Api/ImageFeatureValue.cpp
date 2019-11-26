@@ -391,25 +391,6 @@ static void GPUTensorize(
 #endif
 }
 
-static _winmla::IOrtValue* CreateMLValue(
-    com_ptr<LearningModelSession> spSession,
-    const ImageTensorDescription& tensorDescriptor) {
-    com_ptr<_winmla::IWinMLAdapter> adapter;
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-
-    auto lotus_type = adapter->GetTensorType();
-    winrt::com_ptr<_winmla::IOrtValue> ort_value;
-    WINML_THROW_IF_FAILED(adapter->CreateMLValue(
-      tensorDescriptor.dataType == kImageTensorDataTypeFloat32 ? TensorKind::Float : TensorKind::Float16,
-      lotus_type,
-      &(tensorDescriptor.sizes[0]),
-      sizeof(tensorDescriptor.sizes) / sizeof(tensorDescriptor.sizes[0]),
-      spSession->GetExecutionProvider(), 
-      ort_value.put()));
-
-  return ort_value.detach();
-}
-
 std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetInputMetadata(const WinML::BindingContext& context) {
   uint32_t descriptorWidth;
   uint32_t descriptorHeight;
@@ -509,8 +490,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
 }
 
-HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, _winmla::IOrtValue** p_ort_value) try {
-  FAIL_FAST_IF(p_ort_value == nullptr);
+HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue** ort_value) try {
   FAIL_FAST_IF(!(std::all_of(m_widths.begin(), m_widths.end(), [](int i) { return i != 0; })));
   FAIL_FAST_IF(!(std::all_of(m_heights.begin(), m_heights.end(), [](int i) { return i != 0; })));
 
@@ -522,13 +502,26 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, _winmla::
   // Get the session
   auto spSession = context.session.as<LearningModelSession>();
   auto spDevice = spSession->Device().as<LearningModelDevice>();
+  auto provider = spSession->GetExecutionProvider();
 
-  *p_ort_value = CreateMLValue(spSession, resourceMetadata.TensorDescriptor);
+  // and the adapter
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-  // Get the tensor
-  winrt::com_ptr<_winmla::ITensor> tensor;
-  RETURN_IF_FAILED((*p_ort_value)->GetTensor(tensor.put()));
-  auto pAllocatedResource = const_cast<void*>(tensor->DataRaw());
+  // create the OrtValue
+  OrtAllocator* dml_allocator;
+  WINML_THROW_IF_FAILED(adapter->GetProviderAllocator(provider, &dml_allocator));
+
+  // create the OrtValue as a tensor letting ort know that we own the data buffer
+  Ort::Value ort_tensor = Ort::Value::CreateTensor(
+      dml_allocator,
+      &(resourceMetadata.TensorDescriptor.sizes[0]),
+      sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
+      (resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32) ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+
+  // Get the tensor raw data
+  void* pAllocatedResource = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_tensor, &pAllocatedResource));
 
   if (context.type == BindingType::kInput) {
     // Only tensorize inputs
@@ -543,6 +536,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, _winmla::
     }
   }
 
+  *ort_value = ort_tensor.release();
   return S_OK;
 }
 WINML_CATCH_ALL_COM
@@ -553,15 +547,17 @@ HRESULT ImageFeatureValue::IsPlaceholder(bool* pIsPlaceHolder) {
   return S_OK;
 }
 
-HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, _winmla::IOrtValue* mlValue) try {
+HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, OrtValue* ort_value) try {
   // Get the device
   auto spSession = context.session.as<LearningModelSession>();
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
-  // Get the output tensor
-  winrt::com_ptr<_winmla::ITensor> tensor;
-  RETURN_IF_FAILED(mlValue->GetTensor(tensor.put()));
-  auto pAllocatedResource = const_cast<void*>(tensor->DataRaw());
+  com_ptr<_winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+
+  // Get the output tensor raw data
+  void* pAllocatedResource = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_value, &pAllocatedResource));
 
   // Get the run context
   auto metadata = GetInputMetadata(context);
@@ -571,9 +567,12 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, _wi
   descriptor.width = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[3]);
   descriptor.height = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[2]);
 
-  if (!strcmp(tensor->LocationName(), onnxruntime::CPU) ||
-      tensor->LocationMemType() == ::OrtMemType::OrtMemTypeCPUOutput ||
-      tensor->LocationMemType() == ::OrtMemType::OrtMemTypeCPUInput) {
+  Ort::MemoryInfo memory_info(nullptr);
+  adapter->GetValueMemoryInfo(ort_value, memory_info.put());
+
+  if (!strcmp(memory_info.Name(), onnxruntime::CPU) ||
+      memory_info.MemType()  == ::OrtMemType::OrtMemTypeCPUOutput ||
+      memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUInput) {
     descriptor.pixel_format = static_cast<DWORD>(BitmapPixelFormat::Bgra8);
     descriptor.luid = {};  // Converted image on CPU
 
@@ -597,8 +596,6 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, _wi
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
     auto pProvider = spSession->GetExecutionProvider();
-    com_ptr<_winmla::IWinMLAdapter> adapter;
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
     auto d3dResource = adapter->GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
 
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {

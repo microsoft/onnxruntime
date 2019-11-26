@@ -24,9 +24,9 @@ struct BindingContext {
 };
 
 struct __declspec(uuid("27e2f437-0112-4693-849e-e04323a620fb")) __declspec(novtable) ILotusValueProviderPrivate : IUnknown {
-  virtual HRESULT __stdcall GetOrtValue(BindingContext& binding_context, _winmla::IOrtValue** ml_value) = 0;
+  virtual HRESULT __stdcall GetOrtValue(BindingContext& binding_context, OrtValue ** ort_value) = 0;
   virtual HRESULT __stdcall IsPlaceholder(bool* is_placeholder) = 0;
-  virtual HRESULT __stdcall UpdateSourceResourceData(BindingContext& binding_context, _winmla::IOrtValue* ml_value) = 0;
+  virtual HRESULT __stdcall UpdateSourceResourceData(BindingContext& binding_context, OrtValue* ort_value) = 0;
   virtual HRESULT __stdcall AbiRepresentation(winrt::Windows::Foundation::IInspectable& abi_representation) = 0;
 };
 

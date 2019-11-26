@@ -20,36 +20,14 @@ MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
     virtual wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE output_features() = 0;
 };
 
-MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") ITensor : IUnknown{
-    // these all return weak pointers
-    virtual const onnxruntime::Tensor& STDMETHODCALLTYPE get() = 0;
-    virtual onnxruntime::Tensor* STDMETHODCALLTYPE getMutable() = 0;
-    virtual onnxruntime::MLDataType STDMETHODCALLTYPE DataType() = 0;
-    virtual const void* STDMETHODCALLTYPE DataRaw() = 0;
-    virtual const std::vector<int64_t>& STDMETHODCALLTYPE ShapeGetDims() = 0;
-    virtual int64_t STDMETHODCALLTYPE ShapeSize() = 0;
-    virtual const char * STDMETHODCALLTYPE LocationName() = 0;
-    virtual OrtMemType STDMETHODCALLTYPE LocationMemType() = 0;
-    // end
-};
-
-MIDL_INTERFACE("72aa5eee-100c-4146-9008-4643d3b8af23") IOrtValue : IUnknown{
-    // these all return weak pointers
-    virtual OrtValue* STDMETHODCALLTYPE get() = 0;
-    virtual onnxruntime::MLDataType STDMETHODCALLTYPE Type() = 0;
-    virtual bool STDMETHODCALLTYPE IsTensor() = 0;
-    // end
-    virtual HRESULT STDMETHODCALLTYPE GetTensor(ITensor ** tensor) = 0;
-};
-
 MIDL_INTERFACE("438e7719-554a-4058-84d9-eb6226c34887") IIOBinding : IUnknown{
     // this returns a weak ref
     virtual onnxruntime::IOBinding* STDMETHODCALLTYPE get() = 0;
-    virtual HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, IOrtValue * ml_value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, IOrtValue * ml_value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, OrtValue * ml_value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, OrtValue * ml_value) = 0;
     virtual const std::vector<std::string>& STDMETHODCALLTYPE GetOutputNames() = 0;
     // this returns a weak ref
-    virtual std::vector<IOrtValue *>& STDMETHODCALLTYPE GetOutputs() = 0;
+    virtual std::vector<OrtValue *>& STDMETHODCALLTYPE GetOutputs() = 0;
 };
 
 MIDL_INTERFACE("a848faf6-5a2e-4a7f-b622-cc036f71e28a") IModelProto : IUnknown{
@@ -71,6 +49,8 @@ MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnkn
     virtual void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider * dml_provider) = 0;
     virtual void STDMETHODCALLTYPE TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) = 0;
     virtual void STDMETHODCALLTYPE ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CopyOneInputAcrossDevices(const char* input_name,
+                                                                const OrtValue* orig_mlvalue, OrtValue** new_mlvalue) = 0;
 };
 
 // The IOrtSessionBuilder offers an abstraction over the creation of
@@ -116,15 +96,6 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     virtual HRESULT STDMETHODCALLTYPE CreateModelInfo(IModelProto * model_proto, IModelInfo ** model_info) = 0;
 
     // Data types
-    virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType() = 0;
-    virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType(winml::TensorKind kind) = 0;
-    virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
-    virtual onnxruntime::MLDataType STDMETHODCALLTYPE GetVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
-
-    // Data getter
-    virtual void * STDMETHODCALLTYPE GetTensorData(IOrtValue * ort_value) = 0;
-    virtual void * STDMETHODCALLTYPE GetMapData(IOrtValue * ort_value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
-    virtual void * STDMETHODCALLTYPE GetVectorData(IOrtValue * ort_value, winml::TensorKind key_kind, winml::TensorKind value_kind) = 0;
 
     // custom ops
     virtual HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) = 0;
@@ -133,33 +104,19 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     // dml ep hooks
     virtual void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) = 0;
     virtual void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) = 0;
-    virtual HRESULT STDMETHODCALLTYPE CopyTensor(onnxruntime::IExecutionProvider* provider, ITensor* src, ITensor* dst) = 0;
-    virtual HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
-        void * execution_provider_allocated_resource,
-        onnxruntime::IExecutionProvider* provider,
-        std::vector<int64_t>* shape,
-        onnxruntime::MLDataType data_type,
-        IOrtValue ** gpu_value) = 0;
-
-    virtual HRESULT STDMETHODCALLTYPE CreateCPUMLValue(
-        std::vector<int64_t>* shape,
-        onnxruntime::MLDataType data_type,
-        onnxruntime::BufferNakedPtr buffer,
-        IOrtValue ** cpu_value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE CreateMLValue(
-        winml::TensorKind kind,
-        onnxruntime::MLDataType data_type,
-        const int64_t * shape,
-        uint32_t shape_count,
-        onnxruntime::IExecutionProvider* provider,
-        IOrtValue ** ort_value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE CreateOrtValue(
-        void * data,
-        onnxruntime::MLDataType data_type,
-        IOrtValue ** ort_value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CopyTensor(onnxruntime::IExecutionProvider* provider, OrtValue* src, OrtValue* dst) = 0;
 
     // schema overrides (dml does this for us)
     virtual HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() = 0;
+
+    // proposed adapter. uses the cross plat ABI currencies
+    virtual HRESULT STDMETHODCALLTYPE GetProviderMemoryInfo(onnxruntime::IExecutionProvider * provider, OrtMemoryInfo** memory_info) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetProviderAllocator(onnxruntime::IExecutionProvider * provider, OrtAllocator** allocator) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetValueMemoryInfo(const OrtValue * value, OrtMemoryInfo** memory_info) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetMapType(const OrtValue * ort_value, ONNXTensorElementDataType * key_type, ONNXTensorElementDataType * value_type) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetVectorMapType(const OrtValue * ort_value, ONNXTensorElementDataType * key_type, ONNXTensorElementDataType * value_type) = 0;
+    //virtual HRESULT STDMETHODCALLTYPE CreateTensorFromMap(IInspectable * map, OrtValue * *ort_value) = 0;
+    //virtual HRESULT STDMETHODCALLTYPE CreateTensorFromSequence(IInspectable * sequence, OrtValue * *ort_value) = 0;
 };
 
 extern "C"
@@ -184,6 +141,9 @@ public:
     void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider* dml_provider) override;
     void STDMETHODCALLTYPE TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) override;
     void STDMETHODCALLTYPE ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) override;
+    HRESULT STDMETHODCALLTYPE CopyOneInputAcrossDevices(const char* input_name,
+                                                        const OrtValue* orig_mlvalue, OrtValue** new_mlvalue) override;
+
 
 private:
     std::shared_ptr<onnxruntime::InferenceSession> session_;

@@ -42,86 +42,17 @@ TRACELOGGING_DEFINE_PROVIDER(
     WINML_PROVIDER_GUID);
 
 // ORT intentionally requires callers derive from their session class to access
-// the protected Load method used below.
+// the protected methods used below.
 class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSession {
  public:
   onnxruntime::common::Status
   Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) {
     return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
   }
-};
-
-// class AbiSafeTensor
-//
-class AbiSafeTensor : public Microsoft::WRL::RuntimeClass<
-                          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                          ITensor> {
- private:
-  onnxruntime::Tensor& tensor_;              // weak ref
-  Microsoft::WRL::ComPtr<IOrtValue> value_;  // strong ref
-
- public:
-  AbiSafeTensor(onnxruntime::Tensor* tensor,
-                IOrtValue* value_in) : tensor_(*tensor), value_(value_in) {
-  }
-  const onnxruntime::Tensor& STDMETHODCALLTYPE get() override {
-    return tensor_;
-  }
-  onnxruntime::Tensor* STDMETHODCALLTYPE getMutable() override {
-    return &tensor_;
-  }
-  onnxruntime::MLDataType STDMETHODCALLTYPE DataType() override {
-    return tensor_.DataType();
-  }
-  const void* STDMETHODCALLTYPE DataRaw() override {
-    return tensor_.DataRaw();
-  }
-  const std::vector<int64_t>& STDMETHODCALLTYPE ShapeGetDims() override {
-    return tensor_.Shape().GetDims();
-  }
-  int64_t STDMETHODCALLTYPE ShapeSize() override {
-    return tensor_.Shape().Size();
-  }
-  const char* STDMETHODCALLTYPE LocationName() override {
-    return tensor_.Location().name;
-  }
-  OrtMemType STDMETHODCALLTYPE LocationMemType() override {
-    return tensor_.Location().mem_type;
+  const onnxruntime::SessionState& GetSessionState() {
+    return session_state_;
   }
 };
-
-// class OrtValue
-//
-class AbiSafeOrtValue : public Microsoft::WRL::RuntimeClass<
-                            Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                            IOrtValue> {
- private:
-  OrtValue ort_value_;
-  OrtValue* ort_value_weak_;
-
- public:
-  AbiSafeOrtValue() : ort_value_weak_(nullptr) {}
-  AbiSafeOrtValue(OrtValue* weak_value_in) : ort_value_weak_(weak_value_in) {}
-
-  OrtValue* STDMETHODCALLTYPE get() override {
-    if (ort_value_weak_ != nullptr)
-      return ort_value_weak_;
-    return &ort_value_;
-  }
-
-  onnxruntime::MLDataType STDMETHODCALLTYPE Type() override {
-    return get()->Type();
-  }
-  bool STDMETHODCALLTYPE IsTensor() override {
-    return get()->IsTensor();
-  }
-  // end
-  HRESULT STDMETHODCALLTYPE GetTensor(ITensor** tensor) override {
-    auto tensor_inner = get()->GetMutable<onnxruntime::Tensor>();
-    auto tensor_outer = wil::MakeOrThrow<AbiSafeTensor>(tensor_inner, this);
-    return tensor_outer.CopyTo(__uuidof(ITensor), reinterpret_cast<void**>(tensor));
-  }
-};  // class AbiSafeOrtValue
 
 class ModelProto : public Microsoft::WRL::RuntimeClass<
                        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -495,134 +426,48 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #endif USE_DML
   }
 
-  onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType() override {
-    return onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>();
-  }
-
-  onnxruntime::MLDataType STDMETHODCALLTYPE GetTensorType(winml::TensorKind kind) override {
-    if (kind == TensorKind::Float) {
-      return onnxruntime::DataTypeImpl::GetType<float>();
-    } else if (kind == TensorKind::Double) {
-      return onnxruntime::DataTypeImpl::GetType<double>();
-    } else if (kind == TensorKind::String) {
-      return onnxruntime::DataTypeImpl::GetType<std::string>();
-    } else if (kind == TensorKind::UInt8) {
-      return onnxruntime::DataTypeImpl::GetType<uint8_t>();
-    } else if (kind == TensorKind::Int8) {
-      return onnxruntime::DataTypeImpl::GetType<int8_t>();
-    } else if (kind == TensorKind::UInt16) {
-      return onnxruntime::DataTypeImpl::GetType<uint16_t>();
-    } else if (kind == TensorKind::Int16) {
-      return onnxruntime::DataTypeImpl::GetType<int16_t>();
-    } else if (kind == TensorKind::UInt32) {
-      return onnxruntime::DataTypeImpl::GetType<uint32_t>();
-    } else if (kind == TensorKind::Int32) {
-      return onnxruntime::DataTypeImpl::GetType<int32_t>();
-    } else if (kind == TensorKind::UInt64) {
-      return onnxruntime::DataTypeImpl::GetType<uint64_t>();
-    } else if (kind == TensorKind::Int64) {
-      return onnxruntime::DataTypeImpl::GetType<int64_t>();
-    } else if (kind == TensorKind::Boolean) {
-      return onnxruntime::DataTypeImpl::GetType<bool>();
-    } else if (kind == TensorKind::Float16) {
-      return onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>();
+  HRESULT STDMETHODCALLTYPE GetMapType(const OrtValue* ort_value, ONNXTensorElementDataType* key_type, ONNXTensorElementDataType* value_type) override {
+    *key_type = *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    auto type = ort_value->Type();
+    if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToString>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToInt64>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToFloat>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToDouble>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToString>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToInt64>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToFloat>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToDouble>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
     }
-    return nullptr;
+    return S_OK;
   }
 
-  onnxruntime::MLDataType STDMETHODCALLTYPE GetMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) override {
-    if (key_kind == TensorKind::String) {
-      if (value_kind == TensorKind::String) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToString>();
-      } else if (value_kind == TensorKind::Int64) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToInt64>();
-      } else if (value_kind == TensorKind::Float) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToFloat>();
-      } else if (value_kind == TensorKind::Double) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapStringToDouble>();
-      }
-    } else if (key_kind == TensorKind::Int64) {
-      if (value_kind == TensorKind::String) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToString>();
-      } else if (value_kind == TensorKind::Int64) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToInt64>();
-      } else if (value_kind == TensorKind::Float) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToFloat>();
-      } else if (value_kind == TensorKind::Double) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::MapInt64ToDouble>();
-      }
+  HRESULT STDMETHODCALLTYPE GetVectorMapType(const OrtValue* ort_value, ONNXTensorElementDataType* key_type, ONNXTensorElementDataType* value_type) override {
+    *key_type = *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    auto type = ort_value->Type();
+    if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::VectorMapStringToFloat>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    } else if (type == onnxruntime::DataTypeImpl::GetType<onnxruntime::VectorMapInt64ToFloat>()) {
+      *key_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+      *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     }
-    return nullptr;
-  }
-
-  onnxruntime::MLDataType STDMETHODCALLTYPE GetVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind) override {
-    if (key_kind == TensorKind::String) {
-      if (value_kind == TensorKind::Float) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::VectorMapStringToFloat>();
-      }
-    } else if (key_kind == TensorKind::Int64) {
-      if (value_kind == TensorKind::Float) {
-        return onnxruntime::DataTypeImpl::GetType<onnxruntime::VectorMapInt64ToFloat>();
-      }
-    }
-    return nullptr;
-  }
-
-  // returns the raw mutable data.
-  void* STDMETHODCALLTYPE GetTensorData(IOrtValue* ort_value) override {
-    auto ml_value = ort_value->get();
-    auto tensor = ml_value->GetMutable<onnxruntime::Tensor>();
-    return static_cast<void*>(tensor->MutableDataRaw());
-  }
-
-  void* STDMETHODCALLTYPE GetMapData(IOrtValue* ort_value, winml::TensorKind key_kind, winml::TensorKind value_kind) override {
-    auto ml_value = ort_value->get();
-    if (key_kind == TensorKind::Int64) {
-      if (value_kind == TensorKind::Int64) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<int64_t, int64_t>>());
-      } else if (value_kind == TensorKind::Float) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<int64_t, float>>());
-      } else if (value_kind == TensorKind::Double) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<int64_t, double>>());
-      } else if (value_kind == TensorKind::String) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<int64_t, std::string>>());
-      } else {
-        THROW_HR(E_FAIL);
-      }
-    } else if (key_kind == TensorKind::String) {
-      if (value_kind == TensorKind::Int64) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<std::string, int64_t>>());
-      } else if (value_kind == TensorKind::Float) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<std::string, float>>());
-      } else if (value_kind == TensorKind::Double) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<std::string, double>>());
-      } else if (value_kind == TensorKind::String) {
-        return static_cast<void*>(ml_value->GetMutable<std::map<std::string, std::string>>());
-      } else {
-        THROW_HR(E_FAIL);
-      }
-    } else {
-      THROW_HR(E_FAIL);
-    }
-  }
-
-  void* STDMETHODCALLTYPE GetVectorData(IOrtValue* ort_value, winml::TensorKind key_kind, winml::TensorKind value_kind) override {
-    auto ml_value = ort_value->get();
-    if (key_kind == TensorKind::String) {
-      if (value_kind == TensorKind::Float) {
-        return static_cast<void*>(ml_value->GetMutable<std::vector<std::map<std::string, float>>>());
-      } else {
-        THROW_HR(E_FAIL);
-      }
-    } else if (key_kind == TensorKind::Int64) {
-      if (value_kind == TensorKind::Float) {
-        return static_cast<void*>(ml_value->GetMutable<std::vector<std::map<int64_t, float>>>());
-      } else {
-        THROW_HR(E_FAIL);
-      }
-    } else {
-      THROW_HR(E_FAIL);
-    }
+    return S_OK;
   }
 
   HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) override {
@@ -635,7 +480,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #endif USE_DML
   }
 
-  HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
+HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
 #ifdef USE_DML
     // Retrieve the "operator abi" registry.
     winrt::com_ptr<IMLOperatorRegistry> operator_registry;
@@ -645,7 +490,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #else
     return E_NOTIMPL;
 #endif USE_DML
-  }
+}
 
   void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
 #ifdef USE_DML
@@ -663,112 +508,14 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
   HRESULT STDMETHODCALLTYPE CopyTensor(
       onnxruntime::IExecutionProvider* provider,
-      ITensor* src,
-      ITensor* dst) override {
-#ifdef USE_DML
-    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, src->get(), *(dst->getMutable())));
+      OrtValue* src,
+      OrtValue* dst) override {
+#ifdef USE_DML       
+    ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>())));
     return S_OK;
 #else
     return E_NOTIMPL;
 #endif USE_DML
-  }
-
-  HRESULT STDMETHODCALLTYPE CreateGPUMLValue(
-      void* execution_provider_allocated_resource,
-      onnxruntime::IExecutionProvider* provider,
-      std::vector<int64_t>* shape,
-      onnxruntime::MLDataType data_type,
-      IOrtValue** gpu_value) override {
-#ifdef USE_DML
-    THROW_HR_IF_MSG(WINML_ERR_INVALID_BINDING,
-                    "DmlExecutionProvider" != provider->Type(),
-                    "Cannot creat GPU tensor on CPU device");
-
-    onnxruntime::TensorShape tensor_shape(*shape);
-
-    auto tensor = new onnxruntime::Tensor(
-        data_type,
-        tensor_shape,
-        execution_provider_allocated_resource,
-        provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault)->Info());
-
-    auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>();
-    ort_value->get()->Init(tensor,
-                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
-
-    *gpu_value = ort_value.Detach();
-    return S_OK;
-#else
-    return E_NOTIMPL;
-#endif USE_DML
-  }
-
-  HRESULT STDMETHODCALLTYPE CreateCPUMLValue(
-      std::vector<int64_t>* shape,
-      onnxruntime::MLDataType data_type,
-      onnxruntime::BufferNakedPtr buffer,
-      IOrtValue** cpu_value) override {
-    auto registrations = onnxruntime::DeviceAllocatorRegistry::Instance().AllRegistrations();
-    auto alloc = registrations[onnxruntime::CPU].factory(0);
-
-    onnxruntime::TensorShape tensor_shape(*shape);
-
-    // Unowned raw tensor pointer passed to engine
-    auto tensor = new onnxruntime::Tensor(
-        data_type,
-        tensor_shape,
-        buffer,
-        alloc->Info());
-
-    auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>();
-    ort_value->get()->Init(tensor,
-                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                           onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
-
-    *cpu_value = ort_value.Detach();
-    return S_OK;
-  }
-
-  HRESULT STDMETHODCALLTYPE CreateMLValue(
-      winml::TensorKind kind,
-      onnxruntime::MLDataType data_type,
-      const int64_t* shape,
-      uint32_t shape_count,
-      onnxruntime::IExecutionProvider* provider,
-      IOrtValue** ort_value) override {
-    onnxruntime::TensorShape tensor_shape(shape, shape_count);
-    auto tensor = new onnxruntime::Tensor(
-        GetType(kind),
-        tensor_shape,
-        provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault));
-    auto ort_value_out = wil::MakeOrThrow<AbiSafeOrtValue>();
-    ort_value_out->get()->Init(tensor,
-                               data_type,
-                               data_type->GetDeleteFunc());
-
-    *ort_value = ort_value_out.Detach();
-    ;
-    return S_OK;
-  }
-
-  static void Delete(void* p) {
-    // do nothing
-  }
-
-  HRESULT STDMETHODCALLTYPE CreateOrtValue(
-      void* data,
-      onnxruntime::MLDataType data_type,
-      IOrtValue** ort_value) override {
-    auto ort_value_out = wil::MakeOrThrow<AbiSafeOrtValue>();
-    // pass the data in as a weak ref, don't let it delete it
-    ort_value_out->get()->Init(
-        data,
-        data_type,
-        &Delete);
-
-    *ort_value = ort_value_out.Detach();
-    return S_OK;
   }
 
   // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
@@ -788,6 +535,65 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #endif USE_DML
   }
 
+  HRESULT STDMETHODCALLTYPE GetProviderMemoryInfo(
+      onnxruntime::IExecutionProvider* provider,
+      OrtMemoryInfo** memory_info) override {
+    auto allocator = provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault);
+
+    const auto& info = allocator->Info();
+    *memory_info = new OrtMemoryInfo(info.name, info.type, info.device, info.id, info.mem_type);
+    if (*memory_info == nullptr) {
+      return E_OUTOFMEMORY;
+    }
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetValueMemoryInfo(const OrtValue* ort_value, OrtMemoryInfo** memory_info) override {
+    const auto& tensor = ort_value->Get<onnxruntime::Tensor>();
+    auto info = tensor.Location();
+    *memory_info = new OrtMemoryInfo(info.name, info.type, info.device, info.id, info.mem_type);
+    if (*memory_info == nullptr) {
+      return E_OUTOFMEMORY;
+    }
+    return S_OK;
+  }
+
+  struct AllocatorWrapper : public OrtAllocator {
+   public:
+    AllocatorWrapper(onnxruntime::AllocatorPtr impl) : impl_(impl) {
+      version = ORT_API_VERSION;
+      Alloc = AllocImpl;
+      Free = FreeImpl;
+      Info = InfoImpl;
+    }
+
+    static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
+      return static_cast<AllocatorWrapper*>(this_)->impl_->Alloc(size);
+    }
+    static void ORT_API_CALL FreeImpl(struct OrtAllocator* this_, void* p) {
+      return static_cast<AllocatorWrapper*>(this_)->impl_->Free(p);
+    }
+    static const struct OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
+      return &(static_cast<const AllocatorWrapper*>(this_)->info_);
+    }
+
+   private:
+    onnxruntime::AllocatorPtr impl_;
+    OrtMemoryInfo info_;
+  };
+
+  HRESULT STDMETHODCALLTYPE GetProviderAllocator(
+      onnxruntime::IExecutionProvider* provider,
+      OrtAllocator** allocator) override {
+    auto allocator_ptr = provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault);
+    *allocator = new AllocatorWrapper(allocator_ptr);
+    if (*allocator == nullptr) {
+      return E_OUTOFMEMORY;
+    }
+
+    return S_OK;
+  }
+
 };  // namespace Windows::AI::MachineLearning::Adapter
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) {
@@ -803,8 +609,7 @@ class IOBinding : public Microsoft::WRL::RuntimeClass<
                       IIOBinding> {
  private:
   std::shared_ptr<onnxruntime::IOBinding> binding_;
-  std::vector<IOrtValue*> outputs_weak_;
-  std::vector<Microsoft::WRL::ComPtr<IOrtValue>> outputs_;
+  std::vector<OrtValue*> outputs_weak_;
 
  public:
   IOBinding(onnxruntime::IOBinding* binding) : binding_(binding) {
@@ -814,18 +619,18 @@ class IOBinding : public Microsoft::WRL::RuntimeClass<
     return binding_.get();
   }
 
-  HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, IOrtValue* ml_value) override {
-    ORT_THROW_IF_ERROR(binding_->BindInput(name, *ml_value->get()));
+  HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, OrtValue* ort_value) override {
+    ORT_THROW_IF_ERROR(binding_->BindInput(name, *ort_value));
     return S_OK;
   }
 
-  HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, IOrtValue* ml_value) override {
+  HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, OrtValue* ort_value) override {
     // this can be null for unbound outputs
-    if (ml_value == nullptr) {
+    if (ort_value == nullptr) {
       OrtValue empty_value = {};
       ORT_THROW_IF_ERROR(binding_->BindOutput(name, empty_value));
     } else {
-      ORT_THROW_IF_ERROR(binding_->BindOutput(name, *ml_value->get()));
+      ORT_THROW_IF_ERROR(binding_->BindOutput(name, *ort_value));
     }
     return S_OK;
   }
@@ -833,14 +638,11 @@ class IOBinding : public Microsoft::WRL::RuntimeClass<
   const std::vector<std::string>& STDMETHODCALLTYPE GetOutputNames() override {
     return binding_->GetOutputNames();
   }
-  std::vector<IOrtValue*>& STDMETHODCALLTYPE GetOutputs() override {
+  std::vector<OrtValue*>& STDMETHODCALLTYPE GetOutputs() override {
     auto& output_inner = binding_->GetOutputs();
     outputs_weak_.clear();
-    outputs_.clear();
     for (unsigned i = 0; i < output_inner.size(); i++) {
-      auto ort_value = wil::MakeOrThrow<AbiSafeOrtValue>(&(output_inner[i]));
-      outputs_.push_back(ort_value);
-      outputs_weak_.push_back(ort_value.Get());
+      outputs_weak_.push_back(&(output_inner[i]));
     }
     return outputs_weak_;
   }
@@ -922,6 +724,13 @@ void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime:
 #ifdef USE_DML
   Dml::ReleaseCompletedReferences(dml_provider);
 #endif USE_DML
+}
+
+HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(
+  const char* input_name,
+  const OrtValue* orig_mlvalue, 
+  OrtValue** new_mlvalue) {
+  return E_NOTIMPL;
 }
 
 }  // namespace Windows::AI::MachineLearning::Adapter

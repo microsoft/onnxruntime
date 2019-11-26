@@ -11,10 +11,11 @@
 
 namespace Windows::AI::MachineLearning {
 struct DMLResource {
-  DMLResource(ID3D12Resource* pResource) {
+  DMLResource(ID3D12Resource* pResource, UINT64 resource_width) {
     DXResource.copy_from(pResource);
     WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
     ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
+    resource_width_ = resource_width;
   }
 
   ~DMLResource() {
@@ -22,6 +23,7 @@ struct DMLResource {
   }
 
   winrt::com_ptr<ID3D12Resource> DXResource;
+  UINT64 resource_width_;
   void* ExecutionProviderAllocatedResource = nullptr;
   winrt::com_ptr<_winmla::IWinMLAdapter> adapter_;
 };

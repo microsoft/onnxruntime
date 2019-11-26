@@ -8,10 +8,11 @@ from onnx import numpy_helper
 import onnxruntime as onnxrt
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test
+from pathlib import Path
+import shutil
 import sys
 import subprocess
 import tarfile
-from timeit import default_timer as timer
 import unittest
 import urllib.request
 
@@ -47,16 +48,8 @@ class TestNuphar(unittest.TestCase):
         # test AOT on the quantized model
         cache_dir = os.path.join(cwd, 'nuphar_cache')
         if os.path.exists(cache_dir):
-            for sub_dir in os.listdir(cache_dir):
-                full_sub_dir = os.path.join(cache_dir, sub_dir)
-                if os.path.isdir(full_sub_dir):
-                    for f in os.listdir(full_sub_dir):
-                        os.remove(os.path.join(full_sub_dir, f))
-        else:
-            os.makedirs(cache_dir)
-
-        nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
-        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
+            shutil.rmtree(cache_dir)
+        os.makedirs(cache_dir)
 
         # prepare feed
         feed = {}
@@ -64,6 +57,15 @@ class TestNuphar(unittest.TestCase):
             tp = onnx.load_tensor(os.path.join(bidaf_dir, 'test_data_set_0', 'input_{}.pb'.format(i)))
             feed[tp.name] = numpy_helper.to_array(tp)
 
+        # force codegen_target to be avx
+        nuphar_settings = 'nuphar_codegen_target:avx'
+        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
+        sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model)
+        assert 'NupharExecutionProvider' in sess.get_providers()
+        output = sess.run([], feed)
+
+        nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
+        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
         sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
         assert 'NupharExecutionProvider' in sess.get_providers()
         output = sess.run([], feed)
@@ -84,6 +86,34 @@ class TestNuphar(unittest.TestCase):
         sess.run([], feed)
 
 
+    def test_bert_squad(self):
+        # download BERT_squad model
+        cwd = os.getcwd()
+        bert_squad_url = 'https://onnxzoo.blob.core.windows.net/models/opset_10/bert_squad/download_sample_10.tar.gz'
+        cache_dir = os.path.join(os.path.expanduser("~"), '.cache','onnxruntime')
+        os.makedirs(cache_dir, exist_ok=True)
+        bert_squad_local = os.path.join(cache_dir, 'bert_squad.tar.gz')
+        if not os.path.exists(bert_squad_local):
+            urllib.request.urlretrieve(bert_squad_url, bert_squad_local)
+        with tarfile.open(bert_squad_local, 'r') as f:
+            f.extractall(cwd)
+
+        # run symbolic shape inference on this model
+        # set int_max to 1,000,000 to simplify symbol computes for things like min(1000000, seq_len) -> seq_len
+        bert_squad_dir = os.path.join(cwd, 'download_sample_10')
+        bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
+        subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input', bert_squad_model, '--output', bert_squad_model, '--auto_merge', '--int_max=1000000'], check=True, cwd=cwd)
+
+        # run onnx_test_runner to verify results
+        onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
+
+        # run onnxruntime_perf_test
+        onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
+        subprocess.run([onnxruntime_perf_test, '-e', 'nuphar', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+        subprocess.run([onnxruntime_perf_test, '-e', 'cpu', '-o', '99', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+
+
     def test_rnn_benchmark(self):
         # make sure benchmarking scripts works
         # note: quantized model requires AVX2, otherwise it might be slow
@@ -99,6 +129,16 @@ class TestNuphar(unittest.TestCase):
                                                 input_dim=128, hidden_dim=1024, bidirectional=False,
                                                 layers=3, seq_len=16, batch_size=2,
                                                 min_duration_seconds=1)
+
+
+    def test_symbolic_shape_infer(self):
+        cwd = os.getcwd()
+        test_model_dir = os.path.join(cwd, '..', 'models')
+        for filename in Path(test_model_dir).rglob('*.onnx'):
+            if filename.name.startswith('.'):
+                continue # skip some bad model files
+            subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input', str(filename), '--auto_merge', '--int_max=100000', '--guess_output_rank'], check=True, cwd=cwd)
+
 
 if __name__ == '__main__':
     unittest.main()

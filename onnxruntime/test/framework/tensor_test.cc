@@ -166,14 +166,6 @@ TEST(TensorTest, StringTensorTest) {
     EXPECT_EQ(tensor_data[1], "b");
     string_ptr = new_data;
   }
-  // on msvc, check does the ~string be called when release tensor
-  // It may be not stable as access to a deleted pointer could have
-  // undefined behavior. If we find it is failure on other platform
-  // go ahead to remove it.
-#ifdef _MSC_VER
-  EXPECT_EQ(string_ptr->size(), 0);
-  EXPECT_EQ((string_ptr + 1)->size(), 0);
-#endif
 }
 
 TEST(TensorTest, ConvertToString) {

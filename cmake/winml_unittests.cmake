@@ -64,8 +64,21 @@ add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common
+  DEPENDS winml_api
 )
 target_precompiled_header(winml_test_api testPch.h)
+
+file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+add_winml_test(
+  TARGET winml_test_scenario
+  SOURCES ${winml_test_scenario_src}
+  LIBS winml_test_common onnxruntime_providers_dml
+  DEPENDS winml_api
+)
+target_precompiled_header(winml_test_scenario testPch.h)
+set_target_properties(winml_test_scenario PROPERTIES LINK_FLAGS
+  "/DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll"
+)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
@@ -90,3 +103,4 @@ add_winml_collateral("${WINML_TEST_SRC_DIR}/collateral/images/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/collateral/models/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/common/testdata/squeezenet/*")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.onnx")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/models/*.onnx")
