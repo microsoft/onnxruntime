@@ -28,6 +28,7 @@ repositories {
 
 dependencies {
   	testImplementation('org.junit.jupiter:junit-jupiter:5.4.2')
+    testImplementation('com.google.protobuf:protobuf-java:3.10.0')
 }
 
 compileJava {
@@ -134,6 +135,7 @@ if (os.isLinux()) {
 }
 
 test {
+    systemProperty 'GRADLE_TEST', 'true'
     classpath = project.sourceSets.test.runtimeClasspath + files("build/lib/main/debug/" + platform + "/") + files("../build/Linux/Debug/")
     useJUnitPlatform()
     dependsOn 'cleanTest'

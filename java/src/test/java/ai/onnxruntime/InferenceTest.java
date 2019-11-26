@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -24,20 +25,34 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Tests for the onnx-runtime Java interface.
  */
 public class InferenceTest {
     private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
-    private static final Path resourcePath = Paths.get("..","csharp","testdata");
-    private static final Path otherTestPath = Paths.get("..","onnxruntime","test", "testdata");
+    private static Path resourcePath;
+    private static Path otherTestPath;
+
+    static {
+        if (System.getProperty("GRADLE_TEST") != null) {
+            resourcePath = Paths.get("..","csharp","testdata");
+            otherTestPath = Paths.get("..","onnxruntime","test", "testdata");
+        } else {
+            resourcePath = Paths.get("csharp","testdata");
+            otherTestPath = Paths.get("onnxruntime","test", "testdata");
+        }
+    }
 
     @Test
     public void createSessionFromPath() {
@@ -280,14 +295,14 @@ public class InferenceTest {
         Set<String> skipModels = new HashSet<>(Arrays.asList(
                 "mxnet_arcface",  // Model not supported by CPU execution provider
                 "tf_inception_v2",  // TODO: Debug failing model, skipping for now
-                "fp16_inception_v1",  // 16-bit float not supported type in C#.
-                "fp16_shufflenet",  // 16-bit float not supported type in C#.
-                "fp16_tiny_yolov2", // 16-bit float not supported type in C#.
+                "fp16_inception_v1",  // 16-bit float not supported type in Java.
+                "fp16_shufflenet",  // 16-bit float not supported type in Java.
+                "fp16_tiny_yolov2", // 16-bit float not supported type in Java.
                 "test_tiny_yolov2"));
 
         String[] opsets = new String[]{"opset7", "opset8"};
-        Path modelsDir = GetTestModelsDir();
-        try (ONNXEnvironment env = new ONNXEnvironment("testModelInputFLOAT");
+        Path modelsDir = getTestModelsDir();
+        try (ONNXEnvironment env = new ONNXEnvironment("testPreTrainedModelsOpset7And8");
              SessionOptions options = new SessionOptions();
              ONNXAllocator allocator = new ONNXAllocator()) {
             for (String opset : opsets) {
@@ -327,11 +342,11 @@ public class InferenceTest {
                             Path testRoot = modelDir.resolve("test_data");
                             Path inputDataPath = testRoot.resolve("input_0.pb");
                             Path outputDataPath = testRoot.resolve("output_0.pb");
-                            float[] dataIn = LoadTensorFromFilePb(inputDataPath);
-                            float[] dataOut = LoadTensorFromFilePb(outputDataPath);
+                            float[] dataIn = loadTensorFromFilePb(inputDataPath);
+                            float[] dataOut = loadTensorFromFilePb(outputDataPath);
                             List<ONNXTensor> nov = new ArrayList<>();
                             nov.add(allocator.createTensor(ONNXUtil.reshape(dataIn, inputShape)));
-                            List<ONNXValue> res = session.score(nov);
+                            List<ONNXValue> res = session.run(nov);
                             float[] resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
                             assertArrayEquals(dataOut, resultArray, 1e-6f);
                             ONNXValue.close(res);
