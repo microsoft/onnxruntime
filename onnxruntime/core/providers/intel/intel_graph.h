@@ -12,6 +12,8 @@
 namespace onnxruntime {
 namespace intel_ep {
 
+bool IsDebugEnabled();
+
 class IntelGraph {
  public:
   IntelGraph(const onnxruntime::Node* fused_node);
