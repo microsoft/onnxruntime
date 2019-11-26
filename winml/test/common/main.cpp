@@ -9,22 +9,42 @@ namespace RuntimeParameters
     std::unordered_map<std::string, std::string> Parameters;
 }
 
+namespace
+{
+    void usage(char **argv, int failedArgument)
+    {
+        std::cerr << "Unrecognized argument: " << argv[failedArgument] << "\n"
+            << "Usage:\n\t"
+            << argv[0] << " [/p:parameterName=parameterValue ...]\n";
+    }
+
+    bool parseArgument(const std::string& argument)
+    {
+        if (argument.rfind("/p:", 0) == 0)
+        {
+            // Parse argument in the form of /p:parameterName=parameterValue
+            auto separatorIndex = argument.find('=');
+            if (separatorIndex == std::string::npos || separatorIndex == 3)
+            {
+                return false;
+            }
+            auto parameterName = argument.substr(3, separatorIndex - 3);
+            auto parameterValue = argument.substr(separatorIndex + 1);
+            RuntimeParameters::Parameters[parameterName] = parameterValue;
+            return true;
+        }
+        return false;
+    }
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
     for (int i = 1; i < argc; i++)
     {
-        std::string argument(argv[i]);
-        if (argument.rfind("/p:", 0) == 0)
+        if (!parseArgument(argv[i]))
         {
-            auto separatorIndex = argument.find('=');
-            auto parameterName = argument.substr(3, separatorIndex - 3);
-            auto parameterValue = argument.substr(separatorIndex + 1);
-            RuntimeParameters::Parameters[parameterName] = parameterValue;
-        }
-        else
-        {
-            std::cerr << "Unrecognized argument " << argument << "\n";
+            usage(argv, i);
             return -1;
         }
     }
