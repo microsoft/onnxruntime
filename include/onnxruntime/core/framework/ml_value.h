@@ -21,7 +21,7 @@ class TensorSeq;
 struct OrtValue {
  public:
   OrtValue() : data_(nullptr) {}
-  virtual ~OrtValue() = default;
+  ~OrtValue() = default;
 
   OrtValue(void* pData, onnxruntime::MLDataType type, onnxruntime::DeleteFunc deleter) {
     Init(pData, type, deleter);
