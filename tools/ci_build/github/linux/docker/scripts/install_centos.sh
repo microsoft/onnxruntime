@@ -20,7 +20,11 @@ elif [ "$os_major_version" == "6" ] && [ ! -d "/opt/python/cp35-cp35m" ]; then
   yum --enablerepo=ius install -y python36u python36u-devel python36u-pip python36u-numpy python36u-setuptools python36u-wheel
   /usr/bin/python3.6 -m pip install --upgrade pip
 else
-  yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel dotnet-runtime-3.0
+  yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
+  # install dotnet runtimes
+  yum install -y https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
+  yum install -y dotnet-runtime-3.0
+
 fi
 
 
