@@ -473,7 +473,7 @@ GetTensorType(
        has_unsupported_image_metadata);
 
   if (is_tensor_improperly_annotated_as_image) {
-    TraceLoggingWrite(_winmla::winml_trace_logging_provider,
+    TraceLoggingWrite(winmla::winml_trace_logging_provider,
                       "WinMLInputValidation",
                       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
                       TraceLoggingLevel(WINEVENT_LEVEL_WARNING),

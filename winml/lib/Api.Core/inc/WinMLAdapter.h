@@ -148,27 +148,4 @@ private:
     std::shared_ptr<onnxruntime::InferenceSession> session_;
 };
 
-// header only code to enable smart pointers on abstract ort objects
-template <typename T>
-class OrtObject {
- public:
-  OrtObject() {
-    p_ = nullptr;
-  }
-
-  OrtObject(T* m) {
-    p_ = m;
-  }
-
-  virtual ~OrtObject() {
-    if (p_ != nullptr) {
-      ReleaseOrtObject(p_);
-    }
-  }
-  T* get() { return p_;  }
-private:
-  T* p_;
-};
-
-
 }  // namespace Windows::AI::MachineLearning::Adapter

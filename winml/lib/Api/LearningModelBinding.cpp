@@ -218,8 +218,8 @@ void LearningModelBinding::Split(
   throw hresult_not_implemented();
 }
 
-_winmla::IIOBinding* LearningModelBinding::BindingCollection() {
-  _winmla::IIOBinding* p;
+winmla::IIOBinding* LearningModelBinding::BindingCollection() {
+  winmla::IIOBinding* p;
   m_lotusBinding.copy_to(&p);
   return p;
 }

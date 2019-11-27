@@ -41,7 +41,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
 
-  _winmla::IIOBinding* BindingCollection();
+  winmla::IIOBinding* BindingCollection();
   std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
 
   const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
@@ -68,8 +68,8 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  com_ptr<_winmla::IIOBinding> m_lotusBinding;
-  com_ptr<_winmla::IWinMLAdapter> adapter_;
+  com_ptr<winmla::IIOBinding> m_lotusBinding;
+  com_ptr<winmla::IWinMLAdapter> adapter_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 

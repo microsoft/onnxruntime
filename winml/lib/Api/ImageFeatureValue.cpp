@@ -346,7 +346,7 @@ static void GPUTensorize(
     com_ptr<LearningModelSession> spSession,
     void* pAllocatedResource,
     WinML::BindingContext& context) {
-    com_ptr<_winmla::IWinMLAdapter> adapter;
+    com_ptr<winmla::IWinMLAdapter> adapter;
     WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
   auto d3dResource =
@@ -505,7 +505,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
   auto provider = spSession->GetExecutionProvider();
 
   // and the adapter
-  com_ptr<_winmla::IWinMLAdapter> adapter;
+  com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
   // create the OrtValue
@@ -552,7 +552,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
   auto spSession = context.session.as<LearningModelSession>();
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
-  com_ptr<_winmla::IWinMLAdapter> adapter;
+  com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
   // Get the output tensor raw data

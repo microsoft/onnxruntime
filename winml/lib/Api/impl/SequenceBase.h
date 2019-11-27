@@ -217,13 +217,13 @@ struct SequenceBase : public winrt::implements<
     *ort_value = Ort::Value::CreateSequence(sequence_values).release();
     return S_OK;
 
-    /*    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    /*    winrt::com_ptr<winmla::IWinMLAdapter> adapter;
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
     auto lotus_type = adapter->GetVectorMapType(
         TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
         TensorKindFrom<ValidLotusType<T>::TValue>::Type);
 
-    winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
+    winrt::com_ptr<winmla::IOrtValue> ml_value_out;
     adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
 
     *ml_value = ml_value_out.detach();*/

@@ -143,7 +143,7 @@ struct MapBase : winrt::implements<
   }
 
   template <typename TLotusKey, typename TLotusValue>
-  static onnxruntime::MLDataType GetLotusType(_winmla::IWinMLAdapter* adapter) {
+  static onnxruntime::MLDataType GetLotusType(winmla::IWinMLAdapter* adapter) {
     return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
   }
 
