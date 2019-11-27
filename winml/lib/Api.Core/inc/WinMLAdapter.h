@@ -31,8 +31,7 @@ MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnkn
     virtual onnxruntime::InferenceSession* STDMETHODCALLTYPE get() = 0;
     // the below returns a weak ref , DO NO RELEASE IT
     virtual HRESULT STDMETHODCALLTYPE GetOrtSession(OrtSession ** out) = 0;
-
-    virtual void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) = 0;
+    virtual void STDMETHODCALLTYPE RegisterGraphTransformers() = 0;
     virtual HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry * registry) = 0;
     virtual HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) = 0;
     virtual HRESULT STDMETHODCALLTYPE StartProfiling() = 0;
@@ -125,13 +124,12 @@ public:
     InferenceSession(onnxruntime::InferenceSession * session);
 
     onnxruntime::InferenceSession* STDMETHODCALLTYPE get() override { return session_.get(); }
-    HRESULT STDMETHODCALLTYPE GetOrtSession(OrtSession ** out) override { 
-      // (OrtSession *) are really (InferenceSession *) as well
-      *out = reinterpret_cast<OrtSession*>(session_.get());
-      return S_OK;
+    HRESULT STDMETHODCALLTYPE GetOrtSession(OrtSession ** out) override {
+        // (OrtSession *) are really (InferenceSession *) as well
+        *out = reinterpret_cast<OrtSession*>(session_.get());
+        return S_OK;
     }
-
-    void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) override;
+    void STDMETHODCALLTYPE RegisterGraphTransformers() override;
     HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry* registry) override;
     HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) override;
     HRESULT STDMETHODCALLTYPE StartProfiling() override;

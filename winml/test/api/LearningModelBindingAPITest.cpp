@@ -1,4 +1,5 @@
 #include "testPch.h"
+
 #include "APITest.h"
 #include "SqueezeNetValidator.h"
 
@@ -18,7 +19,13 @@ class LearningModelBindingAPITest : public APITest
 {};
 
 class LearningModelBindingAPITestGpu : public LearningModelBindingAPITest
-{};
+{
+protected:
+    void SetUp() override
+    {
+        GPUTEST
+    }
+};
 
 TEST_F(LearningModelBindingAPITest, CpuSqueezeNet)
 {
@@ -289,7 +296,6 @@ TEST_F(LearningModelBindingAPITest, ZipMapString)
 
 TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
 {
-
     std::string gpuInstance("GPU");
     WinML::Engine::Test::ModelValidator::SqueezeNet(
         gpuInstance,
@@ -299,7 +305,6 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNet)
 
 TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
 {
-
     std::string gpuInstance("GPU");
     WinML::Engine::Test::ModelValidator::SqueezeNet(
         gpuInstance,
@@ -311,7 +316,6 @@ TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetEmptyOutputs)
 
 TEST_F(LearningModelBindingAPITestGpu, GpuSqueezeNetUnboundOutputs)
 {
-
     std::string gpuInstance("GPU");
     WinML::Engine::Test::ModelValidator::SqueezeNet(
         gpuInstance,
@@ -357,7 +361,6 @@ TEST_F(LearningModelBindingAPITestGpu, ImageBindingDimensions)
 
 TEST_F(LearningModelBindingAPITestGpu, VerifyInvalidBindExceptions)
 {
-
     EXPECT_NO_THROW(LoadModel(L"zipmap-int64.onnx"));
 
     LearningModelSession session(m_model);

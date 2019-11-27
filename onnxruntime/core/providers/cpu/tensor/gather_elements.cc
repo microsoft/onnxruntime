@@ -41,7 +41,7 @@ static inline int64_t compute_base_offset(const std::vector<int64_t>& shape, con
 // Example: input = [2, 3]     output = 2
 //          input = [3, 2, 4]  output = 3 * 2 = 6
 //          input  = [2]       output = 1
-int64_t calculate_num_inner_dim(const TensorShape& dims) {
+static int64_t calculate_num_inner_dim(const TensorShape& dims) {
   // in this context, rank can never be < 1, so saving checking overhead
   return dims.SizeToDimension(dims.NumDimensions() - 1);
 }
@@ -79,31 +79,16 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
 // parse indices_tensor and along the way validate its shape and contents
 static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indices_tensor,
                                                               int64_t axis, const TensorShape& input_shape) {
-  const auto& indices_shape = indices_tensor->Shape().GetDims();
-  int64_t indices_rank = static_cast<int64_t>(indices_shape.size());
-  for (int64_t i = 0; i < indices_rank; ++i) {
-    // for all axes except the axis of interest,
-    // make sure that the corresponding 'indices' shape
-    // value if within bounds of the corresponding 'data' shape
-    if (i != axis) {
-      if (indices_shape[i] < 0 || indices_shape[i] > input_shape[i])
-        ORT_THROW(
-            "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
-            "Invalid value in indices shape is: ",
-            indices_shape[i]);
-    }
-  }
-
   // first parse 'indices' data
   auto num_elements = indices_tensor->Shape().Size();
   std::vector<int64_t> indices_data;
   // reserving memory ahead as we know the size of the container
   indices_data.reserve(num_elements);
-  if (indices_tensor->DataType() == DataTypeImpl::GetType<int32_t>()) {
+  if (utils::IsPrimitiveDataType<int32_t>(indices_tensor->DataType())) {
     const auto* data = indices_tensor->Data<int32_t>();
     for (int64_t i = 0; i < num_elements; ++i)
       indices_data.push_back(data[i]);
-  } else if (indices_tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
+  } else if (utils::IsPrimitiveDataType<int64_t>(indices_tensor->DataType())) {
     const auto* data = indices_tensor->Data<int64_t>();
     for (int64_t i = 0; i < num_elements; ++i)
       indices_data.push_back(data[i]);
@@ -128,6 +113,7 @@ static std::vector<int64_t> parse_and_validate_indices_tensor(const Tensor* indi
 
   return indices_data;
 }
+
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #ifdef HAS_CLASS_MEMACCESS
@@ -215,22 +201,53 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor,
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
-Status GatherElements::Compute(OpKernelContext* context) const {
-  const Tensor* input_tensor = context->Input<Tensor>(0);
-  const TensorShape& input_data_shape = input_tensor->Shape();
-  int64_t input_data_rank = static_cast<int64_t>(input_data_shape.NumDimensions());
 
-  const Tensor* indices_tensor = context->Input<Tensor>(1);
-  const TensorShape& indices_shape = indices_tensor->Shape();
+Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
+                                           const TensorShape& indices_shape,
+                                           int64_t axis) {
+  int64_t input_data_rank = static_cast<int64_t>(input_data_shape.NumDimensions());
   int64_t indices_rank = static_cast<int64_t>(indices_shape.NumDimensions());
 
+  // GatherElements cannot operate on scalars
   if (input_data_rank < 1)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "GatherElements op: Cannot operate on scalar input");
 
+  // The ranks of the inputs must be the same
   if (input_data_rank != indices_rank)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "GatherElements op: Rank of input 'data' needs to be equal to rank of input 'indices'");
+
+  // Except for the axis of interest all other dim values of the 'indices' input must be within bounds
+  // of the corresponding 'data' input dim value
+  for (int64_t i = 0; i < indices_rank; ++i) {
+    // for all axes except the axis of interest,
+    // make sure that the corresponding 'indices' shape
+    // value if within bounds of the corresponding 'data' shape
+    if (i != axis) {
+      if (indices_shape[i] < 0 || indices_shape[i] > input_data_shape[i])
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
+                               "Invalid value in indices shape is: ",
+                               indices_shape[i]);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status GatherElements::Compute(OpKernelContext* context) const {
+  const Tensor* input_tensor = context->Input<Tensor>(0);
+  const TensorShape& input_data_shape = input_tensor->Shape();
+
+  const Tensor* indices_tensor = context->Input<Tensor>(1);
+  const TensorShape& indices_shape = indices_tensor->Shape();
+
+  int64_t axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
+
+  auto status = ValidateInputShapes(input_data_shape, indices_shape, axis);
+  if (!status.IsOK())
+    return status;
 
   Tensor* output_tensor = context->Output(0, TensorShape(indices_shape));
 
@@ -243,9 +260,8 @@ Status GatherElements::Compute(OpKernelContext* context) const {
   if (indices_shape.Size() == 0)
     return Status::OK();
 
-  int64_t axis = HandleNegativeAxis(axis_, input_data_shape.NumDimensions());
 
-  if (input_data_type == DataTypeImpl::GetType<std::string>())
+  if (input_tensor->IsDataTypeString())
     core_impl<true, std::string>(input_tensor, indices_tensor, output_tensor, axis);
 
   else

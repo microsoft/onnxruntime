@@ -576,12 +576,11 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
       return static_cast<AllocatorWrapper*>(this_)->impl_->Free(p);
     }
     static const struct OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
-      return &(static_cast<const AllocatorWrapper*>(this_)->info_);
+      return &(static_cast<const AllocatorWrapper*>(this_)->impl_->Info());
     }
 
    private:
     onnxruntime::AllocatorPtr impl_;
-    OrtMemoryInfo info_;
   };
 
   HRESULT STDMETHODCALLTYPE GetProviderAllocator(
@@ -614,9 +613,10 @@ extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter)
 InferenceSession::InferenceSession(onnxruntime::InferenceSession* session) : session_(session) {
 }
 
-void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers(bool registerLotusTransforms) {
+void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers() {
 #ifdef USE_DML
-  GraphTransformerHelpers::RegisterGraphTransformers(session_.get(), registerLotusTransforms);
+  // Bug 22973884 : Fix issues with BatchNorm + Add and BatchNorm + Mul handling implicit inputs, and move from Winml to ORT
+  GraphTransformerHelpers::RegisterGraphTransformers(session_.get());
 #endif USE_DML
 }
 

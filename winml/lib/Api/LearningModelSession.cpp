@@ -130,8 +130,7 @@ void LearningModelSession::Initialize() {
   WINML_THROW_IF_FAILED(session->RegisterCustomRegistry(model->GetOperatorRegistry()));
 
   // Register only the transformers not already in ORT
-  const bool registerLotusTransformers = false;
-  session->RegisterGraphTransformers(registerLotusTransformers);
+  session->RegisterGraphTransformers();
 
   // Load the model into the session
   WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()));

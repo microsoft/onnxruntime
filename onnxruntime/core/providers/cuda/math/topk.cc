@@ -41,7 +41,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
   }
 }
 
-#define ISTYPE(T) tensor_X->DataType() == DataTypeImpl::GetType<T>()
+#define IS_PRIM_TYPE(T) utils::IsPrimitiveDataType<T>(prim_type)
 #define TOPKIMPL(T) TopKImpl<T>(this, tensor_X->Data<T>(),                         \
                                 static_cast<T*>(tensor_V->MutableDataRaw()),       \
                                 static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
@@ -83,17 +83,22 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<int64_t> elem_nums_cuda(this, elem_nums);
   ORT_RETURN_IF_ERROR(elem_nums_cuda.CopyToGpu());
 
-  if (ISTYPE(uint8_t)) return TOPKIMPL(uint8_t);
-  if (ISTYPE(uint16_t)) return TOPKIMPL(uint16_t);
-  if (ISTYPE(uint32_t)) return TOPKIMPL(uint32_t);
-  if (ISTYPE(uint64_t)) return TOPKIMPL(uint64_t);
-  if (ISTYPE(int8_t)) return TOPKIMPL(int8_t);
-  if (ISTYPE(int16_t)) return TOPKIMPL(int16_t);
-  if (ISTYPE(int32_t)) return TOPKIMPL(int32_t);
-  if (ISTYPE(int64_t)) return TOPKIMPL(int64_t);
-  if (ISTYPE(float)) return TOPKIMPL(float);
-  if (ISTYPE(double)) return TOPKIMPL(double);
-  if (ISTYPE(uint8_t)) return TOPKIMPL(uint8_t);
+  auto prim_type = tensor_X->DataType()->AsPrimitiveDataType();
+  if (prim_type == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
+  }
+
+  if (IS_PRIM_TYPE(uint8_t)) return TOPKIMPL(uint8_t);
+  if (IS_PRIM_TYPE(uint16_t)) return TOPKIMPL(uint16_t);
+  if (IS_PRIM_TYPE(uint32_t)) return TOPKIMPL(uint32_t);
+  if (IS_PRIM_TYPE(uint64_t)) return TOPKIMPL(uint64_t);
+  if (IS_PRIM_TYPE(int8_t)) return TOPKIMPL(int8_t);
+  if (IS_PRIM_TYPE(int16_t)) return TOPKIMPL(int16_t);
+  if (IS_PRIM_TYPE(int32_t)) return TOPKIMPL(int32_t);
+  if (IS_PRIM_TYPE(int64_t)) return TOPKIMPL(int64_t);
+  if (IS_PRIM_TYPE(float)) return TOPKIMPL(float);
+  if (IS_PRIM_TYPE(double)) return TOPKIMPL(double);
+  if (IS_PRIM_TYPE(uint8_t)) return TOPKIMPL(uint8_t);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
 }
 

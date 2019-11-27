@@ -13,7 +13,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const onnxruntime::logging::Logger&) const {
   auto& BatchNormalization_node = node;
   const auto& mul_node = *BatchNormalization_node.OutputNodesBegin();
   const auto& BatchNormalization_inputs = BatchNormalization_node.InputDefs();
@@ -101,7 +101,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
   return Status::OK();
 }
 
-bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const onnxruntime::logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;

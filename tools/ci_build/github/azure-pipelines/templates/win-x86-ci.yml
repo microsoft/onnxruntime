@@ -1,53 +1,74 @@
 parameters:
-  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
   DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev_x86'
   DoNugetPack:  'false'
   NuPackScript : ''
+  ArtifactName: 'drop-win-x86-zip'
   DoEsrp: 'false'
+  DoTestCoverage: 'false'
+  BuildArch: 'x86'
+  SetVcvars: 'false'
+  msbuildArchitecture: 'x86'
+  MsbuildArguments: '/m'
+  EnvSetupScript: 'setup_env_x86.bat'
+  CudaVersion: ''
+  AgentPool: 'Win-CPU'
+  AgentDemands: []
 
 jobs:
 - job: ${{ parameters.JobName }}
   workspace:
     clean: all
   timeoutInMinutes: 120
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    name: ${{ parameters.AgentPool }}
+    demands: ${{ parameters.AgentDemands }}
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     BuildCommand: ${{ parameters.BuildCommand }}
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     PlatformTarget: x86
     RuntimeIdentifier: win-x86
-    DotNetExe: '"c:\program files (x86)\dotnet\dotnet.exe"'
+
   steps:
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'x86'
-        setVcvars: false
+        EnvSetupScript: ${{ parameters.EnvSetupScript }}
+        buildArch: ${{ parameters.msbuildArchitecture }}
+        setVcvars: ${{ parameters.SetVcvars }}
 
-    # Build Debug Mode
     - task: CmdLine@1
       displayName: 'Download test data and generate cmake config'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
         arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
         workingDirectory: "$(Build.BinariesDirectory)"
-
+        
+    # Build Debug Mode
     - ${{ if eq(parameters['DoDebugBuild'], 'true') }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Restore nuget packages for debug build'
+        inputs:
+          command: restore
+          projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          configuration: 'Debug'          
+          arguments: '--configuration Debug -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'    
       - task: VSBuild@1
         displayName: 'Build Debug'
         inputs:
           solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
           platform: 'Win32'
           configuration: 'Debug'
-          msbuildArguments: '/m'
-          msbuildArchitecture: 'x86'
+          msbuildArgs: ${{ parameters.MsbuildArguments }}
+          msbuildArchitecture: $(BuildArch)
+          maximumCpuCount: true
           logProjectEvents: true
           workingFolder: '$(Build.BinariesDirectory)\Debug'
+          createLogFile: true
 
       - task: BatchScript@1
         displayName: 'Test Debug'
@@ -56,43 +77,47 @@ jobs:
           arguments: '$(BuildCommand) --test --config Debug'
           workingFolder: '$(Build.BinariesDirectory)'
 
-      - task: MSBuild@1
+      - task: DotNetCoreCLI@2
         displayName: 'Build C# Debug'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-          platform: 'Any CPU'
-          configuration: 'Debug'
-          msbuildArchitecture: 'x86'
-          msbuildArguments: '/m'
-          workingFolder: '$(Build.SourcesDirectory)\csharp'
+          command: build
+          projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          configuration: 'Debug'          
+          arguments: '--configuration Debug -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          
 
-      - task: MSBuild@1
-        displayName: 'Test C# Debug'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-          platform: 'Any CPU'
-          configuration: 'Debug'
-          msbuildArchitecture: 'x86'
-          msbuildArguments: '/t:RunTest'
-          workingFolder: '$(Build.SourcesDirectory)\csharp'
+    # Run test coverage report
+    - ${{ if eq(parameters['DoTestCoverage'], 'true') }}:
+      - template: windows-code-coverage-steps.yml
+        parameters:
+          OpenCppCoverageExe: '$(Build.BinariesDirectory)\OpenCppCoverage\OpenCppCoverage.exe'
 
     # Build RelWithDebInfo -- this variable required to build C#
-    - task: CmdLine@2
-      displayName: 'Set Configuration to RelWithDebInfo'
-      inputs:
-        script: |
-         @echo ##vso[task.setvariable variable=Configuration;]RelWithDebInfo
+    - script: |
+       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
 
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore nuget packages for RelWithDebInfo build'
+      inputs:
+        command: restore
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: 'RelWithDebInfo'          
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        
     - task: VSBuild@1
       displayName: 'Build RelWithDebInfo'
       inputs:
         solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
         platform: 'Win32'
         configuration: 'RelWithDebInfo'
-        msbuildArguments: '/m'
-        msbuildArchitecture: 'x86'
+        msbuildArgs: ${{ parameters.MsbuildArguments }}
+        msbuildArchitecture: $(BuildArch)
+        maximumCpuCount: true
         logProjectEvents: true
         workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
 
     - task: BatchScript@1
       displayName: 'Test RelWithDebInfo'
@@ -101,25 +126,23 @@ jobs:
         arguments: '$(BuildCommand) --test --config RelWithDebInfo'
         workingFolder: "$(Build.BinariesDirectory)"
 
-    - task: MSBuild@1
+    - task: DotNetCoreCLI@2
       displayName: 'Build C# RelWithDebInfo'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
-        configuration: 'RelWithDebInfo'
-        msbuildArchitecture: 'x86'
-        msbuildArguments: '/m'
-        workingFolder: '$(Build.SourcesDirectory)\csharp'
+        command: build
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: 'RelWithDebInfo'          
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: MSBuild@1
+    - task: DotNetCoreCLI@2
       displayName: 'Test C# RelWithDebInfo'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
-        configuration: 'RelWithDebInfo'
-        msbuildArchitecture: 'x86'
-        msbuildArguments: '/t:RunTest'
-        workingfolder: '$(Build.SourcesDirectory)\csharp'
+        command: test
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: 'RelWithDebInfo'          
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId}}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
@@ -135,9 +158,8 @@ jobs:
         displayName: 'Setup VS2017 env vars'
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: 'x86'
+          arguments: ${{ parameters.msbuildArchitecture }}
           modifyEnvironment: true
-
       # Esrp signing
       - template: esrp_dll.yml
         parameters:
@@ -157,13 +179,18 @@ jobs:
         displayName: 'Create NuGet Package'
 
       - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: drop win x86 zip'
+        displayName: 'Publish Pipeline Artifact: drop-nuget'
         inputs:
-          artifactName: 'drop-win-x86-zip'
+          artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    # Compliance tasks require logs from Debug Build
+    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+      - template: compliance.yml
 
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
       condition: succeeded()
 
     - template: clean-agent-build-directory-step.yml
+

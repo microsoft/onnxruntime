@@ -444,6 +444,33 @@ inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, si
   ThrowOnError(Global<void>::api_.GetStringTensorContent(p_, buffer, buffer_length, offsets, offsets_count));
 }
 
+inline std::vector<std::string> Value::GetStrings() {
+  std::vector<std::string> out;
+  // make sure this is an array of strings
+  auto shape = this->GetTensorTypeAndShapeInfo().GetShape();
+  // there needs to be only one dimension
+  if (shape.size() != 1) throw Ort::Exception("shape.size() != 1", ORT_INVALID_ARGUMENT);
+  // make a big buffer to hold all the string data
+  size_t buflen = this->GetStringTensorDataLength();
+  std::vector<uint8_t> buf(buflen);
+  std::vector<size_t> offsets(shape[0]);
+  this->GetStringTensorContent(buf.data(), buf.size(), offsets.data(), offsets.size());
+  // now go build all the strings
+  for (auto i = 0; i < shape[0]; ++i) {
+    std::string str;
+    size_t strlen = 0;
+    // are we on the last one?
+    if (i == (shape[0] - 1ll)) {
+      strlen = buflen - offsets[i];
+    } else {
+      strlen = offsets[i + 1ll] - offsets[i];
+    }
+    str.append(reinterpret_cast<const char *>(buf.data() + offsets[i]), strlen);
+    out.push_back(str);
+  }
+  return out;
+}
+
 template <typename T>
 T* Value::GetTensorMutableData() {
   T* out;

@@ -3,6 +3,7 @@
 
 #pragma once
 // Lotus framework headers for onnxruntime::IExecutionProvider (not part of the operator ABI).
+#include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
@@ -18,7 +19,7 @@ namespace Dml
         GraphTransformer(const std::string& name, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry);
 
     private:
-        onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level = 0) const final;
+     onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const onnxruntime::logging::Logger& logger) const final;
 
     private:
         void PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const;
