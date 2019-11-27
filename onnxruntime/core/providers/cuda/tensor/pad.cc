@@ -31,15 +31,18 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);
 
+template<T>
+T from_float
 template <typename T>
 Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
+  typedef ToCudaType<T>::MappedType CudaT;
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
   auto dimension_count = input_shape.NumDimensions();
 
   const std::vector<int64_t>* p_pads = &pads_;
   const std::vector<int64_t>* p_slices = &slices_;
-  T value(static_cast<T>(value_));
+  CudaT value = ToCudaType<T>::FromFloat(value_);
 
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   std::vector<int64_t> pads;
@@ -70,13 +73,15 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
     }
 
+    T raw_value(0);
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
       ORT_ENFORCE(utils::IsPrimitiveDataType<T>(value_tensor->DataType()) &&
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
-      value = value_tensor->template Data<T>()[0];
+      raw_value = value_tensor->template Data<T>()[0];
     }
+    value = raw_value;
     p_pads = &pads;
     p_slices = &slices;
   }
@@ -120,7 +125,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       input_strides.GpuPtr(),
       lower_pads.GpuPtr(),
       upper_pads.GpuPtr(),
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(&value),
+      value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
       fdm_output_strides.GpuPtr(),
