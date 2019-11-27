@@ -43,6 +43,7 @@ class DataFrameTool():
         """
         self._model_path = model_path
         self._sess_options = sess_options
+        self._sess = onnxrt.InferenceSession(self._model_path, self._sess_options)
 
     def _process_input_list(self, df, input_metas, require):
         """
@@ -59,7 +60,7 @@ class DataFrameTool():
         for input_meta in input_metas:
             shape = [dim if dim else 1 for dim in input_meta.shape]
             # We fully expect all the types are in the above dictionary
-            assert input_meta.type in types_dict
+            assert input_meta.type in types_dict, "Update types_dict for the new type"
             if input_meta.name in df.columns:
                 expected_type = types_dict[input_meta.type]
                 # float16 and bool will always require exact match
@@ -132,7 +133,6 @@ class DataFrameTool():
 
         sess.run([output_name], {input_name: x})
         """
-        sess = onnxrt.InferenceSession(self._model_path, self._sess_options)
-        input_feed = self._get_input_feeds(df, sess);
-        return sess.run(output_names, input_feed, run_options)
+        input_feed = self._get_input_feeds(df, self._sess);
+        return self._sess.run(output_names, input_feed, run_options)
 
