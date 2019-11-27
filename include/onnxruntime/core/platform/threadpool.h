@@ -47,9 +47,9 @@ class ThreadPool {
   void ParallelFor(int32_t total, std::function<void(int32_t)> fn);
 
   /*
-  Schedule work in the interval [0, total), with calls split into batches of the specified size.
+  Schedule work in the interval [0, total), with calls split into (num_batches) batches.
   */
-  void BatchParallelFor(int32_t total, std::function<void(int32_t)> fn, int32_t batch_size = 0);
+  void BatchParallelFor(int32_t total, std::function<void(int32_t)> fn, int32_t num_batches = 0);
 
   /*
   Schedule work in the interval [first, last].
@@ -60,15 +60,15 @@ class ThreadPool {
   // void SetStealPartitions(const std::vector<std::pair<unsigned, unsigned>>& partitions);
 
   /**
-  Tries to call the given function in parallel, with calls split into batches of the specified size.
+  Tries to call the given function in parallel, with calls split into (num_batches) batches.
   **/
   template <typename F>
-  inline static void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t batch_size = 0) {
+  inline static void TryBatchParallelFor(concurrency::ThreadPool* tp, int32_t total, F&& fn, int32_t num_batches = 0) {
     if (tp != nullptr) {
-      if (batch_size <= 0) {
-        batch_size = tp->NumThreads() + 1;
+      if (num_batches <= 0) {
+        num_batches = tp->NumThreads() + 1;
       }
-      tp->BatchParallelFor(total, std::forward<F>(fn), batch_size);
+      tp->BatchParallelFor(total, std::forward<F>(fn), num_batches);
     } else {
 #ifdef USE_OPENMP
 #pragma omp parallel for
