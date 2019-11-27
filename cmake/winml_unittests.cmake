@@ -68,13 +68,14 @@ target_precompiled_header(winml_test_api testPch.h)
 
 if (onnxruntime_USE_DML)
   file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+  set(winml_test_scenario_libs "onnxruntime_providers_dml")
 else()
   set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
 endif()
 add_winml_test(
   TARGET winml_test_scenario
   SOURCES ${winml_test_scenario_src}
-  LIBS winml_test_common
+  LIBS winml_test_common ${winml_test_scenario_libs}
   DEPENDS winml_api
 )
 target_precompiled_header(winml_test_scenario testPch.h)
