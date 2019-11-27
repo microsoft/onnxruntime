@@ -438,8 +438,8 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
 std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModelBinding::UpdateProviders() {
   std::unordered_map<std::string, Windows::Foundation::IInspectable> outputs;
 
-  auto& outputNames = m_lotusBinding->GetOutputNames();
-  auto& outputMLValues = m_lotusBinding->GetOutputs();
+  auto& outputNames = GetOutputNames();
+  auto& outputMLValues = GetOutputs();
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
       outputNames.size() == outputMLValues.size(),
@@ -447,7 +447,7 @@ std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModel
 
   for (unsigned i = 0; i < outputNames.size(); i++) {
     auto utf8Name = outputNames[i];
-    auto mlValue = outputMLValues[i];
+    OrtValue* mlValue = outputMLValues[i];
 
     if (m_providers.find(utf8Name) != std::end(m_providers)) {
       auto& providerInfo = m_providers[utf8Name];
