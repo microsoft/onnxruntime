@@ -39,7 +39,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const std::vector<int64_t>* p_pads = &pads_;
   const std::vector<int64_t>* p_slices = &slices_;
-  T value(value_);
+  T value(static_cast<T>(value_));
 
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
   std::vector<int64_t> pads;
