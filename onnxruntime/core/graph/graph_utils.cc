@@ -183,14 +183,14 @@ static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) 
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
     to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs. 
     This is important when removing a node with this NodeArg as input. */
-bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
-                                           const std::vector<GraphEdge>& output_edges,
-                                           const std::string& new_arg_name) {
+static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
+                                                  const std::vector<GraphEdge>& output_edges,
+                                                  const std::string& new_arg_name, const logging::Logger& logger) {
   for (const auto& output_edge : output_edges) {
     if (OutputEdgeProvidesImplicitInput(graph, output_edge)) {
       const Node& output_edge_node = *graph.GetNode(output_edge.dst_node);
       if (!CanUpdateImplicitInputNameInSubgraph(output_edge_node, output_edge.arg_name, new_arg_name)) {
-        LOGS_DEFAULT(WARNING) << " Implicit input name " << output_edge.arg_name
+        LOGS(logger, WARNING) << " Implicit input name " << output_edge.arg_name
                               << " cannot be safely updated to " << new_arg_name << " in one of the subgraphs.";
         return false;
       }
@@ -287,6 +287,10 @@ bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NA
   return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
 }
 
+bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  return std::find(versions.begin(), versions.end(), node.Op()->SinceVersion()) != versions.end();
+}
+
 bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
   const auto& node_domain = node.Domain();
   // We do a special check for the ONNX domain, as it has two aliases.
@@ -354,7 +358,7 @@ bool IsOutputUsed(const Node& node, int index) {
   return false;
 }
 
-bool CanRemoveNode(const Graph& graph, const Node& node) {
+bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& logger) {
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
     return false;
@@ -386,14 +390,15 @@ bool CanRemoveNode(const Graph& graph, const Node& node) {
   if (new_name) {
     // Check that changing the current output name to the new name won't break any subgraphs that consume it
     std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, *new_name);
+    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, *new_name, logger);
   }
 
   return can_remove;
 }
 
 bool RemoveNode(Graph& graph, Node& node) {
-  assert(CanRemoveNode(graph, node));
+  //TODO: enable the check back
+  //assert(CanRemoveNode(graph, node, nullptr));
 
   // Note: Node does not produce any graph outputs, and only a single output is used.
 
@@ -411,7 +416,8 @@ bool RemoveNode(Graph& graph, Node& node) {
   ORT_THROW("Should be unreachable if CanRemoveNodeAndMergeEdges is in sync with the logic here.");
 }
 
-bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name) {
+bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
+                                   const logging::Logger& logger) {
   // we have no way to handle replacing multiple outputs so check only one is used
   const std::string* output_name = nullptr;
   if (!IsOnlyOneOutputUsed(graph, node, output_name)) {
@@ -435,7 +441,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
     // Check that changing the current output name to the new name won't break any subgraphs
     // that consume the current name
     std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, initializer_name);
+    can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, initializer_name, logger);
   }
 
   return can_remove;
@@ -543,6 +549,24 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
   return true;
 }
 
+const Node* FirstChildByType(Node& node, const std::string& child_type) {
+  for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+    if ((*it).OpType().compare(child_type) == 0) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+const Node* FirstParentByType(Node& node, const std::string& parent_type) {
+  for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
+    if ((*it).OpType().compare(parent_type) == 0) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
@@ -639,6 +663,85 @@ void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<N
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
+}
+
+const Node::EdgeEnd*
+GetInputEdge(const Node& node, int arg_index) {
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (arg_index == it->GetDstArgIndex()) {
+      return &(*it);
+    }
+  }
+  return nullptr;
+}
+
+const Node* GetInputNode(const Node& node, int arg_index) {
+  const Node::EdgeEnd* edge = GetInputEdge(node, arg_index);
+  if (nullptr == edge) {
+    return nullptr;
+  }
+  return &(edge->GetNode());
+}
+
+inline std::string ToString(const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+  std::ostringstream output;
+  if (!versions.empty()) {
+    // Convert all but the last element to avoid a trailing ";"
+    std::copy(versions.begin(), versions.end() - 1,
+              std::ostream_iterator<ONNX_NAMESPACE::OperatorSetVersion>(output, ";"));
+    // Now add the last element with no delimiter
+    output << versions.back();
+  }
+  return output.str();
+}
+
+bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
+  result.clear();
+  result.reserve(edges_to_match.size());
+
+  const Node* current_node = &node;
+  for (const auto& edge : edges_to_match) {
+    const Node::EdgeEnd* edge_found = nullptr;
+#ifndef NDEBUG
+    LOGS(logger, VERBOSE) << (is_input_edge ? "I:" : "O:") << edge.src_arg_index << "," << edge.dst_arg_index
+                           << "," << edge.op_type << "," << edge.domain << "," << ToString(edge.versions);
+#endif
+    auto edges_begin = is_input_edge ? current_node->InputEdgesBegin() : current_node->OutputEdgesBegin();
+    auto edges_end = is_input_edge ? current_node->InputEdgesEnd() : current_node->OutputEdgesEnd();
+    for (auto it = edges_begin; it != edges_end; ++it) {
+#ifndef NDEBUG
+      LOGS(logger, VERBOSE) << "E:" << it->GetSrcArgIndex() << "," << it->GetDstArgIndex()
+                            << "," << it->GetNode().OpType() << "," << it->GetNode().Domain() << "," << it->GetNode().Op()->SinceVersion();
+#endif
+      if (edge.dst_arg_index == it->GetDstArgIndex() &&
+          edge.src_arg_index == it->GetSrcArgIndex() &&
+          edge.op_type == it->GetNode().OpType() &&
+          MatchesOpSinceVersion(it->GetNode(), edge.versions) &&
+          MatchesOpSetDomain(it->GetNode(), edge.domain)) {
+        // For output edge, there could be multiple edges matched.
+        // This function will return failure in such case by design.
+        if (nullptr != edge_found) {
+          LOGS(logger, WARNING) << "Failed since multiple edges matched:" << current_node->OpType() << "->" << edge.op_type;
+          return false;
+        }
+        edge_found = &(*it);
+
+        // For input edge, each dst_arg_index only accepts one input edge so only there is at most one match.
+        if (is_input_edge) {
+          break;
+        }
+      }
+    }
+
+    if (nullptr == edge_found) {
+      return false;
+    }
+
+    result.push_back(edge_found);
+    current_node = &(edge_found->GetNode());
+  }
+
+  return true;
 }
 
 }  // namespace graph_utils

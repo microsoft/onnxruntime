@@ -15,8 +15,9 @@ static void RunTest(const std::vector<float>& x_vals,
                     int64_t axis = 1,
                     bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& error_msg = "") {
-  OpTester tester("LogSoftmax");
+                    const std::string& error_msg = "",
+                    int opset = 7) {
+  OpTester tester("LogSoftmax", opset);
 
   if (axis != 1) {
     tester.AddAttribute("axis", axis);
@@ -196,7 +197,9 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
           OpTester::ExpectResult::kExpectFailure,
           // ONNX has a bug in the error message generation so this is somewhat cryptic until it's fixed. Message should be:
           // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -7"
-          ", 1]. Its actual value is: -7");  //TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
+          ", 1]. Its actual value is: -7",
+          //latest opset so we get shape inferencing errrors
+          -1);  //TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
 }
 
 }  // namespace test

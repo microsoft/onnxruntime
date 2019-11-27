@@ -26,7 +26,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const vector<int64_t>& expected_output_shape,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
-                int opset = -1) {
+                int opset = 7) {
   OpTester test("Conv", opset);
   test.AddAttribute("auto_pad", attributes.auto_pad);
   test.AddAttribute("group", attributes.group);
@@ -219,7 +219,8 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
-             "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2");
+             "Both source and target dimension have values but they differ. Source=0 Target=2 Dimension=2",
+             -1);  // use latest opset for shape inferencing errors
 }
 
 TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
@@ -241,7 +242,8 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape,
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
-             "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0");
+             "Both source and target dimension have values but they differ. Source=1 Target=2 Dimension=0",
+             -1);  // use latest opset for shape inferencing errors
 }
 
 // Conv30
@@ -623,8 +625,9 @@ TEST(ConvTest, ConvDimWithZero) {
   vector<int64_t> W_shape = {2, 2, 1, 1};
   vector<int64_t> out_shape = {0, 2, 4, 4};
 
-  // not handled by NGraph
+  // not handled by NGraph and ACL
   attrs.excluded_providers.insert(kNGraphExecutionProvider);
+  attrs.excluded_providers.insert(kAclExecutionProvider);
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, OpTester::ExpectResult::kExpectSuccess, "", 10);
 }

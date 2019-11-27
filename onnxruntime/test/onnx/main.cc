@@ -37,7 +37,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
-      "'openvino' or 'nuphar'. "
+      "'openvino', 'nuphar' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -100,6 +100,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_openvino = false;
   bool enable_nnapi = false;
   bool enable_dml = false;
+  bool enable_acl = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -164,6 +165,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
+            enable_acl = true;
           } else {
             usage();
             return -1;
@@ -338,6 +341,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_acl) {
+#ifdef USE_ACL
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena ? 1 : 0));
+#else
+      fprintf(stderr, "ACL is not supported in this build");
+      return -1;
+#endif
+    }
 
     if (user_graph_optimization_level_set) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
@@ -353,22 +364,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     }
-
-#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
-    // Minimize mem consumption
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
-              [&stat, &sf, &all_disabled_tests, &env](ITestCase* l) {
-                std::unique_ptr<ITestCase> test_case_ptr(l);
-                if (all_disabled_tests.find(l->GetTestCaseName()) != all_disabled_tests.end()) {
-                  return;
-                }
-                TestResultStat per_case_stat;
-                std::vector<ITestCase*> per_case_tests = {l};
-                TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
-                RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
-                stat += per_case_stat;
-              });
+#if defined(__amd64__) || defined(_M_AMD64)
 #else
+    //out of memory
+    static const char* x86_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn", "vgg19"};
+    all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
+#endif
+
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
               [&tests](ITestCase* l) { tests.push_back(l); });
@@ -392,7 +394,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     for (ITestCase* l : tests) {
       delete l;
     }
-#endif
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
@@ -412,6 +413,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   };
 
   std::set<BrokenTest> broken_tests = {
+      {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
       {"convtranspose_1d", "1d convtranspose not supported yet"},
@@ -477,6 +479,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
   broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
   broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+  broken_tests.insert({"scan_sum", "disable temporarily"});
+  broken_tests.insert({"scan9_sum", "disable temporarily"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
   broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
   broken_tests.insert({"div", "will be fixed in the next release"});
@@ -515,6 +519,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
 
 #ifdef USE_CUDA
+  broken_tests.insert({"candy", "result mismatch"});
   broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
@@ -552,13 +557,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
-#endif
-
-#if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert(
-      {"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
-  broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
-  broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS

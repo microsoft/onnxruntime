@@ -48,6 +48,7 @@ struct RunConfig {
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};
   GraphOptimizationLevel optimization_level{ORT_ENABLE_EXTENDED};
+  std::basic_string<ORTCHAR_T> optimized_model_path;
 };
 
 struct PerformanceTestConfig {

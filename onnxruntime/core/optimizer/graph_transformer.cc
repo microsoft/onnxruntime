@@ -7,11 +7,11 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-Status GraphTransformer::Apply(Graph& graph, bool& modified) const {
+Status GraphTransformer::Apply(Graph& graph, bool& modified, const logging::Logger& logger) const {
   // the Graph should be in a good state prior this being called, so there should be no need to call Resolve here
   // ORT_RETURN_IF_ERROR(graph.Resolve());
 
-  auto status = ApplyImpl(graph, modified, 0);
+  auto status = ApplyImpl(graph, modified, 0, logger);
   ORT_RETURN_IF_ERROR(status);
 
   // At least currently, some transformers (InsertCastTransformer and MemcpyTransformer) need this to be called

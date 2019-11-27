@@ -31,3 +31,6 @@
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
+#ifdef USE_ACL
+#include "core/providers/acl/acl_provider_factory.h"
+#endif

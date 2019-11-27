@@ -32,8 +32,8 @@ namespace perftest {
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|dml]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', "
-      "'ngraph', 'openvino' or 'nuphar' or 'dml'. "
+      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', "
+      "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -41,17 +41,18 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
+      "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0. If OpenMP is enabled, this configuration will be ignored.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. \n"
+      "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-h: help\n");
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -95,6 +96,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kNupharExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
         } else {
           return false;
         }
@@ -120,10 +123,15 @@ namespace perftest {
         test_config.run_config.f_verbose = true;
         break;
       case 'x':
+#ifdef USE_OPENMP
+        fprintf(stderr, "cannot use argument '-x' when OpenMP is enabled.\n");
+        return false;
+#else
         test_config.run_config.intra_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.intra_op_num_threads < 0) {
           return false;
         }
+#endif
         break;
       case 'y':
         test_config.run_config.inter_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
@@ -166,6 +174,9 @@ namespace perftest {
         }
         break;
       }
+      case 'u':
+        test_config.run_config.optimized_model_path = optarg;
+        break;
       case '?':
       case 'h':
       default:

@@ -76,15 +76,12 @@ void OrtValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
   // However we will only return a non-const OrtValue from operator* if OrtValueTensorSlicer was created with
   // a non-const OrtValue, so externally we maintain constness as expected.
   //
-  // TODO: Ideally we could avoid the overhead of creating a new Tensor but that would require
-  // a lot more complexity (re-consider how ExecutionFrame and OpKernelContext work and whether
-  // they need to be OrtValue based, or whether they could be Tensor based).
-  // Potential future performance enhancement.
+  // TODO: Ideally we could avoid the overhead of creating a new Tensor (mainly cost of copying type and shape info)
+  // and would simply update Tensor::p_data_ given all other info remains constant for each slice.
   auto sub_tensor = onnxruntime::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
-                                             const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
-
-  current_ =
-      OrtValue{sub_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+                                                     const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  current_ = OrtValue{sub_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()};
 }
 
 template class OrtValueTensorSlicer<OrtValue>;

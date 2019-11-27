@@ -36,6 +36,19 @@ bool IsRecurrentNode(const onnxruntime::Node& node) {
 
 bool IsAliasNode(const onnxruntime::Node& node) {
   auto op_type = node.OpType();
+  if (op_type == "Transpose") {
+    // Treat Transpose (1,N) -> (N,1) as Alias
+    const auto shape = node.OutputDefs()[0]->Shape();
+    if (shape != nullptr && shape->dim_size() == 2) {
+      for (int i = 0; i < 2; ++i) {
+        if (shape->dim(i).has_dim_value() && shape->dim(i).dim_value() == 1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   return (op_type == "Flatten" || op_type == "Identity" || op_type == "Reshape" ||
           op_type == "Squeeze" || op_type == "Unsqueeze");
 }
@@ -127,18 +140,21 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
 
   for (const auto& node_index : subgraph->nodes) {
     const auto& node = *graph.GetNode(node_index);
+    auto process_input_fn = 
+      [&meta_def, &node, &node_indices](const onnxruntime::NodeArg& def, size_t) {
+        const onnxruntime::Node* input_node = GetInputNode(node, &def);
+        bool input_from_subgraph = (input_node && node_indices.count(input_node->Index()));
+        if (!input_from_subgraph) {
+          // input is from weights or outside of graph
+          meta_def->inputs.push_back(def.Name());
+        }
+        return Status::OK();
+      };
     // handle current graph's inputs
-    node.ForEachWithIndex(
-        node.InputDefs(),
-        [&meta_def, &node, &node_indices](const onnxruntime::NodeArg& def, size_t) {
-          const onnxruntime::Node* input_node = GetInputNode(node, &def);
-          bool input_from_subgraph = (input_node && node_indices.count(input_node->Index()));
-          if (!input_from_subgraph) {
-            // input is from weights or outside of graph
-            meta_def->inputs.push_back(def.Name());
-          }
-          return Status::OK();
-        });
+    node.ForEachWithIndex(node.InputDefs(), process_input_fn);
+    // nodes' implicit inputs also need to be collected. They need to
+    // be promoted to being explicit inputs for everything to work.
+    node.ForEachWithIndex(node.ImplicitInputDefs(), process_input_fn);
 
     // Handle outouts
     // two cases are considerd as outputs
@@ -198,15 +214,16 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
     // Therefore, the all inner nested subgraph's initializers should be already in the immediate nested subgraph's inputs.
     if (nullptr != immediate_nested_subgraph) {
       for (auto& n : immediate_nested_subgraph->Nodes()) {
-        n.ForEachWithIndex(
-            n.InputDefs(),
-            [&meta_def, &all_initializers](const onnxruntime::NodeArg& def, size_t) {
-              auto iter = all_initializers.find(def.Name());
-              if (iter != all_initializers.end()) {
-                meta_def->inputs.push_back(def.Name());
-              }
-              return Status::OK();
-            });
+        auto add_input_fn = 
+          [&meta_def, &all_initializers](const onnxruntime::NodeArg& def, size_t) {
+            auto iter = all_initializers.find(def.Name());
+            if (iter != all_initializers.end()) {
+              meta_def->inputs.push_back(def.Name());
+            }
+            return Status::OK();
+          };
+        n.ForEachWithIndex(n.InputDefs(), add_input_fn);
+        n.ForEachWithIndex(n.ImplicitInputDefs(), add_input_fn);
       }
     }
   }

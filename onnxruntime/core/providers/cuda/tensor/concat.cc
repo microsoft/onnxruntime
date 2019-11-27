@@ -6,14 +6,22 @@
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_KERNEL_EX(
-    Concat,
-    kOnnxDomain,
-    4,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Concat);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
+                                  kOnnxDomain,
+                                  4, 10,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder()
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Concat);
+
+// opset 11 explicitly support negative axis
+ONNX_OPERATOR_KERNEL_EX(Concat,
+                        kOnnxDomain,
+                        11,
+                        kCudaExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        Concat);
 
 Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
@@ -67,7 +75,6 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                  concat_sizes_gpu.GpuPtr(),
                                  concat_sizes_range_gpu.GpuPtr(),
                                  axis_dimension_input_output_mapping_gpu.GpuPtr(),
-                                 input_count,
                                  p.output_tensor->MutableDataRaw(),
                                  input_ptr.GpuPtr(),
                                  p.output_num_elements));

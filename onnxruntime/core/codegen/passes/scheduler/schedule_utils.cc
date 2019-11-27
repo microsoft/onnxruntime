@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/codegen/common/utils.h"
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 
 namespace onnxruntime {
@@ -91,7 +92,11 @@ bool TryVectorization(
       auto axis = compute_op->axis;
       tvm::IterVar x = axis[rank - 1];
       if ((*tail_dim) > natural_vector_size) {
-        if ((*tail_dim) % natural_vector_size == 0) {
+        if ((*tail_dim) % natural_vector_size != 0) {
+          natural_vector_size = GCD<int64_t>(natural_vector_size, (*tail_dim));
+        }
+
+        if (natural_vector_size > 1) {
           tvm::IterVar xi, xo;
           ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
           ctx.schedule[tensor->op].vectorize(xi);
