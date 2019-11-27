@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "cppwinrt.h"
+#include "winrt_headers.h"
 #include "dx.h"
 
 #include <D3dx12.h>
