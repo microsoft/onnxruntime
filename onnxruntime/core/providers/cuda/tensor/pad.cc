@@ -32,8 +32,18 @@ namespace cuda {
       Pad<T>);
 
 template <typename T>
+typename ToCudaType<T>::MappedType ToCudaValue(const T& value) {
+  return value;
+}
+
+template<>
+typename ToCudaType<MLFloat16>::MappedType ToCudaValue<MLFloat16>(const MLFloat16& value) {
+  return *reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType *>(&value.val);
+}
+
+template <typename T>
 Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
-  typedef ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<T>::MappedType CudaT;
   const auto& input_tensor = *ctx->Input<Tensor>(0);
   auto const& input_shape = input_tensor.Shape();
   auto dimension_count = input_shape.NumDimensions();
@@ -78,8 +88,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
       raw_value = value_tensor->template Data<T>()[0];
+      value = ToCudaValue<T>(raw_value);
     }
-    value = *reinterpret_cast<CudaT*>(&raw_value);
     p_pads = &pads;
     p_slices = &slices;
   }
