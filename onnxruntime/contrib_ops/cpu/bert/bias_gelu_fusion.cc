@@ -50,27 +50,25 @@ Status BiasGelu<T>::Compute(OpKernelContext* ctx) const {
   T* Y_data = Y->template MutableData<T>();
   int64_t task_count = X->Shape().Size() / bias_len;
 
-  auto execute_one_task = [&](int32_t task_idx) {
-    const T* p_input = X_data + task_idx * bias_len;
-    T* p_output = Y_data + task_idx * bias_len;
-    T* p_output_tmp = tmp_data + task_idx * bias_len;
-
-    for (int64_t h = 0; h < bias_len; h++) {
-      T value = p_input[h] + B_data[h];
-      p_output[h] = value * static_cast<T>(M_SQRT1_2);
-      p_output_tmp[h] = value * 0.5f;
-    }
-
-    MlasComputeErf(p_output, p_output, bias_len);
-
-    for (int64_t h = 0; h < bias_len; h++) {
-      p_output[h] = p_output_tmp[h] * (p_output[h] + 1.0f);
-    }
-  };
-
   concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(),
                                                static_cast<int32_t>(task_count),
-                                               std::move(execute_one_task));
+                                               [&](int32_t task_idx) {
+                                                 const T* p_input = X_data + task_idx * bias_len;
+                                                 T* p_output = Y_data + task_idx * bias_len;
+                                                 T* p_output_tmp = tmp_data + task_idx * bias_len;
+
+                                                 for (int64_t h = 0; h < bias_len; h++) {
+                                                   T value = p_input[h] + B_data[h];
+                                                   p_output[h] = value * static_cast<T>(M_SQRT1_2);
+                                                   p_output_tmp[h] = value * 0.5f;
+                                                 }
+
+                                                 MlasComputeErf(p_output, p_output, bias_len);
+
+                                                 for (int64_t h = 0; h < bias_len; h++) {
+                                                   p_output[h] = p_output_tmp[h] * (p_output[h] + 1.0f);
+                                                 }
+                                               });
 
   return Status::OK();
 }
