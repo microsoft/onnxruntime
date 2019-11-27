@@ -12,7 +12,7 @@ namespace contrib {
 template <typename T>
 class BiasGelu : public OpKernel {
  public:
-  explicit BiasGelu(const OpKernelInfo& info): OpKernel(info) {}
+  explicit BiasGelu(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
 
