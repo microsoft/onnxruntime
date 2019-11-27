@@ -70,7 +70,7 @@ Status EyeLike::ComputeInternal(OpKernelContext* context) const {
     diag_count = std::min(dim0 + k_, dim1);
   }
 
-  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
+  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : T1->GetElementType();
   switch (output_tensor_dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       TYPED_FUNCTION_CALL(float)

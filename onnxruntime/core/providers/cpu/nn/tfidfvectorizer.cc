@@ -586,11 +586,11 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   auto X = ctx->Input<Tensor>(0);
 
-  if (X->DataType() == DataTypeImpl::GetType<int32_t>()) {
+  if (X->IsDataType<int32_t>()) {
     s = ComputeImpl<int32_t>(ctx);
-  } else if (X->DataType() == DataTypeImpl::GetType<int64_t>()) {
+  } else if (X->IsDataType<int64_t>()) {
     s = ComputeImpl<int64_t>(ctx);
-  } else if (X->DataType() == DataTypeImpl::GetType<std::string>()) {
+  } else if (X->IsDataTypeString()) {
     s = ComputeImpl<std::string>(ctx);
   } else {
     s = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,

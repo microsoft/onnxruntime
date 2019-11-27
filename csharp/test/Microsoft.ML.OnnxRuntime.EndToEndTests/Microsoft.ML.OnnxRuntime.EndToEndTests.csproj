@@ -22,6 +22,11 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\InferenceTest.cs"/>
     <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\OnnxMl.cs"/>
+
+    <None Include="$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.dll;$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.pdb;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.so;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.dylib">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\testdata\*">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
@@ -34,6 +39,10 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>    
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\custom_op_library\custom_op_test.onnx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
 
     <BuildEnvVars Include="OnnxRuntimeBuildDirectory=$(OnnxRuntimeBuildDirectory)" />
   </ItemGroup>

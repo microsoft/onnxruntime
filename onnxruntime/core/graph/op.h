@@ -5,15 +5,7 @@
 
 #include <functional>
 #include <unordered_map>
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#include "onnx/defs/schema.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/status.h"
 #include "core/graph/constants.h"
 

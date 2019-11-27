@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   if (graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
@@ -18,7 +18,7 @@ Status EliminateDropout::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule
   return Status::OK();
 }
 
-bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   // We currently support elimination for Dropout operator v1, v6, v7, and v10.
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {1, 6, 7, 10})) {
     return false;
@@ -28,7 +28,7 @@ bool EliminateDropout::SatisfyCondition(const Graph& graph, const Node& node) co
   // It can be safely removed if it has only one output that is used (checked by CanRemoveNode)
   // and that output is not the 'mask' output.
   // The 'is_test' attribute in v1 and v6 is captured by the check for the 'mask' output.
-  return graph_utils::CanRemoveNode(graph, node) && !graph_utils::IsOutputUsed(node, 1);
+  return graph_utils::CanRemoveNode(graph, node, logger) && !graph_utils::IsOutputUsed(node, 1);
 }
 
 }  // namespace onnxruntime

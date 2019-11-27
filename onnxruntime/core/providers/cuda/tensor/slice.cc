@@ -7,33 +7,61 @@
 
 namespace onnxruntime {
 namespace cuda {
-#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                                                                                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                         \
-      Slice,                                                                                                                                       \
-      kOnnxDomain,                                                                                                                                 \
-      1, 9,                                                                                                                                        \
-      TIND,                                                                                                                                        \
-      kCudaExecutionProvider,                                                                                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
+      Slice,                                                            \
+      kOnnxDomain,                                                      \
+      1, 9,                                                             \
+      TIND,                                                             \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<TIND, false>);
 
 REGISTER_VERSIONED_TYPED_SLICE(int32_t)
 REGISTER_VERSIONED_TYPED_SLICE(int64_t)
 REGISTER_VERSIONED_TYPED_SLICE(float)
 
-#define REGISTER_V10_TYPED_SLICE(TIND)                                                                                                                                                                                                                                                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                                                                                                                                               \
-      Slice,                                                                                                                                                                                                                                                                                                   \
-      kOnnxDomain,                                                                                                                                                                                                                                                                                             \
-      10,                                                                                                                                                                                                                                                                                                      \
-      TIND,                                                                                                                                                                                                                                                                                                    \
-      kCudaExecutionProvider,                                                                                                                                                                                                                                                                                  \
-      KernelDefBuilder().InputMemoryType<OrtMemTypeCPUInput>(1).InputMemoryType<OrtMemTypeCPUInput>(2).InputMemoryType<OrtMemTypeCPUInput>(3).InputMemoryType<OrtMemTypeCPUInput>(4).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+#define REGISTER_V10_TYPED_SLICE(TIND)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
+      Slice,                                                            \
+      kOnnxDomain,                                                      \
+      10, 10,                                                           \
+      TIND,                                                             \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<TIND, true>);
 
 REGISTER_V10_TYPED_SLICE(int32_t)
 REGISTER_V10_TYPED_SLICE(int64_t)
 REGISTER_V10_TYPED_SLICE(float)
+
+#define REGISTER_V11_TYPED_SLICE(TIND)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      Slice,                                                            \
+      kOnnxDomain,                                                      \
+      11,                                                               \
+      TIND,                                                             \
+      kCudaExecutionProvider,                                           \
+      KernelDefBuilder()                                                \
+          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
+          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+      Slice<TIND, true>);
+
+REGISTER_V11_TYPED_SLICE(int32_t)
+REGISTER_V11_TYPED_SLICE(int64_t)
+REGISTER_V11_TYPED_SLICE(float)
 
 template <typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {

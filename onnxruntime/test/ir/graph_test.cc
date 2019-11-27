@@ -20,6 +20,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "test/providers/provider_test_utils.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -120,7 +121,7 @@ static const bool kSchemasRegistered = RegisterCustomSchemas();
 TEST(GraphTraversalTest, ReverseDFS) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.
@@ -218,7 +219,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_VerifyNoDuplicateName) {
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   EXPECT_EQ("graph_1", graph.Name());
@@ -251,7 +252,7 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNoDuplicateName) {
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -274,7 +275,7 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
 TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   /* A normal graph.
@@ -335,7 +336,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
   std::shared_ptr<Model> model2;
-  EXPECT_TRUE(Model::Load("graph_1.onnx", model2).IsOK());
+  EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
 
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
@@ -344,7 +345,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   // Load the model again to ensure that it's still the right thing.
   //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
-  model2.reset(new Model(model_proto2));
+  model2.reset(new Model(model_proto2, nullptr, DefaultLoggingManager().DefaultLogger()));
   Graph& graph2 = model2->MainGraph();
   for (auto& node : graph2.Nodes()) {
     auto node_name_to_input_output_iter = expected_node_name_to_input_output_args.find(node.Name());
@@ -367,7 +368,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   //    node_1 (Identity)  node_2 (Identity)
@@ -447,7 +448,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
 TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::unordered_map<std::string, int> map;
@@ -540,7 +541,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr);
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, DefaultLoggingManager().DefaultLogger());
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -554,7 +555,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("UnusedInitializerIsIgnored");
+  Model model("UnusedInitializerIsIgnored", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -595,7 +596,7 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr);
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, DefaultLoggingManager().DefaultLogger());
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -620,7 +621,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto& input_arg1 = graph.GetOrCreateNodeArg("node_1_in_1", &tensor_int32);
   auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
@@ -642,7 +643,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
-  onnxruntime::Model model("graph");
+  onnxruntime::Model model("graph", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   ONNX_NAMESPACE::TensorProto weight;
@@ -662,7 +663,7 @@ TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
 TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.
@@ -724,7 +725,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
 
   EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
   std::shared_ptr<Model> loaded_model;
-  EXPECT_TRUE(Model::Load("model_x.onnx", loaded_model).IsOK());
+  EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   EXPECT_EQ(2, loaded_model->MainGraph().GetInputs().size());
 
   auto& graph_proto = graph.ToGraphProto();
@@ -739,7 +740,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
 TEST(ResolvingGraphTest, ShapeInferenceErrorHandling) {
   ASSERT_TRUE(kSchemasRegistered);
 
-  Model model("graph");
+  Model model("graph", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto tensor_int32;
@@ -764,7 +765,7 @@ TEST(TestAddAttribute, AddTensorAttribute) {
       .Output(0, "output_1", "docstr for output_1.", "tensor(int64)");
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   TypeProto output_type;
   output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
@@ -809,7 +810,7 @@ void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::
 TEST(TypeInferenceTest, TypeAttribute) {
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", nullptr);
   outputs.push_back(&output_arg);
@@ -833,7 +834,7 @@ TEST(TypeInferenceTest, VariadicOutput) {
   std::vector<NodeArg*> outputs;
   TypeProto tensor_type;
   tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto& X = graph.GetOrCreateNodeArg("X", &tensor_type);
   inputs.push_back(&X);
@@ -850,7 +851,7 @@ TEST(TypeInferenceTest, VariadicOutput) {
 
 // test that we prefer the graph input shape for a non-const initializer (initializer with matching graph input)
 TEST(TypeInferenceTest, NonConstInitializer) {
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto tensor_type_no_shape;
@@ -900,7 +901,7 @@ TEST(TypeInferenceTest, NonConstInitializer) {
   ASSERT_TRUE(model.ToProto().SerializeToString(&s1));
   ASSERT_TRUE(model_proto.ParseFromString(s1));
 
-  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr);
+  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(status.IsOK()) << status;
 
   auto& graph2 = p_model->MainGraph();
@@ -909,7 +910,7 @@ TEST(TypeInferenceTest, NonConstInitializer) {
 
 // Test that Graph::Resolve identifies name-duplication across initializer and node-output-arg
 TEST(NameResolutionTest, DuplicateName) {
-  Model model("graph_1");
+  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   ONNX_NAMESPACE::TensorProto weight;
@@ -939,7 +940,7 @@ TEST(NameResolutionTest, DuplicateName) {
 }
 
 TEST(GraphUpdateTest, ReplaceInitializedTensor) {
-  Model model{"GraphUpdateTest"};
+  Model model{"GraphUpdateTest", false, DefaultLoggingManager().DefaultLogger()};
   auto& graph = model.MainGraph();
   const std::string initializer_name = "initializer";
 
@@ -1010,7 +1011,7 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
 }
 
 TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
-  Model m{"test_model"};
+  Model m{"test_model", false, DefaultLoggingManager().DefaultLogger()};
   Graph& graph = m.MainGraph();
 
   auto create_tensor_proto = [](const std::string& name, int32_t value) {
@@ -1061,6 +1062,15 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
 
   validate_proto(graph_proto_from_const_graph);
   validate_proto(graph_proto_from_graph);
+
+  // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused. 
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0);
+  
+  ONNX_NAMESPACE::GraphProto graph_proto_from_resolved_graph = graph.ToGraphProto();
+  auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
+  ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
+                                 << num_initializers << " remain.";
 }
 }  // namespace test
 }  // namespace onnxruntime
