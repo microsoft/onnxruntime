@@ -72,7 +72,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
     size_t index = 0;
     for (int b = 0; b < batch_size; b++) {
       for (int s = 0; s < sequence_length; s++) {
-        int word_col_index = input_ids->template Data<int>()[index];
+        int word_col_index = input_ids->template Data<int32_t>()[index];
         if (word_col_index < 0 || word_col_index >= word_embedding_length) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "word_col_index out of range");
         }
@@ -80,7 +80,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         if (position_col_index >= position_embedding_length) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "position_col_index out of range");
         }
-        int segment_col_index = segment_ids->template Data<int>()[index];
+        int segment_col_index = segment_ids->template Data<int32_t>()[index];
         if (segment_col_index < 0 || segment_col_index >= segment_embedding_length) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "segment_col_index out of range");
         }
@@ -99,14 +99,14 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   // Calculate mask
   if (nullptr != mask) {
-    const int* mask_data = mask->template Data<int>();
+    const int32_t* mask_data = mask->template Data<int32_t>();
     for (int b = 0; b < batch_size; b++) {
-      mask_index->template MutableData<int>()[b] = static_cast<int>(std::count_if(mask_data + (b * sequence_length),
+      mask_index->template MutableData<int32_t>()[b] = static_cast<int32_t>(std::count_if(mask_data + (b * sequence_length),
                                                                                   mask_data + (b * sequence_length) + sequence_length,
                                                                                   [](int v) { return v == 1; }));
     }
   } else {
-    memset(mask_index->template MutableData<int>(), 0, batch_size * sizeof(int));
+    memset(mask_index->template MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
   }
 
   return Status::OK();
