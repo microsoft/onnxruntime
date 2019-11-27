@@ -38,7 +38,8 @@ static const std::unordered_set<std::string> valid_keys = {
     kNupharCacheSoName,
     kNupharCacheModelChecksum,
     kNupharCacheForceNoJIT,
-    kNupharCodeGenTarget};
+    kNupharCodeGenTarget,
+    kNupharParallelMinWorkloads};
 
 void SetDefaultOptions(std::map<std::string, std::string>& options) {
   // create two temporary strings to get rid of the odr-use issue introduced
@@ -56,6 +57,10 @@ void SetDefaultOptions(std::map<std::string, std::string>& options) {
   std::string cache_so_name_opt(kNupharCacheSoName);
   std::string cache_so_name_default(kNupharCacheSoName_Default);
   options.insert(std::make_pair(cache_so_name_opt, cache_so_name_default));
+
+  std::string parallel_min_workloads_opt(kNupharParallelMinWorkloads);
+  unsigned int parallel_min_workloads_default = 64;  // a rough estimate of workloads based on static dimensions
+  options.insert(std::make_pair(parallel_min_workloads_opt, std::to_string(parallel_min_workloads_default)));
 }
 
 void CreateNupharCodeGenSettings(const NupharExecutionProviderInfo& info) {
