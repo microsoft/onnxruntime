@@ -25,7 +25,7 @@ static bool IsSupportedDataType(const Node& node) {
   return true;
 }
 
-static bool CheckInputShape(Node& node, const NodeArg& input, const NodeArg& bias) {
+static bool CheckInputShape(const Node& node, const NodeArg& input, const NodeArg& bias) {
   const TensorShapeProto* bias_shape = bias.Shape();
   if (nullptr == bias_shape ||
       bias_shape->dim_size() != 1 || 

@@ -12,9 +12,8 @@ enum class TransformerLevel : int {
   Level1,
   Level2,
   Level3,
-  Level4,
   // The max level should always be same as the last level.
-  MaxLevel = Level4
+  MaxLevel = Level3
 };
 
 }  // namespace onnxruntime

@@ -1135,24 +1135,16 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
   };
 
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Allowed values are 0, 1, 2, 3 and 4. Current level is set to " +
+              "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
-  if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1);
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if ((graph_optimization_level >= level) || !custom_list.empty()) {
+      add_transformers(level);
+    }
   }
 
-  if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2);
-  }
-
-  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level3);
-  }
-
-  if ((graph_optimization_level >= TransformerLevel::Level4) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level4);
-  }
 }
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {

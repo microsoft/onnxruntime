@@ -131,6 +131,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<AddGeluFusion>(cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cuda_execution_providers));
 
 #endif
@@ -143,15 +144,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
 #endif
-    } break;
-
-    case TransformerLevel::Level4: {
-      // Level 4 is for approximation
-#ifndef DISABLE_CONTRIB_OPS
-      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
-#endif
-
     } break;
 
     default:
