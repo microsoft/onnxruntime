@@ -1203,7 +1203,7 @@ TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
 }
 
 TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
-  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format1.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
