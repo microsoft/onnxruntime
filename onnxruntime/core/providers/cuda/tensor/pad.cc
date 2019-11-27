@@ -31,8 +31,6 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);
 
-template<T>
-T from_float
 template <typename T>
 Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef ToCudaType<T>::MappedType CudaT;
@@ -81,7 +79,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
       raw_value = value_tensor->template Data<T>()[0];
     }
-    value = raw_value;
+    value = *reinterpret_cast<CudaT*>(&raw_value);
     p_pads = &pads;
     p_slices = &slices;
   }
