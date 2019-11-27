@@ -28,7 +28,7 @@ def main():
     df = pd.DataFrame([['string_input', 3.25, 8, 16, 32, 64, True, 0.25]], 
                       columns=['StringInput', 'DoubleInput', 'Int8Input', 'Int16Input', 'Int32Input', 'Int64Input', 'BoolInput', 'Float32Input'])
 
-    outputs = df_tool.execute(df)
+    outputs = df_tool.execute(df, [])
     print('Outputs: ', outputs)
 
 if __name__ == "__main__":

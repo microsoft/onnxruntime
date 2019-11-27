@@ -45,8 +45,8 @@ class DataFrameTool():
         self._sess_options = sess_options
 
     def _process_input_list(self, df, input_metas, require):
-        "Return a dictionary of input_name : a typed and shaped np.array of values for a given input_meta"
         """
+        Return a dictionary of input_name : a typed and shaped np.array of values for a given input_meta
         The function does the heavy lifting for _get_input_feeds()
 
         :param df: See :class:`pandas.DataFrame`. 
@@ -60,7 +60,6 @@ class DataFrameTool():
             shape = [dim if dim else 1 for dim in input_meta.shape]
             # We fully expect all the types are in the above dictionary
             assert input_meta.type in types_dict
-            print("Processing input: " + input_meta.name)
             if input_meta.name in df.columns:
                 expected_type = types_dict[input_meta.type]
                 # float16 and bool will always require exact match
@@ -88,8 +87,8 @@ class DataFrameTool():
 
 
     def _get_input_feeds(self, df, sess):
-        "Return a dictionary of input_name : a typed and shaped np.array of values"
         """
+        Return a dictionary of input_name : a typed and shaped np.array of values
         This function accepts Pandas DataFrame as the first argument and onnxruntime
         session with a loaded model. The function interrogates the model for the inputs
         and matches the model input names to the DataFrame instance column names.
@@ -112,13 +111,15 @@ class DataFrameTool():
 
         # Process mandadory inputs. Raise an error if anything is not present
         feeds = self._process_input_list(df, sess.get_inputs(), True)
+        # Process optional overridable initializers. If present the initialzier value
+        # is overriden by the input. If not, the initialzier value embedded in the model takes effect.
         initializers = self._process_input_list(df, sess.get_overridable_initializers(), False)
 
         feeds.update(initializers)
 
         return feeds
 
-    def execute(self, df, output_names=[], run_options=None):
+    def execute(self, df, output_names, run_options=None):
         "Return a list of output values restricted to output names if not empty"
         """
         Compute the predictions.
