@@ -248,7 +248,7 @@ class WindowsEnv : public Env {
     // TODO: Understand the reason for failure by calling GetLastError().
     // If it is due to the specified environment variable being found in the environment block,
     // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
-    // For now, we assume, the environment variable is not found.
+    // For now, we assume that the environment variable is not found.
 
     return std::string("");
   }
