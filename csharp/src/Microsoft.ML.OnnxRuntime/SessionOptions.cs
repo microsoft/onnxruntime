@@ -343,7 +343,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
-        
+
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
         /// </summary>

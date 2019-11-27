@@ -368,9 +368,6 @@ class InferenceSession {
   // if they need.
   std::shared_ptr<onnxruntime::Model> model_;
 
-  // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
-
   // names of model outputs used for quick validation.
   std::unordered_set<std::string> model_output_names_;
 
@@ -513,5 +510,8 @@ class InferenceSession {
   bool session_activity_started_ = false;
   TraceLoggingActivity<telemetry_provider_handle> session_activity;
 #endif
+
+  // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
 };
 }  // namespace onnxruntime
