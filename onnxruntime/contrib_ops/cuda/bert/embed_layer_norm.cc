@@ -44,7 +44,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* segment_embedding = context->Input<Tensor>(4);
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
-  const Tensor* mask = context->Input<Tensor>(7); // optional. nullptr if not provided
+  const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
   const auto input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];

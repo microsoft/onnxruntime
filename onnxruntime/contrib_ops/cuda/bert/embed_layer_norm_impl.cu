@@ -188,7 +188,6 @@ bool LaunchEmbedLayerNormKernel(
   } else if (!ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index))) {
     return false;
   }
-  
 
   if (element_size == 2) {
     return EmbedSkipLayerNorm<half>(
