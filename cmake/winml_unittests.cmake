@@ -44,7 +44,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES})
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -66,11 +66,15 @@ add_winml_test(
 )
 target_precompiled_header(winml_test_api testPch.h)
 
-file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+if (onnxruntime_USE_DML)
+  file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+else()
+  set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+endif()
 add_winml_test(
   TARGET winml_test_scenario
   SOURCES ${winml_test_scenario_src}
-  LIBS winml_test_common onnxruntime_providers_dml
+  LIBS winml_test_common
   DEPENDS winml_api
 )
 target_precompiled_header(winml_test_scenario testPch.h)

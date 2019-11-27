@@ -1,4 +1,5 @@
 #include "testPch.h"
+
 #include "APITest.h"
 
 #include <winrt/Windows.Graphics.Imaging.h>
@@ -26,7 +27,13 @@ protected:
 };
 
 class LearningModelAPITestGpu : public LearningModelAPITest
-{};
+{
+protected:
+    void SetUp() override
+    {
+        GPUTEST
+    }
+};
 
 TEST_F(LearningModelAPITest, CreateModelFromFilePath)
 {

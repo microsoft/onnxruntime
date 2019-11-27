@@ -3,31 +3,33 @@
 #include <d3dx12.h>
 #include <gtest/gtest.h>
 
-#include "winrt/Windows.Media.h"
+#include "winrt/Windows.Devices.Enumeration.Pnp.h"
+#include "winrt/Windows.Graphics.DirectX.Direct3D11.h"
 #include "winrt/Windows.Media.Capture.h"
+#include "winrt/Windows.Media.h"
+#include "winrt/Windows.Security.Cryptography.Core.h"
+#include "winrt/Windows.Security.Cryptography.h"
 #include "winrt/Windows.Storage.h"
 #include "winrt/Windows.Storage.Streams.h"
-#include "winrt/Windows.Devices.Enumeration.Pnp.h"
-#include "winrt/Windows.Security.Cryptography.h"
-#include "winrt/Windows.Security.Cryptography.Core.h"
-#include "winrt/Windows.Graphics.DirectX.Direct3D11.h"
+
 // lame, but WinBase.h redefines this, which breaks winrt headers later
 #ifdef GetCurrentTime
 #undef GetCurrentTime
 #endif
-#include "winrt/Windows.UI.Xaml.Controls.h"
-#include "winrt/Windows.UI.Xaml.Media.Imaging.h"
-#include "Windows.Graphics.DirectX.Direct3D11.interop.h"
-#include "windows.ui.xaml.media.dxinterop.h"
-#include "Windows.AI.MachineLearning.Native.h"
+#include "CustomOperatorProvider.h"
+#include "DeviceHelpers.h"
 #include "filehelpers.h"
 #include "robuffer.h"
-#include "CustomOperatorProvider.h"
+#include "runtimeParameters.h"
+#include "Windows.AI.MachineLearning.Native.h"
+#include "Windows.Graphics.DirectX.Direct3D11.interop.h"
+#include "windows.ui.xaml.media.dxinterop.h"
+#include "winrt/Windows.UI.Xaml.Controls.h"
+#include "winrt/Windows.UI.Xaml.Media.Imaging.h"
+#include <d2d1.h>
 #include <d3d11.h>
 #include <initguid.h>
 #include <MemoryBuffer.h>
-#include "DeviceHelpers.h"
-#include <d2d1.h>
 
 #if __has_include("dxcore.h")
 #define ENABLE_DXCORE 1
@@ -50,17 +52,29 @@ using namespace winrt::Windows::UI::Xaml::Media::Imaging;
 class ScenarioCppWinrtTest : public ::testing::Test
 {
 protected:
-    ScenarioCppWinrtTest() {
+    ScenarioCppWinrtTest()
+    {
         init_apartment();
     }
 };
 
 class ScenarioCppWinrtGpuTest : public ScenarioCppWinrtTest
 {
+protected:
+    void SetUp() override
+    {
+        GPUTEST
+    }
 };
 
 class ScenarioCppWinrtGpuSkipEdgeCoreTest : public ScenarioCppWinrtTest
 {
+protected:
+    void SetUp() override
+    {
+        ScenarioCppWinrtTest::SetUp();
+        SKIP_EDGECORE
+    }
 };
 
 TEST_F(ScenarioCppWinrtTest, Sample1)
@@ -407,7 +421,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MyCameraDevice)
     }
     else
     {
-        GTEST_SKIP("Test skipped because video capture device is missing");
+        GTEST_SKIP() << "Test skipped because video capture device is missing";
     }
 }
 
@@ -426,7 +440,7 @@ TEST_F(ScenarioCppWinrtGpuSkipEdgeCoreTest, Scenario8_SetDeviceSample_D3D11Devic
         D3D11_SDK_VERSION, pD3D11Device.put(), &fl, pContext.put());
     if (FAILED(result))
     {
-        GTEST_SKIP("Test skipped because d3d11 device is missing");
+        GTEST_SKIP() << "Test skipped because d3d11 device is missing";
     }
 
     // get dxgiDevice from d3ddevice
@@ -477,7 +491,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_CustomCommandQueue)
 
     if (FAILED(result))
     {
-        GTEST_SKIP("Test skipped because d3d12 device is missing");
+        GTEST_SKIP() << "Test skipped because d3d12 device is missing";
         return;
     }
     com_ptr<ID3D12CommandQueue> dxQueue = nullptr;
@@ -933,7 +947,8 @@ TEST_F(ScenarioCppWinrtTest, DISABLED_Scenario22_ImageBindingAsCPUTensor)
 }
 
 TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario22_ImageBindingAsGPUTensor)
-{    std::wstring modulePath = FileHelpers::GetModulePath();
+{
+    std::wstring modulePath = FileHelpers::GetModulePath();
     std::wstring inputImagePath = modulePath + L"fish_720.png";
     std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
     std::wstring modelPath = modulePath + L"fns-candy.onnx";
@@ -1128,7 +1143,8 @@ TEST_F(ScenarioCppWinrtTest, QuantizedModels)
 }
 
 TEST_F(ScenarioCppWinrtGpuTest, MsftQuantizedModels)
-{    // load a model
+{
+    // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"coreml_Resnet50_ImageNet-dq.onnx";
     LearningModel model = LearningModel::LoadFromFilePath(filePath);
     LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
