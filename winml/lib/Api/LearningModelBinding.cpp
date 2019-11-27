@@ -16,6 +16,7 @@ using namespace WinML;
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
   Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
+  session.as<winmlp::LearningModelSession>()->CheckClosed();
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
 }
 WINML_CATCH_ALL
@@ -172,6 +173,7 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
+  m_session.as<winmlp::LearningModelSession>()->CheckClosed();
   m_providers.clear();
 }
 WINML_CATCH_ALL

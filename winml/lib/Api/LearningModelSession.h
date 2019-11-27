@@ -71,6 +71,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   _winmla::IInferenceSession*
   GetIInferenceSession();
 
+  void
+  CheckClosed();
+
  private:
   void
   Initialize();
@@ -96,9 +99,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
   void
   ToggleProfiler();
-
-  void
-  CheckClosed();
 
  private:
   com_ptr<_winmla::IInferenceSession> inference_session_;
