@@ -198,51 +198,6 @@ LearningModelSession::EvaluateFeaturesAsync(
   return EvaluateAsync(binding, correlation_id);
 }
 
-static void
-GetIOBinding(
-  winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
-  winml::LearningModel& model) {
-  auto& bound_output_names = binding_impl->GetOutputNames();
-  std::unordered_set<std::string> bound_output_names_set(
-    bound_output_names.begin(),
-    bound_output_names.end());
-
-  // Get model output feature names
-  auto model_impl = model.as<winmlp::LearningModel>();
-  auto output_features = model_impl->OutputFeatures();
-  std::vector<ILearningModelFeatureDescriptor> output_descriptors(
-    begin(output_features),
-    end(output_features));
-
-  // Convert all output features to their feature names
-  std::vector<std::string> output_feature_names;
-  std::transform(
-    std::begin(output_descriptors),
-    std::end(output_descriptors),
-    std::back_inserter(output_feature_names),
-    [&](auto& descriptor) {
-      auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
-      const wchar_t* p_name;
-      uint32_t size;
-      WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
-      return WinML::Strings::UTF8FromUnicode(p_name, size);
-    });
-
-  // Find the set difference to determine if there are any unbound output features
-  std::vector<std::string> unbound_output_names;
-  std::copy_if(
-    std::begin(output_feature_names), std::end(output_feature_names),
-    std::inserter(unbound_output_names, std::begin(unbound_output_names)),
-    [&](const auto& outputFeatureName) {
-      return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
-    });
-
-  // Add all unbound outputs to the iobinding collection
-  for (const auto& unbound_output : unbound_output_names) {
-    WINML_THROW_IF_FAILED(binding_impl->BindOutput(unbound_output, Ort::Value(nullptr)));
-  }
-}
-
 // copied from onnxruntime_cxx_inline.h
 inline OrtStatus* OrtRun(
     OrtSession * session, 
@@ -259,7 +214,6 @@ inline OrtStatus* OrtRun(
   return Ort::GetApi().Run(session, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values);
 }
 
-
 uint64_t
 LearningModelSession::Run(
     winrt::com_ptr<winmlp::LearningModelBinding> binding_impl) {
@@ -268,9 +222,8 @@ LearningModelSession::Run(
   CWinMLAutoLock lock(!device->IsCpuDevice() ? &evaluate_lock_ : nullptr);
   // TODO : set the run_options
   Ort::RunOptions run_options;
-  // Invoke run on the ORT session.
-  
-  GetIOBinding(binding_impl, model_);
+  binding_impl->BindUnboundOutputs();
+
   std::vector<const char*> inputNames_c;
   for (int i=0; i < binding_impl->GetInputNames().size(); i++)
   {
@@ -281,7 +234,9 @@ LearningModelSession::Run(
     outputNames_c.push_back(binding_impl->GetOutputNames()[i].c_str());
   }
   OrtSession* session = nullptr;
+
   WINML_THROW_IF_FAILED(inference_session_->GetOrtSession(&session));
+  // Invoke run on the ORT session.
   Ort::ThrowOnError(OrtRun(
     session, 
     run_options, 

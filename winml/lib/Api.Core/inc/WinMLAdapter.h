@@ -29,7 +29,7 @@ MIDL_INTERFACE("a848faf6-5a2e-4a7f-b622-cc036f71e28a") IModelProto : IUnknown{
 
 MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnknown {
     virtual onnxruntime::InferenceSession* STDMETHODCALLTYPE get() = 0;
-    // the below returns a weak ref , DO NO RELEASE IT
+    // the below returns a weak ref , DO NOT RELEASE IT
     virtual HRESULT STDMETHODCALLTYPE GetOrtSession(OrtSession ** out) = 0;
     virtual void STDMETHODCALLTYPE RegisterGraphTransformers() = 0;
     virtual HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry * registry) = 0;

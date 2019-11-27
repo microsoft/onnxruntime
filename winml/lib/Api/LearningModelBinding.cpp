@@ -9,6 +9,8 @@
 #include "LearningModelSession.h"
 #include "TelemetryEvent.h"
 #include <onnxruntime_c_api.h>
+#include "LearningModel.h"
+
 using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
@@ -39,7 +41,7 @@ static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBi
 using NullableBindingPort = std::optional<std::pair<Windows::AI::MachineLearning::ILearningModelFeatureDescriptor, BindingType>>;
 
 static NullableBindingPort FindValidBinding(
-    LearningModel model,
+    winml::LearningModel model,
     const std::wstring& name) {
   if (auto descriptor = FindValidBinding(model.InputFeatures(), name)) {
     return std::make_pair(descriptor, BindingType::kInput);
@@ -379,6 +381,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
     Ort::Value& ort_value) {
+  
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
@@ -514,6 +517,7 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, c
   return {true, it - std::begin(names)};
 }
 
+// This method releases control of memory of ml_value from caller of BindInput
 HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_value) {
   auto rc = Contains(feed_names_, name);
 
@@ -537,6 +541,7 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_
   return S_OK;
 }
 
+// This method releases control of memory of ml_value from caller of BindInput
 HRESULT LearningModelBinding::BindOutput(const std::string& name, Ort::Value& ml_value) {
   auto rc = Contains(output_names_, name);
   OrtValue* ml_value_data = ml_value.release();
@@ -561,5 +566,48 @@ const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
 }
 
 const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const { return feeds_; }
+
+void LearningModelBinding::BindUnboundOutputs()
+{
+  auto& bound_output_names = GetOutputNames();
+  std::unordered_set<std::string> bound_output_names_set(
+      bound_output_names.begin(),
+      bound_output_names.end());
+
+  // Get model output feature names
+  auto model_impl = m_session.Model().as<winmlp::LearningModel>();
+  auto output_features = model_impl->OutputFeatures();
+  std::vector<ILearningModelFeatureDescriptor> output_descriptors(
+      begin(output_features),
+      end(output_features));
+
+  // Convert all output features to their feature names
+  std::vector<std::string> output_feature_names;
+  std::transform(
+      std::begin(output_descriptors),
+      std::end(output_descriptors),
+      std::back_inserter(output_feature_names),
+      [&](auto& descriptor) {
+        auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
+        const wchar_t* p_name;
+        uint32_t size;
+        WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
+        return WinML::Strings::UTF8FromUnicode(p_name, size);
+      });
+
+  // Find the set difference to determine if there are any unbound output features
+  std::vector<std::string> unbound_output_names;
+  std::copy_if(
+      std::begin(output_feature_names), std::end(output_feature_names),
+      std::inserter(unbound_output_names, std::begin(unbound_output_names)),
+      [&](const auto& outputFeatureName) {
+        return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
+      });
+
+  // Add all unbound outputs to the iobinding collection
+  for (const auto& unbound_output : unbound_output_names) {
+    WINML_THROW_IF_FAILED(BindOutput(unbound_output, Ort::Value(nullptr)));
+  }
+}
 
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

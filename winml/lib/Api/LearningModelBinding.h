@@ -56,6 +56,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
   const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
   HRESULT BindOutput(const std::string& name, Ort::Value& ml_value);
+  void BindUnboundOutputs();
 
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
