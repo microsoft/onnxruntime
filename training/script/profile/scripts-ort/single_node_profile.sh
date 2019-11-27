@@ -33,10 +33,10 @@ rm /tmp/results -rf
 bash $ORT_SCRIPT_PATH"profile_trend.sh" $accumu_steps_type $mpikind || true
 echo "Result above is for profile_trend.sh"
 
-echo "########## Profile Section Seperator profile_real_training.sh -  Commit "$commitid" ################"
-rm /tmp/results -rf
-bash $ORT_SCRIPT_PATH"profile_real_training.sh" "dynamic" $mpikind || true
-echo "Result above is for profile_real_training.sh with dynamic accumulation steps"
+#echo "########## Profile Section Seperator profile_real_training.sh -  Commit "$commitid" ################"
+#rm /tmp/results -rf
+#bash $ORT_SCRIPT_PATH"profile_real_training.sh" "dynamic" $mpikind || true
+#echo "Result above is for profile_real_training.sh with dynamic accumulation steps"
 
 export CUSTOM_PARAMS_STRING=""
 

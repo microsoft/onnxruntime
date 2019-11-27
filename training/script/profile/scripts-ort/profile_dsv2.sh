@@ -14,27 +14,31 @@ fi
 
 if [ -z "${TEST_MODE}" ]
 then
-  eval_steps=5
+  eval_steps=10
+
+  declare -a phase1_fp16_batch_sizes=(64 128)
+  #declare -a phase1_fp32_batch_sizes=(32 84)
+
+  declare -a phase2_fp16_batch_sizes=(8 16)
+  #declare -a phase2_fp32_batch_sizes=(4 14)
 else
-  eval_steps=1
+  eval_steps=15
+
+  declare -a phase1_fp16_batch_sizes=(64)
+  #declare -a phase1_fp32_batch_sizes=(32)
+  declare -a phase2_fp16_batch_sizes=(8)
+  #declare -a phase2_fp32_batch_sizes=(4)
 fi
 
 export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/
-timestamp="ort_"$(date +%s)"_profile_real_training"
+timestamp="ort_"$(date +%s)"_profile_dsv2"
 export SHARED_RES_PATH=$PHILLY_LOG_DIRECTORY/$timestamp
-echo "shared result path : "$SHARED_RES_PATH
 mkdir $SHARED_RES_PATH
 
 #########################################
 ################ Phase 1 ################
-declare -a phase1_fp16_batch_sizes=(128)
-declare -a phase1_fp32_batch_sizes=(64)  # need to change to 64 once OOM issue is investigated
 
-if [ -z "${TEST_MODE}" ]; then
-  declare -a phase1_gpu_nums=(16)
-else
-  declare -a phase1_gpu_nums=(16)
-fi
+declare -a phase1_gpu_nums=(1 16)
 
 max_predictions_per_seq=20
 for gpu_num in "${phase1_gpu_nums[@]}"
@@ -42,7 +46,7 @@ do
   for b in "${phase1_fp16_batch_sizes[@]}"
   do 
      if [ $accumu_steps_type != "fixed" ]; then
-       updated_accu_step=$((65536 / gpu_num / b ))
+       updated_accu_step=$((16384 / gpu_num / b ))
      else
        updated_accu_step=1
      fi
@@ -50,29 +54,23 @@ do
      bash $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $cur_eval_steps $mpikind
   done
 
- for b in "${phase1_fp32_batch_sizes[@]}"
-  do  
-     if [ $accumu_steps_type != "fixed" ]; then
-       updated_accu_step=$((65536 / gpu_num / b ))
-     else
-       updated_accu_step=1
-     fi
-     cur_eval_steps=$((eval_steps * updated_accu_step))
-     bash $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $cur_eval_steps $mpikind
-  done
+#  for b in "${phase1_fp32_batch_sizes[@]}"
+#   do  
+#      if [ $accumu_steps_type != "fixed" ]; then
+#        updated_accu_step=$((65536 / gpu_num / b ))
+#      else
+#        updated_accu_step=1
+#      fi
+#      cur_eval_steps=$((eval_steps * updated_accu_step))
+#      bash $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
+#   done
 
 done
 
 #########################################
 ################ Phase 2 ################
-declare -a phase2_fp16_batch_sizes=(16)
-declare -a phase2_fp32_batch_sizes=(8)
 
-if [ -z "${TEST_MODE}" ]; then
-  declare -a phase2_gpu_nums=(16)
-else
-  declare -a phase2_gpu_nums=(16)
-fi
+declare -a phase2_gpu_nums=(1 16)
 
 max_predictions_per_seq=80
 for gpu_num in "${phase2_gpu_nums[@]}"
@@ -80,7 +78,7 @@ do
   for b in "${phase2_fp16_batch_sizes[@]}"
   do  
      if [ $accumu_steps_type != "fixed" ]; then
-       updated_accu_step=$((32768 / gpu_num / b ))
+       updated_accu_step=$((16384 / gpu_num / b ))
      else
        updated_accu_step=1
      fi
@@ -88,16 +86,16 @@ do
      bash $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $cur_eval_steps $mpikind
   done
 
- for b in "${phase2_fp32_batch_sizes[@]}"
-  do
-     if [ $accumu_steps_type != "fixed" ]; then
-       updated_accu_step=$((32768 / gpu_num / b ))
-     else
-       updated_accu_step=1
-     fi
-     cur_eval_steps=$((eval_steps * updated_accu_step))
-     bash $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $cur_eval_steps $mpikind
-  done
+#  for b in "${phase2_fp32_batch_sizes[@]}"
+#   do
+#      if [ $accumu_steps_type != "fixed" ]; then
+#        updated_accu_step=$((32768 / gpu_num / b ))
+#      else
+#        updated_accu_step=1
+#      fi
+#cur_eval_steps=$((eval_steps * updated_accu_step))
+#      bash $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 512 $max_predictions_per_seq $cur_eval_steps $mpikind
+#   done
 
 done
 

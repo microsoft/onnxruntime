@@ -6,8 +6,8 @@ apt-get update &&\
 
 cd  /code
 
-
-ONNXRUNTIME_SERVER_BRANCH=training
+ONNXRUNTIME_SERVER_BRANCH=$1
+COMMIT=$2
 
 # Dependencies: cmake
 wget --quiet https://github.com/Kitware/CMake/releases/download/v3.14.3/cmake-3.14.3-Linux-x86_64.tar.gz
@@ -21,6 +21,13 @@ git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ON
 
 # Prepare onnxruntime repository & build onnxruntime
 cd onnxruntime
+
+if [ -z "${COMMIT}" ]
+then
+  echo "use latest commit of current branch"
+else
+  git checkout ${COMMIT}
+fi
 
 # get commit id
 COMMITID=$(git rev-parse HEAD | cut -c1-8)

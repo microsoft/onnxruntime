@@ -13,13 +13,12 @@ fi
 
 if [ -z "${TEST_MODE}" ]
 then
-  eval_steps=200
-  #declare -a phase1_fp16_batch_sizes=(2 4 8 10 12 14 16 18 20 22 24 32 40 48 52 60 64 72 80 88 96 104 112 120 128 136 140 144)
-  declare -a phase1_fp16_batch_sizes=(2 4 8 16 32 64 128 144)
-  declare -a phase1_fp32_batch_sizes=(2 4 8 16 32 64 80)
-  #declare -a phase2_fp16_batch_sizes=(2 4 8 10 12 14 16 18 20 22 24)
-  declare -a phase2_fp16_batch_sizes=(2 4 8 16 24)
-  declare -a phase2_fp32_batch_sizes=(2 4 8 12)
+  eval_steps=100
+  declare -a phase1_fp16_batch_sizes=(2 4 8 16 32 64 80 128 144 150 154 158 160)
+  declare -a phase1_fp32_batch_sizes=(2 4 8 16 32 64 66 68 80)
+
+  declare -a phase2_fp16_batch_sizes=(2 4 8 10 12 14 16 20 22 24)
+  declare -a phase2_fp32_batch_sizes=(2 4 8 10 12)
 else
   eval_steps=15
   declare -a phase1_fp16_batch_sizes=(2)

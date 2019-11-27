@@ -12,12 +12,11 @@ then
 fi
 
 
-
 if [ -z "${TEST_MODE}" ]
 then
   eval_steps=200
 
-  declare -a phase1_fp16_batch_sizes=(64 144)
+  declare -a phase1_fp16_batch_sizes=(64 160)
   declare -a phase1_fp32_batch_sizes=(32 80)
   declare -a phase2_fp16_batch_sizes=(8 24)
   declare -a phase2_fp32_batch_sizes=(4 12)

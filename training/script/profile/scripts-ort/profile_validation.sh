@@ -1,11 +1,8 @@
 #!/bin/bash
+accumu_steps_type=$1
+mpikind=$2  # "philly" or "openmpi"
 
-VCNAME="$1"
-accumu_steps_type=$2
-mpikind=$3  # "philly" or "openmpi"
-gpu_nums=$4
-
-cp $PHILLY_DATA_DIRECTORY/$VCNAME/pengwa/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm.onnx /code/binary/bert.onnx 
+cp $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm.onnx /code/binary/bert.onnx 
 
 if [ $PHILLY_CONTAINER_INDEX -ne 0 ]
 then
@@ -14,17 +11,32 @@ then
   exit 0
 fi
 
-declare -a phase1_fp16_batch_sizes=(128)
-declare -a phase1_fp32_batch_sizes=(32)
-declare -a phase1_gpu_nums=($gpu_nums)
-eval_steps=200
+if [ -z "${TEST_MODE}" ]
+then
+  eval_steps=200
+  declare -a phase1_gpu_nums=(1 4 8 16)
+  declare -a phase2_gpu_nums=(1 4 8 16)
+  declare -a phase1_fp16_batch_sizes=(2 4 8 16) # 64 128)
+  declare -a phase1_fp32_batch_sizes=(2 32 64) # 16-GPU batch size 4 failed
+  declare -a phase2_fp16_batch_sizes=(2 4 8 16)
+  declare -a phase2_fp32_batch_sizes=(4 8) # 16-GPUs/8-GPUs batch size 2 failed 
+else
+  eval_steps=15
+  declare -a phase1_gpu_nums=(4)
+  declare -a phase2_gpu_nums=(4)
+  declare -a phase1_fp16_batch_sizes=(64)
+  declare -a phase1_fp32_batch_sizes=(32)
+  declare -a phase2_fp16_batch_sizes=(8)
+  declare -a phase2_fp32_batch_sizes=(4)
+fi
 
-export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$VCNAME/pengwa/profile/scripts-ort/
-timestamp=$(date +%s)
+export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/
+timestamp="ort_"$(date +%s)"_validation"
 export SHARED_RES_PATH=$PHILLY_LOG_DIRECTORY/$timestamp
 mkdir $SHARED_RES_PATH
 
-# Phase 1 - sequence length 128
+################ Phase 1 ################
+
 max_predictions_per_seq=20
 for gpu_num in "${phase1_gpu_nums[@]}"
 do
@@ -35,7 +47,7 @@ do
      else
        updated_accu_step=1
      fi
-     $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
+     bash $SCRIPT_PATH"mpirun_bert.sh" $b fp16 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
   done
 
  for b in "${phase1_fp32_batch_sizes[@]}"
@@ -45,19 +57,12 @@ do
      else
        updated_accu_step=1
      fi
-     $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
+     bash $SCRIPT_PATH"mpirun_bert.sh" $b fp32 $gpu_num $updated_accu_step 128 $max_predictions_per_seq $eval_steps $mpikind
   done
 
 done
 
-
-declare -a phase2_fp16_batch_sizes=(16)
-
-declare -a phase2_fp32_batch_sizes=(8)
-
-declare -a phase2_gpu_nums=($gpu_nums) # 8 16)
-
-# Phase 2 - sequence length 512
+################ Phase 2 ################
 max_predictions_per_seq=80
 for gpu_num in "${phase2_gpu_nums[@]}"
 do

@@ -2,8 +2,6 @@
 accumu_steps_type=$1
 mpikind=$2  # "philly" or "openmpi"
 
-cp $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm.onnx /code/binary/bert.onnx 
-
 if [ $PHILLY_CONTAINER_INDEX -ne 0 ]
 then
   echo "Not first container, skip by intention"
@@ -14,16 +12,16 @@ fi
 eval_steps=30
 
 export SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/
-timestamp="ort_"$(date +%s)"_profile_upper"
+timestamp="ort_"$(date +%s)"_profile_upper2"
 export SHARED_RES_PATH=$PHILLY_LOG_DIRECTORY/$timestamp
 mkdir $SHARED_RES_PATH
 
 
 #########################################
 ################ Phase 1 ################
-declare -a phase1_fp16_batch_sizes=(144 160 162 164 166 168 170 172 174 176 178 180 190 200) #(64 128 144 146 148 150 160 162 164 166 168 170)
-declare -a phase1_fp32_batch_sizes=(80 82 84 86 88 90 92 94 96 100 110) #(32 64 80 82 84 86 88 90)
-declare -a phase1_gpu_nums=(16)
+declare -a phase1_fp16_batch_sizes=(160 170 180 190 200 210 220 230 240 250 260 320) #(64 128 144 146 148 150 160 162 164 166 168 170)
+declare -a phase1_fp32_batch_sizes=(80 90 100 110 120 130 140 150 160) #(32 64 80 82 84 86 88 90)
+declare -a phase1_gpu_nums=(64)
 max_predictions_per_seq=20
 for gpu_num in "${phase1_gpu_nums[@]}"
 do
@@ -51,9 +49,9 @@ done
 
 #########################################
 ################ Phase 2 ################
-declare -a phase2_fp16_batch_sizes=(24 26 27 28 29 30) #(8 16 20 22 24 26 27 28 29 30)
-declare -a phase2_fp32_batch_sizes=(12 14 15 16 17 18) #(4 12 14 15 16 17 18 19 20)
-declare -a phase2_gpu_nums=(16)
+declare -a phase2_fp16_batch_sizes=(24 28 30 32 34 36 38 40 44 48 50) #(8 16 20 22 24 26 27 28 29 30)
+declare -a phase2_fp32_batch_sizes=(12 14 16 18 20 22 24 30) #(4 12 14 15 16 17 18 19 20)
+declare -a phase2_gpu_nums=(64)
 max_predictions_per_seq=80
 for gpu_num in "${phase2_gpu_nums[@]}"
 do

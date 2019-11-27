@@ -3,9 +3,9 @@
 Use this job template to submit job.
 
 {
-	"version": "2019-11-09",
+	"version": "2019-11-25",
 	"metadata": {
-		"name": "single_node_full_benchmarking_1109",
+		"name": "ds_compare_1125",
 		"cluster": "rr3",
 		"vc": "phillytest"
 	},
@@ -13,9 +13,9 @@ Use this job template to submit job.
 		"workers": {
 			"type": "skuResource",
 			"sku": "G16",
-			"count": 1,
+			"count": 4,
 			"image": "phillyregistry.azurecr.io/philly/jobs/custom/onnxruntime:v1",
-			"commandLine": "$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/single_node_profile.sh",
+			"commandLine": "$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/ds_compare.sh",
 			"constraints": [
 				{
 					"type": "uniqueConstraint",
@@ -28,8 +28,27 @@ Use this job template to submit job.
 		}
 	}
 }
-'
 
+'
+uptime
+export ORT_SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/
+export OMP_NUM_THREADS=1
+commitid="13954366" 
+nvidia-smi  -q -i 0 -d CLOCK
+cd /code/
+
+# clean up files that are generated in earlier runs.
+rm binary -rf
+rm ort_binary.zip
+wget -O ort_binary.zip --no-verbose https://onnxtraining.blob.core.windows.net/philly/binary_${commitid}.tar.gz
+tar -xzf ort_binary.zip
+mv binary_${commitid} binary
+chmod 777 binary -R
+
+cp $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm.onnx /code/binary/bert.onnx 
+
+echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>"$PHILLY_CONTAINER_INDEX
+nvidia-smi  -q -i 0 -d CLOCK
 
 if [ $PHILLY_CONTAINER_INDEX -ne 0 ]
 then
@@ -38,6 +57,7 @@ then
   exit 0
 fi
 
+sleep 2m
 echo "########## Get GPU Clock Rate/System Load Start ###############"
 nvidia-smi  -q -i 0 -d CLOCK
 
@@ -49,25 +69,14 @@ if [ $PHILLY_VC == "msrhyperscl" ]; then
   export TEST_MODE=True
 fi
 #export TEST_MODE=True
-######################## PT #############################
-uptime
-export PT_SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-pt/
-bash $PT_SCRIPT_PATH/single_node_profile-pt.sh
-nvidia-smi  -q -i 0 -d CLOCK
 ######################## ORT #############################
-uptime
-export ORT_SCRIPT_PATH=$PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/
-export OMP_NUM_THREADS=1
-commitid="13954366" 
-bash $ORT_SCRIPT_PATH/single_node_profile.sh $commitid " --use_nccl=True --use_nccl_tensor_fusion=True"
-nvidia-smi  -q -i 0 -d CLOCK
+
 
 uptime
-
 echo "##################### Real Training"
 export CUSTOM_PARAMS_STRING=" --use_nccl=True --use_nccl_tensor_fusion=True"
-bash $ORT_SCRIPT_PATH"profile_real_training.sh" "nonfixed" "philly"
-unset CUSTOM_PARAMS_STRING 
-
-bash $PT_SCRIPT_PATH"profile_real_training-pt.sh" "nonfixed"
+bash $ORT_SCRIPT_PATH"profile_dsv2_multi_machine.sh" "nonfixed" "philly"
+unset CUSTOM_PARAMS_STRING
+uptime
+nvidia-smi  -q -i 0 -d CLOCK
 exit 0
