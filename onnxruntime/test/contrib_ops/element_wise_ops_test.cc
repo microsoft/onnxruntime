@@ -99,10 +99,7 @@ static void RunBiasGeluTest(
     tester.AddInput<float>("B", input_b_dims, input_b_data);
     tester.AddOutput<float>("C", output_dims, output_data);
 
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    tester.Run();
   }
 }
 

@@ -94,33 +94,35 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   T* output_data = output->MutableData<T>();
 
+  auto execute_one_task = [&](int32_t task_idx) {
+    const T* p_input = input_data + task_idx * hidden_size;
+    const T* p_skip = skip_data + task_idx * hidden_size;
+    T* p_output = output_data + task_idx * hidden_size;
+
+    T mean = 0;
+    T mean_square = 0;
+
+    for (int64_t h = 0; h < hidden_size; h++) {
+      T value = p_input[h] + p_skip[h];
+      if (nullptr != bias_data) {
+        value += bias_data[h];
+      }
+      p_output[h] = value;
+      mean += value;
+      mean_square += value * value;
+    }
+
+    mean = mean / hidden_size;
+    mean_square = sqrt(mean_square / hidden_size - mean * mean + static_cast<T>(1e-12));
+
+    for (int64_t h = 0; h < hidden_size; h++) {
+      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+    }
+  };
+
   concurrency::ThreadPool::TryBatchParallelFor(p_ctx->GetOperatorThreadPool(),
                                                static_cast<int32_t>(task_count),
-                                               [=](int32_t task_idx) {
-                                                 const T* p_input = input_data + task_idx * hidden_size;
-                                                 const T* p_skip = skip_data + task_idx * hidden_size;
-                                                 T* p_output = output_data + task_idx * hidden_size;
-
-                                                 T mean = 0;
-                                                 T mean_square = 0;
-
-                                                 for (int64_t h = 0; h < hidden_size; h++) {
-                                                   T value = p_input[h] + p_skip[h];
-                                                   if (nullptr != bias_data) {
-                                                     value += bias_data[h];
-                                                   }
-                                                   p_output[h] = value;
-                                                   mean += value;
-                                                   mean_square += value * value;
-                                                 }
-
-                                                 mean = mean / hidden_size;
-                                                 mean_square = sqrt(mean_square / hidden_size - mean * mean + float(1e-12));
-
-                                                 for (int64_t h = 0; h < hidden_size; h++) {
-                                                   p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
-                                                 }
-                                               });
+                                               std::move(execute_one_task));
 
   return Status::OK();
 }  // namespace contrib
