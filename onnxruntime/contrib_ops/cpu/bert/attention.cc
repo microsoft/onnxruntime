@@ -120,8 +120,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-
   // STEP.1: gemm_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
   auto gemm_data = allocator->Alloc(batch_size * sequence_length * 3 * hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
@@ -276,10 +274,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         nullptr);
 
     // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
-    int batch_index = i / num_heads;
-    int head_index = i % num_heads;
+    int batch_index = i / num_heads_;
+    int head_index = i % num_heads_;
     T* src = current_tmp_data;
-    T* dest = output_data + (batch_index * sequence_length * num_heads + head_index) * head_size;
+    T* dest = output->template MutableData<T>() + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
     for (int j = 0; j < sequence_length; j++) {
       memcpy(dest, src, head_size * sizeof(T));
       src += head_size;
