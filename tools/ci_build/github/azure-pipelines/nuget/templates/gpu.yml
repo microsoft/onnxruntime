@@ -12,7 +12,7 @@ jobs:
 - template: ../../templates/win-ci.yml
   parameters:
     AgentPool : $(AgentPoolWin)
-    JobName: 'Windows_CI_GPU_Dev'
+    JobName: 'Windows_CI_GPU_CUDA_Dev'
     BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --build_shared_lib  --build_csharp --enable_onnx_tests --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --cuda_version 10.0'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
@@ -23,12 +23,31 @@ jobs:
     MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
     EnvSetupScript: 'setup_env_cuda.bat'
     CudaVersion: '10.0'
+    ArtifactName: drop-nuget-cuda
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+- template: ../../templates/win-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
+    JobName: 'Windows_CI_GPU_DML_Dev'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe  --enable_pybind --build_shared_lib  --build_csharp --enable_onnx_tests --use_winml --use_dml'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
+    BuildArch: 'amd64'
+    SetVcvars: 'true'
+    MsbuildArguments: '/m'
+    ArtifactName: drop-nuget-dml
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
 
 - job: 'Linux_CI_GPU_Dev'
   pool: $(AgentPoolLinux)
@@ -67,7 +86,8 @@ jobs:
 - job: NuGet_Packaging
   pool: $(AgentPoolWin)
   dependsOn:
-  - Windows_CI_GPU_Dev
+  - Windows_CI_GPU_CUDA_Dev
+  - Windows_CI_GPU_DML_Dev
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:  
@@ -75,6 +95,13 @@ jobs:
     displayName: 'Download Pipeline Artifact - NuGet'
     inputs:
       artifactName: 'drop-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    continueOnError: true
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'drop-nuget-dml'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
     continueOnError: true
 
