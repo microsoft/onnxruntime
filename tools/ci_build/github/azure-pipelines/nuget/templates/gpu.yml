@@ -43,7 +43,6 @@ jobs:
     BuildArch: 'amd64'
     SetVcvars: 'true'
     MsbuildArguments: '/m'
-    EnvSetupScript: 'setup_env_cuda.bat'
     ArtifactName: drop-nuget-dml
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
