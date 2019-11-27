@@ -174,6 +174,10 @@ WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
   m_session.as<winmlp::LearningModelSession>()->CheckClosed();
+  inputs_.clear();
+  input_names_.clear();
+  outputs_.clear();
+  output_names_.clear();
   m_providers.clear();
 }
 WINML_CATCH_ALL
@@ -520,21 +524,21 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, c
 
 // This method releases control of memory of ml_value from caller of BindInput
 HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_value) {
-  auto rc = Contains(feed_names_, name);
+  auto rc = Contains(input_names_, name);
 
   auto add_or_replace = [this, &name](const bool exists, size_t index, Ort::Value& value) {
     if (exists) {
-      feeds_[index] = Ort::Value(value.release());
+      inputs_[index] = Ort::Value(value.release());
     } else {
-      feed_names_.push_back(name);
-      feeds_.push_back(Ort::Value(value.release()));
+      input_names_.push_back(name);
+      inputs_.push_back(Ort::Value(value.release()));
     }
   };
   if (ml_value.IsTensor()) {
     Ort::Value new_mlvalue = Ort::Value(nullptr);
-    m_session.as<LearningModelSession>()
+    WINML_THROW_IF_FAILED(m_session.as<LearningModelSession>()
       ->GetIInferenceSession()
-      ->CopyOneInputAcrossDevices(name.c_str(), ml_value, new_mlvalue.put());
+      ->CopyOneInputAcrossDevices(name.c_str(), ml_value, new_mlvalue.put()));
     add_or_replace(rc.first, rc.second, new_mlvalue);
   } else {
     add_or_replace(rc.first, rc.second, ml_value);
@@ -563,10 +567,10 @@ const std::vector<std::string>& LearningModelBinding::GetOutputNames() const {
 std::vector<Ort::Value>& LearningModelBinding::GetOutputs() { return outputs_; }
 
 const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
-  return feed_names_;
+  return input_names_;
 }
 
-const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const { return feeds_; }
+const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const { return inputs_; }
 
 void LearningModelBinding::BindUnboundOutputs()
 {

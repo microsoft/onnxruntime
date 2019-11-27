@@ -52,7 +52,7 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
     return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
   }
   const onnxruntime::SessionState& GetSessionState() {
-    return onnxruntime::InferenceSession::session_state_;
+    return session_state_;
   }
 };
 
@@ -677,8 +677,9 @@ HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(
   auto session_protected_load_accessor =
       static_cast<InferenceSessionProtectedLoadAccessor*>(session_.get());
   const onnxruntime::SessionState& sessionState = session_protected_load_accessor->GetSessionState();
-  *new_mlvalue = new OrtValue;
-  ORT_THROW_IF_ERROR(onnxruntime::utils::CopyOneInputAcrossDevices(sessionState, input_name, *orig_mlvalue, **new_mlvalue));
+  auto temp_mlvalue = std::make_unique<OrtValue>();
+  ORT_THROW_IF_ERROR(onnxruntime::utils::CopyOneInputAcrossDevices(sessionState, input_name, *orig_mlvalue, *temp_mlvalue.get()));
+  *new_mlvalue = temp_mlvalue.release();
   return S_OK;
 }
 }  // namespace Windows::AI::MachineLearning::Adapter
