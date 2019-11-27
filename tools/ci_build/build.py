@@ -277,7 +277,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
-"-G" + "CodeBlocks - Unix Makefiles",
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
@@ -494,7 +493,7 @@ def setup_tensorrt_vars(args):
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
-        os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "6"
+        os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "1000"
         
         # Set minimum subgraph node size in graph partitioning for TensorRT
         os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
