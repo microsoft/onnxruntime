@@ -20,16 +20,6 @@ MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
     virtual wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE output_features() = 0;
 };
 
-MIDL_INTERFACE("438e7719-554a-4058-84d9-eb6226c34887") IIOBinding : IUnknown{
-    // this returns a weak ref
-    virtual onnxruntime::IOBinding* STDMETHODCALLTYPE get() = 0;
-    virtual HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, OrtValue * ml_value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, OrtValue * ml_value) = 0;
-    virtual const std::vector<std::string>& STDMETHODCALLTYPE GetOutputNames() = 0;
-    // this returns a weak ref
-    virtual std::vector<OrtValue *>& STDMETHODCALLTYPE GetOutputs() = 0;
-};
-
 MIDL_INTERFACE("a848faf6-5a2e-4a7f-b622-cc036f71e28a") IModelProto : IUnknown{
     // this returns a weak ref
     virtual onnx::ModelProto* STDMETHODCALLTYPE get() = 0;
@@ -45,10 +35,6 @@ MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnkn
     virtual void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) = 0;
     virtual HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry * registry) = 0;
     virtual HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) = 0;
-    virtual HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) = 0;
-    virtual HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) = 0;
-    virtual HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, const char* const* input_names, const Ort::Value* input_values, size_t input_count,
-                                          const char* const* output_names, Ort::Value* output_values, size_t output_count) = 0;
     virtual HRESULT STDMETHODCALLTYPE StartProfiling() = 0;
     virtual HRESULT STDMETHODCALLTYPE EndProfiling() = 0;
     virtual void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider * dml_provider) = 0;
@@ -148,10 +134,6 @@ public:
     void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) override;
     HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry* registry) override;
     HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) override;
-    HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) override;
-    HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) override;
-    HRESULT STDMETHODCALLTYPE Run(const onnxruntime::RunOptions* run_options, const char* const* input_names, const Ort::Value* input_values, size_t input_count,
-                                  const char* const* output_names, Ort::Value* output_values, size_t output_count) override;
     HRESULT STDMETHODCALLTYPE StartProfiling() override;
     HRESULT STDMETHODCALLTYPE EndProfiling() override;
     void STDMETHODCALLTYPE FlushContext(onnxruntime::IExecutionProvider* dml_provider) override;

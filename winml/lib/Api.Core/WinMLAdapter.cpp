@@ -608,52 +608,6 @@ extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter)
   return adapterptr.CopyTo(__uuidof(IWinMLAdapter), reinterpret_cast<void**>(adapter));
 }
 
-// class IOBinding
-// ===============
-class IOBinding : public Microsoft::WRL::RuntimeClass<
-                      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                      IIOBinding> {
- private:
-  std::shared_ptr<onnxruntime::IOBinding> binding_;
-  std::vector<OrtValue*> outputs_weak_;
-
- public:
-  IOBinding(onnxruntime::IOBinding* binding) : binding_(binding) {
-  }
-
-  onnxruntime::IOBinding* STDMETHODCALLTYPE get() override {
-    return binding_.get();
-  }
-
-  HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, OrtValue* ort_value) override {
-    ORT_THROW_IF_ERROR(binding_->BindInput(name, *ort_value));
-    return S_OK;
-  }
-
-  HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, OrtValue* ort_value) override {
-    // this can be null for unbound outputs
-    if (ort_value == nullptr) {
-      OrtValue empty_value = {};
-      ORT_THROW_IF_ERROR(binding_->BindOutput(name, empty_value));
-    } else {
-      ORT_THROW_IF_ERROR(binding_->BindOutput(name, *ort_value));
-    }
-    return S_OK;
-  }
-
-  const std::vector<std::string>& STDMETHODCALLTYPE GetOutputNames() override {
-    return binding_->GetOutputNames();
-  }
-  std::vector<OrtValue*>& STDMETHODCALLTYPE GetOutputs() override {
-    auto& output_inner = binding_->GetOutputs();
-    outputs_weak_.clear();
-    for (unsigned i = 0; i < output_inner.size(); i++) {
-      outputs_weak_.push_back(&(output_inner[i]));
-    }
-    return outputs_weak_;
-  }
-};
-
 // InferenceSession
 // ================
 
@@ -664,24 +618,6 @@ void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers(bool register
 #ifdef USE_DML
   GraphTransformerHelpers::RegisterGraphTransformers(session_.get(), registerLotusTransforms);
 #endif USE_DML
-}
-
-HRESULT STDMETHODCALLTYPE InferenceSession::NewIOBinding(IIOBinding** io_binding) {
-  std::unique_ptr<onnxruntime::IOBinding> binding;
-  ORT_THROW_IF_ERROR(this->session_->NewIOBinding(&binding));
-  auto io_binding_outer = wil::MakeOrThrow<IOBinding>(binding.release());
-  return io_binding_outer.CopyTo(__uuidof(IIOBinding), reinterpret_cast<void**>(io_binding));
-}
-
-HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) {
-  ORT_THROW_IF_ERROR(this->session_->Run(*run_options, *(io_binding->get())));
-  return S_OK;
-}
-
-HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, const char* const* input_names, const Ort::Value* input_values, size_t input_count,
-                                                const char* const* output_names, Ort::Value* output_values, size_t output_count) {
-    
-    return E_NOTIMPL;
 }
 
     HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() {
