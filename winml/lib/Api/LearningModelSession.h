@@ -68,9 +68,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   onnxruntime::IExecutionProvider*
   GetExecutionProvider();
 
-  _winmla::IIOBinding*
-  CreateSessionBinding();
-
   _winmla::IInferenceSession*
   GetIInferenceSession();
 

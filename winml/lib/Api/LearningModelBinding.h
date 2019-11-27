@@ -41,7 +41,6 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
 
-  _winmla::IIOBinding* BindingCollection();
   std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
 
   const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
@@ -56,6 +55,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   std::vector<Ort::Value>& LearningModelBinding::GetOutputs();
   const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
   const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
+  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value);
 
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
@@ -67,14 +67,12 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   HRESULT BindInput(const std::string& name, Ort::Value& ml_value);
-  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  com_ptr<_winmla::IIOBinding> m_lotusBinding;
   com_ptr<_winmla::IWinMLAdapter> adapter_;
   std::vector<std::string> feed_names_;
   std::vector<Ort::Value> feeds_;

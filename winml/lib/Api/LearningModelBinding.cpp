@@ -13,8 +13,7 @@ using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
-    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
-  m_lotusBinding.attach(session.as<LearningModelSession>()->CreateSessionBinding());
+  Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
 }
 WINML_CATCH_ALL
@@ -171,7 +170,6 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
-  m_lotusBinding.attach(m_session.as<LearningModelSession>()->CreateSessionBinding());
   m_providers.clear();
 }
 WINML_CATCH_ALL
@@ -216,11 +214,6 @@ void LearningModelBinding::Split(
   throw hresult_not_implemented();
 }
 
-_winmla::IIOBinding* LearningModelBinding::BindingCollection() {
-  _winmla::IIOBinding* p;
-  m_lotusBinding.copy_to(&p);
-  return p;
-}
 
 ONNXTensorElementDataType STDMETHODCALLTYPE GetONNXTensorElementDataType(winml::TensorKind kind) {
   if (kind == TensorKind::Float) {
