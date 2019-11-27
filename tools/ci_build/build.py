@@ -14,7 +14,6 @@ import re
 import shutil
 import subprocess
 import sys
-import warnings
 import hashlib
 from os.path import expanduser
 
@@ -60,6 +59,7 @@ Use the individual flags to only run the specified stages.
     If you've done an update that fetched external dependencies you have to build without --parallel the first time.
     Once that's done, run with "--build --parallel --test" to just build in parallel and run tests.''')
     parser.add_argument("--test", action='store_true', help="Run unit tests.")
+    parser.add_argument("--skip_tests", action='store_true', help="Skip all tests.")
 
     # enable ONNX tests
     parser.add_argument("--enable_onnx_tests", action='store_true',
@@ -150,7 +150,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
-    parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
+    parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests. Note: Use --skip_tests to skip all tests.")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
@@ -190,7 +190,9 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, en
 
     stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (None, None)
     my_env.update(env)
-    return subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
+    completed_process = subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
+    log.debug("Subprocess completed. Return code=" + str(completed_process.returncode))
+    return completed_process
 
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
@@ -549,26 +551,33 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 return
             if is_windows():
                 cwd = os.path.join(cwd, config)
+
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+
             try:
                 import onnx
+                import scipy  # gen_test_models.py used by onnx_test has a dependency on scipy
                 onnx_test = True
-            except ImportError:
-                warnings.warn("onnx is not installed. Following test cannot be run.")
+            except ImportError as error:
+                log.exception(error)
+                log.warning("onnx or scipy is not installed. The ONNX tests will be skipped.")
                 onnx_test = False
+
             if onnx_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
-                run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),'--output_dir','test_models'], cwd=cwd)
+                run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),
+                                '--output_dir','test_models'], cwd=cwd)
                 run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
                 if config != 'Debug':
                     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
+
             if not args.skip_keras_test:
                 try:
                     import onnxmltools
                     import keras
                     onnxml_test = True
                 except ImportError:
-                    warnings.warn("onnxmltools and keras are not installed. Following test cannot be run.")
+                    log.warning("onnxmltools and keras are not installed. The keras tests will be skipped.")
                     onnxml_test = False
                 if onnxml_test:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_keras.py'], cwd=cwd, dll_path=dll_path)
@@ -837,6 +846,9 @@ def main():
             args.test = args.android_abi == 'x86_64'
         else:
             args.test = True
+
+    if args.skip_tests:
+        args.test = False
 
     if args.use_tensorrt:
         args.use_cuda = True
