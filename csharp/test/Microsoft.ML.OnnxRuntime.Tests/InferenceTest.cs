@@ -574,7 +574,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact]
+        [Fact(Skip="Temporarily skipping this test.")]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
