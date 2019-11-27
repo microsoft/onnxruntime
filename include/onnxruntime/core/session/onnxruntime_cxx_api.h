@@ -266,6 +266,7 @@ struct Value : Base<OrtValue> {
 
   size_t GetStringTensorDataLength() const;
   void GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const;
+  std::vector<std::string> GetStrings();
 
   template <typename T>
   T* GetTensorMutableData();
