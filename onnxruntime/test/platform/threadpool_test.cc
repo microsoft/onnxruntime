@@ -3,6 +3,8 @@
 
 #include "core/platform/threadpool.h"
 
+#include <core/common/make_unique.h>
+
 #include "gtest/gtest.h"
 #include <algorithm>
 #include <memory>
@@ -23,7 +25,7 @@ struct TestData {
 // the function should be called exactly once for each element.
 
 std::unique_ptr<TestData> CreateTestData(int num) {
-  return std::make_unique<TestData>(num);
+  return onnxruntime::make_unique<TestData>(num);
 }
 
 void IncrementElement(TestData& test_data, int i) {
@@ -38,7 +40,7 @@ void ValidateTestData(TestData& test_data) {
 }
 
 void CreateThreadPoolAndTest(const std::string& name, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
-  auto tp = std::make_unique<ThreadPool>(name, num_threads);
+  auto tp = onnxruntime::make_unique<ThreadPool>(name, num_threads);
   test_body(tp.get());
 }
 
@@ -92,4 +94,8 @@ TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_50_Task_1_Batch) {
 
 TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_50_Task_100_Batch) {
   TestBatchParallelFor("TestBatchParallelFor_2_Thread_50_Task_100_Batch", 2, 50, 100);
+}
+
+TEST(ThreadPoolTest, TestBatchParallelFor_2_Thread_81_Task_20_Batch) {
+  TestBatchParallelFor("TestBatchParallelFor_2_Thread_81_Task_20_Batch", 2, 81, 20);
 }
