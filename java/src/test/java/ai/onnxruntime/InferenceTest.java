@@ -6,6 +6,7 @@ package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtSession.SessionOptions.OptLevel;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -15,21 +16,29 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Tests for the onnx-runtime Java interface.
@@ -52,10 +61,9 @@ public class InferenceTest {
     @Test
     public void createSessionFromPath() {
         String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
-        try (OrtEnvironment env = new OrtEnvironment("createSessionFromPath");
-             OrtAllocator allocator = new OrtAllocator();
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("createSessionFromPath");
              OrtSession.SessionOptions options = new SessionOptions()) {
-            try (OrtSession session = env.createSession(modelPath,allocator,options)) {
+            try (OrtSession session = env.createSession(modelPath,options)) {
                 assertNotNull(session);
                 assertEquals(1, session.getNumInputs()); // 1 input node
                 List<NodeInfo> inputInfoList = session.getInputInfo();
@@ -95,10 +103,9 @@ public class InferenceTest {
     public void createSessionFromByteArray() throws IOException {
         Path modelPath = resourcePath.resolve("squeezenet.onnx");
         byte[] modelBytes = Files.readAllBytes(modelPath);
-        try (OrtEnvironment env = new OrtEnvironment("createSessionFromByteArray");
-             OrtAllocator allocator = new OrtAllocator();
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("createSessionFromByteArray");
              OrtSession.SessionOptions options = new SessionOptions()) {
-            try (OrtSession session = env.createSession(modelBytes,allocator,options)) {
+            try (OrtSession session = env.createSession(modelBytes,options)) {
                 assertNotNull(session);
                 assertEquals(1, session.getNumInputs()); // 1 input node
                 List<NodeInfo> inputInfoList = session.getInputInfo();
@@ -147,22 +154,21 @@ public class InferenceTest {
         String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
 
         // Set the graph optimization level for this session.
-        try (OrtEnvironment env = new OrtEnvironment("canRunInferenceOnAModel");
-             SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator()) {
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("canRunInferenceOnAModel");
+             SessionOptions options = new SessionOptions()) {
             options.setOptimizationLevel(graphOptimizationLevel);
             if (disableSequentialExecution) {
                 options.setSequentialExecution(false);
             }
 
-            try (OrtSession session = env.createSession(modelPath, allocator, options)) {
+            try (OrtSession session = env.createSession(modelPath, options)) {
                 List<NodeInfo> inputMeta = session.getInputInfo();
                 List<OnnxTensor> container = new ArrayList<>();
 
                 float[] inputData = loadTensorFromFile(resourcePath.resolve("bench.in"));
                 // this is the data for only one input tensor for this model
                 Object tensorData = OrtUtil.reshape(inputData,((TensorInfo) inputMeta.get(0).getInfo()).getShape());
-                container.add(allocator.createTensor(tensorData));
+                container.add(env.createTensor(tensorData));
 
                 // Run the inference
                 List<OnnxValue> results = session.run(container);
@@ -198,7 +204,6 @@ public class InferenceTest {
     public void throwWrongInputType() throws OrtException {
         SqueezeNetTuple tuple = openSessionSqueezeNet();
         try (OrtEnvironment env = tuple.env;
-             OrtAllocator allocator = tuple.allocator;
              OrtSession session = tuple.session) {
 
             float[] inputData = tuple.inputData;
@@ -209,7 +214,7 @@ public class InferenceTest {
                 inputDataInt[i] = (int) inputData[i];
             }
             Object tensor = OrtUtil.reshape(inputDataInt,inputShape);
-            container.add(allocator.createTensor(tensor));
+            container.add(env.createTensor(tensor));
             try {
                 session.run(container);
                 OnnxValue.close(container);
@@ -226,15 +231,14 @@ public class InferenceTest {
     public void throwExtraInputs() throws OrtException {
         SqueezeNetTuple tuple = openSessionSqueezeNet();
         try (OrtEnvironment env = tuple.env;
-             OrtAllocator allocator = tuple.allocator;
              OrtSession session = tuple.session) {
 
             float[] inputData = tuple.inputData;
             List<OnnxTensor> container = new ArrayList<>();
             long[] inputShape = ((TensorInfo) session.getInputInfo().get(0).getInfo()).shape;
             Object tensor = OrtUtil.reshape(inputData, inputShape);
-            container.add(allocator.createTensor(tensor));
-            container.add(allocator.createTensor(tensor));
+            container.add(env.createTensor(tensor));
+            container.add(env.createTensor(tensor));
             try {
                 session.run(container);
                 OnnxValue.close(container);
@@ -253,7 +257,6 @@ public class InferenceTest {
         int loop = 10;
         SqueezeNetTuple tuple = openSessionSqueezeNet();
         try (OrtEnvironment env = tuple.env;
-             OrtAllocator allocator = tuple.allocator;
              OrtSession session = tuple.session) {
 
             float[] inputData = tuple.inputData;
@@ -261,7 +264,7 @@ public class InferenceTest {
             List<OnnxTensor> container = new ArrayList<>();
             long[] inputShape = ((TensorInfo) session.getInputInfo().get(0).getInfo()).shape;
             Object tensor = OrtUtil.reshape(inputData, inputShape);
-            container.add(allocator.createTensor(tensor));
+            container.add(env.createTensor(tensor));
             ExecutorService executor = Executors.newFixedThreadPool(numThreads);
             for (int i = 0; i < numThreads; i++) {
                 executor.submit(() -> {
@@ -286,7 +289,7 @@ public class InferenceTest {
     /*
     @Disabled
     @Test
-    public void testPreTrainedModelsOpset7And8() throws IOException, ONNXException {
+    public void testPreTrainedModelsOpset7And8() throws IOException, OrtException {
         Set<String> skipModels = new HashSet<>(Arrays.asList(
                 "mxnet_arcface",  // Model not supported by CPU execution provider
                 "tf_inception_v2",  // TODO: Debug failing model, skipping for now
@@ -297,9 +300,8 @@ public class InferenceTest {
 
         String[] opsets = new String[]{"opset7", "opset8"};
         Path modelsDir = getTestModelsDir();
-        try (ONNXEnvironment env = new ONNXEnvironment("testPreTrainedModelsOpset7And8");
-             SessionOptions options = new SessionOptions();
-             ONNXAllocator allocator = new ONNXAllocator()) {
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testPreTrainedModelsOpset7And8");
+             SessionOptions options = new SessionOptions()) {
             for (String opset : opsets) {
                 Path modelRoot = modelsDir.resolve(opset);
                 for (Path modelDir : Files.newDirectoryStream(modelRoot)) {
@@ -331,7 +333,7 @@ public class InferenceTest {
                         }
 
                         onnxModelFileName = modelDir.resolve(onnxModelFiles[0].toPath()).toString();
-                        try (ONNXSession session = env.createSession(onnxModelFileName, allocator, options)) {
+                        try (OrtSession session = env.createSession(onnxModelFileName, options)) {
                             ValueInfo first = session.getInputInfo().get(0).getInfo();
                             long[] inputShape = ((TensorInfo) first).shape;
                             Path testRoot = modelDir.resolve("test_data");
@@ -339,12 +341,12 @@ public class InferenceTest {
                             Path outputDataPath = testRoot.resolve("output_0.pb");
                             float[] dataIn = loadTensorFromFilePb(inputDataPath);
                             float[] dataOut = loadTensorFromFilePb(outputDataPath);
-                            List<ONNXTensor> nov = new ArrayList<>();
-                            nov.add(allocator.createTensor(ONNXUtil.reshape(dataIn, inputShape)));
-                            List<ONNXValue> res = session.run(nov);
+                            List<OnnxTensor> nov = new ArrayList<>();
+                            nov.add(env.createTensor(OrtUtil.reshape(dataIn, inputShape)));
+                            List<OnnxValue> res = session.run(nov);
                             float[] resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
                             assertArrayEquals(dataOut, resultArray, 1e-6f);
-                            ONNXValue.close(res);
+                            OnnxValue.close(res);
                         }
                     } catch (Exception ex) {
                         String msg = "Opset " + opset + ": Model " + modelDir + ": ModelFile = " + onnxModelFileName + " error = " + ex.getMessage() + ".";
@@ -354,22 +356,21 @@ public class InferenceTest {
             } //opset
         }
     }
-    */
+     */
 
     @Test
     public void testModelInputFLOAT() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_FLOAT.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputFLOAT");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputFLOAT");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             long[] shape = new long[] { 1, 5 };
             List<OnnxTensor> container = new ArrayList<>();
             float[] flatInput = new float[] { 1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput,shape);
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             float[] resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
@@ -380,7 +381,7 @@ public class InferenceTest {
 
             // Now test loading from buffer
             FloatBuffer buffer = FloatBuffer.wrap(flatInput);
-            OnnxTensor newTensor = allocator.createTensor(buffer,shape);
+            OnnxTensor newTensor = env.createTensor(buffer,shape);
             Object array = newTensor.getValue();
             container.add(newTensor);
             res = session.run(container);
@@ -397,14 +398,13 @@ public class InferenceTest {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_BOOL.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputBOOL");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputBOOL");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             List<OnnxTensor> container = new ArrayList<>();
             boolean[] flatInput = new boolean[] { true, false, true, false, true };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
@@ -419,14 +419,13 @@ public class InferenceTest {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_INT32.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputINT32");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT32");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             List<OnnxTensor> container = new ArrayList<>();
             int[] flatInput = new int[] { 1, -2, -3, Integer.MIN_VALUE, Integer.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             int[] resultArray = TestHelpers.flattenInteger(res.get(0).getValue());
@@ -441,14 +440,13 @@ public class InferenceTest {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_DOUBLE.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputDOUBLE");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputDOUBLE");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             List<OnnxTensor> container = new ArrayList<>();
             double[] flatInput = new double[] { 1.0, 2.0, -3.0, 5, 5 };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             double[] resultArray = TestHelpers.flattenDouble(res.get(0).getValue());
@@ -464,14 +462,13 @@ public class InferenceTest {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_INT8.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputINT8");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT8");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             List<OnnxTensor> container = new ArrayList<>();
             byte[] flatInput = new byte[] { 1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             byte[] resultArray = TestHelpers.flattenByte(res.get(0).getValue());
@@ -486,14 +483,13 @@ public class InferenceTest {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_INT16.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputINT16");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT16");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             List<OnnxTensor> container = new ArrayList<>();
             short[] flatInput = new short[] { 1, 2, 3, Short.MIN_VALUE, Short.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             short[] resultArray = TestHelpers.flattenShort(res.get(0).getValue());
@@ -508,14 +504,13 @@ public class InferenceTest {
         // model takes 1x5 input of fixed type, echoes back
         String modelPath = resourcePath.resolve("test_types_INT64.pb").toString();
 
-        try (OrtEnvironment env = new OrtEnvironment("testModelInputINT64");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT64");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
             List<OnnxTensor> container = new ArrayList<>();
             long[] flatInput = new long[] { 1, 2, -3, Long.MIN_VALUE, Long.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
             List<OnnxValue> res = session.run(container);
             long[] resultArray = TestHelpers.flattenLong(res.get(0).getValue());
@@ -534,10 +529,9 @@ public class InferenceTest {
         // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
 
         String modelPath = resourcePath.resolve("test_sequence_map_int_float.pb").toString();
-        try (OrtEnvironment env = new OrtEnvironment("testModelSequenceOfMapIntFloat");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelSequenceOfMapIntFloat");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
 
             List<NodeInfo> outputInfos = session.getOutputInfo();
             ValueInfo firstOutputInfo = outputInfos.get(0).getInfo();
@@ -550,7 +544,7 @@ public class InferenceTest {
             long[] shape = new long[] { 1, 2 };
             float[] flatInput = new float[] {5.8f, 2.8f};
             Object tensorIn = OrtUtil.reshape(flatInput,shape);
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
 
             List<OnnxValue> outputs = session.run(container);
@@ -592,10 +586,9 @@ public class InferenceTest {
         //   "probabilities" is a sequence<map<int64, float>>
         // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
         String modelPath = resourcePath.resolve("test_sequence_map_string_float.pb").toString();
-        try (OrtEnvironment env = new OrtEnvironment("testModelSequenceOfMapStringFloat");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelSequenceOfMapStringFloat");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
 
             List<NodeInfo> outputInfos = session.getOutputInfo();
             ValueInfo firstOutputInfo = outputInfos.get(0).getInfo();
@@ -608,7 +601,7 @@ public class InferenceTest {
             long[] shape = new long[] { 1, 2 };
             float[] flatInput = new float[] {5.8f, 2.8f};
             Object tensorIn = OrtUtil.reshape(flatInput,shape);
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
 
             List<OnnxValue> outputs = session.run(container);
@@ -645,10 +638,9 @@ public class InferenceTest {
     @Test
     public void testStringIdentity() throws OrtException {
         String modelPath = otherTestPath.resolve("identity_string.onnx").toString();
-        try (OrtEnvironment env = new OrtEnvironment("testStringIdentity");
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("testStringIdentity");
              SessionOptions options = new SessionOptions();
-             OrtAllocator allocator = new OrtAllocator();
-             OrtSession session = env.createSession(modelPath, allocator, options)) {
+             OrtSession session = env.createSession(modelPath, options)) {
 
             List<NodeInfo> outputInfos = session.getOutputInfo();
             ValueInfo firstOutputInfo = outputInfos.get(0).getInfo();
@@ -657,7 +649,7 @@ public class InferenceTest {
 
             List<OnnxTensor> container = new ArrayList<>();
             String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test"}};
-            OnnxTensor ov = allocator.createTensor(tensorIn);
+            OnnxTensor ov = env.createTensor(tensorIn);
             container.add(ov);
 
             List<OnnxValue> outputs = session.run(container);
@@ -681,7 +673,7 @@ public class InferenceTest {
 
             container = new ArrayList<>();
             String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
-            ov = allocator.createTensor(tensorInFlatArr, new long[]{2,2});
+            ov = env.createTensor(tensorInFlatArr, new long[]{2,2});
             container.add(ov);
 
             outputs = session.run(container);
@@ -706,14 +698,12 @@ public class InferenceTest {
      */
     private static class SqueezeNetTuple {
         public final OrtEnvironment env;
-        public final OrtAllocator allocator;
         public final OrtSession session;
         public final float[] inputData;
         public final float[] outputData;
 
-        public SqueezeNetTuple(OrtEnvironment env, OrtAllocator allocator, OrtSession session, float[] inputData, float[] outputData) {
+        public SqueezeNetTuple(OrtEnvironment env, OrtSession session, float[] inputData, float[] outputData) {
             this.env = env;
-            this.allocator = allocator;
             this.session = session;
             this.inputData = inputData;
             this.outputData = outputData;
@@ -727,16 +717,15 @@ public class InferenceTest {
     private static SqueezeNetTuple openSessionSqueezeNet(int cudaDeviceId) throws OrtException {
         Path squeezeNet = resourcePath.resolve("squeezenet.onnx");
         String modelPath = squeezeNet.toString();
-        OrtEnvironment env = new OrtEnvironment();
-        OrtAllocator allocator = new OrtAllocator();
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
         SessionOptions options = new SessionOptions();
         if (cudaDeviceId != -1) {
             options.addCUDA(cudaDeviceId);
         }
-        OrtSession session = env.createSession(modelPath,allocator,options);
+        OrtSession session = env.createSession(modelPath,options);
         float[] inputData = loadTensorFromFile(resourcePath.resolve("bench.in"));
         float[] expectedOutput = loadTensorFromFile(resourcePath.resolve("bench.expected_out"));
-        return new SqueezeNetTuple(env, allocator, session, inputData, expectedOutput);
+        return new SqueezeNetTuple(env, session, inputData, expectedOutput);
     }
 
     private static float[] loadTensorFromFile(Path filename) {
@@ -761,5 +750,81 @@ public class InferenceTest {
             throw new UncheckedIOException(e);
         }
     }
+
+    private static class TypeWidth {
+        public final OnnxJavaType type;
+        public final int width;
+        public TypeWidth(OnnxJavaType type, int width) {
+            this.type = type;
+            this.width = width;
+        }
+    }
+
+    /*
+    private static OnnxTensor loadTensorFromFilePb(String filename, Map<String,NodeInfo> nodeMetaDict) throws IOException {
+        InputStream is = new BufferedInputStream(new FileInputStream(filename));
+        OnnxMl.TensorProto tensor = OnnxMl.TensorProto.parseFrom(is);
+        is.close();
+
+        TypeWidth tw = getTypeAndWidth(tensor.getDataType());
+        int width = tw.width;
+        OnnxJavaType tensorElemType = tw.type;
+        int[] intDims = new int[tensor.getDimsCount()];
+        for (int i = 0; i < tensor.getDimsCount(); i++) {
+            intDims[i] = (int)tensor.getDims(i);
+        }
+
+        TensorInfo nodeMeta = null;
+        String nodeName = "";
+        if (nodeMetaDict.size() == 1) {
+            for (Map.Entry<String,NodeInfo> e : nodeMetaDict.entrySet()) {
+                nodeMeta = (TensorInfo) e.getValue().getInfo();
+                nodeName = e.getKey(); // valid for single node input
+            }
+        } else if (nodeMetaDict.size() > 1) {
+            if (!tensor.getName().isEmpty()) {
+                nodeMeta = (TensorInfo) nodeMetaDict.get(tensor.getName()).getInfo();
+                nodeName = tensor.getName();
+            } else {
+                boolean matchfound = false;
+                // try to find from matching type and shape
+                for (Map.Entry<String,NodeInfo> e : nodeMetaDict.entrySet()) {
+                    if (e.getValue().getInfo() instanceof TensorInfo) {
+                        TensorInfo meta = (TensorInfo) e.getValue().getInfo();
+                        if (tensorElemType == meta.type && tensor.getDimsCount() == meta.shape.length) {
+                            int i = 0;
+                            for (; i < meta.shape.length; i++) {
+                                if (meta.shape[i] != -1 && meta.shape[i] != intDims[i]) {
+                                    break;
+                                }
+                            }
+                            if (i >= meta.shape.length) {
+                                matchfound = true;
+                                nodeMeta = meta;
+                                nodeName = e.getKey();
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!matchfound) {
+                    // throw error
+                    throw new IllegalStateException("No matching Tensor found in InputOutputMetadata corresponding to the serialized tensor loaded from " + filename);
+                }
+            }
+        } else {
+            // throw error
+            throw new IllegalStateException("While reading the serialized tensor loaded from " + filename + ", metaDataDict has 0 elements");
+        }
+
+        Assertions.assertEquals(tensorElemType, nodeMeta.type);
+        Assertions.assertEquals(nodeMeta.shape.length, tensor.getDimsCount());
+        for (int i = 0; i < nodeMeta.shape.length; i++) {
+            Assertions.assertTrue((nodeMeta.shape[i] == -1) || (nodeMeta.shape[i] == intDims[i]));
+        }
+
+        return createOnnxTensorFromRawData(nodeName, tensor.getRawData().toByteArray(), nodeMeta, intDims);
+    }
+     */
 
 }
