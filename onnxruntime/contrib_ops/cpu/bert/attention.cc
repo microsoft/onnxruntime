@@ -107,10 +107,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
 
   const auto dims = input->Shape().GetDims();
-  int batch_size = static_cast<int>(dims[0]);
-  int sequence_length = static_cast<int>(dims[1]);
-  int hidden_size = static_cast<int>(dims[2]);
-  int head_size = hidden_size / num_heads_;
+  const int batch_size = static_cast<int>(dims[0]);
+  const int sequence_length = static_cast<int>(dims[1]);
+  const int hidden_size = static_cast<int>(dims[2]);
+  const int head_size = hidden_size / num_heads_;
 
   TensorShape output_shape(dims);
   Tensor* output = context->Output(0, output_shape);
@@ -127,18 +127,18 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   auto K = Q + batch_size * sequence_length * hidden_size;
   auto V = K + batch_size * sequence_length * hidden_size;
 
-  T* QKV[3] = {reinterpret_cast<T*>(Q), reinterpret_cast<T*>(K), reinterpret_cast<T*>(V)};
+  T* QKV[3] = {Q, K, V};
 
   {
-    int loop_len = 3 * batch_size * num_heads_;
-    auto input_data = input->template Data<T>();
-    auto weights_data = weights->template Data<T>();
-    auto bias_data = bias->template Data<T>();
+    const int loop_len = 3 * batch_size * num_heads_;
+    const auto input_data = input->template Data<T>();
+    const auto weights_data = weights->template Data<T>();
+    const auto bias_data = bias->template Data<T>();
 
     concurrency::ThreadPool::TryParallelFor(context->GetOperatorThreadPool(), loop_len, [&](int32_t i) {
-      int batch_index = (i / 3) / num_heads_;
-      int head_index = (i / 3) % num_heads_;
-      int qkv_index = i % 3;
+      const int batch_index = (i / 3) / num_heads_;
+      const int head_index = (i / 3) % num_heads_;
+      const int qkv_index = i % 3;
 
       int input_offset = batch_index * sequence_length * hidden_size;
       int weights_offset = qkv_index * hidden_size + head_index * head_size;
@@ -186,18 +186,19 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     memset(scratch_broadcast_data, 0, batch_size * sequence_length * element_size);
     T* p_scratch_broadcast_current_data = reinterpret_cast<T*>(scratch_broadcast_data);
     for (int b_i = 0; b_i < batch_size; b_i++) {
-      int mask = mask_index->template Data<int>()[b_i];
+      // TODO: mask_index can be used in softmax to save some calculation.
+      int mask = mask_index->template Data<int32_t>()[b_i];
       for (int m_i = mask; m_i < sequence_length; m_i++) {
         p_scratch_broadcast_current_data[m_i] = static_cast<T>(-10000.0);
       }
       p_scratch_broadcast_current_data += sequence_length;
     }
 
-    int loop_len = batch_size * num_heads_;
-    float alpha = 1.0f / sqrt(static_cast<float>(head_size));
+    const int loop_len = batch_size * num_heads_;
+    const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
 
     concurrency::ThreadPool::TryParallelFor(context->GetOperatorThreadPool(), loop_len, [&](int32_t i) {
-      int batch_index = i / num_heads_;
+      const int batch_index = i / num_heads_;
       // broadcast masks (B) -> (B.N.)S.S
       const T* broadcast_data_src = reinterpret_cast<T*>(scratch_broadcast_data) + batch_index * sequence_length;
       T* broadcast_data_dest = reinterpret_cast<T*>(scratch_data) + sequence_length * sequence_length * i;
@@ -230,8 +231,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   // STEP.3: P(B, N, S, S) = Softmax(scratch)
   {
-    int N = batch_size * num_heads_ * sequence_length;
-    int D = sequence_length;
+    const int N = batch_size * num_heads_ * sequence_length;
+    const int D = sequence_length;
 
     concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), N, [&](int j) {
       float* x = reinterpret_cast<T*>(scratch_data) + j * D;
@@ -274,8 +275,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         nullptr);
 
     // transpose: out(B, S, N, H) = transpose out_tmp(B, N, S, H)
-    int batch_index = i / num_heads_;
-    int head_index = i % num_heads_;
+    const int batch_index = i / num_heads_;
+    const int head_index = i % num_heads_;
     T* src = current_tmp_data;
     T* dest = output->template MutableData<T>() + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
     for (int j = 0; j < sequence_length; j++) {
