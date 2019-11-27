@@ -594,11 +594,6 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
     return S_OK;
   }
-
-  HRESULT STDMETHODCALLTYPE IsValueTensor(const OrtValue* ort_value, bool* isTensor) {
-    *isTensor = ort_value->IsTensor();
-    return S_OK;
-  }
 };  // namespace Windows::AI::MachineLearning::Adapter
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) {

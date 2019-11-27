@@ -380,8 +380,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 
 Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
-    Ort::Value& ort_value) {
-  
+    Ort::Value& ort_value) {  
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
