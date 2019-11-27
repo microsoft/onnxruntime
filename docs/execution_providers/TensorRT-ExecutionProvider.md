@@ -45,16 +45,22 @@ For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tun
 
 When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 
-## Configuring Engine Max Batch Size and Workspace Size
-By default TensorRT execution provider builds an ICudaEngine with max partition iterations = 6, max workspace size = 1 GB and min subgraph size = 1.
-One can override these defaults by setting environment variables ORT_TENSORRT_MAX_BATCH_SIZE and ORT_TENSORRT_MAX_WORKSPACE_SIZE.
+## Configuring environment variables
+There are three environment variables for TensorRT execution provider.
+
+ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine.
+ORT_TENSORRT_MAX_PARTITION_ITERATIONS: maximum number of iterations allowed in model partitioning for TensorRT. If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU.
+ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioning. Subgraphs with smaller size will fall back to other execution providers.
+
+By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000 and min subgraph size = 1.
+One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS and ORT_TENSORRT_MIN_SUBGRAPH_SIZE.
 e.g. on Linux
 
 ### override default max workspace size to 2GB
 export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
 
-### override default maximum number of iterations. Now run maximum 1000 iterations to partition the models, otherwise the whole model will fall back to other execution providers. 
-export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=1000
+### override default maximum number of iterations to 10 
+export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=10
         
-### override default minimum subgraph node size in graph partitioning. Subgraphs with smaller size will fall back to other execution providers.
+### override default minimum subgraph node size to 5
 export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
