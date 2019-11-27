@@ -68,8 +68,11 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   onnxruntime::IExecutionProvider*
   GetExecutionProvider();
 
-  winmla::IIOBinding*
-  CreateSessionBinding();
+  winmla::IInferenceSession*
+  GetIInferenceSession();
+
+  void
+  CheckClosed();
 
  private:
   void
@@ -96,9 +99,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
   void
   ToggleProfiler();
-
-  void
-  CheckClosed();
 
  private:
   com_ptr<winmla::IInferenceSession> inference_session_;

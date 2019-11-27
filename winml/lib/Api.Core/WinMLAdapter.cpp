@@ -30,6 +30,8 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 
 #include "FeatureDescriptorFactory.h"
+#include "core\framework\utils.h"
+#include "core\framework\session_state.h"
 
 using namespace winrt::Windows::AI::MachineLearning;
 
@@ -499,7 +501,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 #endif USE_DML
   }
 
-HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
+  HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override {
 #ifdef USE_DML
     // Retrieve the "operator abi" registry.
     winrt::com_ptr<IMLOperatorRegistry> operator_registry;
@@ -509,7 +511,7 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
 #else
     return E_NOTIMPL;
 #endif USE_DML
-}
+  }
 
   void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override {
 #ifdef USE_DML
@@ -529,7 +531,7 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
       onnxruntime::IExecutionProvider* provider,
       OrtValue* src,
       OrtValue* dst) override {
-#ifdef USE_DML       
+#ifdef USE_DML
     ORT_THROW_IF_ERROR(Dml::CopyTensor(provider, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>())));
     return S_OK;
 #else
@@ -550,7 +552,7 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
     });
     return S_OK;
 #else
-    return S_OK; // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
+    return S_OK;  // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
 #endif USE_DML
   }
 
@@ -611,7 +613,6 @@ HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNati
 
     return S_OK;
   }
-
 };  // namespace Windows::AI::MachineLearning::Adapter
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) {
@@ -619,52 +620,6 @@ extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter)
   Microsoft::WRL::ComPtr<WinMLAdapter> adapterptr = wil::MakeOrThrow<WinMLAdapter>();
   return adapterptr.CopyTo(__uuidof(IWinMLAdapter), reinterpret_cast<void**>(adapter));
 }
-
-// class IOBinding
-// ===============
-class IOBinding : public Microsoft::WRL::RuntimeClass<
-                      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                      IIOBinding> {
- private:
-  std::shared_ptr<onnxruntime::IOBinding> binding_;
-  std::vector<OrtValue*> outputs_weak_;
-
- public:
-  IOBinding(onnxruntime::IOBinding* binding) : binding_(binding) {
-  }
-
-  onnxruntime::IOBinding* STDMETHODCALLTYPE get() override {
-    return binding_.get();
-  }
-
-  HRESULT STDMETHODCALLTYPE BindInput(const std::string& name, OrtValue* ort_value) override {
-    ORT_THROW_IF_ERROR(binding_->BindInput(name, *ort_value));
-    return S_OK;
-  }
-
-  HRESULT STDMETHODCALLTYPE BindOutput(const std::string& name, OrtValue* ort_value) override {
-    // this can be null for unbound outputs
-    if (ort_value == nullptr) {
-      OrtValue empty_value = {};
-      ORT_THROW_IF_ERROR(binding_->BindOutput(name, empty_value));
-    } else {
-      ORT_THROW_IF_ERROR(binding_->BindOutput(name, *ort_value));
-    }
-    return S_OK;
-  }
-
-  const std::vector<std::string>& STDMETHODCALLTYPE GetOutputNames() override {
-    return binding_->GetOutputNames();
-  }
-  std::vector<OrtValue*>& STDMETHODCALLTYPE GetOutputs() override {
-    auto& output_inner = binding_->GetOutputs();
-    outputs_weak_.clear();
-    for (unsigned i = 0; i < output_inner.size(); i++) {
-      outputs_weak_.push_back(&(output_inner[i]));
-    }
-    return outputs_weak_;
-  }
-};
 
 // InferenceSession
 // ================
@@ -679,18 +634,7 @@ void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers() {
 #endif USE_DML
 }
 
-HRESULT STDMETHODCALLTYPE InferenceSession::NewIOBinding(IIOBinding** io_binding) {
-  std::unique_ptr<onnxruntime::IOBinding> binding;
-  ORT_THROW_IF_ERROR(this->session_->NewIOBinding(&binding));
-  auto io_binding_outer = wil::MakeOrThrow<IOBinding>(binding.release());
-  return io_binding_outer.CopyTo(__uuidof(IIOBinding), reinterpret_cast<void**>(io_binding));
-}
-
-HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, IIOBinding* io_binding) {
-  ORT_THROW_IF_ERROR(this->session_->Run(*run_options, *(io_binding->get())));
-  return S_OK;
-}
-HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() {
+    HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() {
   this->session_->StartProfiling(PheonixSingleton<WinML::LotusEnvironment>()->GetDefaultLogger());
   return S_OK;
 }
@@ -746,10 +690,15 @@ void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime:
 }
 
 HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(
-  const char* input_name,
-  const OrtValue* orig_mlvalue, 
-  OrtValue** new_mlvalue) {
-  return E_NOTIMPL;
+    const char* input_name,
+    const OrtValue* orig_mlvalue,
+    OrtValue** new_mlvalue) {
+  auto session_protected_load_accessor =
+      static_cast<InferenceSessionProtectedLoadAccessor*>(session_.get());
+  const onnxruntime::SessionState& sessionState = session_protected_load_accessor->GetSessionState();
+  auto temp_mlvalue = std::make_unique<OrtValue>();
+  ORT_THROW_IF_ERROR(onnxruntime::utils::CopyOneInputAcrossDevices(sessionState, input_name, *orig_mlvalue, *temp_mlvalue.get()));
+  *new_mlvalue = temp_mlvalue.release();
+  return S_OK;
 }
-
 }  // namespace Windows::AI::MachineLearning::Adapter
