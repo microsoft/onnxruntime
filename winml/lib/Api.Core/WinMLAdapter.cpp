@@ -678,10 +678,9 @@ HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* r
   return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, const char** feed_names,
-    const OrtValue** feeds, const char** output_names,
-    OrtValue** p_fetches)
-{
+HRESULT STDMETHODCALLTYPE InferenceSession::Run(const onnxruntime::RunOptions* run_options, const char* const* input_names, const Ort::Value* input_values, size_t input_count,
+                                                const char* const* output_names, Ort::Value* output_values, size_t output_count) {
+    
     return E_NOTIMPL;
 }
 
