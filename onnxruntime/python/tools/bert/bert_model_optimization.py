@@ -674,9 +674,10 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather, position_embedding_expand])
 
         embed_node = onnx.helper.make_node('EmbedLayerNormalization',
-                        inputs=[input_ids, segment_ids, mask_input_name, 
+                        inputs=[input_ids, segment_ids,
                                 word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
-                                normalize_node.input[2], normalize_node.input[3]], # gamma and beta
+                                normalize_node.input[2], normalize_node.input[3], # gamma and beta
+                                mask_input_name], 
                         outputs=["embed_output", "mask_idx"],
                         name="EmbedLayer")
         embed_node.domain = "com.microsoft"
@@ -692,18 +693,27 @@ class BertOnnxModel(OnnxModel):
         self.add_nodes(nodes_to_add)
         self.update_graph(verbose)
 
-    def get_batch_size_from_graph_input(self):
+    # graph inputs (input_ids, semgent_ids, mask) can be found in embed node
+    def get_bert_input_names(self):
+        embed_input = self.embed_node.input
+        return [embed_input[0], embed_input[1], embed_input[7]]
+
+    def get_bert_inputs(self):
+        input_names = self.get_bert_input_names();
         graph = self.graph()
-        for input in graph.input:
-            if input.name in self.embed_node.input[:3]:
-                tensor_type = input.type.tensor_type
-                if (tensor_type.HasField("shape")):
-                    for d in tensor_type.shape.dim:
-                        if (d.HasField("dim_value")):
-                            return d.dim_value
-                        elif (d.HasField("dim_param")):
-                            return str(d.dim_param)       # unknown dimension with symbolic name
-                        return None
+        return [input for input in graph.input if input.name in input_names]
+
+    def get_batch_size_from_graph_input(self):
+        inputs = self.get_bert_inputs()
+        for input in inputs:
+            tensor_type = input.type.tensor_type
+            if (tensor_type.HasField("shape")):
+                for d in tensor_type.shape.dim:
+                    if (d.HasField("dim_value")):
+                        return d.dim_value
+                    elif (d.HasField("dim_param")):
+                        return str(d.dim_param)       # unknown dimension with symbolic name
+                    return None
         return None
 
     def change_input_to_int32(self):
@@ -714,7 +724,7 @@ class BertOnnxModel(OnnxModel):
         input_batch_size = batch_size if isinstance(batch_size, int) else 1
         new_graph_inputs = []
         for input in graph.input:
-            if input.name in self.embed_node.input[:3]: # Only the first 3 inputs of embed node need int32 conversion.
+            if input.name in self.get_bert_input_names():
                 int32_input = onnx.helper.make_tensor_value_info(input.name, TensorProto.INT32, [input_batch_size, self.sequence_length])
                 new_graph_inputs.append(int32_input)
             else:
@@ -736,7 +746,7 @@ class BertOnnxModel(OnnxModel):
         self.model.opset_import[0].version = original_opset_version
 
     def cast_input_to_int32(self):
-        for input in self.embed_node.input[:3]:
+        for input in self.get_bert_input_names():
             graph_input = self.find_graph_input(input)
             if graph_input is not None and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
                 cast_output = input + '_int32'
@@ -749,7 +759,7 @@ class BertOnnxModel(OnnxModel):
     def update_dynamic_batch_io(self, dynamic_batch_dim='batch'):
         dynamic_batch_inputs = {}
         for input in self.model.graph.input:
-            for embed_input in self.embed_node.input[:3]:
+            for embed_input in self.get_bert_input_names():
                 if embed_input == input.name:
                     dim_proto = input.type.tensor_type.shape.dim[0]
                     dim_proto.dim_param = dynamic_batch_dim

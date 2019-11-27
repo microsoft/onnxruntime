@@ -30,12 +30,12 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
-  const Tensor* mask = context->Input<Tensor>(2);
-  const Tensor* word_embedding = context->Input<Tensor>(3);
-  const Tensor* position_embedding = context->Input<Tensor>(4);
-  const Tensor* segment_embedding = context->Input<Tensor>(5);
-  const Tensor* gamma = context->Input<Tensor>(6);
-  const Tensor* beta = context->Input<Tensor>(7);
+  const Tensor* word_embedding = context->Input<Tensor>(2);
+  const Tensor* position_embedding = context->Input<Tensor>(3);
+  const Tensor* segment_embedding = context->Input<Tensor>(4);
+  const Tensor* gamma = context->Input<Tensor>(5);
+  const Tensor* beta = context->Input<Tensor>(6);
+  const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
   const auto input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
@@ -98,13 +98,15 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   }
 
   // Calculate mask
-  {
+  if (nullptr != mask) {
     const int* mask_data = mask->template Data<int>();
     for (int b = 0; b < batch_size; b++) {
       mask_index->template MutableData<int>()[b] = static_cast<int>(std::count_if(mask_data + (b * sequence_length),
                                                                                   mask_data + (b * sequence_length) + sequence_length,
                                                                                   [](int v) { return v == 1; }));
     }
+  } else {
+    memset(mask_index->template MutableData<int>(), 0, batch_size * sizeof(int));
   }
 
   return Status::OK();
