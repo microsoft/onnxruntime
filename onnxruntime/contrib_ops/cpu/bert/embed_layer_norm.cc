@@ -6,6 +6,8 @@
 #include "core/util/math_cpuonly.h"
 #include "core/platform/threadpool.h"
 
+#include <atomic>
+
 namespace onnxruntime {
 namespace contrib {
 // These ops are internal-only, so register outside of onnx
@@ -72,23 +74,23 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   // Calculate output
   {
-    bool failed = false;  // TODO: do we need to make memory barrier for this variable?
+    std::atomic_bool failed{false};
 
     int n = batch_size * sequence_length;
     concurrency::ThreadPool::TryBatchParallelFor(context->GetOperatorThreadPool(), n, [=, &failed](int index) {
       int word_col_index = input_ids_data[index];
       if (word_col_index < 0 || word_col_index >= word_embedding_length) {
-        failed = true;
+        failed.store(true, std::memory_order_release);
         return;
       }
       int position_col_index = index % sequence_length;
       if (position_col_index >= position_embedding_length) {
-        failed = true;
+        failed.store(true, std::memory_order_release);
         return;
       }
       int segment_col_index = segment_ids_data[index];
       if (segment_col_index < 0 || segment_col_index >= segment_embedding_length) {
-        failed = true;
+        failed.store(true, std::memory_order_release);
         return;
       }
 
@@ -116,7 +118,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       }
     });
 
-    if (failed) {
+    if (failed.load(std::memory_order_acquire)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input index out of range");
     }
   }
