@@ -23,17 +23,17 @@ endif()
 set(onnxruntime4j_src
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/MapInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/NodeInfo.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNX.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXAllocator.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXEnvironment.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXException.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXJavaType.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXMap.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXSequence.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXSession.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXTensor.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXUtil.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ONNXValue.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxRuntime.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtAllocator.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtEnvironment.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtException.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxJavaType.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxMap.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxSequence.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtSession.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxTensor.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtUtil.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxValue.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/SequenceInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/TensorInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ValueInfo.java
