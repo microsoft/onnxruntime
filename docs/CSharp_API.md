@@ -73,12 +73,14 @@ Runs the model on given inputs for the given output nodes only.
     IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options);
 Runs the model on given inputs and outputs, using runtime options.
 
-### System.Numerics.Tensor
-The primary .Net object that is used for holding input-output of the model inference. Details on this newly introduced data type can be found in its [open-source implementation](https://github.com/dotnet/corefx/tree/master/src/System.Numerics.Tensors). The binaries are available as a [.Net NuGet package](https://www.nuget.org/packages/System.Numerics.Tensors).
+### Tensor.Tensors
+The primary .Net object that is used for holding input-output of the model inference. This type is based on (or a replica of) a  newly introduced data type in dotnet, which is still in preview mode.
+
+Tensors can be constructed on basic C# types, and can be constructed from C# arrays 
 
 ### NamedOnnxValue
     class NamedOnnxValue;
-Represents a name-value pair of string names and any type of value that ONNX runtime supports as input-output data. Currently, only Tensor objects are supported as input-output values.
+Represents a name-value pair of string names and any type of value that ONNX runtime supports as input-output data. Currently, Tensor, IEnumerable (Sequence) and IDictionary (Map) objects are supported as input-output values.
 
 #### Constructor
     No public constructor available.
@@ -92,6 +94,12 @@ Creates a NamedOnnxValue from a name and a Tensor<T> object.
 
     Tensor<T> AsTensor<T>();
 Accesses the value as a Tensor<T>. Returns null if the value is not a Tensor<T>.     
+
+    IEnumerable<T> AsEnmerable<T>();
+Accesses the Sequence value as a IEnumerable<T>. Returns null if the value is not a Sequence.
+
+    IDictionary<T> AsDictionary<T>();
+Accesses the Map value as a IDictionary<T>. Returns null if the value is not a Map.
 
 ### DisposableNamedOnnxValue
     class DisposableNamedOnnxValue: NamedOnnxValue, IDisposable;
@@ -110,8 +118,11 @@ A collection of properties to be set for configuring the OnnxRuntime session
 Constructs a SessionOptions will all options at default/unset values.
 
 #### Properties
-    static SessionOptions Default;   //read-only
-Accessor to the default static option object
+    EnableMemoryPattern: boolean
+Enable/Disable pattern based memory allocation
+    ProfileOutputPathPrefix: string
+Path prefix for profile data if profiling
+
 
 #### Methods
     SetSessionGraphOptimizationLevel(GraphOptimizationLevel graph_transformer_level);
