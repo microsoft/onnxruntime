@@ -213,6 +213,8 @@ bool LearningModelBinding::HasKey(hstring const& key) {
 void LearningModelBinding::Split(
     Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
     Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second) {
+  ORT_UNUSED_PARAMETER(first);
+  ORT_UNUSED_PARAMETER(second);
   throw hresult_not_implemented();
 }
 

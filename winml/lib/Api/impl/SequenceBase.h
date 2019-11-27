@@ -266,6 +266,7 @@ struct SequenceBase : public winrt::implements<
   STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
       OrtValue* ort_value) {
+    ORT_UNUSED_PARAMETER(context);
     auto writable_vector = data_.as<wfc::IVector<T>>();
     writable_vector.Clear();
 

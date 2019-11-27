@@ -358,7 +358,7 @@ inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_
 }
 
 template <>
-inline Value Value::CreateTensor<std::string>(const OrtMemoryInfo* info, std::string* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
+inline Value Value::CreateTensor<std::string>(const OrtMemoryInfo*, std::string* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
   // convert the array of std::string to an array of const char *
   std::vector<const char*> string_vector;
   for (int i = 0; i < p_data_element_count; ++i) {

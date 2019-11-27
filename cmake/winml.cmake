@@ -456,7 +456,7 @@ set_target_properties(winml_dll
 set_target_properties(winml_dll
   PROPERTIES
   LINK_FLAGS
-  "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll")
+  "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll")
 
 set_target_properties(winml_dll
   PROPERTIES

@@ -3,10 +3,7 @@
 
 #include "pch.h"
 
-#ifdef USE_DML
 #include "DirectML.h"
-#endif USE_DML
-
 #include <d3d11on12.h>
 #include <wil/winrt.h>
 #include "inc/DeviceHelpers.h"
@@ -147,7 +144,6 @@ bool IsFloat16Supported(ID3D12Device* device) {
     return false;
   }
 
-#ifdef USE_DML
   winrt::com_ptr<IDMLDevice> dmlDevice;
   winrt::check_hresult(DMLCreateDevice(
       device,
@@ -165,9 +161,6 @@ bool IsFloat16Supported(ID3D12Device* device) {
       &float16Data));
 
   return float16Data.IsSupported;
-#else
-  return false;
-#endif USE_DML
 }
 
 // uses Structured Exception Handling (SEH) to detect for delay load failures of target API.

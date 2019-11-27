@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
+#include "core/common//common.h"
 
 struct NoisyReluShapeInferrer : winrt::implements<NoisyReluShapeInferrer, IMLOperatorShapeInferrer>
 {
@@ -144,6 +145,7 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
 
     static MLOperatorEdgeDescription CreateEdgeDescriptor(MLOperatorEdgeType type, MLOperatorTensorDataType dataType)
     {
+        ORT_UNUSED_PARAMETER(type);
         MLOperatorEdgeDescription desc;
         desc.edgeType = MLOperatorEdgeType::Tensor;
         desc.tensorDataType = dataType;
