@@ -39,7 +39,7 @@ MIDL_INTERFACE("a848faf6-5a2e-4a7f-b622-cc036f71e28a") IModelProto : IUnknown{
 
 MIDL_INTERFACE("6ec766ef-6365-42bf-b64f-ae85c015adb8") IInferenceSession : IUnknown {
     virtual onnxruntime::InferenceSession* STDMETHODCALLTYPE get() = 0;
-    virtual void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) = 0;
+    virtual void STDMETHODCALLTYPE RegisterGraphTransformers() = 0;
     virtual HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry * registry) = 0;
     virtual HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) = 0;
     virtual HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) = 0;
@@ -131,7 +131,7 @@ public:
     InferenceSession(onnxruntime::InferenceSession * session);
 
     onnxruntime::InferenceSession* STDMETHODCALLTYPE get() override { return session_.get(); }
-    void STDMETHODCALLTYPE RegisterGraphTransformers(bool registerLotusTransforms) override;
+    void STDMETHODCALLTYPE RegisterGraphTransformers() override;
     HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry* registry) override;
     HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) override;
     HRESULT STDMETHODCALLTYPE NewIOBinding(IIOBinding** io_binding) override;
