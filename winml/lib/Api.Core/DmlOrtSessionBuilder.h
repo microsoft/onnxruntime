@@ -9,7 +9,7 @@ namespace Windows::AI::MachineLearning::Adapter {
 
 class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-    _winmla::IOrtSessionBuilder> {
+    winmla::IOrtSessionBuilder> {
 
  public:
   DmlOrtSessionBuilder(ID3D12Device* device, ID3D12CommandQueue*  queue);
@@ -19,11 +19,11 @@ class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
 
   HRESULT STDMETHODCALLTYPE CreateSession(
       OrtSessionOptions* options,
-      _winmla::IInferenceSession** p_session,
+      winmla::IInferenceSession** p_session,
       onnxruntime::IExecutionProvider** pp_provider) override;
 
   HRESULT STDMETHODCALLTYPE Initialize(
-      _winmla::IInferenceSession* p_session,
+      winmla::IInferenceSession* p_session,
       onnxruntime::IExecutionProvider* p_provider) override;
 
  private:

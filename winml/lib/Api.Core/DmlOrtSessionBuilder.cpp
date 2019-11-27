@@ -106,7 +106,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 
 HRESULT DmlOrtSessionBuilder::CreateSession(
     OrtSessionOptions* options,
-    _winmla::IInferenceSession** p_session,
+    winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
@@ -126,14 +126,14 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(gpu_provider)));
 
   // assign the session to the out parameter
-  auto sessionptr = wil::MakeOrThrow<_winmla::InferenceSession>(session.release());
-  RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(_winmla::IInferenceSession), (void**)p_session));
+  auto sessionptr = wil::MakeOrThrow<winmla::InferenceSession>(session.release());
+  RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(winmla::IInferenceSession), (void**)p_session));
 
   return S_OK;
 }
 
 HRESULT DmlOrtSessionBuilder::Initialize(
-    _winmla::IInferenceSession* p_session,
+    winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* p_provider) {
   RETURN_HR_IF_NULL(E_INVALIDARG, p_session);
   RETURN_HR_IF_NULL(E_INVALIDARG, p_provider);

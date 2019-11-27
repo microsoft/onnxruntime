@@ -67,7 +67,7 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
 
 extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegistry** registry) try {
   *registry = nullptr;
-  winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+  winrt::com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
   return adapter->GetCustomRegistry(registry);
 }

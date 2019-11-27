@@ -91,35 +91,22 @@ struct LearningModel : LearningModelT<LearningModel> {
 
  public:
   /* Non-ABI methods */
-  bool
-  IsDisposed();
-
-  IMLOperatorRegistry*
-  GetOperatorRegistry();
-
-  _winmla::IModelProto*
-  DetachModelProto();
-
-  _winmla::IModelProto*
-  CopyModelProto();
+  bool IsDisposed();
+  IMLOperatorRegistry* GetOperatorRegistry();
+  winmla::IModelProto* DetachModelProto();
+  winmla::IModelProto* CopyModelProto();
 
  private:
-  void
-  Initialize();
-
-  void
-  LogCreationEvent(
-      bool fromStream = false);
-
-  void
-  ModelUseFP16(
+  void Initialize();
+  void LogCreationEvent(bool fromStream = false);
+  void ModelUseFP16(
       winml::ILearningModelFeatureDescriptor descriptor,
       bool& use_fp16);
 
  private:
-  com_ptr<_winmla::IWinMLAdapter> adapter_;
-  com_ptr<_winmla::IModelProto> model_proto_;
-  com_ptr<_winmla::IModelInfo> model_info_;
+  com_ptr<winmla::IWinMLAdapter> adapter_;
+  com_ptr<winmla::IModelProto> model_proto_;
+  com_ptr<winmla::IModelInfo> model_info_;
   ILearningModelOperatorProvider operator_provider_;
 };
 

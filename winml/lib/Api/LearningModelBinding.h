@@ -74,7 +74,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  com_ptr<_winmla::IWinMLAdapter> adapter_;
+  com_ptr<winmla::IWinMLAdapter> adapter_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> inputs_;
   std::vector<std::string> output_names_;

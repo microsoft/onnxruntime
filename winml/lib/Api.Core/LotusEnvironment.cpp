@@ -15,7 +15,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
   switch (message.Severity()) {
     case (onnxruntime::logging::Severity::kFATAL):  //Telemetry
       TraceLoggingWrite(
-          _winmla::winml_trace_logging_provider,
+          winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
@@ -29,7 +29,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       break;
     case (onnxruntime::logging::Severity::kERROR):  //Telemetry
       TraceLoggingWrite(
-          _winmla::winml_trace_logging_provider,
+          winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
@@ -43,7 +43,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       break;
     case (onnxruntime::logging::Severity::kWARNING):
       TraceLoggingWrite(
-          _winmla::winml_trace_logging_provider,
+          winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
           TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
@@ -55,7 +55,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       break;
     case (onnxruntime::logging::Severity::kINFO):
       TraceLoggingWrite(
-          _winmla::winml_trace_logging_provider,
+          winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
           TraceLoggingLevel(WINEVENT_LEVEL_INFO),
@@ -69,7 +69,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
       __fallthrough;  //Default is Verbose too.
     default:
       TraceLoggingWrite(
-          _winmla::winml_trace_logging_provider,
+          winmla::winml_trace_logging_provider,
           "WinMLLogSink",
           TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
           TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
@@ -87,7 +87,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendImpl(
 void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::profiling::EventRecord& eventRecord) const {
   if (eventRecord.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) {
     TraceLoggingWrite(
-        _winmla::winml_trace_logging_provider,
+        winmla::winml_trace_logging_provider,
         "OnnxRuntimeProfiling",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_LOTUS_PROFILING),
         TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
@@ -102,7 +102,7 @@ void Windows::AI::MachineLearning::CWinMLLogSink::SendProfileEvent(onnxruntime::
         TraceLoggingString(eventRecord.args["provider"].c_str(), "Execution Provider"));
   } else {
     TraceLoggingWrite(
-        _winmla::winml_trace_logging_provider,
+        winmla::winml_trace_logging_provider,
         "OnnxRuntimeProfiling",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_LOTUS_PROFILING),
         TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),

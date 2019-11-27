@@ -834,7 +834,7 @@ struct TensorBase : TBase {
   std::shared_ptr<TensorResources<T>> m_resources;
   std::vector<winrt::weak_ref<TensorMemoryBufferReference<T>>> m_outstandingReferences;
   bool m_isClosed = false;
-  winrt::com_ptr<_winmla::IWinMLAdapter> adapter_;
+  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 };
 
 }  // namespace Windows::AI::MachineLearning

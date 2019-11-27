@@ -613,7 +613,8 @@ void LearningModelBinding::BindUnboundOutputs()
 
   // Add all unbound outputs to binding collection
   for (const auto& unbound_output : unbound_output_names) {
-    WINML_THROW_IF_FAILED(BindOutput(unbound_output, Ort::Value(nullptr)));
+    Ort::Value out(nullptr);
+    WINML_THROW_IF_FAILED(BindOutput(unbound_output, out));
   }
 }
 

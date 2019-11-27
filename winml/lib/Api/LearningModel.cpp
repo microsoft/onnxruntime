@@ -253,9 +253,9 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
-_winmla::IModelProto*
+winmla::IModelProto*
 LearningModel::DetachModelProto() {
-  com_ptr<_winmla::IModelProto> detached_model_proto;
+  com_ptr<winmla::IModelProto> detached_model_proto;
   if (model_proto_ != nullptr) {
     detached_model_proto.attach(model_proto_.detach());
 
@@ -265,15 +265,15 @@ LearningModel::DetachModelProto() {
   return detached_model_proto.detach();
 }
 
-_winmla::IModelProto*
+winmla::IModelProto*
 LearningModel::CopyModelProto() {
   if (model_proto_ == nullptr) {
     return nullptr;
   }
 
-  com_ptr<_winmla::IWinMLAdapter> adapter;
+  com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-  com_ptr<_winmla::IModelProto> model_proto;
+  com_ptr<winmla::IModelProto> model_proto;
   WINML_THROW_IF_FAILED(adapter->CreateModelProto(model_proto_.get(), model_proto.put()));
 
   return model_proto.detach();
