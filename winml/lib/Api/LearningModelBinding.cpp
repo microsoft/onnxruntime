@@ -603,7 +603,7 @@ void LearningModelBinding::BindUnboundOutputs()
         return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
       });
 
-  // Add all unbound outputs to the iobinding collection
+  // Add all unbound outputs to binding collection
   for (const auto& unbound_output : unbound_output_names) {
     WINML_THROW_IF_FAILED(BindOutput(unbound_output, Ort::Value(nullptr)));
   }
