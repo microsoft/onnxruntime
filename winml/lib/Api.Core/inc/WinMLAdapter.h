@@ -10,14 +10,14 @@ TRACELOGGING_DECLARE_PROVIDER(winml_trace_logging_provider);
 
 MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown{
     // model metadata
-    virtual std::string& STDMETHODCALLTYPE author() = 0;
-    virtual std::string& STDMETHODCALLTYPE name() = 0;
-    virtual std::string& STDMETHODCALLTYPE domain() = 0;
-    virtual std::string& STDMETHODCALLTYPE description() = 0;
-    virtual int64_t STDMETHODCALLTYPE version() = 0;
-    virtual std::unordered_map<std::string, std::string>& STDMETHODCALLTYPE model_metadata() = 0;
-    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE input_features() = 0;
-    virtual wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE output_features() = 0;
+    virtual const char* STDMETHODCALLTYPE author() = 0;
+    virtual const char* STDMETHODCALLTYPE name() = 0;
+    virtual const char* STDMETHODCALLTYPE domain() = 0;
+    virtual const char* STDMETHODCALLTYPE description() = 0;
+    virtual int64_t STDMETHODCALLTYPE version() = 0;    
+    virtual HRESULT STDMETHODCALLTYPE GetModelMetadata(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> ** metadata) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetInputFeatures(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> * *features) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetOutputFeatures(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor> * *features) = 0;
 };
 
 MIDL_INTERFACE("438e7719-554a-4058-84d9-eb6226c34887") IIOBinding : IUnknown{
@@ -80,9 +80,6 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
         IModelProto* p_model_proto,
         bool is_float16_supported) = 0;
 
-    virtual ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider * provider, void* allocation) = 0;
-
-
     // factory method for creating an ortsessionbuilder from a device
     virtual HRESULT STDMETHODCALLTYPE CreateOrtSessionBuilder(
             ID3D12Device* device,
@@ -105,6 +102,8 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     virtual void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) = 0;
     virtual void STDMETHODCALLTYPE FreeGPUAllocation(void* ptr) = 0;
     virtual HRESULT STDMETHODCALLTYPE CopyTensor(onnxruntime::IExecutionProvider* provider, OrtValue* src, OrtValue* dst) = 0;
+    // note: this returns a weak ref
+    virtual ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider * provider, void* allocation) = 0;
 
     // schema overrides (dml does this for us)
     virtual HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() = 0;

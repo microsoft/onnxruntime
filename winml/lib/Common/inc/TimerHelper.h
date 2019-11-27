@@ -12,6 +12,7 @@
 #include <psapi.h>
 #include <string>
 #include <array>
+#include "core/common/common.h"
 
 #define TIMER_SLOT_SIZE (128)
 #define CONVERT_100NS_TO_SECOND(x) ((x)*0.0000001)
@@ -330,6 +331,7 @@ class GpuPerfCounter : public IPerfCounter {
   }
 
   void GetValues(double (&values)[CounterType::TYPE_COUNT], double time) override {
+    ORT_UNUSED_PARAMETER(time);
     values[CounterType::GPU_USAGE] = GetGpuUsage();
     values[CounterType::GPU_DEDICATED_MEM_USAGE] = GetDedicatedMemory();
     values[CounterType::GPU_SHARED_MEM_USAGE] = GetSharedMemory();

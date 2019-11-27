@@ -91,29 +91,48 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
     Initialize(model_proto);
   }
 
-  std::string& STDMETHODCALLTYPE author() override {
-    return author_;
+  const char* STDMETHODCALLTYPE author() override {
+    return author_.c_str();
   }
-  std::string& STDMETHODCALLTYPE name() override {
-    return name_;
+  const char* STDMETHODCALLTYPE name() override {
+    return name_.c_str();
   }
-  std::string& STDMETHODCALLTYPE domain() override {
-    return domain_;
+  const char* STDMETHODCALLTYPE domain() override {
+    return domain_.c_str();
   }
-  std::string& STDMETHODCALLTYPE description() override {
-    return description_;
+  const char* STDMETHODCALLTYPE description() override {
+    return description_.c_str();
   }
   int64_t STDMETHODCALLTYPE version() override {
     return version_;
   }
-  std::unordered_map<std::string, std::string>& STDMETHODCALLTYPE model_metadata() override {
-    return model_metadata_;
+  HRESULT STDMETHODCALLTYPE GetModelMetadata(
+    ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>** metadata) override {
+    *metadata = nullptr;
+    std::unordered_map<winrt::hstring, winrt::hstring> map_copy;
+    for (auto& pair : model_metadata_) {
+      auto key = WinML::Strings::HStringFromUTF8(pair.first);
+      auto map_value = WinML::Strings::HStringFromUTF8(pair.second);
+      map_copy.emplace(std::move(key), std::move(map_value));
+    }
+    auto out = winrt::single_threaded_map<winrt::hstring, winrt::hstring>(
+        std::move(map_copy));
+
+    winrt::copy_to_abi(out.GetView(), *(void**)metadata);
+    return S_OK;    
   }
-  wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE input_features() override {
-    return input_features_;
+
+  HRESULT STDMETHODCALLTYPE GetInputFeatures(
+      ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) override{
+    *features = nullptr;
+    winrt::copy_to_abi(input_features_.GetView(), *(void**)features);
+    return S_OK;
   }
-  wfc::IVector<winml::ILearningModelFeatureDescriptor>& STDMETHODCALLTYPE output_features() override {
-    return output_features_;
+  HRESULT STDMETHODCALLTYPE GetOutputFeatures(
+      ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) override {
+    *features = nullptr;
+    winrt::copy_to_abi(output_features_.GetView(), *(void**)features);
+    return S_OK;
   }
 
   static std::vector<const char*>

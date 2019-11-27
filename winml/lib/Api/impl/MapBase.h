@@ -160,6 +160,7 @@ struct MapBase : winrt::implements<
 
   STDMETHOD(GetOrtValue)
   (WinML::BindingContext& context, OrtValue** ort_value) {
+    ORT_UNUSED_PARAMETER(context);
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
@@ -185,6 +186,7 @@ struct MapBase : winrt::implements<
 
   STDMETHOD(UpdateSourceResourceData)
   (BindingContext& context, OrtValue* ort_value) {
+    ORT_UNUSED_PARAMETER(context);
     data_.Clear();
 
     Ort::AllocatorWithDefaultOptions allocator;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
+#include "core/common//common.h"
 
 struct ReluShapeInferrer : winrt::implements<ReluShapeInferrer, IMLOperatorShapeInferrer>
 {
@@ -104,6 +105,7 @@ struct ReluOperatorFactory : winrt::implements<ReluOperatorFactory, IMLOperatorK
         IMLOperatorKernelCreationContext* context,
         IMLOperatorKernel** kernel)
     {
+        ORT_UNUSED_PARAMETER(context);
         auto reluOperator = winrt::make<ReluOperator>();
         reluOperator.copy_to(kernel);
         return S_OK;
@@ -111,6 +113,7 @@ struct ReluOperatorFactory : winrt::implements<ReluOperatorFactory, IMLOperatorK
 
     static MLOperatorEdgeDescription CreateEdgeDescriptor(MLOperatorEdgeType type, MLOperatorTensorDataType dataType)
     {
+        ORT_UNUSED_PARAMETER(type);
         MLOperatorEdgeDescription desc;
         desc.edgeType = MLOperatorEdgeType::Tensor;
         desc.tensorDataType = dataType;

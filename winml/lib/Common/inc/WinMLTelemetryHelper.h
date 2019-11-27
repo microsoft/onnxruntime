@@ -84,10 +84,10 @@ class WinMLTelemetryHelper {
   void LogDllAttachEvent();
   void LogSessionCreation(const std::string& modelname, bool isCpu, LUID adapterLuid);
   void LogModelCreation(bool fromStream,
-                        const std::string& author,
-                        const std::string& name,
-                        const std::string& domain,
-                        const std::string& description,
+                        const char* author,
+                        const char* name,
+                        const char* domain,
+                        const char* description,
                         int64_t version,
                         bool bUseFP16,
                         const std::unordered_map<std::string, std::string>& modelMetadata);

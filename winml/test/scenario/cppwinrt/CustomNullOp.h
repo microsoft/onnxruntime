@@ -41,6 +41,7 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
         IMLOperatorKernelCreationContext* context,
         IMLOperatorKernel** kernel)
     {
+        ORT_UNUSED_PARAMETER(context);
         auto op = winrt::make<NullOperator>(m_callCount);
         op.copy_to(kernel);
         return S_OK;
@@ -48,6 +49,7 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
 
     static MLOperatorEdgeDescription CreateEdgeDescriptor(MLOperatorEdgeType type, MLOperatorTensorDataType dataType)
     {
+        ORT_UNUSED_PARAMETER(type);
         MLOperatorEdgeDescription desc;
         desc.edgeType = MLOperatorEdgeType::Tensor;
         desc.tensorDataType = dataType;

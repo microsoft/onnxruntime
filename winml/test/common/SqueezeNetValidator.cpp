@@ -149,6 +149,7 @@ void ModelValidator::FnsCandy16(
     bool bindInputsAsIInspectable,
     float dataTolerance)
 {
+  ORT_UNUSED_PARAMETER(dataTolerance);
     WINML_PROFILING_START(g_RuntimeProfiler, WINML_RUNTIME_TEST_PERF::PREP_TEST);
         // file name strings
         static wchar_t* modelFileName = L"winmlperf_coreml_FNS-Candy_prerelease_fp16.onnx";
