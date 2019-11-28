@@ -129,6 +129,33 @@ TEST(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+TEST(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
+  auto model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(), TransformerLevel::Level1);
+
+  // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+
+  // all remaining nodes should still be on CUDA
+  for (auto& node : graph.Nodes()) {
+    EXPECT_STREQ(node.GetExecutionProviderType().c_str(), kCudaExecutionProvider);
+  }
+}
+
 TEST(GraphTransformationTests, ConstantFoldingSubgraph) {
   TensorProto value_tensor;
   value_tensor.add_dims(1);
@@ -1008,7 +1035,6 @@ static void ValidateAttention(Graph& graph) {
       for (size_t i = 0; i < expected_value2.size(); i++) {
         EXPECT_EQ(data2[i], static_cast<float>(expected_value2[i]));
       }
-
     }
   }
 }

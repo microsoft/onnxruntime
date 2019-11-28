@@ -3,11 +3,12 @@
 
 #include "cuda_common.h"
 #include "cuda_execution_provider.h"
-#include "core/framework/memcpy.h"
 #include "cuda_fence.h"
 #include "cuda_allocator.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/memcpy.h"
+#include "core/graph/graph_utils.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -1251,28 +1252,28 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
       bool should_force_outside = true;
-      bool all_input_are_initializer = true;
-      node.ForEachWithIndex(
-          node.InputDefs(),
-          [&](const NodeArg& def, size_t index) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            // The input is not a initializer and the input is from CPU
-            // or the input declared as CPU memory and is from CPU
-            // in that case we should still keep the node on CUDA
-            bool initializer_input = graph.GetInitializedTensor(def.Name(), initializer);
-            bool input_is_on_cpu = defs_outside_cuda.count(&def) > 0;
-            if ((!initializer_input && !input_is_on_cpu) ||
-                (input_is_on_cpu && cuda_kernel_def->kernel_def->IsInputOnCpu(index)))
-              should_force_outside = false;
+      bool all_inputs_are_initializers = true;
+      node.ForEachWithIndex(node.InputDefs(),
+                            [&](const NodeArg& def, size_t index) {
+                              const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+                              // The input is not a initializer and the input is from CPU
+                              // or the input declared as CPU memory and is from CPU
+                              // in that case we should still keep the node on CUDA
+                              bool initializer_input = graph.IsConstantInitializer(def.Name(), /*check_outer_scope*/ true);
+                              bool input_is_on_cpu = defs_outside_cuda.count(&def) > 0;
+                              if ((!initializer_input && !input_is_on_cpu) ||
+                                  (input_is_on_cpu && cuda_kernel_def->kernel_def->IsInputOnCpu(index))) {
+                                should_force_outside = false;
+                              }
 
-            if (!initializer_input) {
-              all_input_are_initializer = false;
-            }
-            return Status::OK();
-          });
+                              if (!initializer_input) {
+                                all_inputs_are_initializers = false;
+                              }
+                              return Status::OK();
+                            });
 
       // If all the inputs are initializers, we shouldn't force it to CPU
-      if (should_force_outside && !all_input_are_initializer) {
+      if (should_force_outside && !all_inputs_are_initializers) {
         force_outside = true;
       }
     }
