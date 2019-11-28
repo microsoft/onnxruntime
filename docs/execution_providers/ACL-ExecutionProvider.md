@@ -18,15 +18,13 @@ source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
 alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
 ```
 
-Confiure ONNX Runtime with ACL support:
+Confiure and build ONNX Runtime with ACL support:
 ```
-cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_MKLDNN=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=/PROTOC_PATH/protoc"
+build.sh --path_to_protoc_exe /PROTOC_PATH/protoc --config RelWithDebInfo --build_shared_lib --use_openmp --update --build
 ```
 
-Build ONNX Runtime library, test and performance application:
-```
-make -j 6
-```
+--use_acl=ACL_1902
 
 Deploy ONNX runtime on the i.MX 8QM board
 ```

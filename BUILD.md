@@ -415,6 +415,45 @@ The DirectML execution provider supports building for both x64 and x86 architect
 
 ---
 
+### ACL
+See more information on the ACL execution provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
+
+#### Pre-Requisites
+Arm Compute Library execution provider is supported only for arm64 architectures. You need an arm64 device
+and the associated BSP.
+
+##### Validated BSP
+* NXP i.MX BSP for i.MX device family
+   * i.MX BSP Warrior with kernel 4.19 and ACL 19.05 or
+   * i.MX BSP Sumo with kernel 4.14 and ACL 19.02
+
+Instal the BSP:
+```
+source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh
+```
+
+Setup build environment:
+```
+source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
+alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
+
+#### Build Instructions
+##### Linux
+```
+export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=/PROTOC_PATH/protoc"
+build.sh --path_to_protoc_exe /PROTOC_PATH/protoc --config RelWithDebInfo --build_shared_lib --use_acl --use_openmp --update --build
+```
+
+Options
+`
+--use_acl=ACL_1902
+`
+
+##### Notes
+The ACL execution provider supports building for arm64 architectures. ACL is only supported on Linux.
+
+---
+
 ### DebugNodeInputsOutputs
 OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
 #### Build Instructions

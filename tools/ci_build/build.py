@@ -157,6 +157,9 @@ Use the individual flags to only run the specified stages.
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
+    parser.add_argument("--use_acl", nargs="?", const="ACL_1905",
+                        choices=["ACL_1905","ACL_1902"], help="Build with ACL for ARM architectures.")
+
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -279,7 +282,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     cmake_args = [cmake_path, cmake_dir,
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-                 "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
+                 "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android or args.use_acl else "ON"),
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
@@ -325,6 +328,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  # enable pyop if it is nightly build
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
+                 "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
+                 "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
                  ]
     if args.use_brainslice:
         bs_pkg_name = args.brain_slice_package_name.split('.', 1)
@@ -725,7 +730,7 @@ def run_server_model_tests(build_dir, configs):
         run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, use_acl, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -743,6 +748,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_openvino')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_acl:
+            args.append('--use_acl')
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -961,6 +968,9 @@ def main():
             if args.use_dml:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
 
+            if args.use_acl:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'acl', args.enable_multi_device_test, False, 1, 1)
+
             #It could run out of memory because of memory leak
             #if args.use_mkldnn:
             #  mkldnn_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
@@ -983,7 +993,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, args.use_acl, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
