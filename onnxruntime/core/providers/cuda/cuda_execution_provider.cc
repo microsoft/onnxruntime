@@ -1100,7 +1100,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, AveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, float, MaxPool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, double, MaxPool)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, MaxPool)>,      
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, MLFloat16, MaxPool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 11, float, Clip)>,
   };
 
@@ -1281,7 +1281,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       bool all_inputs_are_initializers = true;
       node.ForEachWithIndex(node.InputDefs(),
                             [&](const NodeArg& def, size_t index) {
-                              const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
                               // The input is not a initializer and the input is from CPU
                               // or the input declared as CPU memory and is from CPU
                               // in that case we should still keep the node on CUDA
