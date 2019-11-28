@@ -194,30 +194,38 @@ void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
-  if (val_type == DataTypeImpl::GetType<TensorSeq>()) {
+  if (val_type->IsTensorSequenceType()) {
     AddNonTensor<TensorSeq>(val, pyobjs);
-  } else if (utils::IsMapOf<std::string, std::string>(val_type)) {
-    AddNonTensor<MapStringToString>(val, pyobjs);
-  } else if (utils::IsMapOf<std::string, int64_t>(val_type)) {
-    AddNonTensor<MapStringToInt64>(val, pyobjs);
-  } else if (utils::IsMapOf<std::string, float>(val_type)) {
-    AddNonTensor<MapStringToFloat>(val, pyobjs);
-  } else if (utils::IsMapOf<std::string, double>(val_type)) {
-    AddNonTensor<MapStringToDouble>(val, pyobjs);
-  } else if (utils::IsMapOf<int64_t, std::string>(val_type)) {
-    AddNonTensor<MapInt64ToString>(val, pyobjs);
-  } else if (utils::IsMapOf<int64_t, int64_t>(val_type)) {
-    AddNonTensor<MapInt64ToInt64>(val, pyobjs);
-  } else if (utils::IsMapOf<int64_t, float>(val_type)) {
-    AddNonTensor<MapInt64ToFloat>(val, pyobjs);
-  } else if (utils::IsMapOf<int64_t, double>(val_type)) {
-    AddNonTensor<MapInt64ToDouble>(val, pyobjs);
-  } else if (utils::IsSequenceOf<std::map<std::string, float>>(val_type)) {
-    AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
-    AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
   } else {
-    throw std::runtime_error("Output is a non-tensor type which is not supported.");
+    utils::MapChecker m_checker(val_type);
+    if (m_checker.IsMap()) {
+      if (m_checker.IsMapOf<std::string, std::string>()) {
+        AddNonTensor<MapStringToString>(val, pyobjs);
+      } else if (m_checker.IsMapOf<std::string, int64_t>()) {
+        AddNonTensor<MapStringToInt64>(val, pyobjs);
+      } else if (m_checker.IsMapOf<std::string, float>()) {
+        AddNonTensor<MapStringToFloat>(val, pyobjs);
+      } else if (m_checker.IsMapOf<std::string, double>()) {
+        AddNonTensor<MapStringToDouble>(val, pyobjs);
+      } else if (m_checker.IsMapOf<int64_t, std::string>()) {
+        AddNonTensor<MapInt64ToString>(val, pyobjs);
+      } else if (m_checker.IsMapOf<int64_t, int64_t>()) {
+        AddNonTensor<MapInt64ToInt64>(val, pyobjs);
+      } else if (m_checker.IsMapOf<int64_t, float>()) {
+        AddNonTensor<MapInt64ToFloat>(val, pyobjs);
+      } else if (m_checker.IsMapOf<int64_t, double>()) {
+        AddNonTensor<MapInt64ToDouble>(val, pyobjs);
+      }
+    } else {
+      utils::SequenceChecker s_checker(val_type);
+      if (s_checker.IsSequenceOf<std::map<std::string, float>>()) {
+        AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
+      } else if (s_checker.IsSequenceOf<std::map<int64_t, float>>()) {
+        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
+      } else {
+        throw std::runtime_error("Output is a non-tensor type which is not supported.");
+      }
+    }
   }
 }
 
@@ -794,11 +802,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 }
 
 #ifdef USE_MIMALLOC
-  static struct {
-      PyMemAllocatorEx mem;
-      PyMemAllocatorEx raw;
-      PyMemAllocatorEx obj;
-  } allocators;
+static struct {
+  PyMemAllocatorEx mem;
+  PyMemAllocatorEx raw;
+  PyMemAllocatorEx obj;
+} allocators;
 #endif
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
@@ -807,36 +815,34 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #ifdef USE_MIMALLOC
   PyMemAllocatorEx alloc;
-  alloc.malloc = [] (void *ctx, size_t size) { 
+  alloc.malloc = [](void* ctx, size_t size) {
     ORT_UNUSED_PARAMETER(ctx);
-    return mi_malloc(size); 
+    return mi_malloc(size);
   };
 
-  alloc.calloc = [] (void *ctx, size_t nelem, size_t elsize) { 
+  alloc.calloc = [](void* ctx, size_t nelem, size_t elsize) {
     ORT_UNUSED_PARAMETER(ctx);
-    return mi_calloc(nelem, elsize); 
+    return mi_calloc(nelem, elsize);
   };
 
-  alloc.realloc = [] (void *ctx, void *ptr, size_t new_size) { 
-    if(mi_is_in_heap_region(ptr)) {
-      return mi_realloc(ptr, new_size); 
-    }
-    else {
-      PyMemAllocatorEx * a = (PyMemAllocatorEx *)ctx;
-      return a->realloc(ctx, ptr, new_size); 
+  alloc.realloc = [](void* ctx, void* ptr, size_t new_size) {
+    if (mi_is_in_heap_region(ptr)) {
+      return mi_realloc(ptr, new_size);
+    } else {
+      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
+      return a->realloc(ctx, ptr, new_size);
     }
   };
 
-  alloc.free = [] (void *ctx, void *ptr) { 
-    if(mi_is_in_heap_region(ptr)) {
+  alloc.free = [](void* ctx, void* ptr) {
+    if (mi_is_in_heap_region(ptr)) {
       mi_free(ptr);
-    }
-    else {
+    } else {
       PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
       a->free(ctx, ptr);
     }
   };
-  
+
   alloc.ctx = &allocators.raw;
   PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
   PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);
