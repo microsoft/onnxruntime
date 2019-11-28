@@ -65,7 +65,8 @@ bool TryParallelX86(
   }
 
   // skip small per thread workloads, note that symbolic dims are ignored (treated as 1)
-  if (per_thread_static_dims < Promote<NupharCodeGenCtx>(&ctx_codegen)->GetCodeGenHandle()->parallel_min_workloads) {
+  int64_t workloads_threshold = Promote<NupharCodeGenCtx>(&ctx_codegen)->GetCodeGenHandle()->parallel_min_workloads;
+  if (workloads_threshold <= 0 || per_thread_static_dims < workloads_threshold) {
     return false;
   }
 
@@ -83,13 +84,16 @@ bool TryVectorizationX86(
     const tvm::Tensor& tensor,
     tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
-  CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
-  ORT_ENFORCE(target != nullptr);
-  int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
   if (!ShouldTryVectorization(tensor, ctx_sched))
     return false;
 
+  CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
+  ORT_ENFORCE(target != nullptr);
+  int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
+
   // try to use parallel schedule when vectorizing
+  // note that we don't do logic-or in return value here
+  // to make sure vectorization is always tried
   TryParallelX86(tensor, 0, ctx_codegen, ctx_sched);
 
   return TryVectorization(tensor, natural_vector_size, ctx_sched);
@@ -245,8 +249,7 @@ static Status ConvScheduleX86(const tvm::Tensor& tensor,
 
   ctx_sched.schedule[tensor->op].reorder({b, oc_chunk, y, xo, ic_chunk, m, n, ic_block, xi, oc_block});
 
-#if 0
-  if (ctx_codegen.GetCodeGenHandle()->enable_per_node_parallelized) {
+  if (ctx_codegen.GetCodeGenHandle()->parallel_min_workloads > 0) {
     tvm::Array<tvm::IterVar> fused_axis;
     fused_axis.push_back(b);
     fused_axis.push_back(oc_chunk);
@@ -256,7 +259,6 @@ static Status ConvScheduleX86(const tvm::Tensor& tensor,
     ctx_sched.schedule[tensor->op].fuse(fused_axis, &parallel_axis);
     ctx_sched.schedule[tensor->op].parallel(parallel_axis);
   }
-#endif
 
   ctx_sched.schedule[tensor->op].vectorize(oc_block);
 
@@ -315,8 +317,7 @@ static Status MatMul_2DWeight_Schedule(
   ctx_sched.schedule[CC->op].unroll(ki);
   ctx_sched.schedule[CC->op].vectorize(yc);
 
-#if 0
-  if (ctx_codegen.GetCodeGenHandle()->enable_per_node_parallelized) {
+  if (ctx_codegen.GetCodeGenHandle()->parallel_min_workloads > 0) {
     // parallelize
     tvm::Array<tvm::IterVar> fused_axis;
     for (size_t d = 0; d < C_rank - 2; ++d)
@@ -326,7 +327,6 @@ static Status MatMul_2DWeight_Schedule(
     ctx_sched.schedule[tensor_C->op].fuse(fused_axis, &fused_xo);
     ctx_sched.schedule[tensor_C->op].parallel(fused_xo);
   }
-#endif
 
   return Status::OK();
 }
