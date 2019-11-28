@@ -1600,8 +1600,8 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
 // The following test is to cover the feature of InferenceSession that allows some session options
 // to flow in from a model file, and use defaults for missing session options/session options not supported for parsing
 // from the model
-static char* ort_load_config_from_model_env_var_enabled = "ORT_LOAD_CONFIG_FROM_MODEL=1";
-static char* ort_load_config_from_model_env_var_disabled = "ORT_LOAD_CONFIG_FROM_MODEL=0";
+static char ort_load_config_from_model_env_var_enabled[] = "ORT_LOAD_CONFIG_FROM_MODEL=1";
+static char ort_load_config_from_model_env_var_disabled[] = "ORT_LOAD_CONFIG_FROM_MODEL=0";
 
 TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
@@ -1765,7 +1765,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 
 TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
   // "10" is unsupported for ORT_LOAD_CONFIG_FROM_MODEL
-  char* env_var_value_set_to_unsupported_val = "ORT_LOAD_CONFIG_FROM_MODEL=10";
+  char env_var_value_set_to_unsupported_val[] = "ORT_LOAD_CONFIG_FROM_MODEL=10";
 #ifdef _WIN32
   _putenv(env_var_value_set_to_unsupported_val);
 #else
