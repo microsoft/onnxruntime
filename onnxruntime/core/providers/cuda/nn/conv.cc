@@ -9,11 +9,21 @@
 namespace onnxruntime {
 namespace cuda {
 
+// Op Set 11 for Conv only update document to clearify default dilations and strides value.
+// which are already convered by op set 11 cpu versoin, so simply add declaration.
 #define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Conv,                                                                     \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Conv<T>);                                                                 \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Conv,                                                                     \
       kOnnxDomain,                                                              \
-      1,                                                                        \
+      11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \

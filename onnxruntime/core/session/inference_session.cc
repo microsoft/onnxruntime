@@ -102,8 +102,12 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : session_options_(session_options),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       logging_manager_(logging_manager),
+#ifndef USE_OPENMP
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
+#else
+      thread_pool_(nullptr),
+#endif
       inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::ORT_PARALLEL
                                 ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
@@ -173,9 +177,9 @@ common::Status InferenceSession::RegisterExecutionProvider(std::unique_ptr<IExec
       return st;
     }
   }
-  execution_providers_.Add(provider_type, std::move(p_exec_provider));
 
-  return Status::OK();
+  p_exec_provider->SetLogger(session_logger_);
+  return execution_providers_.Add(provider_type, std::move(p_exec_provider));
 }
 
 common::Status InferenceSession::RegisterGraphTransformer(
@@ -240,11 +244,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    // and log telemetry
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
-                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), event_name, execution_providers_.GetIds());
+    event_name_ = event_name;
 
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -270,7 +270,8 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_);
   };
 
   common::Status st = Load(loader, "model_loading_uri");
@@ -296,7 +297,8 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_);
   };
 
   return Load(loader, "model_loading_proto");
@@ -311,7 +313,7 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
     }
 #endif
     return onnxruntime::Model::Load(std::move(p_model_proto), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
 
   return Load(loader, "model_loading_proto");
@@ -333,7 +335,8 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_);
   };
 
   return Load(loader, "model_loading_istream");
@@ -355,7 +358,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr);
+    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_);
   };
 
   return Load(loader, "model_loading_array");
@@ -375,7 +379,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // 5. insert cast nodes.
 
   // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
-  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
 #ifdef USE_DML
   // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
@@ -390,7 +394,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
     Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
 
     bool modified = false;
-    dml_transformer.Apply(graph, modified);
+    dml_transformer.Apply(graph, modified, *session_logger_);
   }
 #endif
 
@@ -400,13 +404,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
-  for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i)));
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
   bool modified = false;
   // Insert cast node/s.
-  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified));
+  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
 
   // Now every node should be already assigned to an execution provider
   std::unordered_map<std::string, std::vector<std::string>> node_placements;
@@ -455,7 +459,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // Insert copy node/s.
   MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
-  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified));
+  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
 
   return common::Status::OK();
 }
@@ -498,10 +502,16 @@ common::Status InferenceSession::CreateSubgraphSessionState(Graph& graph, Sessio
 /// @remarks We pass in graph and session_state so we can handled nested subgraphs in the future
 common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, SessionState& session_state) {
   for (auto& node : graph.Nodes()) {
-    // We only need subgraph session state for control flow nodes being handled by the CPU execution provider.
+    // We only need subgraph session state for control flow nodes being handled by our CPU or CUDA execution provider.
     // Remove it if it's not needed.
-    if (node.ContainsSubgraph() && node.GetExecutionProviderType() != kCpuExecutionProvider) {
-      session_state.RemoveSubgraphSessionState(node.Index());
+    if (node.ContainsSubgraph()) {
+      const auto ep = node.GetExecutionProviderType();
+      if (ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+        session_state.RemoveSubgraphSessionState(node.Index());
+        continue;
+      }
+    } else {
+      // not a control flow node
       continue;
     }
 
@@ -522,7 +532,7 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
 
-      // setup all the info for handling the feeds and fetches used in subraph execution
+      // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = session_state.GetMutableKernel(node.Index());
       ORT_ENFORCE(p_op_kernel);
       auto& control_flow_kernel = dynamic_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
@@ -623,6 +633,13 @@ common::Status InferenceSession::Initialize() {
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, session_state_));
     is_inited_ = true;
+    
+    // and log telemetry
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
+                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
+                                                  model_->MetaData(), event_name_, execution_providers_.GetIds());
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
@@ -1124,21 +1141,17 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   };
 
-  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
-              "Allowed values are 1 and 2. Current level is set to " +
+  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+              "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
-  if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1);
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if ((graph_optimization_level >= level) || !custom_list.empty()) {
+      add_transformers(level);
+    }
   }
 
-  if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2);
-  }
-
-  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level3);
-  }
 }
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
