@@ -1428,7 +1428,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 TEST(InferenceSessionTests, TestRegisterTransformers) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
     so.graph_optimization_level = static_cast<TransformerLevel>(i);
@@ -1651,7 +1651,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
 #endif
 
   // Change from default value for one option
-  so.inter_op_num_threads = 2;
+  so.intra_op_num_threads = 2;
 
   // Create session
   InferenceSession session_object_2{so, model_path, &DefaultLoggingManager()};
@@ -1666,8 +1666,8 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_TRUE(session_object_2.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 
   // In the session options object fed in at session creation,
-  // the request was for inter_op_num_threads to be 2 - that should be honored
-  ASSERT_TRUE(session_object_2.GetSessionOptions().inter_op_num_threads == 2);
+  // the request was for intra_op_num_threads to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
 }
 
 TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
@@ -1701,7 +1701,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 #endif
 
   // Change from default value for one option
-  so.inter_op_num_threads = 2;
+  so.intra_op_num_threads = 2;
 
   // Create session
   InferenceSession session_object_2{so, model_path, &DefaultLoggingManager()};
@@ -1715,8 +1715,8 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   ASSERT_TRUE(session_object_2.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 
   // In the session options object fed in at session creation,
-  // the request was for inter_op_num_threads to be 2 - that should be honored
-  ASSERT_TRUE(session_object_2.GetSessionOptions().inter_op_num_threads == 2);
+  // the request was for intra_op_num_threads to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
 }
 
 TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
@@ -1730,7 +1730,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 
   SessionOptions so;
   // Change from default value for one option
-  so.inter_op_num_threads = 2;
+  so.intra_op_num_threads = 2;
 
   std::string model_path = "testdata/transform/abs-id-max.onnx";
 
@@ -1742,10 +1742,10 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   ASSERT_TRUE((st = session_object_1.Load()).IsOK()) << st.ErrorMessage();
   ASSERT_TRUE((st = session_object_1.Initialize()).IsOK()) << st.ErrorMessage();
 
-  // The custom session options instance requested inter_op_num_threads == 2,
+  // The custom session options instance requested intra_op_num_threads == 2,
   // but since the session tried to look into the model for the config, and didn't find any
   // the defaults would be used for session creation
-  ASSERT_TRUE(session_object_1.GetSessionOptions().inter_op_num_threads == 0);
+  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_num_threads == 0);
 
   // Part 2 - Load config from model feature disabled
   // The missing config json should not come into the picture
@@ -1764,8 +1764,8 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   ASSERT_TRUE((st = session_object_2.Initialize()).IsOK()) << st.ErrorMessage();
 
   // In the session options object fed in at session creation,
-  // the request was for inter_op_num_threads to be 2 - that should be honored
-  ASSERT_TRUE(session_object_2.GetSessionOptions().inter_op_num_threads == 2);
+  // the request was for intra_op_num_threads to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
 }
 
 TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {

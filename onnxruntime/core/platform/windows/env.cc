@@ -276,8 +276,7 @@ class WindowsEnv : public Env {
 }  // namespace
 
 #if defined(PLATFORM_WINDOWS)
-const Env&
-Env::Default() {
+const Env& Env::Default() {
   return WindowsEnv::Instance();
 }
 #endif

@@ -468,7 +468,7 @@ OrtStatus* LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSe
   }
 
   Status status;
-  if (options != nullptr) {
+  if (options) {
     if (!options->custom_op_domains_.empty()) {
       status = sess->AddCustomOpDomains(options->custom_op_domains_);
       if (!status.IsOK())

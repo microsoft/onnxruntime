@@ -100,13 +100,13 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto* model_proto,
-                                     /*out*/ SessionOptions& finalalized_session_options) {
+                                     /*out*/ SessionOptions& finalized_session_options) {
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
   // By now the environment should have initialized. (It is enforced prior to this.)
   const Env& env_instance = Env::Default();
 
-  bool read_model_for_ort_config = false;
+  bool session_options_from_model = false;
 
   // Get the value held by the environment variable - kOrtLoadConfigFromModelEnvVar
   const std::string& load_config_from_model_env_var_value =
@@ -121,24 +121,22 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
       oss << "The only supported values for the environment variable " << inference_session_utils::kOrtLoadConfigFromModelEnvVar
           << " are '0' and '1'. "
           << "The environment variable contained the value: " << load_config_from_model_env_var_value;
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, oss.str());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, oss.str());
     }
 
     if (load_config_from_model_env_var_value[0] == '1') {
       LOGS(default_logger, INFO) << "Reading the provided model for the ORT config";
-      read_model_for_ort_config = true;
+      session_options_from_model = true;
     }
   }
 
   // The model is to be read for an ORT config json that may hold some/all session options
-  if (read_model_for_ort_config) {
+  if (session_options_from_model) {
     SessionOptions constructed_session_options;
 
     // In theory we should not hit this condition unless this internal class' APIs are being called incorrectly.
     // This is a good sanity check to enforce that the model has been parsed prior to looking into it for ort config.
-    if (!model_proto) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model needs to be provided to check for ORT config within it");
-    }
+    ORT_ENFORCE(model_proto, "Model needs to be provided to check for ORT config within it");
 
     // Use default logger as the session_logger_ hasn't been initialized yet.
     InferenceSessionUtils inference_session_utils(default_logger);
@@ -154,10 +152,10 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
     }
 
     // use the constructed session options
-    finalalized_session_options = constructed_session_options;
+    finalized_session_options = constructed_session_options;
   } else {
     // use user provided session options instance
-    finalalized_session_options = user_provided_session_options;
+    finalized_session_options = user_provided_session_options;
   }
 
   return Status::OK();
@@ -175,8 +173,13 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
       session_options_.max_num_graph_transformation_steps);
   logging_manager_ = logging_manager;
+#ifndef USE_OPENMP
   thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
                                                session_options_.intra_op_num_threads);
+#else
+  thread_pool_(nullptr),
+#endif
+
   inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
                               ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                               session_options_.inter_op_num_threads)
@@ -382,11 +385,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
       model_proto_.reset();
     }
 
-    // and log telemetry
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
-                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), event_name, execution_providers_.GetIds());
+    event_name_ = event_name;
 
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -605,7 +604,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
-  for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
@@ -834,6 +833,13 @@ common::Status InferenceSession::Initialize() {
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
     is_inited_ = true;
+
+    // and log telemetry
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
+                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
+                                                  model_->MetaData(), event_name_, execution_providers_.GetIds());
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
@@ -1341,20 +1347,15 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   };
 
-  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
-              "Allowed values are 1 and 2. Current level is set to " +
+  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+              "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
-  if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1);
-  }
-
-  if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2);
-  }
-
-  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level3);
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if ((graph_optimization_level >= level) || !custom_list.empty()) {
+      add_transformers(level);
+    }
   }
 }
 
