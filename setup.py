@@ -110,7 +110,9 @@ try:
                     logger.info('removing %s', file)
                     remove(file)
 
-except ImportError:
+except ImportError as error:
+    print("Error importing dependencies:")
+    print(error)
     bdist_wheel = None
 
 # Additional binaries
@@ -182,6 +184,11 @@ if nightly_build:
     date_suffix = str(datetime.datetime.now().date().strftime("%m%d"))
     version_number = version_number + ".dev" + date_suffix
 
+cmd_classes = {}
+if bdist_wheel is not None :
+    cmd_classes['bdist_wheel'] = bdist_wheel
+cmd_classes['build_ext'] = build_ext
+
 # Setup
 setup(
     name=package_name,
@@ -190,7 +197,7 @@ setup(
     long_description=long_description,
     author='Microsoft Corporation',
     author_email='onnx@microsoft.com',
-    cmdclass={'bdist_wheel': bdist_wheel, 'build_ext': build_ext},
+    cmdclass=cmd_classes,
     license="MIT License",
     packages=['onnxruntime',
               'onnxruntime.backend',
