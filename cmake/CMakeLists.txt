@@ -343,6 +343,11 @@ if (onnxruntime_USE_ACL)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
 endif()
 
+# MKLML
+if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
+  include(mkldnn)
+endif()
+
 # TVM
 if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_CUDA)
@@ -352,6 +357,19 @@ if (onnxruntime_USE_TVM)
     set(USE_LLVM ON)
     add_definitions(-DUSE_TVM_WITH_LLVM)
   endif()
+  if (onnxruntime_USE_OPENMP)
+    set(USE_OPENMP "gnu")
+  endif()
+  if (onnxruntime_USE_MKLML)
+    set(USE_OPENMP "intel")
+    # make sure MKLML in ORT is used by TVM
+    if (WIN32)
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
+    else()
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
+    endif()
+  endif()
+
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
@@ -500,10 +518,6 @@ include_directories(
   ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
-
-if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
-  include(mkldnn)
-endif()
 
 if(onnxruntime_USE_GEMMLOWP)
   add_definitions(-DUSE_GEMMLOWP=1)
