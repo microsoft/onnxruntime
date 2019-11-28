@@ -121,9 +121,12 @@ Status InferenceSessionUtils::ParseOrtConfigJsonInModelProto(const ONNX_NAMESPAC
           << "Found session/run/environment configuration in the model file to be used while running the model";
 
       try {
-        parsed_json_ = json::parse(metadata_field.value());
+        const auto& val = metadata_field.value();
+        LOGS(logger_, INFO) << "ORT config json from the model: " << val;
+
+        parsed_json_ = json::parse(val);
         // set the flag indicating that the model has the ORT config json.
-        is_json_available_ = true;
+        is_ort_config_json_available_ = true;
       } catch (const std::exception& e) {
         std::ostringstream message_stream;
         message_stream << "Json stored in the `ort_config` key cannot be parsed. Error message: " << e.what();
@@ -148,10 +151,9 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The Model Proto hasn't been checked for the ORT config json.");
   }
 
-  if (!is_json_available_ || parsed_json_.contains(inference_session_utils::kSessionOptionsKey)) {
-    std::string message("Did not find session options in the model file to be used while running the model");
-    LOGS(logger_, INFO) << message;
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
+  if (!is_ort_config_json_available_ || !parsed_json_.contains(inference_session_utils::kSessionOptionsKey)) {
+    LOGS(logger_, INFO) << "Did not find session options in the model file to be used while running the model";
+    return Status::OK();
   }
 
   const auto& session_options_from_model =
@@ -165,7 +167,7 @@ Status InferenceSessionUtils::ParseSessionOptionsFromModelProto(SessionOptions& 
     const auto& key = it.key();
     const auto& value = it.value();
 
-    if (key == "intra_op_num_threads ") {
+    if (key == "intra_op_num_threads") {
       if (!value.is_number_integer()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "intra_op_num_threads option in the model file must be an integer");

@@ -42,7 +42,7 @@ class InferenceSessionUtils {
   nlohmann::json parsed_json_;
 
   // Flag indicating if an ort config json is available to be used
-  bool is_json_available_ = false;
+  bool is_ort_config_json_available_ = false;
 };
 
 }  // namespace onnxruntime
