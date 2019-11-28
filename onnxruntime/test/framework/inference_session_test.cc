@@ -1597,19 +1597,18 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
   VerifyOutputs(fetches[2].Get<Tensor>(), expected_dims_res3, expected_values_res3);
 }
 
-/*
 // The following test is to cover the feature of InferenceSession that allows some session options
 // to flow in from a model file, and use defaults for missing session options/session options not supported for parsing
 // from the model
-static const std::string ort_load_config_from_model_env_var = "ORT_LOAD_CONFIG_FROM_MODEL";
+static char* ort_load_config_from_model_env_var_enabled = "ORT_LOAD_CONFIG_FROM_MODEL=1";
+static char* ort_load_config_from_model_env_var_disabled = "ORT_LOAD_CONFIG_FROM_MODEL=0";
 
 TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
-  const std::string feature_enabled = ort_load_config_from_model_env_var + "=" + "1";
 #ifdef _WIN32
-  _putenv(feature_enabled.c_str());
+  _putenv(ort_load_config_from_model_env_var_enabled);
 #else
-  putenv(feature_enabled.c_str());
+  putenv(ort_load_config_from_model_env_var_enabled);
 #endif
 
   SessionOptions so;
@@ -1644,11 +1643,10 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_TRUE(session_object_1.GetSessionOptions().enable_profiling);
 
   // Part 2 - Load config from model feature disabled
-  const std::string feature_disabled = ort_load_config_from_model_env_var + "=" + "0";
 #ifdef _WIN32
-  _putenv(feature_disabled.c_str());
+  _putenv(ort_load_config_from_model_env_var_disabled);
 #else
-  putenv(feature_disabled.c_str());
+  putenv(ort_load_config_from_model_env_var_disabled);
 #endif
 
   // Change from default value for one option
@@ -1673,11 +1671,10 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
 
 TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
-  const std::string feature_enabled = ort_load_config_from_model_env_var + "=" + "1";
 #ifdef _WIN32
-  _putenv(feature_enabled.c_str());
+  _putenv(ort_load_config_from_model_env_var_enabled);
 #else
-  putenv(feature_enabled.c_str());
+  putenv(ort_load_config_from_model_env_var_enabled);
 #endif
 
   SessionOptions so;
@@ -1694,11 +1691,10 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 
   // Part 2 - Load config from model feature disabled
   // The invalid/improperly formed config json in the model should not come into the picture here
-  const std::string feature_disabled = ort_load_config_from_model_env_var + "=" + "0";
 #ifdef _WIN32
-  _putenv(feature_disabled.c_str());
+  _putenv(ort_load_config_from_model_env_var_disabled);
 #else
-  putenv(feature_disabled.c_str());
+  putenv(ort_load_config_from_model_env_var_disabled);
 #endif
 
   // Change from default value for one option
@@ -1722,11 +1718,10 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 
 TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   // Part 1 - Load config from model feature enabled
-  const std::string feature_enabled = ort_load_config_from_model_env_var + "=" + "1";
 #ifdef _WIN32
-  _putenv(feature_enabled.c_str());
+  _putenv(ort_load_config_from_model_env_var_enabled);
 #else
-  putenv(feature_enabled.c_str());
+  putenv(ort_load_config_from_model_env_var_enabled);
 #endif
 
   SessionOptions so;
@@ -1750,11 +1745,10 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 
   // Part 2 - Load config from model feature disabled
   // The missing config json should not come into the picture
-  const std::string feature_disabled = ort_load_config_from_model_env_var + "=" + "0";
 #ifdef _WIN32
-  _putenv(feature_disabled.c_str());
+  _putenv(ort_load_config_from_model_env_var_disabled);
 #else
-  putenv(feature_disabled.c_str());
+  putenv(ort_load_config_from_model_env_var_disabled);
 #endif
 
   // Create session
@@ -1771,11 +1765,11 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
 
 TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
   // "10" is unsupported for ORT_LOAD_CONFIG_FROM_MODEL
-  const std::string env_var_value_set_to_unsupported_val = ort_load_config_from_model_env_var + "=" + "10";
+  char* env_var_value_set_to_unsupported_val = "ORT_LOAD_CONFIG_FROM_MODEL=10";
 #ifdef _WIN32
-  _putenv(env_var_value_set_to_unsupported_val.c_str());
+  _putenv(env_var_value_set_to_unsupported_val);
 #else
-  putenv(env_var_value_set_to_unsupported_val.c_str());
+  putenv(env_var_value_set_to_unsupported_val);
 #endif
   SessionOptions so;
   std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
@@ -1790,7 +1784,6 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
     ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
   }
 }
-*/
 
 }  // namespace test
 }  // namespace onnxruntime
