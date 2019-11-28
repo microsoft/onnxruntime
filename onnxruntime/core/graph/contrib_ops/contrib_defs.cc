@@ -1945,28 +1945,22 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(AddGeluFusion)
+  static const char* BiasGelu_ver1_doc =
+      R"DOC(Bias Gelu.
+It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("AddGeluFusion fuses Add+Gelu. The fused Add op is the parent node of the fused Gelu.")
-      .Input(0, "A", "The input data as Tensor that is the first input of fused Add.", "T")
-      .Input(1, "B", "The input data as Tensor that is the second input of fused Add.", "T")
+      .SetDoc(BiasGelu_ver1_doc)
+      .Input(0, "A", "The normal input data.", "T")
+      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
       .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        if (hasNInputShapes(ctx, 2)) {
-          bidirectionalBroadcastShapeInference(
-              ctx.getInputType(0)->tensor_type().shape(),
-              ctx.getInputType(1)->tensor_type().shape(),
-              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
-        }
-      });
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
 

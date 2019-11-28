@@ -20,44 +20,44 @@ static void RunTest(
     int sequence_length,
     int hidden_size,
     bool use_float16 = false) {
-  int min_cuda_architecture = use_float16 ? 530 : 0;
-  if (HasCudaEnvironment(min_cuda_architecture)) {
+  // Input and output shapes
+  //   Input 0 - input: (batch_size, sequence_length, hidden_size)
+  //   Input 1 - skip : (batch_size, sequence_length, hidden_size)
+  //   Input 2 - gamma: (hidden_size)
+  //   Input 3 - beta : (hidden_size)
+  //   Output         : (batch_size, sequence_length, hidden_size)
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> skip_dims = input_dims;
+  std::vector<int64_t> gamma_dims = {hidden_size};
+  std::vector<int64_t> beta_dims = gamma_dims;
+  std::vector<int64_t> bias_dims = gamma_dims;
+  std::vector<int64_t> output_dims = input_dims;
+
+  if (!use_float16) {
     OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+    test.AddInput<float>("input", input_dims, input_data);
+    test.AddInput<float>("skip", skip_dims, skip_data);
+    test.AddInput<float>("gamma", gamma_dims, gamma_data);
+    test.AddInput<float>("beta", beta_dims, beta_data);
 
-    // Input and output shapes
-    //   Input 0 - input: (batch_size, sequence_length, hidden_size)
-    //   Input 1 - skip : (batch_size, sequence_length, hidden_size)
-    //   Input 2 - gamma: (hidden_size)
-    //   Input 3 - beta : (hidden_size)
-    //   Output         : (batch_size, sequence_length, hidden_size)
-    std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
-    std::vector<int64_t> skip_dims = input_dims;
-    std::vector<int64_t> gamma_dims = {hidden_size};
-    std::vector<int64_t> beta_dims = gamma_dims;
-    std::vector<int64_t> bias_dims = gamma_dims;
-    std::vector<int64_t> output_dims = input_dims;
-
-    if (use_float16) {
-      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
-      test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
-      test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
-      test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
-      if (!bias_data.empty()) {
-        test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-      }
-
-      test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
-    } else {
-      test.AddInput<float>("input", input_dims, input_data);
-      test.AddInput<float>("skip", skip_dims, skip_data);
-      test.AddInput<float>("gamma", gamma_dims, gamma_data);
-      test.AddInput<float>("beta", beta_dims, beta_data);
-      if (!bias_data.empty()) {
-        test.AddInput<float>("bias", bias_dims, bias_data);
-      }
-
-      test.AddOutput<float>("output", output_dims, output_data);
+    if (!bias_data.empty()) {
+      test.AddInput<float>("bias", bias_dims, bias_data);
     }
+
+    test.AddOutput<float>("output", output_dims, output_data);
+    test.Run();
+  } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+    test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+    test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
+    test.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(gamma_data));
+    test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
+
+    if (!bias_data.empty()) {
+      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+    }
+
+    test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
