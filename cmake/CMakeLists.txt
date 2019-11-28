@@ -362,7 +362,12 @@ if (onnxruntime_USE_TVM)
   endif()
   if (onnxruntime_USE_MKLML)
     set(USE_OPENMP "intel")
-    set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}) # make sure MKLML in ORT is used by TVM
+    # make sure MKLML in ORT is used by TVM
+    if (WIN32)
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
+    else()
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
+    endif()
   endif()
 
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
