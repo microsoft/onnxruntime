@@ -23,6 +23,7 @@
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/mlas/inc/mlas.h"
@@ -128,6 +129,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
