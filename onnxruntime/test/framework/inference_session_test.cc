@@ -1783,6 +1783,13 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
     ASSERT_TRUE(e_message.find("The only supported values for the environment variable ") != std::string::npos);
     ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
   }
+
+ // Disable the feature before exiting the test as this process is likely to be used for running other tests
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_disabled);
+#else
+  putenv(ort_load_config_from_model_env_var_disabled);
+#endif
 }
 
 }  // namespace test
