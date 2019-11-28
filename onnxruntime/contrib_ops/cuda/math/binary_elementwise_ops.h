@@ -16,9 +16,9 @@ namespace cuda {
 
 // AddGelu fuse Add + Gelu
 template <typename T>
-class AddGeluFusion final : public BinaryElementwise<ShouldBroadcast> {
+class BiasGelu final : public BinaryElementwise<ShouldBroadcast> {
  public:
-  AddGeluFusion(const OpKernelInfo& info) : BinaryElementwise(info) {
+  BiasGelu(const OpKernelInfo& info) : BinaryElementwise(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
