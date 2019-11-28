@@ -1597,6 +1597,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
   VerifyOutputs(fetches[2].Get<Tensor>(), expected_dims_res3, expected_values_res3);
 }
 
+/*
 // The following test is to cover the feature of InferenceSession that allows some session options
 // to flow in from a model file, and use defaults for missing session options/session options not supported for parsing
 // from the model
@@ -1789,6 +1790,7 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
     ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
   }
 }
+*/
 
 }  // namespace test
 }  // namespace onnxruntime
