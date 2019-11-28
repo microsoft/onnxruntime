@@ -14,8 +14,9 @@
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/gemm_activation_fusion.h"
-#include "core/optimizer/add_gelu_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -1082,15 +1083,15 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
-TEST(GraphTransformationTests, AddGeluFusionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/add_gelu_fusion.onnx";
+TEST(GraphTransformationTests, BiasGeluTest) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
-  graph_transformation_mgr.Register(onnxruntime::make_unique<AddGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGelu>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(ret.IsOK());
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -1099,7 +1100,59 @@ TEST(GraphTransformationTests, AddGeluFusionTest) {
   ASSERT_TRUE(op_to_count["Erf"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["Gelu"] == 0);
-  ASSERT_TRUE(op_to_count["GeluFusion"] == 0);
+  ASSERT_TRUE(op_to_count["BiasGelu"] == 1);
+}
+
+// Test Gelu -> FastGelu
+TEST(GraphTransformationTests, GeluApproximation_Gelu) {
+  auto model_uri = MODEL_FOLDER "approximation/gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Gelu"], 0);
+  EXPECT_EQ(op_to_count["FastGelu"], 1);
+}
+
+// Test AddGeluFusion -> FastGelu
+TEST(GraphTransformationTests, GeluApproximation_Gelu_Add_Bias) {
+  auto model_uri = MODEL_FOLDER "approximation/gelu_add_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["BiasGelu"], 0);
+  EXPECT_EQ(op_to_count["FastGelu"], 1);
+}
+
+// Test MatMul & AddGeluFusion -> MatMul & FastGelu
+TEST(GraphTransformationTests, GeluApproximation_Gelu_Add_MatMul) {
+  auto model_uri = MODEL_FOLDER "approximation/gelu_add_matmul.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["BiasGelu"], 0);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["FastGelu"], 1);
 }
 
 TEST(GraphTransformationTests, LayerNormFusionTest) {
