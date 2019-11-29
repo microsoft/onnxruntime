@@ -7,6 +7,7 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/pad_ops.h"
 #include "core/codegen/mti/tensor/reshape_ops.h"
+#include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 #include <topi/reduction.h>
 
 namespace onnxruntime {
@@ -85,7 +86,7 @@ tvm::Tensor ReduceValueWithoutSplit(const tvm::Tensor& X,
 
   tvm::Map<std::string, tvm::NodeRef> attrs;
   attrs.Set(kNupharVReduceFuseDim, tvm::Expr(fuse_dim));
-
+  attrs.Set(kNupharScheduleNoParallel, tvm::Expr(true));
   return tvm::compute(output_shape, l_out, name + "_regular_reduce", kNupharVReduce, attrs);
 }
 

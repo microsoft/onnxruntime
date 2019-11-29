@@ -8,14 +8,15 @@
 namespace onnxruntime {
 
 /**
-@Class GeluFusion
-Fuse Add + Gelu to GeluFusion
+@Class EmbedLayerNormFusion
+
+Rewrite graph fusing embeddings and mask processing into one node.
+
 */
-class AddGeluFusion : public GraphTransformer {
+class EmbedLayerNormFusion : public GraphTransformer {
  public:
-  AddGeluFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("AddGeluFusion", compatible_execution_providers) {
-  }
+  EmbedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("EmbedLayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };

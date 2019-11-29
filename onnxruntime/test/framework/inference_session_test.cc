@@ -1428,7 +1428,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 TEST(InferenceSessionTests, TestRegisterTransformers) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
     so.graph_optimization_level = static_cast<TransformerLevel>(i);
