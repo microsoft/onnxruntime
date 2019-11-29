@@ -55,6 +55,7 @@ struct SessionOptions {
   TransformerLevel graph_optimization_level = TransformerLevel::Level1;
 
   // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
+  // if OpenMP is enabled, this configuration will be ignored
   int intra_op_num_threads = 0;
 
   // controls the size of the thread pool used to parallelize the execution of nodes (ops)
