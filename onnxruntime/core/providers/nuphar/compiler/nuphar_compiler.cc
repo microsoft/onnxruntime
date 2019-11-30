@@ -210,8 +210,7 @@ Status NupharCompiler::Lower(const nuphar::NupharSubgraphUnit& subgraph,
                              nuphar::OrtSubgraphAllocationInfo* partition_info) {
   const auto& codegen_handle = context_.GetCodeGenHandle();
   const auto& target_codegen = *codegen_handle->codegen_target;
-  bool is_parallel = codegen_handle->parallel_min_workloads > 0;
-  std::string func_name = nuphar::GetPackedFuncName(subgraph, target_codegen, is_parallel);
+  std::string func_name = nuphar::GetPackedFuncName(subgraph, target_codegen, codegen_handle->parallel_min_workloads);
   tvm::BuildConfig config = CreateConfig(*subgraph.nodes.front(),
                                          context_.GetCodeGenHandle()->allow_unaligned_buffers);
 
