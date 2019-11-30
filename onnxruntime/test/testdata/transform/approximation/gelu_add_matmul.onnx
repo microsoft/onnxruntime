@@ -1,10 +1,10 @@
-:â
+:Ý
 
 A
 BCMatMul_1"MatMul
-8
+3
 C
-DEAddGeluFusion_1"AddGeluFusion:com.microsoftMatMul_AddGeluFusionZ$
+DEAddGeluFusion_1"BiasGelu:com.microsoftMatMul_AddGeluFusionZ$
 A
 
 batch
@@ -22,4 +22,4 @@
 
 batch
 	seq_len
-€B
+€B

@@ -63,7 +63,7 @@ namespace cuda {
   CONTRIB_BINARY_OP_TYPED(name, ver, float)     \
   CONTRIB_BINARY_OP_TYPED(name, ver, double)
 
-CONTRIB_BINARY_OP_HFD(AddGeluFusion, 1)
+CONTRIB_BINARY_OP_HFD(BiasGelu, 1)
 
 }  // namespace cuda
 }  // namespace contrib
