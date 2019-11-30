@@ -23,7 +23,7 @@ tvm::runtime::PackedFunc
 LoadTVMPackedFuncFromCache(const std::string& func_name);
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module);
 
-std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target);
+std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target, bool is_parallel);
 
 bool TryCreateConstantScalar(tvm::Expr& scalar, const Tensor* tensor);
 }  // namespace nuphar

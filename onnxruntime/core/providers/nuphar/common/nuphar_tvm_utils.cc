@@ -165,9 +165,9 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   }
 }
 
-std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target) {
+std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target, bool is_parallel) {
   // in C, a function does not allow its name starting with a digit.
-  return NormalizeCppName("_" + subgraph.UniqueId() + " " + codegen_target.GetTargetName());
+  return NormalizeCppName("_" + subgraph.UniqueId() + "_" + codegen_target.GetTargetName() + "_" + (is_parallel ? "p" : "s"));
 }
 
 bool TryCreateConstantScalar(
