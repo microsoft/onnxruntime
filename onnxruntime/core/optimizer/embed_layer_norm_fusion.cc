@@ -202,12 +202,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     const std::vector<NodeArg*> embed_layer_norm_input_defs{
         input_ids,
         segment_ids,
-        mask,
         word_gather_node.MutableInputDefs()[0],
         position_gather_node.MutableInputDefs()[0],
         segment_gather_node.MutableInputDefs()[0],
         layer_norm_node.MutableInputDefs()[1],
-        layer_norm_node.MutableInputDefs()[2]};
+        layer_norm_node.MutableInputDefs()[2],
+        mask};
     Node& embed_layer_norm_node = graph.AddNode(graph.GenerateNodeName("EmbedLayerNormalization"),
                                                 "EmbedLayerNormalization",
                                                 "fused EmbedLayerNorm subgraphs ",
