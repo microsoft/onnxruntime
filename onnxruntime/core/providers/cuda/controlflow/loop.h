@@ -7,8 +7,6 @@
 #include "core/providers/cpu/controlflow/loop.h"
 
 namespace onnxruntime {
-class SessionState;
-
 namespace cuda {
 
 // Use the CPU implementation for the logic
