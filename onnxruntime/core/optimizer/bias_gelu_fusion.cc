@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/add_gelu_fusion.h"
+#include "core/optimizer/bias_gelu_fusion.h"
 #include "core/graph/graph_utils.h"
 #include <deque>
 
@@ -10,7 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -26,6 +26,21 @@ Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
+      continue;
+    }
+
+    std::vector<NodeArg*> gelu_input;
+    const TensorShapeProto* add_input1_shape = node.MutableInputDefs()[0]->Shape();
+    const TensorShapeProto* add_input2_shape = node.MutableInputDefs()[1]->Shape();
+    if (add_input1_shape != nullptr &&
+        add_input1_shape->dim_size() == 1) {
+      gelu_input.push_back(node.MutableInputDefs()[1]);
+      gelu_input.push_back(node.MutableInputDefs()[0]);
+    } else if (add_input2_shape != nullptr &&
+               add_input2_shape->dim_size() == 1) {
+      gelu_input.push_back(node.MutableInputDefs()[0]);
+      gelu_input.push_back(node.MutableInputDefs()[1]);
+    } else {
       continue;
     }
 
@@ -47,10 +62,10 @@ Status AddGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
     Node& add_node = node;
     Node& gelu_node = const_cast<Node&>(next_node);
 
-    Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName("AddGeluFusion"),
-                                               "AddGeluFusion",
+    Node& gelu_add_fusion_node = graph.AddNode(graph.GenerateNodeName("BiasGelu"),
+                                               "BiasGelu",
                                                "fused Add and Gelu",
-                                               {add_node.MutableInputDefs()},
+                                               gelu_input,
                                                {},
                                                {},
                                                kMSDomain);

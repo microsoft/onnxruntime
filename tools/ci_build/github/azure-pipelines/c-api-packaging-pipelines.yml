@@ -1,5 +1,7 @@
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
+  workspace:
+    clean: all
   timeoutInMinutes:  60
   pool:
     vmImage: 'ubuntu-latest'
@@ -8,7 +10,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
@@ -23,6 +25,8 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
     
 - job: Linux_C_API_Packaging_GPU_x64
+  workspace:
+    clean: all
   timeoutInMinutes:  60
   pool: 'Linux-GPU-CUDA10'
   steps:
@@ -30,7 +34,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
+          docker build --pull -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
@@ -47,10 +51,11 @@ jobs:
  
 
 - job: MacOS_C_API_Packaging_CPU_x64
+  workspace:
+    clean: all
   pool: 
     vmImage: 'macOS-10.13'
   steps:
-  
     - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
 
@@ -69,7 +74,10 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_Packaging_CPU
+  workspace:
+    clean: all
   pool: 'Win-CPU'
+  timeoutInMinutes:  120
   strategy:
     maxParallel: 2
     matrix: 
@@ -115,6 +123,9 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_Packaging_GPU_x64
+  workspace:
+    clean: all
+  timeoutInMinutes:  120    
   pool: 'Win-GPU-CUDA10'
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
@@ -131,6 +142,12 @@ jobs:
         buildArch: 'amd64'  # amd64 is needed for vcvars target arch
         setVcvars: true
 
+    - task: PowerShell@1
+      displayName: 'Set CUDA path'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
+
     - task: CmdLine@2
       displayName: 'Build and Test OnnxRuntime'
       inputs:
@@ -143,5 +160,11 @@ jobs:
         buildConfig: $(buildConfig)
         artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
+
+    - task: PowerShell@1
+      displayName: 'Clean up CUDA props files'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion 10.0'
 
     - template: templates/clean-agent-build-directory-step.yml
