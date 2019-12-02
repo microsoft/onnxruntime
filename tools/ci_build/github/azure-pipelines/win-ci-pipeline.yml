@@ -122,5 +122,5 @@ jobs:
     displayName: 'Component Detection'
     condition: succeeded()
 
-  - template: clean-agent-build-directory-step.yml
+  - template: templates/clean-agent-build-directory-step.yml
    
