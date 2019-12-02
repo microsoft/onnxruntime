@@ -122,10 +122,7 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - job: Windows_py_Wheels
-  workspace:
-    clean: all
-  pool: Win-CPU
-  timeoutInMinutes:  120  
+  pool: 'Win-CPU-2019'
   strategy:
     matrix:
       Python35:
@@ -135,38 +132,75 @@ jobs:
       Python37:
         python.version: '3.7'
   variables:
-    buildDirectory: '$(Build.SourcesDirectory)\build'
-  steps:
-    - task: CondaEnvironment@1
-      inputs:
-        createCustomEnvironment: true
-        environmentName: 'py$(python.version)'
-        packageSpecs: 'python=$(python.version)'
-        cleanEnvironment: true
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    MsbuildArguments: '-maxcpucount'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    setVcvars: true
+    BuildConfig: 'Release'
+  timeoutInMinutes: 60
+  workspace:
+    clean: all
+  steps:    
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: $(python.version) 
+      addToPath: true 
+      architecture: 'x64'
+  - template: templates/set-test-data-variables-step.yml
 
-    - task: BatchScript@1
-      displayName: 'Run build script'
-      inputs:
-        filename: 'build.bat'
-        arguments: ' --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
-        workingFolder: "$(Build.SourcesDirectory)"
+  - task: PowerShell@2
+    displayName: 'Download AzCopy (used for download test data script)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
 
-    - task: CopyFiles@2
-      displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-      inputs:
-        SourceFolder: '$(buildDirectory)'
-        Contents: '**\dist\*.whl'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
 
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        ArtifactName: onnxruntime
+  - script: |
+     python -m pip install -q pyopenssl setuptools wheel numpy     
+   
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'        
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+  - task: PythonScript@0
+    displayName: 'Download test data'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+      workingDirectory: $(Build.BinariesDirectory)
 
-    - template: templates/clean-agent-build-directory-step.yml
+  - task: PythonScript@0
+    displayName: 'BUILD'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_automl --enable_onnx_tests --parallel'
+      workingDirectory: '$(Build.BinariesDirectory)'     
+  
+  - task: CopyFiles@2
+    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      Contents: '**\dist\*.whl'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: ONNXRuntime python wheel'
+    inputs:
+      ArtifactName: onnxruntime
+
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+    condition: succeeded()
+
+  - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
   workspace:
