@@ -1,1 +1,1 @@
-OrtSessionOptionsAppendExecutionProvider_Mkldnn
+OrtSessionOptionsAppendExecutionProvider_Dnnl

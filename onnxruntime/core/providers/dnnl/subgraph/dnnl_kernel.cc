@@ -1,55 +1,55 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
-#include "mkldnn_kernel.h"
+#include "dnnl_kernel.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
-void MklDnnKernel::InitDstReorderOutput(mkldnn::engine& cpu_engine,
-                                        mkldnn::memory::data_type& data_type,
-                                        std::vector<mkldnn::primitive>& net,
-                                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) {
+void DnnlKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
+                                        dnnl::memory::data_type& data_type,
+                                        std::vector<dnnl::primitive>& net,
+                                        std::vector<std::unordered_map<int, dnnl::memory>>& net_args) {
   // Allocate dst buffer if reorder is necessary
   if (primitive_dst_desc_ != ort_source_desc_) {
     // reorder to ONNXRuntime format
-    mkldnn::memory::dims dst_dims_mkl(
+    dnnl::memory::dims dst_dims_mkl(
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
-    mkldnn::memory::desc dst_des = mkldnn::memory::desc(dst_dims_mkl,
+    dnnl::memory::desc dst_des = dnnl::memory::desc(dst_dims_mkl,
                                                         data_type, ort_source_format_);
-    reorder_dst_mem_to_ = onnxruntime::make_unique<mkldnn::memory>(
-        mkldnn::memory(dst_des, cpu_engine));
-    net.push_back(mkldnn::reorder(*primitive_dst_mem_, *reorder_dst_mem_to_));
-    net_args.push_back({{MKLDNN_ARG_FROM, *primitive_dst_mem_},
-                        {MKLDNN_ARG_TO, *reorder_dst_mem_to_}});
+    reorder_dst_mem_to_ = onnxruntime::make_unique<dnnl::memory>(
+        dnnl::memory(dst_des, cpu_engine));
+    net.push_back(dnnl::reorder(*primitive_dst_mem_, *reorder_dst_mem_to_));
+    net_args.push_back({{DNNL_ARG_FROM, *primitive_dst_mem_},
+                        {DNNL_ARG_TO, *reorder_dst_mem_to_}});
   }
 }
 
-mkldnn::memory::format_tag MklDnnKernel::GetSourceFormat(int dim_size) {
-  mkldnn::memory::format_tag source_format = mkldnn::memory::format_tag::any;
+dnnl::memory::format_tag DnnlKernel::GetSourceFormat(int dim_size) {
+  dnnl::memory::format_tag source_format = dnnl::memory::format_tag::any;
   switch (dim_size) {
     case 1: {
-      source_format = mkldnn::memory::format_tag::x;
+      source_format = dnnl::memory::format_tag::x;
       break;
     }
     case 2: {
-      source_format = mkldnn::memory::format_tag::nc;
+      source_format = dnnl::memory::format_tag::nc;
       break;
     }
     case 3: {
-      source_format = mkldnn::memory::format_tag::ntc;
+      source_format = dnnl::memory::format_tag::ntc;
       break;
     }
     case 4: {
-      source_format = mkldnn::memory::format_tag::nchw;
+      source_format = dnnl::memory::format_tag::nchw;
       break;
     }
     case 5: {
-      source_format = mkldnn::memory::format_tag::ncdhw;
+      source_format = dnnl::memory::format_tag::ncdhw;
       break;
     }
     default: {
-      source_format = mkldnn::memory::format_tag::any;
+      source_format = dnnl::memory::format_tag::any;
       break;
     }
   }
@@ -57,5 +57,5 @@ mkldnn::memory::format_tag MklDnnKernel::GetSourceFormat(int dim_size) {
   return source_format;
 }
 
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

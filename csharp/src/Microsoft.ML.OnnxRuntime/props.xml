@@ -31,10 +31,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mkldnn.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\dnnl.dll"
           Condition="'$(PlatformTarget)' == 'x64' AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\mkldnn.dll')">
-      <Link>mkldnn.dll</Link>
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\dnnl.dll')">
+      <Link>dnnl.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -58,10 +58,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mkldnn.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\dnnl.dll"
           Condition="'$(PlatformTarget)' == 'x86' AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\mkldnn.dll')">
-      <Link>mkldnn.dll</Link>
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\dnnl.dll')">
+      <Link>dnnl.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

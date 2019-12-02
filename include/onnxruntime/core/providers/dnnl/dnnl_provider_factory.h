@@ -10,7 +10,7 @@ extern "C" {
 /**
  * \param use_arena zero: false. non-zero: true.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Mkldnn, _In_ OrtSessionOptions* options, int use_arena);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
 
 #ifdef __cplusplus
 }

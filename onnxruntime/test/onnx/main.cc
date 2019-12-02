@@ -36,7 +36,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -151,7 +151,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
+          } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
             enable_mkl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
@@ -305,10 +305,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
     }
     if (enable_mkl) {
-#ifdef USE_MKLDNN
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
+#ifdef USE_DNNL
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
-      fprintf(stderr, "MKL-DNN is not supported in this build");
+      fprintf(stderr, "DNNL is not supported in this build");
       return -1;
 #endif
     }
@@ -356,13 +356,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     static const char* cuda_flaky_tests[] = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
     static const char* dml_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn"};
-
+    static const char* dnnl_disabled_tests[] = {"test_densenet121", "test_resnet18v2", "test_resnet34v2", "test_resnet50v2", "test_resnet101v2",
+                                                "test_resnet101v2", "test_vgg19", "tf_inception_resnet_v2", "tf_inception_v1", "tf_inception_v3", "tf_inception_v4", "tf_mobilenet_v1_1.0_224",
+                                                "tf_mobilenet_v2_1.0_224", "tf_mobilenet_v2_1.4_224", "tf_nasnet_large", "tf_pnasnet_large", "tf_resnet_v1_50", "tf_resnet_v1_101", "tf_resnet_v1_101",
+                                                "tf_resnet_v2_101", "tf_resnet_v2_152"};
+	
     std::unordered_set<std::string> all_disabled_tests;
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
     if (enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
+    }
+    if (enable_mkl) {
+      // these models run but disabled tests to keep memory utilization low
+      // This will be removed after LRU implementation
+      all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
 #if defined(__amd64__) || defined(_M_AMD64)
 #else
@@ -465,14 +474,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
 #endif
 
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
   broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
   broken_tests.insert({"candy", "result mismatch"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
 #endif
 
 #ifdef USE_OPENVINO

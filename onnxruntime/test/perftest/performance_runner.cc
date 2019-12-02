@@ -216,7 +216,7 @@ bool PerformanceRunner::Initialize() {
 
   test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
 
-  // TODO: Place input tensor on cpu memory if mkldnn provider type to avoid CopyTensor logic in CopyInputAcrossDevices
+  // TODO: Place input tensor on cpu memory if dnnl provider type to avoid CopyTensor logic in CopyInputAcrossDevices
   size_t test_data_count = test_case_->GetDataCount();
   if (test_data_count == 0) {
     std::cout << "there is no test data for model " << test_case_->GetTestCaseName() << std::endl;
