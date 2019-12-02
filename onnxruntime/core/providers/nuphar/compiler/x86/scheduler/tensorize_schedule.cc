@@ -284,7 +284,13 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
 
   tvm::IterVar parallel_axis;
   ctx_sched.schedule[tensor->op].fuse(fused_axis, &parallel_axis);
-  ctx_sched.schedule[tensor->op].parallel(parallel_axis);
+
+  if (settings.HasOption(kNupharParallelMinWorkloads)) {
+    auto workloads = std::stoi(settings.GetOptionValue(kNupharParallelMinWorkloads));
+    if (workloads > 0) {
+      ctx_sched.schedule[tensor->op].parallel(parallel_axis);
+    }
+  }
 
   return Status::OK();
 }
