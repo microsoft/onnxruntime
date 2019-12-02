@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "inc/WinMLAdapter.h"
+#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
 

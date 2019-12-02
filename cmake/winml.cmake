@@ -1,3 +1,6 @@
+  # The DML EP requires C++17
+  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
+  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
@@ -121,74 +124,61 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 # Add winml_lib_core
 ###########################
 
-# Add static library that will be archived/linked for both static/dynamic library
-list(APPEND winml_lib_core_files
-  ${winml_lib_api_core_dir}/inc/CustomRegistryHelper.h
-  ${winml_lib_api_core_dir}/inc/LotusEnvironment.h
-  ${winml_lib_api_core_dir}/inc/MLValueHelpers.h
-  ${winml_lib_api_core_dir}/inc/TensorBaseHelpers.h
-  ${winml_lib_api_core_dir}/inc/WinMLAdapter.h
-  ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.h
-  ${winml_lib_api_core_dir}/FeatureDescriptorFactory.h
-  ${winml_lib_api_core_dir}/FeatureDescriptorFactory.cpp
-  ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.h
-  ${winml_lib_api_core_dir}/pch.h
-  ${winml_lib_api_core_dir}/CpuOrtSessionBuilder.cpp
-  ${winml_lib_api_core_dir}/LotusEnvironment.cpp
-  ${winml_lib_api_core_dir}/WinMLAdapter.cpp
-  ${winml_lib_api_core_dir}/ZeroCopyInputStreamWrapper.cpp
-)
+file(GLOB winml_lib_core_files CONFIGURE_DEPENDS
+    "${winml_lib_api_core_dir}/inc/*.h"
+    "${winml_lib_api_core_dir}/*.h"
+    "${winml_lib_api_core_dir}/*.cpp"
+    )
 
-if (onnxruntime_USE_DML)
-  list(APPEND winml_lib_core_files
-    ${winml_lib_api_core_dir}/inc/AbiCustomRegistryImpl.h
-    ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.h
-    ${winml_lib_api_core_dir}/AbiCustomRegistryImpl.cpp
-    ${winml_lib_api_core_dir}/DmlOrtSessionBuilder.cpp
-  )
-endif(onnxruntime_USE_DML)
-
-add_library(winml_lib_core STATIC ${winml_lib_core_files})
+add_library(winml_lib_core ${winml_lib_core_files})
 
 # Compiler options
-target_compile_features(winml_lib_core PRIVATE cxx_std_17)
-target_compile_options(winml_lib_core PRIVATE /GR- /await /wd4238)
+# target_compile_features(winml_lib_core PRIVATE cxx_std_17)
+# wil requires C++17
+set_target_properties(winml_lib_core PROPERTIES CXX_STANDARD 17)
+set_target_properties(winml_lib_core PROPERTIES CXX_STANDARD_REQUIRED ON)
+
+#target_compile_options(winml_lib_core PRIVATE /GR- /await /wd4238)
 
 # Compiler definitions
-target_compile_definitions(winml_lib_core PRIVATE ONNX_NAMESPACE=onnx)
-target_compile_definitions(winml_lib_core PRIVATE ONNX_ML)
-target_compile_definitions(winml_lib_core PRIVATE LOTUS_LOG_THRESHOLD=2)
-target_compile_definitions(winml_lib_core PRIVATE LOTUS_ENABLE_STDERR_LOGGING)
-target_compile_definitions(winml_lib_core PRIVATE PLATFORM_WINDOWS)
-target_compile_definitions(winml_lib_core PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
+onnxruntime_add_include_to_target(winml_lib_core onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+add_dependencies(winml_lib_core ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+#target_compile_definitions(winml_lib_core PRIVATE ONNX_NAMESPACE=onnx)
+#target_compile_definitions(winml_lib_core PRIVATE ONNX_ML)
+#target_compile_definitions(winml_lib_core PRIVATE LOTUS_LOG_THRESHOLD=2)
+#target_compile_definitions(winml_lib_core PRIVATE LOTUS_ENABLE_STDERR_LOGGING)
+#target_compile_definitions(winml_lib_core PRIVATE PLATFORM_WINDOWS)
+#target_compile_definitions(winml_lib_core PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
 
 # Specify the usage of a precompiled header
 target_precompiled_header(winml_lib_core pch.h)
 
 # Includes
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/date/include)
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/gsl/include)
-target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/onnx)
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/date/include)
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/gsl/include)
+#target_include_directories(winml_lib_core PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/onnx)
 
-target_include_directories(winml_lib_core PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
-target_include_directories(winml_lib_core PRIVATE ${winml_lib_dir})
+#target_include_directories(winml_lib_core PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
+#target_include_directories(winml_lib_core PRIVATE ${winml_lib_dir})
 target_include_directories(winml_lib_core PRIVATE ${winml_lib_api_core_dir})
 target_include_directories(winml_lib_core PRIVATE ${winml_lib_common_dir}/inc)
-target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
-target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
-target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_ROOT})
-target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+#target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+#target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
+#target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_ROOT})
+#target_include_directories(winml_lib_core PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
 
-target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT})                                    # needed for dml ep and graphtransformers
-target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/eigen)
-target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
-target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/onnx)
-target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
+#target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT})                                    # needed for dml ep and graphtransformers
+#target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/eigen)
+#target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/gsl/include)
+#target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/onnx)
+#target_include_directories(winml_lib_core PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
 
 set_target_properties(winml_lib_core
   PROPERTIES
@@ -196,17 +186,17 @@ set_target_properties(winml_lib_core
   ${target_folder})
 
 # Add deps
-add_dependencies(winml_lib_core onnx)
-add_dependencies(winml_lib_core winml_sdk_cppwinrt)
-add_dependencies(winml_lib_core winml_api)
-add_dependencies(winml_lib_core winml_api_native)
-add_dependencies(winml_lib_core winml_api_native_internal)
+#add_dependencies(winml_lib_core onnx)
+#add_dependencies(winml_lib_core winml_sdk_cppwinrt)
+#add_dependencies(winml_lib_core winml_api)
+#add_dependencies(winml_lib_core winml_api_native)
+#add_dependencies(winml_lib_core winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_core PRIVATE wil)
-if (onnxruntime_USE_DML)
-  target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
-endif(onnxruntime_USE_DML)
+#if (onnxruntime_USE_DML)
+#  target_link_libraries(winml_lib_core PRIVATE onnxruntime_providers_dml)
+#endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
 set(onnxruntime_winml windowsapp.lib -WHOLEARCHIVE:$<TARGET_FILE:winml_lib_core>)

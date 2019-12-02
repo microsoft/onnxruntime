@@ -13,7 +13,7 @@
 
 #include "winrt/windows.foundation.collections.h"
 #include "winrt/windows.graphics.imaging.h"
-#include "inc/WinMLAdapter.h"
+#include "WinMLAdapter.h"
 using namespace winrt::Windows::AI::MachineLearning;
 
 // BitmapPixelFormat constants

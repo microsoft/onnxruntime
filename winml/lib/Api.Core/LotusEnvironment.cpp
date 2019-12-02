@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
-#include "inc/LotusEnvironment.h"
+#include "LotusEnvironment.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 
