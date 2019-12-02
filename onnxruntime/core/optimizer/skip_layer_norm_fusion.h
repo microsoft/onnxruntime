@@ -8,12 +8,9 @@
 namespace onnxruntime {
 
 /**
-@Class LayerNormFusion
+@Class SkipLayerNormFusion
 
-Rewrite graph fusing Layer Normalization subgraph to a single LayerNormalization node.
-
-The formula corresponding to LayerNorm activation subgraph:
-(x - mean(x, axis)) / sqrt(var(x, axis)) * scale + bias, where x is the input.
+Rewrite graph fusing Add + Layer Normalization subgraph to a single SkipLayerNormalization node.
 
 */
 class SkipLayerNormFusion : public GraphTransformer {

@@ -130,7 +130,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
       break;
     case ORT_ENABLE_ALL:
-      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
       break;
     default:
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
