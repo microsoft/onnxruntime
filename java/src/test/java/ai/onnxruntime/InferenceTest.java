@@ -379,7 +379,6 @@ public class InferenceTest {
         }
     }
 
-    @Disabled
     @Test
     public void testModelInputBOOL() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
@@ -446,7 +445,6 @@ public class InferenceTest {
         }
     }
 
-    @Disabled // Model expects a 4d tensor, but the C# code is supplying a 2d tensor.
     @Test
     public void TestModelInputINT8() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
