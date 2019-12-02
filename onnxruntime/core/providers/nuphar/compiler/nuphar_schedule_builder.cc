@@ -9,6 +9,7 @@
 
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
+#include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 
 // TODO change name space
 namespace onnxruntime {
@@ -37,9 +38,8 @@ static void Traverse(const tvm::Tensor& tensor,
   if (is_real_output) {
     CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
     ORT_ENFORCE(target != nullptr);
-    int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
 
-    TryVectorization(tensor, natural_vector_size, ctx_schedule);  // to x86
+    TryVectorizationX86(tensor, ctx_codegen, ctx_schedule);
     InsertRootScheduleAndClosure(tensor, ctx_schedule);
   }
 

@@ -13,7 +13,7 @@ namespace cuda {
 // 4. Add op kernel class definition in binary_elementwise_ops.h
 // 5. Add op kernel registration and compute specialization in binary_elementwise_ops.cc
 #define CONTRIB_BINARY_OPS() \
-  CONTRIB_BINARY_OP_NAME_EXPR(AddGeluFusion, _Gelu(a + b))
+  CONTRIB_BINARY_OP_NAME_EXPR(BiasGelu, _Gelu(a + b))
 
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here

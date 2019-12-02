@@ -8,10 +8,11 @@ from onnx import numpy_helper
 import onnxruntime as onnxrt
 import os
 from onnxruntime.nuphar.rnn_benchmark import perf_test
+from pathlib import Path
+import shutil
 import sys
 import subprocess
 import tarfile
-from timeit import default_timer as timer
 import unittest
 import urllib.request
 
@@ -47,13 +48,8 @@ class TestNuphar(unittest.TestCase):
         # test AOT on the quantized model
         cache_dir = os.path.join(cwd, 'nuphar_cache')
         if os.path.exists(cache_dir):
-            for sub_dir in os.listdir(cache_dir):
-                full_sub_dir = os.path.join(cache_dir, sub_dir)
-                if os.path.isdir(full_sub_dir):
-                    for f in os.listdir(full_sub_dir):
-                        os.remove(os.path.join(full_sub_dir, f))
-        else:
-            os.makedirs(cache_dir)
+            shutil.rmtree(cache_dir)
+        os.makedirs(cache_dir)
 
         # prepare feed
         feed = {}
@@ -113,9 +109,9 @@ class TestNuphar(unittest.TestCase):
         subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
 
         # run onnxruntime_perf_test
-        onnx_test_runner = os.path.join(cwd, 'onnxruntime_perf_test')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
-        subprocess.run([onnx_test_runner, '-e', 'cpu', '-o', '99', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+        onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
+        subprocess.run([onnxruntime_perf_test, '-e', 'nuphar', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+        subprocess.run([onnxruntime_perf_test, '-e', 'cpu', '-o', '99', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
 
 
     def test_rnn_benchmark(self):
@@ -133,6 +129,15 @@ class TestNuphar(unittest.TestCase):
                                                 input_dim=128, hidden_dim=1024, bidirectional=False,
                                                 layers=3, seq_len=16, batch_size=2,
                                                 min_duration_seconds=1)
+
+
+    def test_symbolic_shape_infer(self):
+        cwd = os.getcwd()
+        test_model_dir = os.path.join(cwd, '..', 'models')
+        for filename in Path(test_model_dir).rglob('*.onnx'):
+            if filename.name.startswith('.'):
+                continue # skip some bad model files
+            subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.symbolic_shape_infer', '--input', str(filename), '--auto_merge', '--int_max=100000', '--guess_output_rank'], check=True, cwd=cwd)
 
 
 if __name__ == '__main__':
