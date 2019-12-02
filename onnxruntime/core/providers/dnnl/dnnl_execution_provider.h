@@ -140,9 +140,6 @@ class DNNLExecutionProvider : public IExecutionProvider {
         supported = false;
       }
 
-      if (node->Op()->SinceVersion() == 10)
-        supported = false;
-
       if (node->OutputDefs().size() > 1)
         supported = false;
     }

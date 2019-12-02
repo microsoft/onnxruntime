@@ -482,6 +482,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"candy", "result mismatch"});
   broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
   broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
+  broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
+  broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
+  broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
 #endif
 
 #ifdef USE_OPENVINO
