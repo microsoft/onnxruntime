@@ -36,3 +36,7 @@ onnxruntime_profile*.json
 docs/python/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json
+
+# Java specific ignores
+java/src/main/native/ai_onnxruntime_*.h
+java/.gradle
