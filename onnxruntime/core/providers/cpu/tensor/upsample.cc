@@ -29,6 +29,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     Upsample<uint8_t>);
 
+
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
                        int64_t num_channels,
@@ -594,7 +595,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     
   if (dims.size() != scales.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  is_resize ? "Resize: input tensor's dimension does not match the scales."
+                  is_resize_ ? "Resize: input tensor's dimension does not match the scales."
                             : "Upsample: input tensor's dimension does not match the scales.");
 
   if (roi.size() != 2 * X->Shape().GetDims().size())
@@ -614,7 +615,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   switch (mode_) {
     case UpsampleMode::NN:
       return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(), scales, roi,
-                                is_resize, use_extrapolation_, extrapolation_value_, use_nearest2x_optimization,
+                                is_resize_, use_extrapolation_, extrapolation_value_, use_nearest2x_optimization_,
                                 get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       //The correct behavior of 'linear' mode for an N-D input is not clear right now,
@@ -623,7 +624,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         std::ostringstream oss;
         oss << "'Linear' mode only support 2-D inputs ('Bilinear') or 4-D inputs "
                "with the corresponding outermost 2 scale values being 1 in the ";
-        oss << (is_resize ? "Resize operator" : "Upsample operator");
+        oss << (is_resize_ ? "Resize operator" : "Upsample operator");
         return Status(ONNXRUNTIME, FAIL, oss.str());
       }
 
@@ -659,7 +660,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       return Status::OK();
     }
     default:
-      return Status(ONNXRUNTIME, FAIL, is_resize ? "Resize: unexpected mode" : "Upsample: unexpected mode");
+      return Status(ONNXRUNTIME, FAIL, is_resize_ ? "Resize: unexpected mode" : "Upsample: unexpected mode");
   }
 }
 
