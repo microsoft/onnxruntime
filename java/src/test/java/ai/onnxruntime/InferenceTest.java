@@ -172,33 +172,35 @@ public class InferenceTest {
                 float[] inputData = loadTensorFromFile(resourcePath.resolve("bench.in"));
                 // this is the data for only one input tensor for this model
                 Object tensorData = OrtUtil.reshape(inputData,((TensorInfo) inputMeta.getInfo()).getShape());
-                container.put(inputMeta.getName(),env.createTensor(tensorData));
+                OnnxTensor inputTensor = env.createTensor(tensorData);
+                container.put(inputMeta.getName(),inputTensor);
 
                 // Run the inference
-                Map<String,OnnxValue> results = session.run(container);
-                assertEquals(1, results.size());
+                try (OrtSession.Result results = session.run(container)) {
+                    assertEquals(1, results.size());
 
-                float[] expectedOutput = loadTensorFromFile(resourcePath.resolve("bench.expected_out"));
-                // validate the results
-                // Only iterates once
-                for (Map.Entry<String,OnnxValue> r : results.entrySet()) {
-                    OnnxValue resultValue = r.getValue();
-                    assertTrue(resultValue instanceof OnnxTensor);
-                    OnnxTensor resultTensor = (OnnxTensor) resultValue;
-                    int[] expectedDimensions = new int[]{1, 1000, 1, 1};  // hardcoded for now for the test data
-                    long[] resultDimensions = resultTensor.getInfo().getShape();
-                    assertEquals(expectedDimensions.length, resultDimensions.length);
+                    float[] expectedOutput = loadTensorFromFile(resourcePath.resolve("bench.expected_out"));
+                    // validate the results
+                    // Only iterates once
+                    for (Map.Entry<String, OnnxValue> r : results) {
+                        OnnxValue resultValue = r.getValue();
+                        assertTrue(resultValue instanceof OnnxTensor);
+                        OnnxTensor resultTensor = (OnnxTensor) resultValue;
+                        int[] expectedDimensions = new int[]{1, 1000, 1, 1};  // hardcoded for now for the test data
+                        long[] resultDimensions = resultTensor.getInfo().getShape();
+                        assertEquals(expectedDimensions.length, resultDimensions.length);
 
-                    for (int i = 0; i < expectedDimensions.length; i++) {
-                        assertEquals(expectedDimensions[i], resultDimensions[i]);
+                        for (int i = 0; i < expectedDimensions.length; i++) {
+                            assertEquals(expectedDimensions[i], resultDimensions[i]);
+                        }
+
+                        float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
+                        assertEquals(expectedOutput.length, resultArray.length);
+                        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
                     }
-
-                    float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
-                    assertEquals(expectedOutput.length, resultArray.length);
-                    assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+                } finally {
+                    inputTensor.close();
                 }
-                OnnxValue.close(container.values());
-                OnnxValue.close(results.values());
             }
         } catch (OrtException e) {
             fail("Exception thrown - " + e);
@@ -252,7 +254,8 @@ public class InferenceTest {
             for (int i = 0; i < numThreads; i++) {
                 executor.submit(() -> {
                     for (int j = 0; j < loop; j++) {
-                        try (OnnxValue resultTensor = session.run(container).values().iterator().next()) {
+                        try (OrtSession.Result result = session.run(container)) {
+                            OnnxValue resultTensor = result.get(0);
                             float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
                             assertEquals(expectedOutput.length, resultArray.length);
                             assertArrayEquals(expectedOutput, resultArray, 1e-6f);
@@ -326,7 +329,7 @@ public class InferenceTest {
                             float[] dataOut = loadTensorFromFilePb(outputDataPath);
                             List<OnnxTensor> nov = new ArrayList<>();
                             nov.add(env.createTensor(OrtUtil.reshape(dataIn, inputShape)));
-                            Map<String,OnnxValue> res = session.run(nov);
+                            OrtSession.Result res = session.run(nov);
                             float[] resultArray = TestHelpers.flattenFloat(res.values().iterator().next().getValue());
                             assertArrayEquals(dataOut, resultArray, 1e-6f);
                             OnnxValue.close(res);
@@ -350,29 +353,29 @@ public class InferenceTest {
              SessionOptions options = new SessionOptions();
              OrtSession session = env.createSession(modelPath, options)) {
             String inputName = session.getInputNames().iterator().next();
-            long[] shape = new long[] { 1, 5 };
-            Map<String,OnnxTensor> container = new HashMap<>();
-            float[] flatInput = new float[] { 1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE };
-            Object tensorIn = OrtUtil.reshape(flatInput,shape);
+            long[] shape = new long[]{1, 5};
+            Map<String, OnnxTensor> container = new HashMap<>();
+            float[] flatInput = new float[]{1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE};
+            Object tensorIn = OrtUtil.reshape(flatInput, shape);
             OnnxTensor ov = env.createTensor(tensorIn);
-            container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            float[] resultArray = TestHelpers.flattenFloat(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray,1e-6f);
-            OnnxValue.close(res);
-            OnnxValue.close(container);
+            container.put(inputName, ov);
+            float[] resultArray;
+            try (OrtSession.Result res = session.run(container)) {
+                resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray, 1e-6f);
+                OnnxValue.close(container);
+            }
             container.clear();
 
             // Now test loading from buffer
             FloatBuffer buffer = FloatBuffer.wrap(flatInput);
             OnnxTensor newTensor = env.createTensor(buffer,shape);
-            Object array = newTensor.getValue();
             container.put(inputName,newTensor);
-            res = session.run(container);
-            resultArray = TestHelpers.flattenFloat(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray,1e-6f);
-            OnnxValue.close(res);
-            OnnxValue.close(container);
+            try (OrtSession.Result res = session.run(container)) {
+                resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray, 1e-6f);
+                OnnxValue.close(container);
+            }
         }
     }
 
@@ -391,10 +394,10 @@ public class InferenceTest {
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            boolean[] resultArray = TestHelpers.flattenBoolean(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray);
-            OnnxValue.close(res);
+            try (OrtSession.Result res = session.run(container)) {
+                boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray);
+            }
             OnnxValue.close(container);
         }
     }
@@ -413,10 +416,10 @@ public class InferenceTest {
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            int[] resultArray = TestHelpers.flattenInteger(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray);
-            OnnxValue.close(res);
+            try (OrtSession.Result res = session.run(container)) {
+                int[] resultArray = TestHelpers.flattenInteger(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray);
+            }
             OnnxValue.close(container);
         }
     }
@@ -435,10 +438,10 @@ public class InferenceTest {
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            double[] resultArray = TestHelpers.flattenDouble(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray,1e-6f);
-            OnnxValue.close(res);
+            try (OrtSession.Result res = session.run(container)) {
+                double[] resultArray = TestHelpers.flattenDouble(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray, 1e-6f);
+            }
             OnnxValue.close(container);
         }
     }
@@ -458,10 +461,10 @@ public class InferenceTest {
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            byte[] resultArray = TestHelpers.flattenByte(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray);
-            OnnxValue.close(res);
+            try (OrtSession.Result res = session.run(container)) {
+                byte[] resultArray = TestHelpers.flattenByte(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray);
+            }
             OnnxValue.close(container);
         }
     }
@@ -480,10 +483,10 @@ public class InferenceTest {
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            short[] resultArray = TestHelpers.flattenShort(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray);
-            OnnxValue.close(res);
+            try (OrtSession.Result res = session.run(container)) {
+                short[] resultArray = TestHelpers.flattenShort(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray);
+            }
             OnnxValue.close(container);
         }
     }
@@ -502,10 +505,10 @@ public class InferenceTest {
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
-            Map<String,OnnxValue> res = session.run(container);
-            long[] resultArray = TestHelpers.flattenLong(res.values().iterator().next().getValue());
-            assertArrayEquals(flatInput,resultArray);
-            OnnxValue.close(res);
+            try (OrtSession.Result res = session.run(container)) {
+                long[] resultArray = TestHelpers.flattenLong(res.get(0).getValue());
+                assertArrayEquals(flatInput, resultArray);
+            }
             OnnxValue.close(container);
         }
     }
@@ -538,34 +541,36 @@ public class InferenceTest {
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(session.getInputNames().iterator().next(),ov);
 
-            Map<String,OnnxValue> outputs = session.run(container);
-            assertEquals(2,outputs.size());
+            try (OrtSession.Result outputs = session.run(container)) {
+                assertEquals(2, outputs.size());
 
-            // first output is a tensor containing label
-            OnnxValue firstOutput = outputs.get(firstOutputInfo.getName());
-            assertTrue(firstOutput instanceof OnnxTensor);
+                // first output is a tensor containing label
+                OnnxValue firstOutput = outputs.get(firstOutputInfo.getName()).get();
+                assertTrue(firstOutput instanceof OnnxTensor);
 
-            // try-cast as a tensor
-            long[] labelOutput = (long[]) firstOutput.getValue();
+                // try-cast as a tensor
+                long[] labelOutput = (long[]) firstOutput.getValue();
 
-            // Label 1 should have highest probability
-            assertEquals(1, labelOutput[0]);
-            assertEquals(1,labelOutput.length);
+                // Label 1 should have highest probability
+                assertEquals(1, labelOutput[0]);
+                assertEquals(1, labelOutput.length);
 
-            // second output is a sequence<map<int64, float>>
-            // try-cast to an sequence of NOV
-            OnnxValue secondOutput = outputs.get(secondOutputInfo.getName());
-            assertTrue(secondOutput instanceof OnnxSequence);
-            SequenceInfo sequenceInfo = ((OnnxSequence)secondOutput).getInfo();
-            assertTrue(sequenceInfo.sequenceOfMaps);
-            assertEquals(OnnxJavaType.INT64,sequenceInfo.mapInfo.keyType);
-            assertEquals(OnnxJavaType.FLOAT,sequenceInfo.mapInfo.valueType);
+                // second output is a sequence<map<int64, float>>
+                // try-cast to an sequence of NOV
+                OnnxValue secondOutput = outputs.get(secondOutputInfo.getName()).get();
+                assertTrue(secondOutput instanceof OnnxSequence);
+                SequenceInfo sequenceInfo = ((OnnxSequence) secondOutput).getInfo();
+                assertTrue(sequenceInfo.sequenceOfMaps);
+                assertEquals(OnnxJavaType.INT64, sequenceInfo.mapInfo.keyType);
+                assertEquals(OnnxJavaType.FLOAT, sequenceInfo.mapInfo.valueType);
 
-            // try-cast first element in sequence to map/dictionary type
-            Map<Long,Float> map = (Map<Long,Float>) ((List<Object>)secondOutput.getValue()).get(0);
-            assertEquals(0.25938290, map.get(0L), 1e-6);
-            assertEquals(0.40904793, map.get(1L), 1e-6);
-            assertEquals(0.33156919, map.get(2L), 1e-6);
+                // try-cast first element in sequence to map/dictionary type
+                Map<Long, Float> map = (Map<Long, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+                assertEquals(0.25938290, map.get(0L), 1e-6);
+                assertEquals(0.40904793, map.get(1L), 1e-6);
+                assertEquals(0.33156919, map.get(2L), 1e-6);
+            }
+            ov.close();
         }
     }
 
@@ -596,34 +601,36 @@ public class InferenceTest {
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(session.getInputNames().iterator().next(),ov);
 
-            Map<String,OnnxValue> outputs = session.run(container);
-            assertEquals(2,outputs.size());
+            try (OrtSession.Result outputs = session.run(container)) {
+                assertEquals(2, outputs.size());
 
-            // first output is a tensor containing label
-            OnnxValue firstOutput = outputs.get(firstOutputInfo.getName());
-            assertTrue(firstOutput instanceof OnnxTensor);
+                // first output is a tensor containing label
+                OnnxValue firstOutput = outputs.get(firstOutputInfo.getName()).get();
+                assertTrue(firstOutput instanceof OnnxTensor);
 
-            // try-cast as a tensor
-            String[] labelOutput = (String[]) firstOutput.getValue();
+                // try-cast as a tensor
+                String[] labelOutput = (String[]) firstOutput.getValue();
 
-            // Label 1 should have highest probability
-            assertEquals("1", labelOutput[0]);
-            assertEquals(1,labelOutput.length);
+                // Label 1 should have highest probability
+                assertEquals("1", labelOutput[0]);
+                assertEquals(1, labelOutput.length);
 
-            // second output is a sequence<map<int64, float>>
-            // try-cast to an sequence of NOV
-            OnnxValue secondOutput = outputs.get(secondOutputInfo.getName());
-            assertTrue(secondOutput instanceof OnnxSequence);
-            SequenceInfo sequenceInfo = ((OnnxSequence)secondOutput).getInfo();
-            assertTrue(sequenceInfo.sequenceOfMaps);
-            assertEquals(OnnxJavaType.STRING,sequenceInfo.mapInfo.keyType);
-            assertEquals(OnnxJavaType.FLOAT,sequenceInfo.mapInfo.valueType);
+                // second output is a sequence<map<int64, float>>
+                // try-cast to an sequence of NOV
+                OnnxValue secondOutput = outputs.get(secondOutputInfo.getName()).get();
+                assertTrue(secondOutput instanceof OnnxSequence);
+                SequenceInfo sequenceInfo = ((OnnxSequence) secondOutput).getInfo();
+                assertTrue(sequenceInfo.sequenceOfMaps);
+                assertEquals(OnnxJavaType.STRING, sequenceInfo.mapInfo.keyType);
+                assertEquals(OnnxJavaType.FLOAT, sequenceInfo.mapInfo.valueType);
 
-            // try-cast first element in sequence to map/dictionary type
-            Map<String,Float> map = (Map<String,Float>) ((List<Object>)secondOutput.getValue()).get(0);
-            assertEquals(0.25938290, map.get("0"), 1e-6);
-            assertEquals(0.40904793, map.get("1"), 1e-6);
-            assertEquals(0.33156919, map.get("2"), 1e-6);
+                // try-cast first element in sequence to map/dictionary type
+                Map<String, Float> map = (Map<String, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+                assertEquals(0.25938290, map.get("0"), 1e-6);
+                assertEquals(0.40904793, map.get("1"), 1e-6);
+                assertEquals(0.33156919, map.get("2"), 1e-6);
+            }
+            ov.close();
         }
     }
 
@@ -646,43 +653,42 @@ public class InferenceTest {
             OnnxTensor ov = env.createTensor(tensorIn);
             container.put(inputName,ov);
 
-            Map<String,OnnxValue> outputs = session.run(container);
-            assertEquals(1,outputs.size());
+            try (OrtSession.Result outputs = session.run(container)) {
+                assertEquals(1, outputs.size());
 
-            // first output is a tensor containing label
-            OnnxValue firstOutput = outputs.values().iterator().next();
-            assertTrue(firstOutput instanceof OnnxTensor);
+                OnnxValue firstOutput = outputs.get(0);
+                assertTrue(firstOutput instanceof OnnxTensor);
 
-            String[] labelOutput = (String[]) firstOutput.getValue();
+                String[] labelOutput = (String[]) firstOutput.getValue();
 
-            assertEquals("this", labelOutput[0]);
-            assertEquals("is", labelOutput[1]);
-            assertEquals("identity", labelOutput[2]);
-            assertEquals("test", labelOutput[3]);
-            assertEquals(4,labelOutput.length);
+                assertEquals("this", labelOutput[0]);
+                assertEquals("is", labelOutput[1]);
+                assertEquals("identity", labelOutput[2]);
+                assertEquals("test", labelOutput[3]);
+                assertEquals(4, labelOutput.length);
 
-            OnnxValue.close(container);
-            container.clear();
-            OnnxValue.close(outputs);
+                OnnxValue.close(container);
+                container.clear();
+            }
 
             String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
             ov = env.createTensor(tensorInFlatArr, new long[]{2,2});
             container.put(inputName,ov);
 
-            outputs = session.run(container);
-            assertEquals(1,outputs.size());
+            try (OrtSession.Result outputs = session.run(container)) {
+                assertEquals(1, outputs.size());
 
-            // first output is a tensor containing label
-            firstOutput = outputs.values().iterator().next();
-            assertTrue(firstOutput instanceof OnnxTensor);
+                OnnxValue firstOutput = outputs.get(0);
+                assertTrue(firstOutput instanceof OnnxTensor);
 
-            labelOutput = (String[]) firstOutput.getValue();
+                String[] labelOutput = (String[]) firstOutput.getValue();
 
-            assertEquals("this", labelOutput[0]);
-            assertEquals("is", labelOutput[1]);
-            assertEquals("identity", labelOutput[2]);
-            assertEquals("test", labelOutput[3]);
-            assertEquals(4,labelOutput.length);
+                assertEquals("this", labelOutput[0]);
+                assertEquals("is", labelOutput[1]);
+                assertEquals("identity", labelOutput[2]);
+                assertEquals("test", labelOutput[3]);
+                assertEquals(4, labelOutput.length);
+            }
         }
     }
 

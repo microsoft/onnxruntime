@@ -5,14 +5,16 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.logging.Logger;
 
 /**
  * Wraps an ONNX model and allows inference calls.
@@ -141,7 +143,7 @@ public class OrtSession implements AutoCloseable {
      * @return The inferred outputs.
      * @throws OrtException If there was an error in native code, or if there are zero or too many inputs or outputs.
      */
-    public Map<String,OnnxValue> run(Map<String,OnnxTensor> inputs) throws OrtException {
+    public Result run(Map<String,OnnxTensor> inputs) throws OrtException {
         return run(inputs,outputNames);
     }
 
@@ -152,7 +154,7 @@ public class OrtSession implements AutoCloseable {
      * @return The inferred outputs.
      * @throws OrtException If there was an error in native code, or if there are zero or too many inputs or outputs.
      */
-    public Map<String,OnnxValue> run(Map<String,OnnxTensor> inputs, Set<String> requestedOutputs) throws OrtException {
+    public Result run(Map<String,OnnxTensor> inputs, Set<String> requestedOutputs) throws OrtException {
         if (!closed) {
             if (inputs.isEmpty() || (inputs.size() > numInputs)) {
                 throw new OrtException("Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
@@ -183,7 +185,7 @@ public class OrtSession implements AutoCloseable {
                 }
             }
             OnnxValue[] outputValues = run(OnnxRuntime.ortApiHandle,nativeHandle, allocator.handle, inputNamesArray, inputHandles, numInputs, outputNamesArray, numOutputs);
-            return zip(outputNamesArray,outputValues);
+            return new Result(outputNamesArray,outputValues);
         } else {
             throw new IllegalStateException("Trying to score a closed OrtSession.");
         }
@@ -208,20 +210,6 @@ public class OrtSession implements AutoCloseable {
 
         for (int i = 0; i < infos.length; i++) {
             output.put(infos[i].getName(),infos[i]);
-        }
-
-        return output;
-    }
-
-    private static Map<String,OnnxValue> zip(String[] names, OnnxValue[] values) {
-        Map<String,OnnxValue> output = new LinkedHashMap<>();
-
-        if (names.length != values.length) {
-            throw new IllegalArgumentException("Expected same number of names and values, found names.length = " + names.length + ", values.length = " + values.length);
-        }
-
-        for (int i = 0; i < names.length; i++) {
-            output.put(names[i],values[i]);
         }
 
         return output;
@@ -400,5 +388,102 @@ public class OrtSession implements AutoCloseable {
         private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum) throws OrtException;
         private native void addNnapi(long apiHandle, long nativeHandle) throws OrtException;
         private native void addNuphar(long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings) throws OrtException;
+    }
+
+    /**
+     * An {@link AutoCloseable} wrapper around a {@link Map} containing {@link OnnxValue}s.
+     * <p>
+     * When this is closed it closes all the {@link OnnxValue}s inside it. If you maintain a reference to a
+     * value after this object has been closed it will throw an exception upon access.
+     */
+    public static class Result implements AutoCloseable, Iterable<Map.Entry<String,OnnxValue>> {
+
+        private static final Logger logger = Logger.getLogger(Result.class.getName());
+
+        private final Map<String,OnnxValue> map;
+
+        private final List<OnnxValue> list;
+
+        private boolean closed;
+
+        Result(String[] names, OnnxValue[] values) {
+            map = new LinkedHashMap<>();
+            list = new ArrayList<>();
+
+            if (names.length != values.length) {
+                throw new IllegalArgumentException("Expected same number of names and values, found names.length = " + names.length + ", values.length = " + values.length);
+            }
+
+            for (int i = 0; i < names.length; i++) {
+                map.put(names[i],values[i]);
+                list.add(values[i]);
+            }
+            this.closed = false;
+        }
+
+        @Override
+        public void close() {
+            if (!closed) {
+                closed = true;
+                for (OnnxValue t : map.values()) {
+                    t.close();
+                }
+            } else {
+                logger.warning("Closing an already closed Result");
+            }
+        }
+
+        @Override
+        public Iterator<Map.Entry<String, OnnxValue>> iterator() {
+            if (!closed) {
+                return map.entrySet().iterator();
+            } else {
+                throw new IllegalStateException("Result is closed");
+            }
+        }
+
+        /**
+         * Gets the value from the container at the specified index.
+         *
+         * Throws {@link IllegalStateException} if the container has been closed, and {@link IndexOutOfBoundsException} if the index is invalid.
+         *
+         * @param index The index to lookup.
+         * @return The value at the index.
+         */
+        public OnnxValue get(int index) {
+            if (!closed) {
+                return list.get(index);
+            } else {
+                throw new IllegalStateException("Result is closed");
+            }
+        }
+
+        /**
+         * Returns the number of outputs in this Result.
+         * @return The number of outputs.
+         */
+        public int size() {
+            return map.size();
+        }
+
+        /**
+         * Gets the value from the container assuming it's not been closed.
+         *
+         * Throws {@link IllegalStateException} if the container has been closed.
+         * @param key The key to lookup.
+         * @return Optional.of the value if it exists.
+         */
+        public Optional<OnnxValue> get(String key) {
+            if (!closed) {
+                OnnxValue value = map.get(key);
+                if (value != null) {
+                    return Optional.of(value);
+                } else {
+                    return Optional.empty();
+                }
+            } else {
+                throw new IllegalStateException("Result is closed");
+            }
+        }
     }
 }
