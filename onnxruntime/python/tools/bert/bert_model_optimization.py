@@ -776,6 +776,54 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
 
+    def fuse_add_bias_skip_layer_norm(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.get_normalize_nodes():
+            if len(node.input) != 4:
+                continue
+
+            nodes = self.match_parent_path(node, ['Add', 'MatMul'], [0, None])
+            if nodes is None:
+                continue
+            (add, matmul) = nodes
+
+            # bias should be one dimension
+            bias_index = -1
+            for i, input in enumerate(add.input):
+                initializer = self.get_initializer(input)
+                if initializer is None:
+                    continue
+                bias_index = i
+                bias_weight = numpy_helper.to_array(initializer)
+                break
+            if bias_weight is None:
+                continue
+            if len(bias_weight.shape) != 1:
+                continue
+
+            subgraph_nodes = [node, add]
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node):
+                continue
+
+            nodes_to_remove.extend(subgraph_nodes)
+            new_node = onnx.helper.make_node(
+                self.normalize_name,
+                inputs=[matmul.output[0], node.input[1], node.input[2], node.input[3], add.input[bias_index]],
+                outputs=node.output,
+                name=self.create_node_name(self.normalize_name, self.normalize_name + "_AddBias_"))
+            new_node.domain = "com.microsoft"
+            nodes_to_add.append(new_node)
+
+        if len(nodes_to_add) > 0:
+            print("Fused SkipLayerNormalization with Bias count:", len(nodes_to_add))
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
     def fuse_reshape(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
@@ -1190,9 +1238,6 @@ def main():
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
-    parser.add_argument('--fuse_gelu_add', required=False, action='store_true')
-    parser.set_defaults(fuse_gelu_add=False)
-
     args = parser.parse_args()
 
     model = ModelProto()
@@ -1206,14 +1251,17 @@ def main():
     gelu_op_name = 'Gelu' if args.gelu == 'gelu' else 'FastGelu'
     bert_model.fuse_gelu(gelu_op_name)
 
-    if args.fuse_gelu_add:
-        bert_model.fuse_add_bias_gelu()
-
     bert_model.fuse_reshape()
 
     bert_model.fuse_attention()
 
     bert_model.fuse_embed_layer()
+
+    # Fuse Gelu and Add Bias before it.
+    bert_model.fuse_add_bias_gelu()
+
+    # Fuse SkipLayerNormalization and Add Bias before it.
+    bert_model.fuse_add_bias_skip_layer_norm()
 
     if bert_model.get_bert_inputs():
         if args.input_int32:
@@ -1226,6 +1274,7 @@ def main():
 
     bert_model.remove_unused_constant()
 
+    # Use symbolic batch dimension in input and output.
     bert_model.update_dynamic_batch_io()
 
     print("opset verion", bert_model.model.opset_import[0].version)
