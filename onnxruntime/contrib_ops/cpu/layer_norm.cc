@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensor.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
 #include "layer_norm.h"
+
+#include "core/framework/tensor.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -31,19 +33,22 @@ LayerNorm<T>::LayerNorm(const OpKernelInfo& op_kernel_info)
 }
 
 template <typename T>
-Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
+Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   // Inputs
-  const Tensor* X = p_op_kernel_context->Input<Tensor>(0);
-  const Tensor* scale = p_op_kernel_context->Input<Tensor>(1);
-  const Tensor* bias = p_op_kernel_context->Input<Tensor>(2);
+  const Tensor* X = p_ctx->Input<Tensor>(0);
+  const Tensor* scale = p_ctx->Input<Tensor>(1);
+  const Tensor* bias = p_ctx->Input<Tensor>(2);
   auto X_data = X->template Data<T>();
   auto scale_data = scale->template Data<T>();
   auto bias_data = bias->template Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
-  auto N = x_shape.SizeToDimension(axis);
-  auto M = x_shape.SizeFromDimension(axis);
+  auto norm_count = x_shape.SizeToDimension(axis);
+  auto norm_size = x_shape.SizeFromDimension(axis);
+
+  Tensor* Y = p_ctx->Output(0, x_shape);
+  auto Y_data = Y->template MutableData<T>();
 
   std::vector<int64_t> mean_inv_std_var_dim;
   mean_inv_std_var_dim.reserve(x_shape.NumDimensions());
@@ -56,16 +61,16 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   }
 
   AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(p_op_kernel_context->GetTempSpaceAllocator(&alloc));
+  ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
 
   T* mean_data = nullptr;
   BufferUniquePtr mean_data_buf_ptr;
 
-  Tensor* mean = p_op_kernel_context->Output(1, TensorShape(mean_inv_std_var_dim));
+  Tensor* mean = p_ctx->Output(1, TensorShape(mean_inv_std_var_dim));
   if (mean != nullptr) {
     mean_data = mean->template MutableData<T>();
   } else {
-    auto mean_data_buf = alloc->Alloc(sizeof(T) * N);
+    auto mean_data_buf = alloc->Alloc(sizeof(T) * norm_count);
     mean_data_buf_ptr = BufferUniquePtr(mean_data_buf, BufferDeleter(alloc));
     mean_data = static_cast<T*>(mean_data_buf_ptr.get());
   }
@@ -73,38 +78,39 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   T* inv_std_var_data = nullptr;
   BufferUniquePtr inv_std_var_data_buf_ptr;
 
-  Tensor* inv_std_var = p_op_kernel_context->Output(2, TensorShape(mean_inv_std_var_dim));
+  Tensor* inv_std_var = p_ctx->Output(2, TensorShape(mean_inv_std_var_dim));
   if (inv_std_var != nullptr) {
     inv_std_var_data = inv_std_var->template MutableData<T>();
   } else {
-    auto inv_std_var_data_buf = alloc->Alloc(sizeof(T) * N);
+    auto inv_std_var_data_buf = alloc->Alloc(sizeof(T) * norm_count);
     inv_std_var_data_buf_ptr = BufferUniquePtr(inv_std_var_data_buf, BufferDeleter(alloc));
     inv_std_var_data = static_cast<T*>(inv_std_var_data_buf_ptr.get());
   }
 
-  std::memset(mean_data, 0, sizeof(T) * N);
-  std::memset(inv_std_var_data, 0, sizeof(T) * N);
+  concurrency::ThreadPool::TryBatchParallelFor(p_ctx->GetOperatorThreadPool(),
+                                               static_cast<int32_t>(norm_count),
+                                               [&](int32_t task_idx) {
+                                                 const T* p_input = X_data + task_idx * norm_size;
+                                                 T* p_output = Y_data + task_idx * norm_size;
 
-  ConstEigenArrayMap<T> X_arr(X_data, M, N);
-  for (int i = 0; i < N; ++i) {
-    mean_data[i] = X_arr.col(i).mean();
-    inv_std_var_data[i] = X_arr.col(i).square().mean() - mean_data[i] * mean_data[i];
-  }
+                                                 T mean = 0;
+                                                 T mean_square = 0;
 
-  // Compute Y = ((x - mean) * (inv_var) * scale + bias
-  Tensor* Y = p_op_kernel_context->Output(0, x_shape);
-  auto Y_data = Y->template MutableData<T>();
-  EigenArrayMap<T> Y_arr(Y_data, M, N);
+                                                 for (int64_t h = 0; h < norm_size; h++) {
+                                                   mean += p_input[h];
+                                                   mean_square += p_input[h] * p_input[h];
+                                                 }
 
-  ConstEigenVectorArrayMap<T> mean_arr(mean_data, N);
-  EigenVectorArrayMap<T> inv_std_var_arr(inv_std_var_data, N);
-  inv_std_var_arr = (inv_std_var_arr + epsilon_).sqrt().inverse();
+                                                 mean = mean / norm_size;
+                                                 mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
 
-  Y_arr = (X_arr.rowwise() - mean_arr.transpose()).rowwise() * inv_std_var_arr.transpose();
+                                                 for (int64_t h = 0; h < norm_size; h++) {
+                                                   p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+                                                 }
 
-  ConstEigenVectorArrayMap<T> scale_arr(scale_data, M);
-  ConstEigenVectorArrayMap<T> bias_arr(bias_data, M);
-  Y_arr = (Y_arr.colwise() * scale_arr).colwise() + bias_arr;
+                                                 mean_data[task_idx] = mean;
+                                                 inv_std_var_data[task_idx] = mean_square;
+                                               });
 
   return Status::OK();
 }

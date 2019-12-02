@@ -66,8 +66,8 @@ static bool CheckGeluInputShape(const NodeArg& input) {
   return nullptr != input_shape && input_shape->dim_size() >= 1;
 }
 
-static bool IsCandidateNode(Node& node, const std::unordered_set<std::string>& compatible_providers) {
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "AddGeluFusion", {1}, kMSDomain)) {
+static bool IsCandidateNode(const Node& node, const std::unordered_set<std::string>& compatible_providers) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasGelu", {1}, kMSDomain)) {
     return graph_utils::IsSupportedProvider(node, compatible_providers) &&
            IsSupportedDataType(node) &&
            CheckInputShape(node, *(node.InputDefs()[0]), *(node.InputDefs()[1]));
