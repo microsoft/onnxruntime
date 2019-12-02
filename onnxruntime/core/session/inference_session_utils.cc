@@ -73,9 +73,9 @@ static Status SetGraphOptimizationLevel(SessionOptions& session_options,
       session_options.graph_optimization_level = TransformerLevel::Level2;
       return Status::OK();
 
-    case 3:
+    case 99:
       LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_ALL";
-      session_options.graph_optimization_level = TransformerLevel::Level3;
+      session_options.graph_optimization_level = TransformerLevel::MaxLevel;
       return Status::OK();
 
     default:

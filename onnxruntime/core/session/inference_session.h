@@ -110,6 +110,7 @@ class InferenceSession {
     If nullptr, the default LoggingManager MUST have been created previously as it will be used
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
     */
   explicit InferenceSession(const SessionOptions& session_options,
                             const std::string& model_uri,
@@ -130,6 +131,7 @@ class InferenceSession {
     If nullptr, the default LoggingManager MUST have been created previously as it will be used
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
     */
   explicit InferenceSession(const SessionOptions& session_options,
                             std::istream& model_istream,
@@ -146,6 +148,7 @@ class InferenceSession {
     If nullptr, the default LoggingManager MUST have been created previously as it will be used
     for logging. This will use the default logger id in messages.
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
     */
   explicit InferenceSession(const SessionOptions& session_options,
                             const void* model_data,
