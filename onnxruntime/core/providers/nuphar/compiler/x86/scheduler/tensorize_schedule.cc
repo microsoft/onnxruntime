@@ -221,17 +221,25 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
   tvm::IterVar zo, zi;
   ctx_sched.schedule[tensor->op].split(z, kernel_shape[2], &zo, &zi);
 
+  tvm::Array<tvm::IterVar> fused_axis;
   // Loop nest permutation
   if (settings.HasOption(kNupharTensorize_IGEMM_Permute) &&
       (settings.OptionMatches(kNupharTensorize_IGEMM_Permute, kNupharTensorize_IGEMM_Permute_All) ||
        settings.OptionMatches(kNupharTensorize_IGEMM_Permute, kNupharTensorize_IGEMM_Permute_Outer))) {
     ctx_sched.schedule[tensor->op].reorder({yo, xo, zo, xi, yi, zi});
+    fused_axis.push_back(yo);
+    fused_axis.push_back(xo);
   } else {
     // Loop nest default order
-    if (target_str == "avx")
+    if (target_str == "avx") {
       ctx_sched.schedule[tensor->op].reorder({yo, xo, zo, xi, yi, zi});
-    else
+      fused_axis.push_back(yo);
+      fused_axis.push_back(xo);
+    } else {
       ctx_sched.schedule[tensor->op].reorder({xo, yo, zo, xi, yi, zi});
+      fused_axis.push_back(yo);
+      fused_axis.push_back(xo);
+    }
   }
 
   // Natural vector width
@@ -273,6 +281,10 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
   igemm8bit.InsertTensorizeDimInfo("k", input_meta);
   // Bind tensorization kernel
   ctx_sched.schedule[tensor->op].tensorize(xi, igemm8bit.CreateTensorIntrin());
+
+  tvm::IterVar parallel_axis;
+  ctx_sched.schedule[tensor->op].fuse(fused_axis, &parallel_axis);
+  ctx_sched.schedule[tensor->op].parallel(parallel_axis);
 
   return Status::OK();
 }
