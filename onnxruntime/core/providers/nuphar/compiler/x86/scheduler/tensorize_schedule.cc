@@ -285,11 +285,9 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
   tvm::IterVar parallel_axis;
   ctx_sched.schedule[tensor->op].fuse(fused_axis, &parallel_axis);
 
-  if (settings.HasOption(kNupharParallelMinWorkloads)) {
-    auto workloads = std::stoi(settings.GetOptionValue(kNupharParallelMinWorkloads));
-    if (workloads > 0) {
-      ctx_sched.schedule[tensor->op].parallel(parallel_axis);
-    }
+  int64_t workloads_threshold = Promote<NupharCodeGenCtx>(&ctx_codegen)->GetCodeGenHandle()->parallel_min_workloads;
+  if (workloads_threshold > 0) {
+    ctx_sched.schedule[tensor->op].parallel(parallel_axis);
   }
 
   return Status::OK();
