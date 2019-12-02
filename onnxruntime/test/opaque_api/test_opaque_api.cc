@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <core/common/logging/logging.h>
 #include "core/framework/data_types.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
@@ -18,8 +19,6 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
-
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 // Data container used to ferry data through C API
 extern "C" struct ExperimentalDataContainer {
@@ -163,8 +162,7 @@ namespace test {
 
 std::string CreateModel() {
   RegisterCustomKernel();
-
-  Model model("ModelWithOpaque", false);
+  Model model("ModelWithOpaque", false, logging::LoggingManager::DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -234,7 +232,7 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 
     // No C++ Api to either create a string Tensor or to fill one with string, so we use C
     const char* const input_char_string[] = {input_string.c_str()};
-    ORT_THROW_ON_ERROR(Ort::g_api->FillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
+    Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
 
     // We put this into our container now
     // This container life-span is supposed to eclipse the model running time

@@ -36,7 +36,7 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto* repeats = repeats_tensor.template Data<int64_t>();
   const auto& input_shape = input_tensor.Shape().GetDims();
   std::vector<int64_t> output_dims(input_shape);
-  for (auto axis = 0; axis < rank; axis++)
+  for (size_t axis = 0; axis < rank; axis++)
     output_dims[axis] *= repeats[axis];
   TensorShape outputShape(output_dims);
   auto& output_tensor = *ctx->Output(0, outputShape);

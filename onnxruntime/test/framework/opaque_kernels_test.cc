@@ -298,7 +298,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};
 
-  Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version);
+  Model model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;

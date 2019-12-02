@@ -32,7 +32,7 @@ class Record {
     values_ = other.values_;
   }
 
-  Status GetName(int index, const std::string** pp_name) const {
+  Status GetName(size_t index, const std::string** pp_name) const {
     if (nullptr == pp_name || index >= names_.size()) {
       return Status(ONNXRUNTIME, common::INVALID_ARGUMENT);
     }

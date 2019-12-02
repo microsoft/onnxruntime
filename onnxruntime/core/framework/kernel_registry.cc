@@ -255,7 +255,7 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), node.Domain(), expected_provider));
-  std::vector<std::string> error_strs;
+  std::vector<std::string> verify_kernel_def_error_strs;
   for (auto i = range.first; i != range.second; ++i) {
     if (!i->second.status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Failed to create kernel for op: " << node.OpType()
@@ -266,10 +266,13 @@ const KernelCreateInfo* KernelRegistry::TryFindKernel(const onnxruntime::Node& n
     if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
       return &i->second;
     }
-    error_strs.push_back(error_str);
+    verify_kernel_def_error_strs.push_back(error_str);
   }
-  LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
-                     << " Encountered following errors: " << ToString(error_strs);
+
+  if (!verify_kernel_def_error_strs.empty()) {
+    LOGS_DEFAULT(INFO) << node.OpType() << " kernel is not supported in " << expected_provider
+                       << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
+  }
   return nullptr;
 }
 

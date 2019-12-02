@@ -65,14 +65,13 @@ namespace onnxruntime {
       x<int64_t>);
 
 #define REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(x, startVer, endVer)   \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                     \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                           \
       x,                                                                              \
       startVer,                                                                       \
       endVer,                                                                         \
       int64_t,                                                                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), \
       x<int64_t>);
-
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 11);
@@ -120,7 +119,7 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 11);
 
 // When all reduce axises located at the tail of the dims, quite general cases, transpose and extra
-// copy could be skiped to improve performance, if required by check_no_transpose = true;
+// copy could be skipped to improve performance, if required by check_no_transpose = true;
 // return value: true means transposedInputData is not created/copied, input tensor data could
 //               be direct use as row major matrix [block_size, blocks], where blocks is the
 //               size of each reduce.
@@ -155,7 +154,9 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
   // If all reduced axes are located at the tail of the input shape, then copy could be skipped is required
   bool need_copy = true;
-  if (axes.size() <= ndim && axes.front() == static_cast<int64_t>(ndim - axes.size()) && axes.back() == static_cast<int64_t>(ndim) - 1) {
+  if (axes.size() <= ndim &&
+      axes.front() == static_cast<int64_t>(ndim - axes.size()) &&
+      axes.back() == static_cast<int64_t>(ndim) - 1) {
     need_copy = false;
   }
 
@@ -198,19 +199,40 @@ bool PrepareForReduce(OpKernelContext* ctx,
   //set to-be-reduced axes to one. squeeze is keepdims_ is false
   int64_t first_dim = 1;
   std::vector<int64_t> reduced_dims;
+  reduced_dims.reserve(in_dims.size());
+
   for (size_t i = 0; i < in_dims.size(); i++) {
+    const auto in_dim = in_dims[i];
     if (keep_axis[i]) {
-      reduced_dims.push_back(in_dims[i]);
+      reduced_dims.push_back(in_dim);
     } else {
-      first_dim *= in_dims[i];
+      first_dim *= in_dim;
       if (keepdims_) {
-        reduced_dims.push_back(1);
+        reduced_dims.push_back(in_dim == 0 ? 0 : 1);
+      } else {
+        // as we are reducing on this axis and not keeping a dim for it, we can't drop a dim value of 0.
+        // e.g. if input was {3, 0, 2} and we reduced on axis 1 without keeping it, the output shape would be
+        // {3, 2} which is invalid given the input was empty.
+        // note that if we do keep the dim the output shape will have a 0 in it,
+        // which is still valid for an empty tensor, so allow that.
+        ORT_ENFORCE(in_dim != 0,
+                    "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                    "Invalid output shape would be produced. input_shape:",
+                    input.Shape());
       }
     }
   }
 
-  *reducedTensor = ctx->Output(0, reduced_dims);
-  block_size = input.Shape().Size() / first_dim;
+  *reducedTensor = ctx->Output(0, std::move(reduced_dims));
+  auto num_elements = input.Shape().Size();
+
+  // edge case. one or more input dims with value of 0.
+  if (num_elements == 0) {
+    block_size = blocks = 0;
+    return true;
+  }
+
+  block_size = num_elements / first_dim;
   blocks = first_dim;
 
   if (!need_copy && check_no_transpose) {

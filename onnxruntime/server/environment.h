@@ -28,6 +28,7 @@ class ServerEnvironment {
   std::shared_ptr<spdlog::logger> GetLogger(const std::string& request_id) const;
   std::shared_ptr<spdlog::logger> GetAppLogger() const;
   void UnloadModel(const std::string& model_name, const std::string& model_version);
+  void RegisterExecutionProviders();
 
  private:
   const OrtLoggingLevel severity_;

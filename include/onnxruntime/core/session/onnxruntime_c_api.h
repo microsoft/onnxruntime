@@ -55,7 +55,7 @@ extern "C" {
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
 #else
-#define ORT_TSTR(X) (X)
+#define ORT_TSTR(X) X
 #endif
 #endif
 
@@ -220,8 +220,6 @@ typedef struct OrtApiBase OrtApiBase;
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
 
 struct OrtApi {
-  OrtApiBase base_;
-
   /**
 * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
 */
@@ -248,6 +246,10 @@ struct OrtApi {
                                                       _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
                                                       _In_ const char* logid,
                                                       _Outptr_ OrtEnv** out)NO_EXCEPTION;
+
+  // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
+  OrtStatus*(ORT_API_CALL* EnableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DisableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
 
   // TODO: document the path separator convention? '/' vs '\'
   // TODO: should specify the access characteristics of model_path. Is this read only during the

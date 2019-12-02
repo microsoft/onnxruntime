@@ -13,6 +13,7 @@
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/status.h"
+#include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
@@ -298,8 +299,12 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
-  /** Gets the NodeProto representation of this Node. */
-  void ToProto(ONNX_NAMESPACE::NodeProto& proto) const;
+  /** Gets the NodeProto representation of this Node. 
+  @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
+                          If graph optimization has been run this is most likely required
+                          to ensure the complete Graph is valid.
+  */
+  void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
       If the NodeArg is an explicit or implicit input, is_input will be true when func is called.
@@ -492,6 +497,14 @@ class Graph {
 
   /** Remove the initializer tensor with the provided name from the Graph. */
   void RemoveInitializedTensor(const std::string& tensor_name);
+
+  /** Replaces the initializer tensor with the same name as the given initializer tensor.
+  The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
+
+  Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
+  how initializer tensors are stored and tracked.
+  */
+  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
 
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
@@ -810,6 +823,7 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        const logging::Logger& logger,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // internal use by the Graph class only
@@ -819,6 +833,7 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
+        const logging::Logger& logger,
         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions = {});
 
   // Add node with specified <node_proto>.
@@ -954,7 +969,6 @@ class Graph {
   ONNX_NAMESPACE::GraphProto* graph_proto_;
 
   InitializedTensorSet name_to_initial_tensor_;
-  std::vector<int> removed_initializer_indexes_;
 
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
@@ -1009,6 +1023,9 @@ class Graph {
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
+  // Is model using latest ONNX opset
+  bool using_latest_onnx_opset_{false};
+
   int name_generator_ = 0;
 
   ResolveContext resolve_context_;
@@ -1024,6 +1041,8 @@ class Graph {
 
   // number of times Resolve has run.
   int num_resolves_ = 0;
+
+  const logging::Logger& logger_;
 };
 
 }  // namespace onnxruntime

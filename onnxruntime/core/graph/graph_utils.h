@@ -18,6 +18,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions);
+bool MatchesOpSinceVersion(const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions);
 
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, const std::string& domain);
@@ -43,8 +44,8 @@ bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer
 */
 bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope = true);
 
-/** returns the initializer's TensorProto if 'name' is an initializer, and is constant and 
-cannot be overridden at runtime. If the initializer is not found or is not constant a nullptr is returned.
+/** returns the initializer's TensorProto if 'name' is an initializer, is constant and 
+cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
 @param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
@@ -86,6 +87,11 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
   return false;
 }
 
+/** Find the first child of the specified op type. */
+const Node* FirstChildByType(Node& node, const std::string& child_type); 
+/** Find the first parent of the specified op type. */
+const Node* FirstParentByType(Node& node, const std::string& parent_type);
+
 /** Tests if we can remove a node and merge its input edge (if any) with its output edges.
 Conditions:
  Input rules:
@@ -103,7 +109,7 @@ Conditions:
  Subgraph rules:
  - Removing the node won't break a subgraph that consumes the node's output
 */
-bool CanRemoveNode(const Graph& graph, const Node& node);
+bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& logger);
 
 /** Removes the given Node from the Graph.
 See CanRemoveNode for the conditions that must be satisfied in order to remove the node.
@@ -123,7 +129,8 @@ Conditions:
    - otherwise the required graph output will not be produced
  - Removing the node won't break a subgraph that consumes the node's output
 */
-bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name);
+bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const std::string& initializer_name,
+                                   const logging::Logger& logger);
 
 /** Remove a node and replace its output with the provided NodeArg for an initializer.
 See CanReplaceNodeWithInitializer for the conditions that must be satisfied in order to remove the node.*/
@@ -163,23 +170,78 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 */
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
-/** Finalize the fusion of two nodes. 
-    Conceptually two nodes are being combined into one, and post-fusion will produce output/s with the same names 
-    and be connected to the same downstream nodes.
-
-Two styles of fusion are supported.
-
-1. Both first_node and second_node are being removed and replaced by replacement_node
-        e.g. fusion of Conv and an activation into a new FusedConv node
-    The output definitions and edges from second_node are moved to replacement_node, and both first_node and
-    second_node are removed.
-
-2. The functionality of the second_node is being fused into first_node
-        e.g. fusion of Conv and Add into a single Conv node that does the Add via a bias input
+/** Finalize the fusion of second_node into first_node. 
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
+    e.g. Conv + Add fusion fuses the 'Add' into the Conv.
 */
-void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node, Node* replacement_node = nullptr);
+void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
+
+/** Finalize the fusion of two or more nodes which are being replaced with a single node. 
+    The first and last entries in 'nodes' are assumed to be the first and last nodes in a chain of nodes being fused.
+
+    Conceptually multiple nodes are being combined into one, and post-fusion will produce output/s with the same names 
+    as the last node in 'nodes', and be connected to the same downstream nodes.
+
+    The input edges to the first node in 'nodes' will be moved to replacement_node. No other input edges are moved.
+    The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
+    All nodes in 'nodes' will be removed.
+*/
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node);
+
+/** Find the input edge of a node for a specified input index.
+@returns nullptr when not found.
+*/
+const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
+
+/** Find the source node of an input edge for a specified input index.
+@returns nullptr when not found.
+*/
+const Node* GetInputNode(const Node& node, int arg_index);
+
+
+/** Expected edge end information for matching input or output edge.
+    For input edge, the node in the edge end refers to the source node, otherwise the destination node.
+*/
+struct EdgeEndToMatch {
+  // Source arg index of edge.
+  int src_arg_index;
+
+  // Destination arg index of edge.
+  int dst_arg_index;
+
+  // Expected operator type of the node in the edge end.
+  std::string op_type;
+
+  // Expected version of the operator of node in the edge end.
+  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions;
+
+  // Expected domain of the operator of node in the edge end.
+  std::string domain;
+};
+
+/** Find a path that matches the specified edges.
+    A path is a sequence of adjacent edges, and the result is returned as a list of EdgeEnd items.
+@param node is the current node to start matching.
+@param is_input_edge is a flag to indicate  whether the edges are input or output edges.
+@param edges_to_match has information of a sequence of adjacent edges in the path to be matched one by one.
+@param result stores edges that are found.
+@returns false when one edge has multiple candidates, or not all edges are found.
+@remarks matching an EdgeEndToMatch might get multiple candidates in output edges. 
+    When such case is encountered, this function will return false. This is by design to reduce complexity.
+    Here is an example graph:
+                  Add
+                 /    \
+               Mul     Mul
+                 \    /
+                  Sub
+    For example, you want to match path from top to bottom: Add-->Mul-->Sub. 
+    When matching the first edge Add-->Mul, the algorithm found two matches.
+    Then it returns false, and output a warning log entry.
+
+    It is recommended to match path from bottom to top direction to avoid such issue.
+    It is because each node input (dst_arg_index) only accepts one input edge.
+*/
+bool FindPath(const Node& node, bool is_input_edge, const std::vector<EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
 }  // namespace graph_utils
-
 }  // namespace onnxruntime

@@ -72,7 +72,7 @@ static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& m
 
 }  // namespace
 
-Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -82,7 +82,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (!node)
       continue;
 
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1, 11}) ||
         !graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
@@ -141,7 +141,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // move output definitions and edges from act_node to fused_conv. delete conv_node and act_node.
-    graph_utils::FinalizeNodeFusion(graph, conv_node, act_node, &fused_conv);
+    graph_utils::FinalizeNodeFusion(graph, {conv_node, act_node}, fused_conv);
 
     modified = true;
   }

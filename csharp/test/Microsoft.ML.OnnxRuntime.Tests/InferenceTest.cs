@@ -344,6 +344,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (System.Environment.Is64BitProcess == false)
             {
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
+                skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
+                skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
             }
 
             return skipModels;
@@ -390,7 +392,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
 
-        [Theory(Skip = "TestPreTrainedModels is flaky and is blocking CI build progress. Enable it once this is fixed.")]
+        [Theory]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
         private void TestPreTrainedModels(string opset, string modelName)
@@ -570,6 +572,73 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.True(overriddenInitializer.SequenceEqual(F1_initializer));
                 }
             }
+        }
+
+        [Fact]
+        private void TestRegisterCustomOpLibrary()
+        {
+            using (var option = new SessionOptions())
+            {
+                string libName = "custom_op_library.dll";
+                string modelPath = "custom_op_test.onnx";
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    libName = "custom_op_library.dll";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    libName = "libcustom_op_library.so";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    libName = "libcustom_op_library.dylib";
+                }
+
+                option.RegisterCustomOpLibrary(libName);
+
+                using (var session = new InferenceSession(modelPath, option))
+                {
+                    var inputContainer = new List<NamedOnnxValue>();
+                    inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_1",
+                        new DenseTensor<float>(
+                            new float[]
+                            {
+                                1.1f,   2.2f,   3.3f,   4.4f,   5.5f,
+                                6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
+                                11.1f,  12.2f,  13.3f,  14.4f,  15.5f
+                            },
+                            new int[]{3, 5 }
+                            )));
+
+                    inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_2",
+                        new DenseTensor<float>(
+                            new float[]
+                            {
+                                15.5f,   14.4f,   13.3f,   12.2f,   11.1f,
+                                10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
+                                5.5f,    4.4f,    3.3f,    2.2f,    1.1f
+                            },
+                            new int[] { 3, 5 }
+                            )));
+
+                    using (var result = session.Run(inputContainer))
+                    {
+                        Assert.Equal("output", result.First().Name);
+                        var tensorOut = result.First().AsTensor<int>();
+
+                        var expectedOut = new DenseTensor<int>(
+                            new int[]
+                            {
+                                17, 17, 17, 17, 17,
+                                17, 18, 18, 18, 17,
+                                17, 17, 17, 17, 17
+                            },
+                            new int[] { 3, 5}
+                            );
+                        Assert.True(tensorOut.SequenceEqual(expectedOut));
+                    }
+                }
+            } 
         }
 
         [Fact]
@@ -967,7 +1036,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip = "The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        [Fact]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");

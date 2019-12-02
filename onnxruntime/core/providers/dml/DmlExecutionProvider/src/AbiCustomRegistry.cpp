@@ -499,10 +499,17 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         registration->requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
         registration->requiredConstantCpuInputs = constantCpuInputCapture;
 
-        (*m_graphNodeFactoryMap)[create_info.kernel_def.get()] = registration;
+        // TODO: Propagate errors here once the presence of overlapping built-in DML kernels is addressed
+        if (m_kernelRegistry->RegisterCustomKernel(create_info).IsOK())
+        {
+            (*m_graphNodeFactoryMap)[create_info.kernel_def.get()] = registration;
+        }
     }
-
-    m_kernelRegistry->RegisterCustomKernel(create_info);
+    else
+    {
+        // For backward compatibility, this does not propagate errors
+        m_kernelRegistry->RegisterCustomKernel(create_info);
+    }
 
     return S_OK;
 }

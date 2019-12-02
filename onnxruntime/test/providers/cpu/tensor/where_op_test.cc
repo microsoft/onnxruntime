@@ -109,5 +109,18 @@ TEST(WhereOpTest, Broadcast) {
   WhereBroadcastTest<std::string>("true", "false");
 }
 
+TEST(WhereOpTest, BroadcastDimWithZero) {
+  // test where broadcast is possible, and dim of 0 should be selected
+  OpTester test{kOpName, kOpVersion};
+
+  test.AddInput<bool>("condition", {3}, {true, false, true});
+  test.AddInput<int64_t>("X", {1, 3}, {1, 2, 3});
+  test.AddInput<int64_t>("Y", {0, 1}, {});
+
+  test.AddOutput<int64_t>("output", {0, 3}, {});
+
+  // exclude NGraph as this isn't handled by that EP
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+}
 }  // namespace test
 }  // namespace onnxruntime

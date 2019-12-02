@@ -67,7 +67,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
 
   const auto* src_base = input_tensor->DataRaw();
   auto* dst_base = output_tensor->MutableDataRaw();
-  bool is_string_type = input_tensor->DataType() == DataTypeImpl::GetType<std::string>();
+  bool is_string_type = utils::IsDataTypeString(input_tensor->DataType());
 
   // Re-use input for output. If input/output Tensor* are the same, do not copy.
   if (src_base != dst_base) {
@@ -98,7 +98,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   auto offset_count  = indice_shape.Size() / last_indice_dimension; // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
-  if (input_tensor->DataType() == DataTypeImpl::GetType<std::string>()) {
+  if (utils::IsDataTypeString(input_tensor->DataType())) {
     p.input_str_base  = static_cast<const std::string*>(update_tensor->DataRaw());
     p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
   } else {

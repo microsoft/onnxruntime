@@ -19,7 +19,7 @@ bool IsFusableActivation(const Node& node) {
 }
 }  // namespace
 
-Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -30,7 +30,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;  // node was removed
 
     auto& node = *node_ptr;
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {7, 9}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
@@ -73,7 +73,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // move output definitions and edges from act_node to fused_gemm. delete gemm_node and act_node.
-    graph_utils::FinalizeNodeFusion(graph, gemm_node, act_node, &fused_gemm);
+    graph_utils::FinalizeNodeFusion(graph, {gemm_node, act_node}, fused_gemm);
 
     modified = true;
   }

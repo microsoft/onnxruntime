@@ -118,6 +118,26 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+    def testRunModel2Contiguous(self):
+        sess = onnxrt.InferenceSession(self.get_name("matmul_1.onnx"))
+        x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:,[1,0]]
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "X")
+        input_shape = sess.get_inputs()[0].shape
+        self.assertEqual(input_shape, [3, 2])
+        output_name = sess.get_outputs()[0].name
+        self.assertEqual(output_name, "Y")
+        output_shape = sess.get_outputs()[0].shape
+        self.assertEqual(output_shape, [3, 1])
+        res = sess.run([output_name], {input_name: x})
+        output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
+        xcontiguous = np.ascontiguousarray(x)
+        rescontiguous = sess.run([output_name], {input_name: xcontiguous})
+        np.testing.assert_allclose(
+            output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
+
     def testRunModelMultipleThreads(self):
         so = onnxrt.SessionOptions()
         so.log_verbosity_level = 1
@@ -301,32 +321,6 @@ class TestInferenceSession(unittest.TestCase):
         expr = np.array([['this\x00\x00\x00\x00', 'is\x00\x00\x00\x00\x00\x00'],
                          ['identity', 'test\x00\x00\x00\x00']], dtype=object)
         np.testing.assert_equal(expr, res[0])
-
-    def testConvAutoPad(self):
-        sess = onnxrt.InferenceSession(self.get_name("conv_autopad.onnx"))
-        x = np.array(25 * [1.0], dtype=np.float32).reshape((1, 1, 5, 5))
-
-        x_name = sess.get_inputs()[0].name
-        self.assertEqual(x_name, "Input4")
-        x_shape = sess.get_inputs()[0].shape
-        self.assertEqual(x_shape, [1, 1, 5, 5])
-        x_type = sess.get_inputs()[0].type
-        self.assertEqual(x_type, 'tensor(float)')
-
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Convolution5_Output_0")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [1, 1, 5, 5])
-        output_type = sess.get_outputs()[0].type
-        self.assertEqual(output_type, 'tensor(float)')
-
-        res = sess.run([output_name], {x_name: x})
-        output_expected = np.array([[[[24., 33., 33., 33., 20.],
-                                      [27., 36., 36., 36., 21.],
-                                      [27., 36., 36., 36., 21.],
-                                      [27., 36., 36., 36., 21.],
-                                      [12., 15., 15., 15.,  8.]]]], dtype=np.float32)
-        np.testing.assert_allclose(output_expected, res[0])
 
     def testZipMapStringFloat(self):
         sess = onnxrt.InferenceSession(

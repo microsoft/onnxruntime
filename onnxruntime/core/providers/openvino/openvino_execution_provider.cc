@@ -177,6 +177,7 @@ bool IsOpSupported(std::string name) {
       "Transpose",
       "Identity",
       "MatMul",
+      "Pad",
       "Unsqueeze",
       "ImageScaler",
       "LeakyRelu",
@@ -239,12 +240,22 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
 
     //Zero dimension check
     for (size_t i = 0; i < node_inputs.size(); i++) {
-
       auto name = node_inputs[i]->Name();
       auto it = initializers.find(name);
-      if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
+      if (it == initializers.end() && node_inputs[i]->Shape() != nullptr) {
         if (node_inputs[i]->Shape()->dim_size() == 0) {
           throw "Node_input is zero dimension";
+        } else {
+          auto num_dims = node_inputs[i]->Shape()->dim_size();
+          int v = 0;
+          //Batch size for NCHW can be 0
+          if (num_dims > 3) {
+            v = 1;
+          }
+          for (int j = v; j < num_dims; j++) {
+            if (node_inputs[i]->Shape()->dim(j).dim_value() == 0)
+              throw "Node_input has zero dimension";
+          }
         }
       }
     }
@@ -253,6 +264,29 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     if (node->OpType() == "BatchNormalization") {
       if (GetInputCount(node, initializers) > 1) {
         throw "BatchNormalization: Cannot take more than 1 input";
+      }
+    }
+
+    //Pad doesn't support negative values.
+    //If all pads are 0, the node gets removed
+    if (node->OpType() == "Pad") {
+      auto attributes = node->GetAttributes();
+      auto it = attributes.find("pads");
+      if (it != attributes.end()) {
+        auto pads_ints = attributes["pads"].ints();
+        auto min_val = *std::min_element(pads_ints.begin(), pads_ints.end());
+        auto max_val = *std::max_element(pads_ints.begin(), pads_ints.end());
+        if (min_val < 0) {
+          throw "Pad: Negative values are not supported";
+        }
+        if (min_val == 0 && max_val == 0) {
+          auto iter = node->OutputNodesBegin();
+          if (iter == node->OutputNodesEnd()) {
+            throw "Pad: Must extend tensor in one or more dimensions";
+          }
+        }
+      } else {
+        throw "Pad-1 and Pad (opset 11) operators are not supported";
       }
     }
 
@@ -297,6 +331,22 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
       }
     }
 
+    if (node->OpType() == "Mul" || node->OpType() == "Add" || node->OpType() == "Div" || node->OpType() == "Sub") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+          throw "int64 inputs not supported";
+        }
+      }
+    }
+
+    if (node->OpType() == "Div") {
+      for (size_t i = 0; i < node->InputDefs().size(); i++) {
+        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+          throw "int32 inputs not supported for Div";
+        }
+      }
+    }
+
     //MatMul is only supported if it is followed by Add
     if (node->OpType() == "MatMul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -327,13 +377,13 @@ void CheckGraphSupported(const onnxruntime::GraphViewer& graph_viewer, std::stri
     }
 
     //Dropout , Identity and Concat can't have graph inputs
-    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat") {
+    if (node->OpType() == "Dropout" || node->OpType() == "Identity" || node->OpType() == "Concat" || node->OpType() == "Gemm") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
         auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
         if (it != graph_inputs.end()) {
           {
-            throw "Dropout, Identity and Concat can't have graph inputs";
+            throw "Dropout, Identity, Concat, and Gemm can't have graph inputs";
           }
         }
       }
@@ -473,7 +523,22 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
 
   auto model_proto = GetModelProtoFromFusedNode(graph_viewer);
 
-  std::set<const onnxruntime::NodeArg *> fused_inputs, fused_outputs;
+  // Make sure *not* to use a pointer type for the key, which can cause nondeterminism
+  // for iterating the set elements. The reason is that although iterating std::set by
+  // itself is stable, pointer values of NodeArgs may vary. Consequently, we may end up
+  // visiting the set's elements in different orders for different runs for the same test,
+  // which will result in constructing inputs (and outputs) with different orders to
+  // the fused graph. For example, for the same test, we may have inputs [A, B] in some
+  // runs but inputs[B, A] in others.
+  // Let's use std::string as the key type to avoid such nondeterminism.
+  std::set<std::string> fused_inputs, fused_outputs;
+
+  // Keep inputs and outputs inside the fused graph, i.e. those NodeArgs
+  // being consumed by nodes within the fused graph. Note that we cannot
+  // simply erase those inner args while iterating the nodes. For example,
+  // an output arg may have multiple uses, it would be wrong if we erase it
+  // from fused_outputs when we encounter only one of its uses as inputs.
+  std::set<std::string> inner_inputs, inner_outputs;
 
   try {
     CheckGraphSupported(graph_viewer, device_id);
@@ -502,21 +567,32 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     sub_graph->nodes.push_back(index);
     const auto node = graph_viewer.GetNode(index);
 
-    // Track graph inputs and initializers
-    for (const auto& input_def : node->InputDefs()) {
-      if (fused_outputs.find(input_def) == fused_outputs.end()) {
-        fused_inputs.insert(input_def);
-      } else {
-        fused_outputs.erase(input_def);
-      }
-    }
+    auto process_input_fn =
+      [&fused_inputs, &fused_outputs, &inner_inputs, &inner_outputs, &node](
+          const onnxruntime::NodeArg& input_def, size_t) {
+
+        const auto& name = input_def.Name();
+        if (fused_outputs.find(name) == fused_outputs.end()) {
+          fused_inputs.insert(name);
+        } else {
+          inner_outputs.insert(name);
+        }
+        return Status::OK();
+      };
+
+    // Track graph inputs (both explicit and implicit) and initializers
+    node->ForEachWithIndex(node->InputDefs(), process_input_fn);
+    // Implicit inputs will be promoted to be explicit inputs of the fused
+    // graph later by ORT.
+    node->ForEachWithIndex(node->ImplicitInputDefs(), process_input_fn);
 
     // Track graph outputs
     for (const auto& output_def : node->OutputDefs()) {
-      if (fused_inputs.find(output_def) == fused_inputs.end()) {
-        fused_outputs.insert(output_def);
+      const auto& name = output_def->Name();
+      if (fused_inputs.find(name) == fused_inputs.end()) {
+        fused_outputs.insert(name);
       } else {
-        fused_inputs.erase(output_def);
+        inner_inputs.insert(name);
       }
     }
   }
@@ -538,16 +614,22 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
   meta_def->domain = "OpenVINO";
   meta_def->since_version = 1;
 
-  for (auto input : fused_inputs) {
-    meta_def->inputs.push_back(input->Name());
+  for (const auto& name : fused_inputs) {
+    if (inner_inputs.count(name) == 0) {
+      meta_def->inputs.push_back(name);
+    }
   }
 
-  for (auto output : fused_outputs) {
-    meta_def->outputs.push_back(output->Name());
+  for (const auto& name : fused_outputs) {
+    if (inner_outputs.count(name) == 0) {
+      meta_def->outputs.push_back(name);
+    }
   }
 
   sub_graph->SetMetaDef(meta_def);
   result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+
+  LOGS_DEFAULT(INFO) << openvino_ep::OpenVINOGraph::log_tag << "Returning result of GetCapability Function";
 
   return result;
 }
