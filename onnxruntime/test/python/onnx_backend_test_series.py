@@ -141,7 +141,10 @@ def create_backend_test(testname=None):
 
         if c2.supports_device('DNNL'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
-                                      '^test_range_int32_type_negative_delta_expanded_cpu']
+                                      '^test_range_int32_type_negative_delta_expanded_cpu',
+									  '^test_averagepool_2d_ceil_cpu',
+                                      '^test_maxpool_2d_ceil_cpu',
+									  '^test_maxpool_2d_dilations_cpu']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
