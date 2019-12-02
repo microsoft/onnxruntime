@@ -244,7 +244,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
         }
       }
 
-      // Create MklDnn node:
+      // Create Dnnl node:
       //   Update inputs, outputs and parent nodes
       //   Collect attributes and modify the key to make it unique
       CreateOrUpdateDnnlNode(node, subgraph_ptr, sub_var, fused, output_to_source_node_map, subgraph_attributes);

@@ -92,7 +92,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int repeat_count = 1;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
-  bool enable_mkl = false;
+  bool enable_dnnl = false;
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
@@ -152,7 +152,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
-            enable_mkl = true;
+            enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -304,7 +304,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_mkl) {
+    if (enable_dnnl) {
 #ifdef USE_DNNL
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
@@ -368,7 +368,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     }
-    if (enable_mkl) {
+    if (enable_dnnl) {
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));

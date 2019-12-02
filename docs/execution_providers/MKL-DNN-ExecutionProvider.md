@@ -7,7 +7,7 @@ Intel and Microsoft have developed DNNL Execution Provider (EP) for ONNX Runtime
 For information on how DNNL optimizes subgraphs, see [Subgraph Optimization](./MKL-DNN-Subgraphs.md)
 
 ## Build
-For build instructions, please see the [BUILD page](../../BUILD.md#mkldnn-and-mklml).
+For build instructions, please see the [BUILD page](../../BUILD.md#dnnl-and-mklml).
 
 ## Supported OS
 * Ubuntu 16.04

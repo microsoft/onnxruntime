@@ -382,7 +382,7 @@ void addGlobalMethods(py::module& m) {
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
         std::vector<onnxruntime::KernelDef> result;
 
-        // default logger is needed to create the MklDNNExecutionProvider
+        // default logger is needed to create the DNNLExecutionProvider
         std::string default_logger_id{"DefaultLogger"};
         std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
             onnxruntime::make_unique<LoggingManager>(
