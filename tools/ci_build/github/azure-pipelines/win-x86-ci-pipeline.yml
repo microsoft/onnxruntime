@@ -53,21 +53,6 @@ jobs:
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
-  - task: CopyFiles@2
-    displayName: 'Copy Files to: $(Build.ArtifactStagingDirectory)'
-    inputs:
-      sourceFolder: $(Build.BinariesDirectory)\$(BuildConfig)
-      Contents: |
-       $(BuildConfig)\*.exe
-       $(BuildConfig)\*.dll
-       $(BuildConfig)\*.pdb
-       $(BuildConfig)\testdata\**
-       $(BuildConfig)\**\*.whl
-       external\protobuf\cmake\$(BuildConfig)\*.exe
-       external\protobuf\cmake\$(BuildConfig)\*.dll
-      TargetFolder: $(Build.ArtifactStagingDirectory)
-
-
   - template: templates/set-test-data-variables-step.yml
 
   - task: NuGetToolInstaller@0
@@ -131,14 +116,10 @@ jobs:
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
- 
-  - task: PublishPipelineArtifact@1
-    displayName: 'Publish Pipeline Artifact'
-    inputs:
-      targetPath: '$(Build.ArtifactStagingDirectory)'
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'
     condition: succeeded()
 
+  - template: clean-agent-build-directory-step.yml
    
