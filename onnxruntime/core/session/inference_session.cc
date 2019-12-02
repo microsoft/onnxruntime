@@ -102,8 +102,12 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : session_options_(session_options),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       logging_manager_(logging_manager),
+#ifndef USE_OPENMP
       thread_pool_(concurrency::CreateThreadPool("intra_op_thread_pool",
                                                  session_options.intra_op_num_threads)),
+#else
+      thread_pool_(nullptr),
+#endif
       inter_op_thread_pool_(session_options.execution_mode == ExecutionMode::ORT_PARALLEL
                                 ? concurrency::CreateThreadPool("inter_op_thread_pool",
                                                                 session_options.inter_op_num_threads)
@@ -240,11 +244,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    // and log telemetry
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
-                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), event_name, execution_providers_.GetIds());
+    event_name_ = event_name;
 
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -404,7 +404,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
-  for (int i = static_cast<int>(TransformerLevel::Level1); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
@@ -633,6 +633,13 @@ common::Status InferenceSession::Initialize() {
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, session_state_));
     is_inited_ = true;
+    
+    // and log telemetry
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
+                                                  model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
+                                                  model_->MetaData(), event_name_, execution_providers_.GetIds());
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
@@ -1134,21 +1141,17 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
     }
   };
 
-  ORT_ENFORCE(graph_optimization_level < TransformerLevel::MaxTransformerLevel,
-              "Allowed values are 1 and 2. Current level is set to " +
+  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
+              "Exceeded max transformer level. Current level is set to " +
                   std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
-  if ((graph_optimization_level >= TransformerLevel::Level1) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level1);
+  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+    TransformerLevel level = static_cast<TransformerLevel>(i);
+    if ((graph_optimization_level >= level) || !custom_list.empty()) {
+      add_transformers(level);
+    }
   }
 
-  if ((graph_optimization_level >= TransformerLevel::Level2) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level2);
-  }
-
-  if ((graph_optimization_level >= TransformerLevel::Level3) || !custom_list.empty()) {
-    add_transformers(TransformerLevel::Level3);
-  }
 }
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {

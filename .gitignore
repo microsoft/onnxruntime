@@ -36,7 +36,9 @@ onnxruntime_profile*.json
 docs/python/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json
-
+/csharp/packages
+/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.targets
+/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.props
 # Java specific ignores
 java/src/main/native/ai_onnxruntime_*.h
 java/.gradle
