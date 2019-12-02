@@ -4,6 +4,8 @@
  */
 package ai.onnxruntime;
 
+import java.util.Map;
+
 /**
  * Top interface for input and output values from ONNX models.
  * Currently implemented by {@link OnnxTensor}, {@link OnnxSequence} and {@link OnnxMap}. Will be sealed to
@@ -67,6 +69,16 @@ public interface OnnxValue extends AutoCloseable {
      */
     public static void close(Iterable<? extends OnnxValue> itr) {
         for (OnnxValue t : itr) {
+            t.close();
+        }
+    }
+
+    /**
+     * Calls close on each element of the map.
+     * @param itr A map of closeable OnnxValues.
+     */
+    public static void close(Map<String,? extends OnnxValue> map) {
+        for (OnnxValue t : map.values()) {
             t.close();
         }
     }

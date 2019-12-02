@@ -6,7 +6,13 @@ package ai.onnxruntime;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Wraps an ONNX model and allows inference calls.
@@ -27,42 +33,41 @@ public class OrtSession implements AutoCloseable {
 
     private final OrtAllocator allocator;
 
-    private final long inputNamesHandle;
-
     private final long numInputs;
 
-    private final long outputNamesHandle;
+    private final Set<String> inputNames;
 
     private final long numOutputs;
+
+    private final Set<String> outputNames;
 
     private boolean closed = false;
 
     OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options) throws OrtException {
         nativeHandle = createSession(OnnxRuntime.ortApiHandle,env.nativeHandle,modelPath,options.nativeHandle);
         this.allocator = allocator;
-        inputNamesHandle = getInputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle);
         numInputs = getNumInputs(OnnxRuntime.ortApiHandle,nativeHandle);
-        outputNamesHandle = getOutputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle);
+        inputNames = new LinkedHashSet<>(Arrays.asList(getInputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle)));
         numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle,nativeHandle);
+        outputNames = new LinkedHashSet<>(Arrays.asList(getOutputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle)));
     }
 
     OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options) throws OrtException {
         nativeHandle = createSession(OnnxRuntime.ortApiHandle,env.nativeHandle,modelArray,options.nativeHandle);
         this.allocator = allocator;
-        inputNamesHandle = getInputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle);
         numInputs = getNumInputs(OnnxRuntime.ortApiHandle,nativeHandle);
-        outputNamesHandle = getOutputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle);
+        inputNames = new LinkedHashSet<>(Arrays.asList(getInputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle)));
         numOutputs = getNumOutputs(OnnxRuntime.ortApiHandle,nativeHandle);
+        outputNames = new LinkedHashSet<>(Arrays.asList(getOutputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle)));
     }
 
     /**
      * Returns the number of inputs this model expects.
      * @return The number of inputs.
-     * @throws OrtException If there was an error in native code.
      */
-    public long getNumInputs() throws OrtException {
+    public long getNumInputs() {
         if (!closed) {
-            return getNumInputs(OnnxRuntime.ortApiHandle,nativeHandle);
+            return numInputs;
         } else {
             throw new IllegalStateException("Asking for inputs from a closed OrtSession.");
         }
@@ -71,11 +76,34 @@ public class OrtSession implements AutoCloseable {
     /**
      * Returns the number of outputs this model expects.
      * @return The number of outputs.
-     * @throws OrtException If there was an error in native code.
      */
-    public long getNumOutputs() throws OrtException {
+    public long getNumOutputs() {
         if (!closed) {
-            return getNumOutputs(OnnxRuntime.ortApiHandle,nativeHandle);
+            return numOutputs;
+        } else {
+            throw new IllegalStateException("Asking for outputs from a closed OrtSession.");
+        }
+    }
+
+    /**
+     * Returns the input names. The underlying collection is sorted based on the input id number.
+     * @return The input names.
+     */
+    public Set<String> getInputNames() {
+        if (!closed) {
+            return inputNames;
+        } else {
+            throw new IllegalStateException("Asking for inputs from a closed OrtSession.");
+        }
+    }
+
+    /**
+     * Returns the output names. The underlying collection is sorted based on the output id number.
+     * @return The output names.
+     */
+    public Set<String> getOutputNames() {
+        if (!closed) {
+            return outputNames;
         } else {
             throw new IllegalStateException("Asking for outputs from a closed OrtSession.");
         }
@@ -86,9 +114,9 @@ public class OrtSession implements AutoCloseable {
      * @return The input information.
      * @throws OrtException If there was an error in native code.
      */
-    public List<NodeInfo> getInputInfo() throws OrtException {
+    public Map<String,NodeInfo> getInputInfo() throws OrtException {
         if (!closed) {
-            return Arrays.asList(getInputInfo(OnnxRuntime.ortApiHandle,nativeHandle, inputNamesHandle));
+            return wrapInMap(getInputInfo(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle));
         } else {
             throw new IllegalStateException("Asking for inputs from a closed OrtSession.");
         }
@@ -99,32 +127,63 @@ public class OrtSession implements AutoCloseable {
      * @return The output information.
      * @throws OrtException If there was an error in native code.
      */
-    public List<NodeInfo> getOutputInfo() throws OrtException {
+    public Map<String,NodeInfo> getOutputInfo() throws OrtException {
         if (!closed) {
-            return Arrays.asList(getOutputInfo(OnnxRuntime.ortApiHandle,nativeHandle, outputNamesHandle));
+            return wrapInMap(getOutputInfo(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle));
         } else {
             throw new IllegalStateException("Asking for outputs from a closed OrtSession.");
         }
     }
 
     /**
-     * Scores an input list, returning the list of inferred outputs.
+     * Scores an input feed dict, returning the map of all inferred outputs.
      * @param inputs The inputs to score.
      * @return The inferred outputs.
-     * @throws OrtException If there was an error in native code, or if there are zero or too many inputs.
+     * @throws OrtException If there was an error in native code, or if there are zero or too many inputs or outputs.
      */
-    public List<OnnxValue> run(List<OnnxTensor> inputs) throws OrtException {
+    public Map<String,OnnxValue> run(Map<String,OnnxTensor> inputs) throws OrtException {
+        return run(inputs,outputNames);
+    }
+
+    /**
+     * Scores an input feed dict, returning the map of requested inferred outputs.
+     * @param inputs The inputs to score.
+     * @param requestedOutputs The requested outputs.
+     * @return The inferred outputs.
+     * @throws OrtException If there was an error in native code, or if there are zero or too many inputs or outputs.
+     */
+    public Map<String,OnnxValue> run(Map<String,OnnxTensor> inputs, Set<String> requestedOutputs) throws OrtException {
         if (!closed) {
             if (inputs.isEmpty() || (inputs.size() > numInputs)) {
                 throw new OrtException("Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
             }
+            if (requestedOutputs.isEmpty() || (requestedOutputs.size() > numOutputs)) {
+                throw new OrtException("Unexpected number of requestedOutputs, expected [1," + numOutputs + ") found " + requestedOutputs.size());
+            }
+            String[] inputNamesArray = new String[inputs.size()];
             long[] inputHandles = new long[inputs.size()];
             int i = 0;
-            for (OnnxTensor t : inputs) {
-                inputHandles[i] = t.getNativeHandle();
-                i++;
+            for (Map.Entry<String,OnnxTensor> t : inputs.entrySet()) {
+                if (inputNames.contains(t.getKey())) {
+                    inputNamesArray[i] = t.getKey();
+                    inputHandles[i] = t.getValue().getNativeHandle();
+                    i++;
+                } else {
+                    throw new IllegalArgumentException("Unknown input name " + t.getKey() + ", expected one of " + inputNames.toString());
+                }
             }
-            return Arrays.asList(run(OnnxRuntime.ortApiHandle,nativeHandle, allocator.handle, inputNamesHandle, numInputs, inputHandles, outputNamesHandle, numOutputs));
+            String[] outputNamesArray = new String[requestedOutputs.size()];
+            i = 0;
+            for (String s : requestedOutputs) {
+                if (outputNames.contains(s)) {
+                    outputNamesArray[i] = s;
+                    i++;
+                } else {
+                    throw new IllegalArgumentException("Unknown output name " + s + ", expected one of " + outputNames.toString());
+                }
+            }
+            OnnxValue[] outputValues = run(OnnxRuntime.ortApiHandle,nativeHandle, allocator.handle, inputNamesArray, inputHandles, numInputs, outputNamesArray, numOutputs);
+            return zip(outputNamesArray,outputValues);
         } else {
             throw new IllegalStateException("Trying to score a closed OrtSession.");
         }
@@ -137,8 +196,6 @@ public class OrtSession implements AutoCloseable {
     @Override
     public void close() throws OrtException {
         if (!closed) {
-            releaseNamesHandle(OnnxRuntime.ortApiHandle,allocator.handle, inputNamesHandle, getNumInputs(OnnxRuntime.ortApiHandle,nativeHandle));
-            releaseNamesHandle(OnnxRuntime.ortApiHandle,allocator.handle, outputNamesHandle, getNumOutputs(OnnxRuntime.ortApiHandle,nativeHandle));
             closeSession(OnnxRuntime.ortApiHandle,nativeHandle);
             closed = true;
         } else {
@@ -146,21 +203,44 @@ public class OrtSession implements AutoCloseable {
         }
     }
 
+    private static Map<String,NodeInfo> wrapInMap(NodeInfo[] infos) {
+        Map<String,NodeInfo> output = new LinkedHashMap<>();
+
+        for (int i = 0; i < infos.length; i++) {
+            output.put(infos[i].getName(),infos[i]);
+        }
+
+        return output;
+    }
+
+    private static Map<String,OnnxValue> zip(String[] names, OnnxValue[] values) {
+        Map<String,OnnxValue> output = new LinkedHashMap<>();
+
+        if (names.length != values.length) {
+            throw new IllegalArgumentException("Expected same number of names and values, found names.length = " + names.length + ", values.length = " + values.length);
+        }
+
+        for (int i = 0; i < names.length; i++) {
+            output.put(names[i],values[i]);
+        }
+
+        return output;
+    }
+
     private native long createSession(long apiHandle, long envHandle, String modelPath, long optsHandle) throws OrtException;
     private native long createSession(long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
 
     private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
-    private native long getInputNames(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
-    private native NodeInfo[] getInputInfo(long apiHandle, long nativeHandle, long inputNamesHandle) throws OrtException;
+    private native String[] getInputNames(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
+    private native NodeInfo[] getInputInfo(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
 
     private native long getNumOutputs(long apiHandle, long nativeHandle) throws OrtException;
-    private native long getOutputNames(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
-    private native NodeInfo[] getOutputInfo(long apiHandle, long nativeHandle, long outputNamesHandle) throws OrtException;
+    private native String[] getOutputNames(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
+    private native NodeInfo[] getOutputInfo(long apiHandle, long nativeHandle, long allocatorHandle) throws OrtException;
 
-    private native OnnxValue[] run(long apiHandle, long nativeHandle, long allocatorHandle, long inputNamesHandle, long numInputs, long[] inputs, long outputNamesHandle, long numOutputs) throws OrtException;
+    private native OnnxValue[] run(long apiHandle, long nativeHandle, long allocatorHandle, String[] inputNamesArray, long[] inputs, long numInputs, String[] outputNamesArray, long numOutputs) throws OrtException;
 
     private native void closeSession(long apiHandle, long nativeHandle) throws OrtException;
-    private native void releaseNamesHandle(long apiHandle, long allocatorHandle, long namesHandle, long numNames) throws OrtException;
 
     /**
      * Represents the options used to construct this session.
