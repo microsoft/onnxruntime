@@ -390,7 +390,7 @@ class OnnxModel:
         return True
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size, sequence_length, separate_mask, mask_reduce_sum, verbose):
+    def __init__(self, model, num_heads, hidden_size, sequence_length, verbose):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
@@ -399,12 +399,10 @@ class BertOnnxModel(OnnxModel):
         self.num_heads = num_heads
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
-        self.separate_mask = separate_mask
-        self.mask_reduce_sum = mask_reduce_sum
 
         # A lookup table with mask input as key, and mask index output as value
         self.mask_indice = {}
-        self.embed_node = None
+        self.bert_inputs = []
 
         # constant node names
         self.normalize_name = "SkipLayerNormalization"
@@ -422,20 +420,12 @@ class BertOnnxModel(OnnxModel):
 
         # Add a mask processing node
         output_name = self.create_node_name('mask_index')
-        if self.mask_reduce_sum:
-            mask_index_node = onnx.helper.make_node(
-                'ReduceSum',
-                inputs=[input],
-                outputs=[output_name],
-                name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
-            mask_index_node.attribute.extend([onnx.helper.make_attribute("axes", [1]), onnx.helper.make_attribute("keepdims", 0)])
-        else:
-            mask_index_node = onnx.helper.make_node(
-                'MaskIndex',
-                inputs=[input],
-                outputs=[output_name],
-                name=self.create_node_name('MaskIndex'))
-            mask_index_node.domain = "com.microsoft"
+        mask_index_node = onnx.helper.make_node(
+            'ReduceSum',
+            inputs=[input],
+            outputs=[output_name],
+            name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
+        mask_index_node.attribute.extend([onnx.helper.make_attribute("axes", [1]), onnx.helper.make_attribute("keepdims", 0)])
         self.add_node(mask_index_node)
         self.mask_indice[input] = output_name
 
@@ -905,17 +895,15 @@ class BertOnnxModel(OnnxModel):
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
 
-        has_mask = not self.separate_mask
-        if has_mask:
-            if len(self.mask_indice) == 0:
-                print("skip embed layer fusion since mask input is not found")
-                return
-            if len(self.mask_indice) > 1:
-                print("skip embed layer fusion since there are multiple mask inputs found")
-                return
-            mask_input_name = next(iter(self.mask_indice))
-            mask_output_name = self.mask_indice[mask_input_name]
-            mask_node = output_name_to_node[mask_output_name]
+        if len(self.mask_indice) == 0:
+            print("skip embed layer fusion since mask input is not found")
+            return
+        if len(self.mask_indice) > 1:
+            print("skip embed layer fusion since there are multiple mask inputs found")
+            return
+        mask_input_name = next(iter(self.mask_indice))
+        mask_output_name = self.mask_indice[mask_input_name]
+        mask_node = output_name_to_node[mask_output_name]
 
         nodes_to_remove = []
 
@@ -928,7 +916,7 @@ class BertOnnxModel(OnnxModel):
                     break
 
         if normalize_node is None:
-            print("did not find embedding layer")
+            print("Failed to find embedding layer")
 
         # Here we assume the order of embedding is word_embedding + position_embedding + segment_embedding.
         word_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
@@ -945,7 +933,7 @@ class BertOnnxModel(OnnxModel):
 
         segment_embedding_path = self.match_parent_path(normalize_node, ['Gather'], [1])
         if segment_embedding_path is None:
-            print("failed to find segment embedding")
+            print("Failed to find segment embedding")
             return
         segment_embedding_gather = segment_embedding_path[0]
 
@@ -960,28 +948,22 @@ class BertOnnxModel(OnnxModel):
 
         nodes_to_remove.extend(subgraph_nodes)
         nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather, position_embedding_expand])
+        nodes_to_remove.extend([mask_node])
 
-        if has_mask:
-            nodes_to_remove.extend([mask_node])
-            embed_node = onnx.helper.make_node('EmbedLayerNormalization',
-                            inputs=[input_ids, segment_ids, mask_input_name, 
-                                    word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
-                                    normalize_node.input[2], normalize_node.input[3]], # gamma and beta
-                            outputs=["embed_output", self.mask_indice[mask_input_name]],
-                            name="EmbedLayer")
-        else:
-            embed_node = onnx.helper.make_node('EmbedLayerNormalization',
-                            inputs=[input_ids, segment_ids, 
-                                    word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
-                                    normalize_node.input[2], normalize_node.input[3]], # gamma and beta
-                            outputs=["embed_output"],
-                            name="EmbedLayer")
+        embed_node = onnx.helper.make_node('EmbedLayerNormalization',
+                        inputs=[input_ids, segment_ids, 
+                                word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
+                                normalize_node.input[2], normalize_node.input[3], # gamma and beta
+                                mask_input_name],
+                        outputs=["embed_output", self.mask_indice[mask_input_name]],
+                        name="EmbedLayer")
+
         embed_node.domain = "com.microsoft"
-        # store embed node for other processing
-        self.embed_node = embed_node
+        
+        # store inputs for further processing
+        self.bert_inputs = [input_ids, segment_ids, mask_input_name]
 
         self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
-        #self.replace_input_of_all_nodes(mask_input_name, 'mask_idx')
 
         self.remove_nodes(nodes_to_remove)
         self.add_node(embed_node)
@@ -989,12 +971,7 @@ class BertOnnxModel(OnnxModel):
         print("Fused EmbedLayerNormalization count: 1")
 
     def get_bert_inputs(self):
-        if self.separate_mask:
-            inputs = self.embed_node.input[:2]
-            inputs.append(next(iter(self.mask_indice)))
-            return inputs
-        else:
-            return self.embed_node.input[:3]
+        return self.bert_inputs
 
     def get_batch_size_from_graph_input(self):
         graph = self.graph()
@@ -1054,8 +1031,6 @@ class BertOnnxModel(OnnxModel):
 
     # Update input and output using dynamic batch
     def update_dynamic_batch_io(self, dynamic_batch_dim='batch'):
-        if self.embed_node is None:
-            return
 
         bert_inputs = self.get_bert_inputs()
         dynamic_batch_inputs = {}
@@ -1215,12 +1190,6 @@ def main():
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
-    parser.add_argument('--separate_mask', required=False, action='store_true')
-    parser.set_defaults(separate_mask=False)
-
-    parser.add_argument('--mask_reduce_sum', required=False, action='store_true')
-    parser.set_defaults(mask_reduce_sum=False)
-
     parser.add_argument('--fuse_gelu_add', required=False, action='store_true')
     parser.set_defaults(fuse_gelu_add=False)
 
@@ -1230,7 +1199,7 @@ def main():
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.separate_mask, args.mask_reduce_sum, args.verbose)
+    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.verbose)
 
     bert_model.fuse_layer_norm()
 
@@ -1246,9 +1215,7 @@ def main():
 
     bert_model.fuse_embed_layer()
 
-    if bert_model.embed_node is None:
-        print("Failed to fuse embedding layer.")
-    else:
+    if bert_model.get_bert_inputs():
         if args.input_int32:
             bert_model.change_input_to_int32()
         else:
