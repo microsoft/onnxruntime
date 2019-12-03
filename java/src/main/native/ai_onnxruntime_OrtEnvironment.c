@@ -12,7 +12,7 @@
  * Method:    createHandle
  * Signature: (Ljava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle(JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jint loggingLevel, jstring name) {
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle(JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jint loggingLevel, jstring name) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtEnv* env;
@@ -29,7 +29,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createHandle(JNIEnv *
  * Signature: (JJLjava/lang/Object;[JI)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createTensor
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject dataObj, jlongArray shape, jint onnxTypeJava) {
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobject dataObj, jlongArray shape, jint onnxTypeJava) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -74,7 +74,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createTensor
  * Signature: (JJLjava/nio/Buffer;J[JI)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createTensorFromBuffer
-        (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
+        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobject buffer, jlong bufferSize, jlongArray shape, jint onnxTypeJava) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -107,7 +107,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createTensorFromBuffe
  * Signature: (JJLjava/lang/String;)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createString
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jstring input) {
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jstring input) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -142,7 +142,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createString
  * Signature: (JJ[Ljava/lang/Object;[J)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createStringTensor
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jobjectArray stringArr, jlongArray shape) {
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong allocatorHandle, jobjectArray stringArr, jlongArray shape) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
@@ -190,10 +190,10 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_createStringTensor
 /*
  * Class:     ai_onnxruntime_OrtEnvironment
  * Method:    getDefaultAllocator
- * Signature: ()J
+ * Signature: (J)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_getDefaultAllocator
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle) {
+  (JNIEnv * jniEnv, jclass jobj, jlong apiHandle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtAllocator* allocator;
@@ -204,10 +204,27 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_getDefaultAllocator
 /*
  * Class:     ai_onnxruntime_OrtEnvironment
  * Method:    close
- * Signature: (J)V
+ * Signature: (JJ)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_close(JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_close(JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong handle) {
     (void) jniEnv; (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     api->ReleaseEnv((OrtEnv*)handle);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    setTelemetry
+ * Signature: (JJZ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_setTelemetry
+        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong nativeHandle, jboolean sendTelemetry) {
+    (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtEnv* env = (OrtEnv*) nativeHandle;
+    if (sendTelemetry) {
+        checkOrtStatus(jniEnv,api,api->EnableTelemetryEvents(env));
+    } else {
+        checkOrtStatus(jniEnv,api,api->DisableTelemetryEvents(env));
+    }
 }
