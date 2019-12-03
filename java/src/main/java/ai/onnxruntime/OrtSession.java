@@ -191,6 +191,11 @@ public class OrtSession implements AutoCloseable {
         }
     }
 
+    @Override
+    public String toString() {
+        return "OrtSession(numInputs="+numInputs+",numOutputs="+numOutputs+")";
+    }
+
     /**
      * Closes the session, releasing it's resources.
      * @throws OrtException If it failed to close.
