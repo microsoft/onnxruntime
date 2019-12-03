@@ -121,6 +121,14 @@ bool IsDimensionSupported(const Node* node) {
     if (input_dims != 4 && input_dims != 5)
       return false;
   }
+
+  if(node->OpType() == "Unsqueeze"){
+
+    auto attributes = node->GetAttributes();
+    auto axes = attributes["axes"].ints();
+    if (input_dims + axes.size() > 5)
+      return false;
+  }
   return true;
 }
 
@@ -262,7 +270,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
-
+    if(!IsDimensionSupported(node))
+      return true;
     //TODO: Make this better
   } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -306,6 +315,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const bool A_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
+
+  } else if (optype == "Unsqueeze") {
+    if(!IsDimensionSupported(node))
+      return true;
   } else if (optype == "Pad") {
     // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
     if (node->InputDefs().size() > 1) {
@@ -357,6 +370,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
+    if(!IsDimensionSupported(node))
+      return true;
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
     const auto& b_zero_point = node->InputDefs()[5];
