@@ -6,7 +6,6 @@
 # Convert Bert ONNX model exported from PyTorch to use Attention, Gelu,
 # SkipLayerNormalization and EmbedLayerNormalization ops to optimize
 # performance on NVidia GPU.
-
 import onnx
 import sys
 import argparse
@@ -685,7 +684,8 @@ class BertOnnxModel(OnnxModel):
             if mul_before_tanh is None:
                 continue
 
-            if not self.has_constant_input(mul_before_tanh, 0.7978, delta=0.0001):
+            i = self.find_constant_input(mul_before_tanh, 0.7978, delta=0.0001)
+            if i < 0:
                 continue
 
             add_before_tanh = self.match_parent(mul_before_tanh, 'Add', 0 if i == 1 else 1, output_name_to_node)
@@ -696,7 +696,8 @@ class BertOnnxModel(OnnxModel):
             if mul_after_pow is None:
                 continue
 
-            if not self.has_constant_input(mul_after_pow, 0.0447, delta=0.0001):
+            i = self.find_constant_input(mul_after_pow, 0.0447, delta=0.0001)
+            if i < 0:
                 continue
 
             pow = self.match_parent(mul_after_pow, 'Pow', 0 if i == 1 else 1, output_name_to_node)
@@ -705,7 +706,6 @@ class BertOnnxModel(OnnxModel):
 
             if not self.has_constant_input(pow, 3.0):
                 continue
-
 
             if pow.input[0] != root_node.output[0]:
                 continue
