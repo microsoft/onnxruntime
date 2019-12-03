@@ -636,9 +636,11 @@ def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         # model test
         # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
         if config != 'Debug' and os.path.exists(model_dir):
-          model_dir = os.path.join(model_dir, "opset8")
-          model_dir = glob.glob(os.path.join(model_dir, "test_*"))
-          for dir_path in model_dir:
+          model_dir_opset8 = os.path.join(model_dir, "opset8")          
+          model_dir_opset8 = glob.glob(os.path.join(model_dir_opset8, "test_*"))
+          model_dir_opset10 = os.path.join(model_dir, "opset10")
+          model_dir_opset10 = glob.glob(os.path.join(model_dir_opset10, "tf_inception_v1"))
+          for dir_path in itertools.chain(model_dir_opset8, model_dir_opset10):
             model_test_cmd = cmd_base + [dir_path]
             run_subprocess([exe] + model_test_cmd, cwd=cwd)
 
@@ -979,6 +981,8 @@ def main():
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
                 tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+              else:
+                tensorrt_run_onnx_tests(build_dir, configs, "")
 
             if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
