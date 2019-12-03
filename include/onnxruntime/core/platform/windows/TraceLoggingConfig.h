@@ -1,5 +1,7 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 /* ++
-Copyright (c) Microsoft Corporation.  All rights reserved.
 Module Name:
     TraceLoggingConfig.h
 Abstract:
@@ -21,7 +23,7 @@ Environment:
 
 // Configuration macro for use in TRACELOGGING_DEFINE_PROVIDER. The definition
 // in this file configures the provider as a normal (non-telemetry) provider.
-#ifndef TraceLoggingOptionMicrosoftTelemetry
+#ifndef ENABLE_TELEMETRY
 #define TraceLoggingOptionMicrosoftTelemetry() \
     TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)
     // Empty definition for TraceLoggingOptionMicrosoftTelemetry

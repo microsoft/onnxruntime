@@ -16,4 +16,5 @@ The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/wi
 
 In all Official builds, the Windows ML API enables telemetry collection. 
 While using the ONNX Runtime C API, developers can turn telemetry on or off, please check the API pages for details:
+Telemetry is turned off in both Windows ML and ONNX Runtime by default.
 * [C API](./C_API.md#telemetry)
