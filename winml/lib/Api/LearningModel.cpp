@@ -57,7 +57,7 @@ void LearningModel::Initialize() {
   WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
 }
 
-void LearningModel::LogCreationEvent(bool fromStream) {
+void LearningModel::LogCreationEvent(bool /*fromStream*/) {
   auto input_descriptors = InputFeatures();
   bool use_fp16 = false;
   for (auto descriptor : input_descriptors) {

@@ -111,7 +111,7 @@ ILearningModelFeatureValue MakeTensor(const ITensorFeatureDescriptor& descriptor
     }
 }
 
-ILearningModelFeatureValue MakeImage(const IImageFeatureDescriptor& descriptor, winrt::Windows::Foundation::IInspectable data)
+ILearningModelFeatureValue MakeImage(const IImageFeatureDescriptor& /*descriptor*/, winrt::Windows::Foundation::IInspectable data)
 {
     VideoFrame videoFrame = nullptr;
     if (data != nullptr)
@@ -577,7 +577,10 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario9_LoadBindEval_InputTensorGPU)
 
     auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
     auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
+    VideoFrame outputimage(
+		BitmapPixelFormat::Rgba8,
+		static_cast<int32_t>(outputtensorshape.GetAt(3)),
+		static_cast<int32_t>(outputtensorshape.GetAt(2)));
     ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
 
     EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
@@ -920,7 +923,10 @@ TEST_F(ScenarioCppWinrtTest, DISABLED_Scenario22_ImageBindingAsCPUTensor)
     // Bind output
     auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
     auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Bgra8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
+    VideoFrame outputimage(
+        BitmapPixelFormat::Bgra8,
+        static_cast<int32_t>(outputtensorshape.GetAt(3)),
+        static_cast<int32_t>(outputtensorshape.GetAt(2)));
     ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
     EXPECT_NO_THROW(binding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
 
@@ -1061,10 +1067,12 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario22_ImageBindingAsGPUTensor)
     );
 
     // Create the GPU upload buffer.
+    CD3DX12_HEAP_PROPERTIES props(D3D12_HEAP_TYPE_UPLOAD);
+    auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize);
     EXPECT_NO_THROW(pD3D12Device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        &props,
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize),
+        &buffer,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         __uuidof(ID3D12Resource),
@@ -1094,7 +1102,10 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario22_ImageBindingAsGPUTensor)
 
     auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
     auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
+    VideoFrame outputimage(
+        BitmapPixelFormat::Rgba8,
+        static_cast<int32_t>(outputtensorshape.GetAt(3)),
+        static_cast<int32_t>(outputtensorshape.GetAt(2)));
     ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
 
     EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
@@ -1195,7 +1206,10 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_SyncVsAsync)
 
     auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
     auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
+    VideoFrame outputimage(
+        BitmapPixelFormat::Rgba8,
+        static_cast<int32_t>(outputtensorshape.GetAt(3)),
+        static_cast<int32_t>(outputtensorshape.GetAt(2)));
     ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
     EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
 
@@ -1218,7 +1232,9 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_SyncVsAsync)
         bindings[i].Bind(inputFeatureDescriptor.Current().Name(), imagetensor);
         bindings[i].Bind(
             model.OutputFeatures().First().Current().Name(),
-            VideoFrame(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2)));
+			VideoFrame(BitmapPixelFormat::Rgba8,
+				static_cast<int32_t>(outputtensorshape.GetAt(3)),
+				static_cast<int32_t>(outputtensorshape.GetAt(2))));
     }
 
     auto startAsync = std::chrono::high_resolution_clock::now();
@@ -1285,7 +1301,10 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_CustomCommandQueueWithFence)
 
     auto outputtensordescriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
     auto outputtensorshape = outputtensordescriptor.Shape();
-    VideoFrame outputimage(BitmapPixelFormat::Rgba8, outputtensorshape.GetAt(3), outputtensorshape.GetAt(2));
+    VideoFrame outputimage(
+        BitmapPixelFormat::Rgba8,
+        static_cast<int32_t>(outputtensorshape.GetAt(3)),
+        static_cast<int32_t>(outputtensorshape.GetAt(2)));
     ImageFeatureValue outputTensor = ImageFeatureValue::CreateFromVideoFrame(outputimage);
 
     EXPECT_NO_THROW(modelBinding.Bind(model.OutputFeatures().First().Current().Name(), outputTensor));
@@ -1420,7 +1439,7 @@ TEST_F(ScenarioCppWinrtTest, EncryptedStream)
     LearningModel model = nullptr;
     EXPECT_NO_THROW(model = LearningModel::LoadFromStream(RandomAccessStreamReference::CreateFromStream(decryptedStream)));
     LearningModelSession session = nullptr;
-    EXPECT_NO_THROW(auto session = LearningModelSession(model));
+    EXPECT_NO_THROW(session = LearningModelSession(model));
 }
 
 TEST_F(ScenarioCppWinrtGpuTest, DeviceLostRecovery)
