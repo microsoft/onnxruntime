@@ -40,9 +40,9 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
-if(onnxruntime_USE_MKLDNN)
-  set(PROVIDERS_MKLDNN onnxruntime_providers_mkldnn)
-  list(APPEND ONNXRUNTIME_PROVIDER_NAMES mkldnn)
+if(onnxruntime_USE_DNNL)
+  set(PROVIDERS_DNNL onnxruntime_providers_dnnl)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
 endif()
 if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
@@ -177,20 +177,20 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
-if (onnxruntime_USE_MKLDNN)
-  file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.cc"
+if (onnxruntime_USE_DNNL)
+  file(GLOB_RECURSE onnxruntime_providers_dnnl_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.cc"
   )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_mkldnn_cc_srcs})
-  add_library(onnxruntime_providers_mkldnn ${onnxruntime_providers_mkldnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_mkldnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
-  add_dependencies(onnxruntime_providers_mkldnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_mkldnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_mkldnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${MKLDNN_INCLUDE_DIR})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/mkldnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
-  set_target_properties(onnxruntime_providers_mkldnn PROPERTIES LINKER_LANGUAGE CXX)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
+  add_library(onnxruntime_providers_dnnl ${onnxruntime_providers_dnnl_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_USE_TENSORRT)

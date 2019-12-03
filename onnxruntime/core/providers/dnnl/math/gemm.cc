@@ -4,18 +4,18 @@
 #include "gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/util/math_cpuonly.h"
-#include "mkldnn.h"
-#include "mkldnn.hpp"
-#include "core/providers/mkldnn/mkldnn_fwd.h"
+#include "dnnl.h"
+#include "dnnl.hpp"
+#include "core/providers/dnnl/dnnl_fwd.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 ONNX_OPERATOR_KERNEL_EX(
     Gemm,
     kOnnxDomain,
     7,
-    kMklDnnExecutionProvider,
+    kDnnlExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
 
@@ -29,9 +29,9 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   if (!helper.State().IsOK())
     return helper.State();
 
-  mkldnn::memory::dim M = gsl::narrow_cast<int>(helper.M());
-  mkldnn::memory::dim N = gsl::narrow_cast<int>(helper.N());
-  mkldnn::memory::dim K = gsl::narrow_cast<int>(helper.K());
+  dnnl::memory::dim M = gsl::narrow_cast<int>(helper.M());
+  dnnl::memory::dim N = gsl::narrow_cast<int>(helper.N());
+  dnnl::memory::dim K = gsl::narrow_cast<int>(helper.K());
   auto Y = ctx->Output(0, TensorShape({M, N}));
 
   if (M <= 0)
@@ -81,19 +81,19 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  // mkldnn_sgemm expects row major matrices, so no need to swap the operands A and B
-  auto status = mkldnn_sgemm(trans_A_ ? 'T' : 'N',
+  // dnnl_sgemm expects row major matrices, so no need to swap the operands A and B
+  auto status = dnnl_sgemm(trans_A_ ? 'T' : 'N',
                              trans_B_ ? 'T' : 'N',
                              M, N, K,
                              alpha_, X->template Data<float>() , trans_A_ ? M : K,
                              W->template Data<float>(), trans_B_ ? K : N,
                              beta_, Y->template MutableData<float>(), N);
-  if (status == mkldnn_success) {
+  if (status == dnnl_success) {
     return Status::OK();
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "mkldnn_sgemm failed with status: ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DNNL_sgemm failed with status: ", status);
   }
 }
 
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime
