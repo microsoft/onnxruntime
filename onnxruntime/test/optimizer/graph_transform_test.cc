@@ -929,6 +929,8 @@ TEST(GraphTransformationTests, ReshapeFusionOneConstTest) {
   }
 }
 
+#ifndef DISABLE_CONTRIB_OPS
+
 static void ValidateAttention(Graph& graph) {
   // Validate the merged weights (initializer) input for Attention node.
   for (const Node& node : graph.Nodes()) {
@@ -1089,7 +1091,6 @@ TEST(GraphTransformationTests, AttentionFusionInt64Test) {
   ValidateAttention(graph);
 }
 
-#ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, GeluFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/gelu.onnx";
   std::shared_ptr<Model> p_model;
