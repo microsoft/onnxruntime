@@ -22,9 +22,6 @@ Status ConcatFromSequence::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<TensorSeq>(0);
   ORT_ENFORCE(X != nullptr, "Got nullptr for sequence input.");
 
-  // number of input tensors in the Sequence to concatenate
-  int input_count = static_cast<int>(X->Size());
-
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   std::vector<const Tensor*> input_tensor_pointers;
   input_tensor_pointers.reserve(X->Size());
