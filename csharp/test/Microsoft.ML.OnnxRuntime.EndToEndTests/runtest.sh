@@ -6,6 +6,8 @@ LocalNuGetRepo=$1
 SourceRoot=$2
 BuildDir=$3
 export CurrentOnnxRuntimeVersion=$4
+RunTestCsharp=${RunTestCsharp:-true}
+RunTestNative=${RunTestNative:-true}
 set -x
 
 OldDir=`pwd`
