@@ -232,9 +232,9 @@ TEST_F(DataTypeTest, OpaqueRegistrationTest) {
   EXPECT_FALSE(utils::IsOpaqueType(op_ml2, TestOpaqueDomain_1, TestOpaqueName_2));
   EXPECT_FALSE(utils::IsOpaqueType(DataTypeImpl::GetTensorType<float>(), TestOpaqueDomain_1, TestOpaqueName_1));
 
-  utils::MapChecker m_checker(DataTypeImpl::GetType<MyOpaqueMapCpp_1>());
-  EXPECT_TRUE(m_checker.IsMap());
-  bool result = m_checker.IsMapOf<int64_t, TestOpaqueType_1>();
+  utils::ContainerChecker c_checker(DataTypeImpl::GetType<MyOpaqueMapCpp_1>());
+  EXPECT_TRUE(c_checker.IsMap());
+  bool result = c_checker.IsMapOf<int64_t, TestOpaqueType_1>();
   EXPECT_TRUE(result);
 }
 
@@ -244,14 +244,14 @@ TEST_F(DataTypeTest, MapStringStringTest) {
   EXPECT_TRUE(DataTypeImpl::GetTensorType<float>()->IsCompatible(tensor_type));
   EXPECT_FALSE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(tensor_type));
   EXPECT_FALSE(ml_str_str->IsCompatible(tensor_type));
-  utils::MapChecker m_checker(ml_str_str);
-  bool result = m_checker.IsMapOf<std::string, std::string>();
+  utils::ContainerChecker c_checker(ml_str_str);
+  bool result = c_checker.IsMapOf<std::string, std::string>();
   EXPECT_TRUE(result);
-  result =  m_checker.IsMapOf<std::string, int64_t>();
+  result =  c_checker.IsMapOf<std::string, int64_t>();
   EXPECT_FALSE(result);
 
-  utils::MapChecker m_checker1(DataTypeImpl::GetTensorType<float>());
-  result =  m_checker1.IsMapOf<std::string, int64_t>();
+  utils::ContainerChecker c_checker1(DataTypeImpl::GetTensorType<float>());
+  result =  c_checker1.IsMapOf<std::string, int64_t>();
   EXPECT_FALSE(result);
 
 
@@ -269,8 +269,8 @@ TEST_F(DataTypeTest, MapStringInt64Test) {
   EXPECT_TRUE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2i_type));
   EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(tensor_type));
 
-  utils::MapChecker m_checker(DataTypeImpl::GetType<MapStringToInt64>());
-  bool result = m_checker.IsMapOf<std::string, int64_t>();
+  utils::ContainerChecker c_checker(DataTypeImpl::GetType<MapStringToInt64>());
+  bool result = c_checker.IsMapOf<std::string, int64_t>();
   EXPECT_TRUE(result);
 }
 
@@ -369,8 +369,8 @@ TEST_F(DataTypeTest, VectorMapStringToFloatTest) {
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2d_type));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2i_type));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(tensor_type));
-  utils::SequenceChecker seq_check(DataTypeImpl::GetType<VectorMapStringToFloat>());
-  bool result =  seq_check.IsSequenceOf<MapStringToFloat>();
+  utils::ContainerChecker c_check(DataTypeImpl::GetType<VectorMapStringToFloat>());
+  bool result =  c_check.IsSequenceOf<MapStringToFloat>();
   EXPECT_TRUE(result);
 }
 

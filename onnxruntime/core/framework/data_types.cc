@@ -443,7 +443,6 @@ MLDataType SequenceTensorBase::Type() {
   return &sequence_tensor_base;
 }
 
-
 /// NoTensorTypeBase
 struct NonTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {};
 
@@ -1080,56 +1079,61 @@ std::ostream& operator<<(std::ostream& out, const DataTypeImpl* data_type) {
 }
 
 namespace utils {
-namespace data_types_internal {
-// Returns nullptr if this is not a sequence
-const ONNX_NAMESPACE::TypeProto_Sequence* GetSequenceProto(MLDataType ml_type) {
+
+ContainerChecker::ContainerChecker(MLDataType ml_type) {
+  using namespace ONNX_NAMESPACE;
+  using namespace data_types_internal;
   auto base_type = ml_type->AsNonTensorTypeBase();
   if (base_type == nullptr) {
-    return nullptr;
+    types_.emplace_back(ContainerType::kUndefined,
+                        TensorProto_DataType_UNDEFINED);
+  } else {
+    auto type_proto = base_type->GetTypeProto();
+    assert(type_proto != nullptr);
+    while (type_proto != nullptr) {
+      auto value_case = type_proto->value_case();
+      switch (value_case) {
+        // Terminal case
+        case TypeProto::ValueCase::kTensorType:
+          types_.emplace_back(ContainerType::kTensor, type_proto->tensor_type().elem_type());
+          type_proto = nullptr;
+          break;
+        case TypeProto::ValueCase::kMapType:
+          {
+          const auto& map_type = type_proto->map_type();
+          types_.emplace_back(ContainerType::kMap, map_type.key_type());
+          // Move on handling the value
+          type_proto = &map_type.value_type();
+          }
+          break;
+        case TypeProto::ValueCase::kSequenceType:
+            types_.emplace_back(ContainerType::kSequence, TensorProto_DataType_UNDEFINED);
+            type_proto = &type_proto->sequence_type().elem_type();
+            break;
+        case TypeProto::ValueCase::kOpaqueType:
+          // We do not handle this and terminate here
+          types_.emplace_back(ContainerType::kOpaque,
+                              TensorProto_DataType_UNDEFINED);
+          type_proto = nullptr;
+          break;
+        default:
+          ORT_ENFORCE(false, "Invalid DataTypeImpl TypeProto definition");
+      }
+    }
   }
-  auto type_proto = base_type->GetTypeProto();
-  assert(type_proto != nullptr);
-  if (type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kSequenceType) {
-    return &type_proto->sequence_type();
-  }
-  return nullptr;
 }
 
-// Returns nullptr if this is not a map
-const ONNX_NAMESPACE::TypeProto_Map* GetMapProto(MLDataType ml_type) {
+bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name) {
   auto base_type = ml_type->AsNonTensorTypeBase();
   if (base_type == nullptr) {
-    return nullptr;
-  }
-  auto type_proto = base_type->GetTypeProto();
-  assert(type_proto != nullptr);
-  if (type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kMapType) {
-    return &type_proto->map_type();
-  }
-  return nullptr;
-}
-
-// Returns nullptr if this is not an opaque type
-const ONNX_NAMESPACE::TypeProto_Opaque* GetOpaqueProto(MLDataType ml_type) {
-  auto base_type = ml_type->AsNonTensorTypeBase();
-  if (base_type == nullptr) {
-    return nullptr;
+    return false;
   }
   auto type_proto = base_type->GetTypeProto();
   assert(type_proto != nullptr);
   if (type_proto->value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kOpaqueType) {
-    return &type_proto->opaque_type();
-  }
-  return nullptr;
-}
-
-}  // namespace data_types_internal
-
-bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name) {
-  const auto* op_proto = data_types_internal::GetOpaqueProto(ml_type);
-  if (op_proto != nullptr) {
-    return (op_proto->domain() == domain &&
-            op_proto->name() == name);
+    const auto& op_proto = type_proto->opaque_type();
+    return (op_proto.domain() == domain &&
+            op_proto.name() == name);
   }
   return false;
 }

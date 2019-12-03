@@ -848,10 +848,10 @@ static OrtStatus* OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
     if (type->IsTensorSequenceType()) {
       return OrtGetNumSequenceElements<TensorSeq>(v, out);
     } else {
-      utils::SequenceChecker s_checker(type);
-      if (s_checker.IsSequenceOf<std::map<std::string, float>>()) {
+      utils::ContainerChecker c_checker(type);
+      if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
         return OrtGetNumSequenceElements<VectorMapStringToFloat>(v, out);
-      } else if (s_checker.IsSequenceOf<std::map<int64_t, float>>()) {
+      } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
         return OrtGetNumSequenceElements<VectorMapInt64ToFloat>(v, out);
       } else {
         return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported sequence types.");
@@ -954,10 +954,10 @@ static OrtStatus* OrtGetValueImplSeq(const OrtValue* value, int index, OrtAlloca
   if (type->IsTensorSequenceType()) {
     return OrtGetValueImplSeqOfTensors(p_ml_value, index, allocator, out);
   } else {
-    utils::SequenceChecker s_checker(type);
-    if (s_checker.IsSequenceOf<std::map<std::string, float>>()) {
+    utils::ContainerChecker c_checker(type);
+    if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
       return OrtGetValueImplSeqOfMap<VectorMapStringToFloat>(p_ml_value, index, out);
-    } else if (s_checker.IsSequenceOf<std::map<int64_t, float>>()) {
+    } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
       return OrtGetValueImplSeqOfMap<VectorMapInt64ToFloat>(p_ml_value, index, out);
     } else {
       return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported sequence types.");
@@ -1006,23 +1006,23 @@ static OrtStatus* OrtGetValueImplMap(const OrtValue* value, int index, OrtAlloca
   auto p_ml_value = reinterpret_cast<const OrtValue*>(value);
   auto type = p_ml_value->Type();
   // Note: keep these in sync with the registered types in data_types.h
-  utils::MapChecker m_checker(type);
-  if (m_checker.IsMap()) {
-    if (m_checker.IsMapOf<std::string, std::string>()) {
+  utils::ContainerChecker c_checker(type);
+  if (c_checker.IsMap()) {
+    if (c_checker.IsMapOf<std::string, std::string>()) {
       return OrtGetValueImplMapHelper<MapStringToString>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<std::string, int64_t>()) {
+    } else if (c_checker.IsMapOf<std::string, int64_t>()) {
       return OrtGetValueImplMapHelper<MapStringToInt64>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<std::string, float>()) {
+    } else if (c_checker.IsMapOf<std::string, float>()) {
       return OrtGetValueImplMapHelper<MapStringToFloat>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<std::string, double>()) {
+    } else if (c_checker.IsMapOf<std::string, double>()) {
       return OrtGetValueImplMapHelper<MapStringToDouble>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<int64_t, std::string>()) {
+    } else if (c_checker.IsMapOf<int64_t, std::string>()) {
       return OrtGetValueImplMapHelper<MapInt64ToString>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<int64_t, int64_t>()) {
+    } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
       return OrtGetValueImplMapHelper<MapInt64ToInt64>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<int64_t, float>()) {
+    } else if (c_checker.IsMapOf<int64_t, float>()) {
       return OrtGetValueImplMapHelper<MapInt64ToFloat>(p_ml_value, index, allocator, out);
-    } else if (m_checker.IsMapOf<int64_t, double>()) {
+    } else if (c_checker.IsMapOf<int64_t, double>()) {
       return OrtGetValueImplMapHelper<MapInt64ToDouble>(p_ml_value, index, allocator, out);
     }
   }
@@ -1180,11 +1180,11 @@ static OrtStatus* OrtCreateValueImplSeq(const OrtValue* const* in, size_t num_va
     return OrtCreateValueImplSeqHelper(in, num_values, out);
   } else if (first_value_type == ONNX_TYPE_MAP) {
     auto map_type = first_mlvalue->Type();
-    utils::MapChecker m_checker(map_type);
-    if (m_checker.IsMapOf<std::string, float>()) {
+    utils::ContainerChecker c_checker(map_type);
+    if (c_checker.IsMapOf<std::string, float>()) {
       return OrtCreateValueImplSeqHelperMap<MapStringToFloat>(in, num_values, out);
     }
-    if (m_checker.IsMapOf<int64_t, float>()) {
+    if (c_checker.IsMapOf<int64_t, float>()) {
       return OrtCreateValueImplSeqHelperMap<MapInt64ToFloat>(in, num_values, out);
     } else {
       return OrtApis::CreateStatus(ORT_FAIL, "Input is not of one of the supported map types.");

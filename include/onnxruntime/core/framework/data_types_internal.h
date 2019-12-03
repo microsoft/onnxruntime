@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
@@ -337,156 +338,38 @@ class MLTypeCallDispatcherRet {
 
 namespace data_types_internal {
 
-// Returns nullptr if this is not a sequence
-const ONNX_NAMESPACE::TypeProto_Sequence* GetSequenceProto(MLDataType);
-
-// Returns nullptr if this is not a map
-const ONNX_NAMESPACE::TypeProto_Map* GetMapProto(MLDataType);
-
-// Returns nullptr if this is not an opaque type
-const ONNX_NAMESPACE::TypeProto_Opaque* GetOpaqueProto(MLDataType);
-
-// Returns TypeProto_Sequence of the sequence element
-// returns nullptr if the element of this sequence is not a sequence
-inline const ONNX_NAMESPACE::TypeProto_Sequence* GetSequenceProto(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
-  const auto& elem_type = seq_proto.elem_type();
-  if (elem_type.value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kSequenceType) {
-    return &elem_type.sequence_type();
-  }
-  return nullptr;
-}
-
-inline const ONNX_NAMESPACE::TypeProto_Map* GetMapProto(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
-  if (seq_proto.elem_type().value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kMapType) {
-    return &seq_proto.elem_type().map_type();
-  }
-  return nullptr;
-}
-
-inline const ONNX_NAMESPACE::TypeProto_Sequence* GetSequenceProtoForValue(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
-  if (map_proto.value_type().value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kSequenceType) {
-    return &map_proto.value_type().sequence_type();
-  }
-  return nullptr;
-}
-
-inline const ONNX_NAMESPACE::TypeProto_Map* GetMapProtoForValue(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
-  if (map_proto.value_type().value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kMapType) {
-    return &map_proto.value_type().map_type();
-  }
-  return nullptr;
-}
-
-// Check if the ml_type is a sequence that contains tensors of a
-// certain primitive type
-inline bool IsSequenceOfPrimitiveType(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto, int32_t prim_type) {
-  const auto& elem_type = seq_proto.elem_type();
-  if (elem_type.value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kTensorType) {
-    return elem_type.tensor_type().elem_type() == prim_type;
-  }
-  return false;
-}
-
-inline bool IsMapKeyOfPrimitiveType(const ONNX_NAMESPACE::TypeProto_Map& map_proto, int32_t prim_type) {
-  return map_proto.key_type() == prim_type;
-}
-
-// Map values primitive types are contained within tensors
-inline bool IsMapValueOfPrimitiveType(const ONNX_NAMESPACE::TypeProto_Map& map_proto, int32_t val_type) {
-  const auto& val_type_proto = map_proto.value_type();
-  if (val_type_proto.value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kTensorType) {
-    return val_type_proto.tensor_type().elem_type() == val_type;
-  }
-  return false;
-}
-
-// Default check if this is an Opaque type
-// since we do not have pre-assigned c++ representation for those
-template <class T>
-struct IsSequenceOfType {
-  static bool check(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
-    return seq_proto.elem_type().value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kOpaqueType;
-  }
+enum class ContainerType : uint16_t {
+  kUndefined = 0,
+  kTensor = 1,
+  kMap = 2,
+  kSequence = 3,
+  kOpaque = 4
 };
 
-template <class T>
-struct IsMapValueOfType {
-  static bool check(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
-    return map_proto.value_type().value_case() == ONNX_NAMESPACE::TypeProto::ValueCase::kOpaqueType;
-  }
-};
+class TypeNode {
+  // type_ is a TypeProto value case enum
+  // that may be a kTypeTensor, kTypeMap, kTypeSequence
+  // prim_type_ is a TypeProto_DataType enum that has meaning
+  // - for Tensor then prim_type_ is the contained type
+  // - for Map prim_type is the key type. Next entry describes map value
+  // - For sequence prim_type_ is not used and has no meaning. Next entry
+  //   describes the value for the sequence
+  // Tensor is always the last entry as it describes a contained primitive type.
+  ContainerType type_;
+  uint16_t prim_type_;
 
-// Sequence specialization (std::vector)
-template <class T>
-struct IsMapValueOfType<std::vector<T>> {
-  static bool check(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
-    const auto* seq_proto = GetSequenceProtoForValue(map_proto);
-    if (seq_proto != nullptr) {
-      return IsSequenceOfType<std::vector<T>>::check(*seq_proto);
-    }
-    return false;
+ public:
+  TypeNode(ContainerType type, int32_t prim_type) noexcept {
+    type_ = type;
+    prim_type_ = static_cast<uint16_t>(prim_type);
   }
-};
 
-// Map specialization (std::map)
-template <class K, class V>
-struct IsMapValueOfType<std::map<K, V>> {
-  static bool check(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
-    static_assert(ToTensorProtoElementType<K>() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
-                  "Map Key can not be a non-primitive type");
-    const auto* val_map_proto = GetMapProtoForValue(map_proto);
-    if (val_map_proto != nullptr) {
-      constexpr int32_t key_type = ToTensorProtoElementType<K>();
-      if (!IsMapKeyOfPrimitiveType(*val_map_proto, key_type)) {
-        return false;
-      }
-      constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        return IsMapValueOfPrimitiveType(*val_map_proto, val_type);
-      }
-      return IsMapValueOfType<V>::check(*val_map_proto);
-    }
-    return false;
+  bool IsType(ContainerType type) const noexcept {
+    return type_ == type;
   }
-};
 
-// Handles the case where sequence element is also a sequence
-template <class T>
-struct IsSequenceOfType<std::vector<T>> {
-  static bool check(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
-    const auto* nested_seq_proto = GetSequenceProto(seq_proto);
-    if (nested_seq_proto != nullptr) {
-      constexpr int32_t prim_type = ToTensorProtoElementType<T>();
-      if (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        return IsSequenceOfPrimitiveType(*nested_seq_proto, prim_type);
-      }
-      // Recurse on the element type of the nested sequence
-      return IsSequenceOfType<T>::check(*nested_seq_proto);
-    }
-    return false;
-  }
-};
-
-// Handles the case where sequence element is a map
-template <class K, class V>
-struct IsSequenceOfType<std::map<K, V>> {
-  static bool check(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
-    static_assert(ToTensorProtoElementType<K>() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
-                  "Map Key can not be a non-primitive type");
-    const auto* map_proto = GetMapProto(seq_proto);
-    if (map_proto != nullptr) {
-      // Maps can only have primitive types as keys so we can check the key right away
-      constexpr int32_t key_type = ToTensorProtoElementType<K>();
-      if (!IsMapKeyOfPrimitiveType(*map_proto, key_type)) {
-        return false;
-      }
-      constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        return IsMapValueOfPrimitiveType(*map_proto, val_type);
-      }
-      return IsMapValueOfType<V>::check(*map_proto);
-    }
-    return false;
+  bool IsPrimType(int32_t prim_type) const noexcept {
+    return prim_type_ == static_cast<uint16_t>(prim_type);
   }
 };
 
@@ -502,73 +385,104 @@ struct IsSequenceOfType<std::map<K, V>> {
 // representation is std::vector<T>
 // T itself can be a runtime representation of another
 // sequence, map, opaque type or a tensor
-// That is it can be std::vector, std::map
+//
+// That is it can be std::vector or a std::map
 // If T is a primitive type sequence is tested whether it contains
 // tensors of that type
+//
 // If T is an opaque type, then it is only tested to be opaque but not exactly
 // a specific opaque type. To Test for a specific Opaque type use IsOpaqueType() below
+//
+// This class examines the supplied MLDataType and records
+// its information in a vector so any subsequent checks for Sequences and Maps
+// are quick.
+class ContainerChecker {
+  using Cont = std::vector<data_types_internal::TypeNode>;
+  Cont types_;
 
-// This class caches seq_proto so multiple checks for
-// different kinds of sequences can be done
-class SequenceChecker {
-  const ONNX_NAMESPACE::TypeProto_Sequence* seq_proto_;
+  // Default IsContainerOfType is for Opaque type
+  template <class T>
+  struct IsContainerOfType {
+    static bool check(const Cont& c, size_t index) {
+      if (index >= c.size()) {
+        return false;
+      }
+      return c[index].IsType(data_types_internal::ContainerType::kOpaque);
+    }
+  };
+
+  // Handles the case where sequence element is also a sequence
+  template <class T>
+  struct IsContainerOfType<std::vector<T>> {
+    static bool check(const Cont& c, size_t index) {
+      if (index >= c.size()) {
+        return false;
+      }
+      if (c[index].IsType(data_types_internal::ContainerType::kSequence)) {
+        ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
+        constexpr int32_t prim_type = ToTensorProtoElementType<T>();
+        // Check if this is a primitive type and it matches
+        if (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+          return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
+                 c[index].IsPrimType(prim_type);
+        } else {
+          // T is not primitive, check next entry for non-primitive proto
+          return IsContainerOfType<T>::check(c, index);
+        }
+      }
+      return false;
+    }
+  };
+
+  template <class K, class V>
+  struct IsContainerOfType<std::map<K, V>> {
+    static bool check(const Cont& c, size_t index) {
+      static_assert(ToTensorProtoElementType<K>() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
+                    "Map Key can not be a non-primitive type");
+      if (index >= c.size()) {
+        return false;
+      }
+      if (!c[index].IsType(data_types_internal::ContainerType::kMap)) {
+        return false;
+      }
+      constexpr int32_t key_type = ToTensorProtoElementType<K>();
+      if (!c[index].IsPrimType(key_type)) {
+        return false;
+      }
+      ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
+      constexpr int32_t val_type = ToTensorProtoElementType<V>();
+      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
+               c[index].IsPrimType(val_type);
+      }
+      return IsContainerOfType<V>::check(c, index);
+    }
+  };
 
  public:
-  explicit SequenceChecker(MLDataType ml_type) {
-    seq_proto_ = data_types_internal::GetSequenceProto(ml_type);
-  }
-  ~SequenceChecker() = default;
+  explicit ContainerChecker(MLDataType);
+  ~ContainerChecker() = default;
 
-  bool IsSequence () const noexcept {
-    return seq_proto_ != nullptr;
+  bool IsMap() const noexcept {
+    assert(!types_.empty());
+    return types_[0].IsType(data_types_internal::ContainerType::kMap);
+  }
+
+  bool IsSequence() const noexcept {
+    assert(!types_.empty());
+    return types_[0].IsType(data_types_internal::ContainerType::kSequence);
   }
 
   template <class T>
   bool IsSequenceOf() const {
-    if (seq_proto_ != nullptr) {
-      constexpr int32_t prim_type = ToTensorProtoElementType<T>();
-      if (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        return data_types_internal::IsSequenceOfPrimitiveType(*seq_proto_, prim_type);
-      }
-      return data_types_internal::IsSequenceOfType<T>::check(*seq_proto_);
-    }
-    return false;
-  }
-};
-
-// This class caches map_proto so multiple checks in for if/else
-// can be done
-// If the value is an opaque type, it is not tested to be exact
-// just the fact it is an opaque.
-class MapChecker {
-  const ONNX_NAMESPACE::TypeProto_Map* map_proto_;
-
- public:
-  explicit MapChecker(MLDataType ml_type) {
-    map_proto_ = data_types_internal::GetMapProto(ml_type);
-  }
-  ~MapChecker() = default;
-
-  bool IsMap () const noexcept {
-    return map_proto_ != nullptr;
+    assert(!types_.empty());
+    return IsContainerOfType<std::vector<T>>::check(types_, 0);
   }
 
   template <class K, class V>
   bool IsMapOf() const {
-    static_assert(ToTensorProtoElementType<K>() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
-                  "Map Key can not be a non-primitive type");
-    if (map_proto_ != nullptr) {
-      constexpr int32_t key_type = ToTensorProtoElementType<K>();
-      if (!data_types_internal::IsMapKeyOfPrimitiveType(*map_proto_, key_type)) {
-        return false;
-      }
-      constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-        return data_types_internal::IsMapValueOfPrimitiveType(*map_proto_, val_type);
-      }
-      return data_types_internal::IsMapValueOfType<V>::check(*map_proto_);
-    }
-    return false;
+    assert(!types_.empty());
+    return IsContainerOfType<std::map<K, V>>::check(types_, 0);
   }
 };
 

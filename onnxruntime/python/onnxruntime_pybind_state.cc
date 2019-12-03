@@ -197,30 +197,29 @@ void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   if (val_type->IsTensorSequenceType()) {
     AddNonTensor<TensorSeq>(val, pyobjs);
   } else {
-    utils::MapChecker m_checker(val_type);
-    if (m_checker.IsMap()) {
-      if (m_checker.IsMapOf<std::string, std::string>()) {
+    utils::ContainerChecker c_checker(val_type);
+    if (c_checker.IsMap()) {
+      if (c_checker.IsMapOf<std::string, std::string>()) {
         AddNonTensor<MapStringToString>(val, pyobjs);
-      } else if (m_checker.IsMapOf<std::string, int64_t>()) {
+      } else if (c_checker.IsMapOf<std::string, int64_t>()) {
         AddNonTensor<MapStringToInt64>(val, pyobjs);
-      } else if (m_checker.IsMapOf<std::string, float>()) {
+      } else if (c_checker.IsMapOf<std::string, float>()) {
         AddNonTensor<MapStringToFloat>(val, pyobjs);
-      } else if (m_checker.IsMapOf<std::string, double>()) {
+      } else if (c_checker.IsMapOf<std::string, double>()) {
         AddNonTensor<MapStringToDouble>(val, pyobjs);
-      } else if (m_checker.IsMapOf<int64_t, std::string>()) {
+      } else if (c_checker.IsMapOf<int64_t, std::string>()) {
         AddNonTensor<MapInt64ToString>(val, pyobjs);
-      } else if (m_checker.IsMapOf<int64_t, int64_t>()) {
+      } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
         AddNonTensor<MapInt64ToInt64>(val, pyobjs);
-      } else if (m_checker.IsMapOf<int64_t, float>()) {
+      } else if (c_checker.IsMapOf<int64_t, float>()) {
         AddNonTensor<MapInt64ToFloat>(val, pyobjs);
-      } else if (m_checker.IsMapOf<int64_t, double>()) {
+      } else if (c_checker.IsMapOf<int64_t, double>()) {
         AddNonTensor<MapInt64ToDouble>(val, pyobjs);
       }
     } else {
-      utils::SequenceChecker s_checker(val_type);
-      if (s_checker.IsSequenceOf<std::map<std::string, float>>()) {
+      if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
         AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
-      } else if (s_checker.IsSequenceOf<std::map<int64_t, float>>()) {
+      } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
         AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
       } else {
         throw std::runtime_error("Output is a non-tensor type which is not supported.");
