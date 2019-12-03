@@ -3,8 +3,9 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# Convert Bert ONNX model exported from PyTorch to use Attention, Gelu, SkipLayerNormalization and
-# EmbedLayerNormalization ops to optimize performance on NVidia GPU.
+# Convert Bert ONNX model exported from PyTorch to use Attention, Gelu,
+# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
+# performance on NVidia GPU.
 
 import onnx
 import sys
@@ -116,7 +117,7 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude = []):
+    def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude=[]):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
@@ -202,14 +203,14 @@ class OnnxModel:
                 return i, value
         return None, None
 
-    def find_constant_input(self, node, expected_value, delta = 0.000001):
+    def find_constant_input(self, node, expected_value, delta=0.000001):
         for i, input in enumerate(node.input):
             value = self.get_constant_value(input)
             if value is not None and value.size == 1 and abs(value - expected_value) < delta:
                 return i
         return -1
 
-    def has_constant_input(self, node, expected_value, delta = 0.000001):
+    def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
 
     def get_children_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
@@ -420,8 +421,7 @@ class BertOnnxModel(OnnxModel):
 
         # Add a mask processing node
         output_name = self.create_node_name('mask_index')
-        mask_index_node = onnx.helper.make_node(
-            'ReduceSum',
+        mask_index_node = onnx.helper.make_node('ReduceSum',
             inputs=[input],
             outputs=[output_name],
             name=self.create_node_name('ReduceSum', 'MaskReduceSum'))
@@ -497,7 +497,8 @@ class BertOnnxModel(OnnxModel):
         attention_count = 0
 
         for normalize_node in self.get_normalize_nodes():
-            # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
+            # SkipLayerNormalization has two inputs, and one of them is the
+            # root input for attention.
             qkv_nodes = None
             root_input = None
             for i, input in enumerate(normalize_node.input):
@@ -676,7 +677,7 @@ class BertOnnxModel(OnnxModel):
             if i < 0:
                 continue
 
-            root_node = self.get_parent(mul_half, 0 if i==1 else 1, output_name_to_node)
+            root_node = self.get_parent(mul_half, 0 if i == 1 else 1, output_name_to_node)
             if root_node is None:
                 continue
 
@@ -687,7 +688,7 @@ class BertOnnxModel(OnnxModel):
             if not self.has_constant_input(mul_before_tanh, 0.7978, delta=0.0001):
                 continue
 
-            add_before_tanh = self.match_parent(mul_before_tanh, 'Add', 0 if i==1 else 1, output_name_to_node)
+            add_before_tanh = self.match_parent(mul_before_tanh, 'Add', 0 if i == 1 else 1, output_name_to_node)
             if add_before_tanh is None:
                 continue
 
@@ -698,7 +699,7 @@ class BertOnnxModel(OnnxModel):
             if not self.has_constant_input(mul_after_pow, 0.0447, delta=0.0001):
                 continue
 
-            pow = self.match_parent(mul_after_pow, 'Pow', 0 if i==1 else 1, output_name_to_node)
+            pow = self.match_parent(mul_after_pow, 'Pow', 0 if i == 1 else 1, output_name_to_node)
             if pow is None:
                 continue
 
@@ -714,8 +715,7 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(
-                gelu_op_name,
+            gelu_node = onnx.helper.make_node(gelu_op_name,
                 inputs=[root_node.output[0]],
                 outputs=mul_after_tanh.output,
                 name=self.create_node_name(gelu_op_name))
@@ -762,8 +762,7 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            gelu_node = onnx.helper.make_node(
-                'FastGelu',
+            gelu_node = onnx.helper.make_node('FastGelu',
                 inputs=[matmul.output[0], add.input[bias_index]],
                 outputs=node.output,
                 name=self.create_node_name('FastGelu', "FastGelu_AddBias_"))
@@ -810,8 +809,7 @@ class BertOnnxModel(OnnxModel):
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            new_node = onnx.helper.make_node(
-                self.normalize_name,
+            new_node = onnx.helper.make_node(self.normalize_name,
                 inputs=[matmul.output[0], node.input[1], node.input[2], node.input[3], add.input[bias_index]],
                 outputs=node.output,
                 name=self.create_node_name(self.normalize_name, self.normalize_name + "_AddBias_"))
@@ -901,12 +899,10 @@ class BertOnnxModel(OnnxModel):
             shape_value = np.asarray(shape, dtype=np.int64)
 
             constant_shape_name = self.create_node_name('Constant', 'constant_shape')
-            new_node = onnx.helper.make_node(
-                'Constant',
+            new_node = onnx.helper.make_node('Constant',
                 inputs=[],
                 outputs=[constant_shape_name],
-                value=onnx.helper.make_tensor(
-                    name='const_tensor',
+                value=onnx.helper.make_tensor(name='const_tensor',
                     data_type=TensorProto.INT64,
                     dims=shape_value.shape,
                     vals=shape_value))
@@ -966,7 +962,8 @@ class BertOnnxModel(OnnxModel):
         if normalize_node is None:
             print("Failed to find embedding layer")
 
-        # Here we assume the order of embedding is word_embedding + position_embedding + segment_embedding.
+        # Here we assume the order of embedding is word_embedding +
+        # position_embedding + segment_embedding.
         word_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
         if word_embedding_path is None:
             print("Failed to find word embedding")
@@ -1190,22 +1187,19 @@ class BertOnnxModel(OnnxModel):
                 nodes_to_remove.extend(subgraph_nodes)
 
                 weight_input = mul_node.input[1 - self.input_index(div_node.output[0], mul_node)]
-                bias_input = last_add_node.input[ 1 - self.input_index(mul_node.output[0], last_add_node)]
+                bias_input = last_add_node.input[1 - self.input_index(mul_node.output[0], last_add_node)]
                 if parent.op_type == 'Add' and self.is_safe_to_fuse_nodes([parent] + subgraph_nodes, last_add_node.output, input_name_to_nodes, output_name_to_node):
                     nodes_to_remove.append(parent)
                     normalize_node = onnx.helper.make_node(self.normalize_name,
                         inputs=[parent.input[0], parent.input[1], weight_input, bias_input],
                         outputs=[last_add_node.output[0]],
-                        name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm")
-                        )
+                        name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm"))
                     normalize_node.domain = "com.microsoft"
                     skip_layernorm_nodes.extend([normalize_node])
                 else:
-                    normalize_node = onnx.helper.make_node(
-                        'LayerNormalization',
+                    normalize_node = onnx.helper.make_node('LayerNormalization',
                         inputs=[node.input[0], weight_input, bias_input],
-                        outputs=[last_add_node.output[0]]
-                        )
+                        outputs=[last_add_node.output[0]])
                     layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
@@ -1224,11 +1218,13 @@ def main():
     parser.add_argument('--hidden_size', required=False, type=int, default=768)
     parser.add_argument('--sequence_length', required=False, type=int, default=128)
 
-    # Use int32 (instead of int64) tensor as input to avoid unnecessary data type cast.
+    # Use int32 (instead of int64) tensor as input to avoid unnecessary data
+    # type cast.
     parser.add_argument('--input_int32', required=False, action='store_true')
     parser.set_defaults(input_int32=False)
 
-    # For NVidia GPU with Tensor Core like V100 and T4, half-precision float brings better performance.
+    # For NVidia GPU with Tensor Core like V100 and T4, half-precision float
+    # brings better performance.
     parser.add_argument('--float16', required=False, action='store_true')
     parser.set_defaults(float16=False)
 
@@ -1245,7 +1241,7 @@ def main():
 
     bert_model.fuse_layer_norm()
 
-    # FastGelu uses approximation for Gelu. It is faster.
+    # FastGelu uses approximation for Gelu.  It is faster.
     use_approximation = True
     gelu_op_name = 'Gelu' if not use_approximation else 'FastGelu'
     bert_model.fuse_gelu(gelu_op_name)
