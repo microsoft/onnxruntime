@@ -45,7 +45,7 @@ add_jar(onnxruntime4j SOURCES ${onnxruntime4j_src} VERSION ${ORT_VERSION} GENERA
 # Specify the native sources (without the generated headers)
 file(GLOB onnxruntime4j_native_src 
     "${REPO_ROOT}/java/src/main/native/*.c"
-    "${REPO_ROOT}/java/src/main/native/ONNXUtil.h"
+    "${REPO_ROOT}/java/src/main/native/OrtJniUtil.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
 

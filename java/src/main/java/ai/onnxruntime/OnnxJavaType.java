@@ -52,9 +52,9 @@ public enum OnnxJavaType {
     }
 
     /**
-     * Must match the values from ONNXUtil.c.
+     * Must match the values from OrtJniUtil.c.
      *
-     * @param onnxValue The value from ONNXUtil.c
+     * @param onnxValue The value from OrtJniUtil.c
      * @return A JavaDataType instance representing the Java type
      */
     public static OnnxJavaType mapFromOnnxTensorType(OnnxTensorType onnxValue) {

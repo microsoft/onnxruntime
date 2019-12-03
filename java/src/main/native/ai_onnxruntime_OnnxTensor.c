@@ -5,7 +5,7 @@
 #include <jni.h>
 #include <math.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
-#include "ONNXUtil.h"
+#include "OrtJniUtil.h"
 #include "ai_onnxruntime_OnnxTensor.h"
 
 /*

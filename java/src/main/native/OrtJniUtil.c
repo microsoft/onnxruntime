@@ -4,7 +4,7 @@
  */
 #include <jni.h>
 #include <stdio.h>
-#include "ONNXUtil.h"
+#include "OrtJniUtil.h"
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     // To silence unused-parameter error.
