@@ -66,6 +66,7 @@ protected:
         GPUTEST
     }
 };
+using ScenarioCppWinrtGpuTestDeathTest = ScenarioCppWinrtGpuTest;
 
 class ScenarioCppWinrtGpuSkipEdgeCoreTest : public ScenarioCppWinrtTest
 {
@@ -1423,47 +1424,49 @@ TEST_F(ScenarioCppWinrtTest, EncryptedStream)
     EXPECT_NO_THROW(auto session = LearningModelSession(model));
 }
 
-TEST_F(ScenarioCppWinrtGpuTest, DeviceLostRecovery)
+void DeviceLostRecoveryHelper()
 {
+  // load a model
+  std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
+  LearningModel model = LearningModel::LoadFromFilePath(filePath);
+  // create a session on the DirectX device
+  LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
+  // create a binding set
+  LearningModelBinding binding(session);
+  // bind the inputs
+  BindFeatures(binding, model.InputFeatures());
+
+  // force device lost here
+  {
+    winrt::com_ptr<ID3D12Device5> d3d12Device;
+    D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device5), d3d12Device.put_void());
+    d3d12Device->RemoveDevice();
+  }
+
+  // evaluate should fail
+  try {
+    session.Evaluate(binding, L"");
+    FAIL() << "Evaluate should fail after removing the device";
+  } catch (...) {
+  }
+
+  // remove all references to the device by reseting the session and binding.
+  session = nullptr;
+  binding = nullptr;
+
+  // create new session and binding and try again!
+  session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
+  binding = LearningModelBinding(session);
+  BindFeatures(binding, model.InputFeatures());
+  session.Evaluate(binding, L"");
+  exit(0);
+}
+
+TEST_F(ScenarioCppWinrtGpuTestDeathTest, DeviceLostRecovery) {
+
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     EXPECT_EXIT(
-        // load a model
-        std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
-        LearningModel model = LearningModel::LoadFromFilePath(filePath);
-        // create a session on the DirectX device
-        LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
-        // create a binding set
-        LearningModelBinding binding(session);
-        // bind the inputs
-        BindFeatures(binding, model.InputFeatures());
-
-        // force device lost here
-        {
-            winrt::com_ptr<ID3D12Device5> d3d12Device;
-            D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device5), d3d12Device.put_void());
-            d3d12Device->RemoveDevice();
-        }
-
-        // evaluate should fail
-        try
-        {
-            session.Evaluate(binding, L"");
-            FAIL() << "Evaluate should fail after removing the device";
-        }
-        catch(...)
-        {
-        }
-
-        // remove all references to the device by reseting the session and binding.
-        session = nullptr;
-        binding = nullptr;
-
-        // create new session and binding and try again!
-        session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
-        binding = LearningModelBinding(session);
-        BindFeatures(binding, model.InputFeatures());
-        session.Evaluate(binding, L"");
-        exit(0);
+        DeviceLostRecoveryHelper()
         , ::testing::ExitedWithCode(0), "");
 }
 
