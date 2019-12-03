@@ -261,7 +261,7 @@ TEST_F(CApiTest, custom_op_handler) {
   TestInference<PATH_TYPE, float>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 }
 
-TEST_F(CApiTest, test_custom_op_library) {
+TEST_F(CApiTest, DISABLED_test_custom_op_library) {
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);

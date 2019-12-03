@@ -15,7 +15,7 @@ void PadImpl(
     const int64_t* input_strides,
     const int64_t* lower_pads,
     const int64_t* upper_pads,
-    const float pad_value,
+    const T pad_value,
     const int pad_mode,
     const T* input_data,
     const fast_divmod* fdm_output_strides,
