@@ -54,7 +54,7 @@ if [ "$OS_VERSION" = "16.04" ]; then
         rsync libunwind8 libpng16-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
         libprotobuf-dev libprotobuf9v5 protobuf-compiler \
-        openjdk-11-jdk"
+        openjdk-8-jdk"
 else # ubuntu18.04
     PACKAGE_LIST="autotools-dev \
         automake \
