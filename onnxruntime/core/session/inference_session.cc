@@ -114,7 +114,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
   // Ascertain if the model is to be read for the ORT config from the afore parsed env var
   if (!load_config_from_model_env_var_value.empty()) {
-    // Check if the the env var contains an unsupported value
+    // Check if the env var contains an unsupported value
     if (load_config_from_model_env_var_value.length() > 1 ||
         (load_config_from_model_env_var_value[0] != '0' && load_config_from_model_env_var_value[0] != '1')) {
       std::ostringstream oss;
