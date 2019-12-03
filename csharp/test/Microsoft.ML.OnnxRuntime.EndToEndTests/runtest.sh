@@ -38,7 +38,7 @@ if [ $RunTestNative = "true" ]; then
   unzip ../$PackageName
   libs="-L runtimes/linux-x86/native -L runtimes/linux-x64/native -l onnxruntime"
   inc="-I build/native/include"
-  g++ -std=c++14 $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp $inc $libs -Wunused-result -o sampletest
+  g++ -std=c++11 $SourceRoot/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp $inc $libs -Wunused-result -o sampletest
 
   # Create link to versioned shared object required at runtime
   libname=`ldd sampletest | grep onnxruntime | xargs | cut -d" " -f1`
