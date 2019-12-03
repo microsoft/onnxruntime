@@ -14,10 +14,9 @@ namespace onnxruntime {
 //--------------------------------------------
 // Below are some helpers that will be used to set corresponding session option values
 
-static Status
-SetIntraOpNumThreads(SessionOptions& session_options,
-                     int value,
-                     const logging::Logger& logger) {
+static Status SetIntraOpNumThreads(SessionOptions& session_options,
+                                   int value,
+                                   const logging::Logger& logger) {
   if (value < 0) {
     LOGS(logger, ERROR) << "Unsupported value for intra_op_num_threads: " << value;
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported value for intra_op_num_threads: ", value);
@@ -58,22 +57,22 @@ static Status SetGraphOptimizationLevel(SessionOptions& session_options,
                                         int value,
                                         const logging::Logger& logger) {
   switch (value) {
-    case 0:
+    case ORT_DISABLE_ALL:
       LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_DISABLE_ALL";
       session_options.graph_optimization_level = TransformerLevel::Default;
       return Status::OK();
 
-    case 1:
+    case ORT_ENABLE_BASIC:
       LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_BASIC";
       session_options.graph_optimization_level = TransformerLevel::Level1;
       return Status::OK();
 
-    case 2:
+    case ORT_ENABLE_EXTENDED:
       LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_EXTENDED";
       session_options.graph_optimization_level = TransformerLevel::Level2;
       return Status::OK();
 
-    case 99:
+    case ORT_ENABLE_ALL:
       LOGS(logger, INFO) << "Setting graph_optimization_level to ORT_ENABLE_ALL";
       session_options.graph_optimization_level = TransformerLevel::MaxLevel;
       return Status::OK();

@@ -546,7 +546,9 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
 common::Status InferenceSession::Load() {
   if (model_proto_ == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ModelProto corresponding to the model to be loaded has not been parsed yet.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "ModelProto corresponding to the model to be loaded has not been parsed yet. "
+                           "This API should be called in conjunction with a ctor that takes a model abstraction.");
   }
 
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
