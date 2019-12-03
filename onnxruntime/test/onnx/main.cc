@@ -485,6 +485,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
   broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
   broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"}); 
 #endif
 
 #ifdef USE_OPENVINO
