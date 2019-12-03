@@ -1469,8 +1469,10 @@ TEST_F(ScenarioCppWinrtGpuTestDeathTest, DeviceLostRecovery) {
 
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     EXPECT_EXIT(
-        DeviceLostRecoveryHelper()
-        , ::testing::ExitedWithCode(0), "");
+        DeviceLostRecoveryHelper(),
+        ::testing::ExitedWithCode(0),
+        ""
+    );
 }
 
 TEST_F(ScenarioCppWinrtGpuSkipEdgeCoreTest, D2DInterop)
