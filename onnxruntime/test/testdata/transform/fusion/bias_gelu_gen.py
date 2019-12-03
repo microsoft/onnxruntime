@@ -17,7 +17,7 @@ graph = helper.make_graph(
     "Gelu_Add_Fusion",  #name
     [  # inputs
         helper.make_tensor_value_info('A', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072]),
-        helper.make_tensor_value_info('B', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072]),
+        helper.make_tensor_value_info('B', TensorProto.FLOAT, [3072]),
     ],
     [  # outputs
         helper.make_tensor_value_info('C', TensorProto.FLOAT, ['unk_3', 'unk_4', 3072]),
@@ -30,4 +30,4 @@ graph = helper.make_graph(
 )
 
 model = helper.make_model(graph)
-onnx.save(model, r'add_gelu_fusion.onnx')
+onnx.save(model, r'bias_gelu_fusion.onnx')
