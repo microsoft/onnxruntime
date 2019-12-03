@@ -91,7 +91,7 @@ static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const s
    google::protobuf::io::FileOutputStream output(fd);
    const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
    if(result)
-	return Status::OK();
+  return Status::OK();
    else
         return Status::OK();
 }
@@ -143,13 +143,10 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "EyeLike",
     "ConvTranspose",
     "Shrink",
-    "SpaceToDepth",
-    "DepthToSpace",
     "ThresholdedRelu",
     "PRelu",
     "Selu",
     "Softplus",
-    "HardSigmoid",
     "GlobalLpPool",
     "LogSoftmax",
     "MeanVarianceNormalization",
@@ -175,13 +172,23 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "Cosh"
   };
 
-  if(device == "CPU")
-      return unsupported_ops_cpu.find(name) != unsupported_ops_cpu.end();
-  if(device == "GPU")
-      return unsupported_ops_gpu.find(name) != unsupported_ops_gpu.end();
-  if(device == "VPU")
-      return unsupported_ops_vpu.find(name) != unsupported_ops_vpu.end();
-  return false;
+  std::set<std::string> unsupported_ops = {};
+
+  if(device == "CPU"){
+    unsupported_ops = unsupported_ops_cpu;
+  }
+  else if(device == "GPU"){
+    std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
+      unsupported_ops_gpu.begin(), unsupported_ops_gpu.end(),
+      std::inserter(unsupported_ops, unsupported_ops.begin()));
+  }
+  else if(device == "VPU"){
+    std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
+      unsupported_ops_vpu.begin(), unsupported_ops_vpu.end(),
+      std::inserter(unsupported_ops, unsupported_ops.begin()));
+  }
+
+  return unsupported_ops.find(name) != unsupported_ops.end();
 }
 
 // Returns true only if op is in a mode that is not currently supported
@@ -260,8 +267,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
           if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
-    	      return true;
-	        }
+            return true;
+          }
       }
   } else if (optype == "Div") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -278,10 +285,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Dropout" || optype == "Identity") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
-	  auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-	  if (it != graph_inputs.end()) {
-	      return true;
-	  }
+    auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+    if (it != graph_inputs.end()) {
+        return true;
+    }
       }
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
@@ -443,8 +450,8 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   /*
   1. Check input and output data types are supported.
   2. Check Op is supported
-	 2a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
-	 2b. If above is not true, check if the op is available in nGraph.
+   2a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
+   2b. If above is not true, check if the op is available in nGraph.
   */
 
   //Check 1
