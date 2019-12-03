@@ -1070,7 +1070,7 @@ class BertOnnxModel(OnnxModel):
         bert_inputs = self.get_bert_inputs()
         for input in bert_inputs:
             graph_input = self.find_graph_input(input)
-            if graph_input is not None and graph_input.type.tensor_type.elem_type == TensorProto.INT64:
+            if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
                 cast_output = input + '_int32'
                 cast_node = onnx.helper.make_node('Cast', inputs=[input], outputs=[cast_output])
                 cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.INT32))])
@@ -1232,9 +1232,6 @@ def main():
     parser.add_argument('--float16', required=False, action='store_true')
     parser.set_defaults(float16=False)
 
-    # Choose Gelu Implementation. FastGelu uses approximation for Gelu. It is faster.
-    parser.add_argument('--gelu', required=False, type=str.lower, default='fastgelu', choices=['gelu', 'fastgelu'])
-
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -1248,7 +1245,9 @@ def main():
 
     bert_model.fuse_layer_norm()
 
-    gelu_op_name = 'Gelu' if args.gelu == 'gelu' else 'FastGelu'
+    # FastGelu uses approximation for Gelu. It is faster.
+    use_approximation = True
+    gelu_op_name = 'Gelu' if not use_approximation else 'FastGelu'
     bert_model.fuse_gelu(gelu_op_name)
 
     bert_model.fuse_reshape()

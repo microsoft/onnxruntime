@@ -53,3 +53,6 @@ See below for description of all the options:
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
+- **verbose**: (*optional*)
+    Print verbose information when this flag is specified.
+
