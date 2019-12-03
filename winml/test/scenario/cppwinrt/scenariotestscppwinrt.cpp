@@ -1444,10 +1444,12 @@ void DeviceLostRecoveryHelper()
   }
 
   // evaluate should fail
-  try {
+  try
+  {
     session.Evaluate(binding, L"");
     FAIL() << "Evaluate should fail after removing the device";
-  } catch (...) {
+  } catch (...)
+  {
   }
 
   // remove all references to the device by reseting the session and binding.
