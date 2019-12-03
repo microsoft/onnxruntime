@@ -196,7 +196,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 ##### Linux
 
 ```
-./build.sh --use_full_protobuf --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
+./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
