@@ -10,32 +10,6 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-// Get values of integer tensor from initializer, and append them to a vector.
-static bool LoadIntegerTensor(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    return false;
-  }
-
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
-  const auto data_type = tensor_proto->data_type();
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    const int64_t* val = init_const->data<int64_t>();
-    data.reserve(data.size() + init_const->size());
-    data.insert(data.end(), val, val + init_const->size());
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    const int32_t* val = init_const->data<int32_t>();
-    data.reserve(data.size() + init_const->size());
-    for (int64_t i = 0; i < init_const->size(); i++) {
-      data.push_back(static_cast<int64_t>(val[i]));
-    }
-  } else {
-    return false;
-  }
-
-  return true;
-}
-
 Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -173,12 +147,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   // We do not check whether the initializer is constant.
   // Some model uses constant initializer and some does not.
   // Here we assume that no one will override the initializer using graph input.
-  if (!LoadIntegerTensor(graph, *(concat.InputDefs()[2]), shape_value)) {
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value)) {
     return false;
   }
 
   if (concat_input_count > 3) {
-    if (!LoadIntegerTensor(graph, *(concat.InputDefs()[3]), shape_value)) {
+    if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[3]), shape_value)) {
       return false;
     }
   }
