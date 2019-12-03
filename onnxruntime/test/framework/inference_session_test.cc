@@ -1631,8 +1631,8 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_num_threads == 2);
 
   // The default value for execution_mode is ORT_SEQUENTIAL
-  // The model requests ORT_PARALLEL in the ORT config Json - hence that should be used
-  ASSERT_TRUE(session_object_1.GetSessionOptions().execution_mode == ExecutionMode::ORT_PARALLEL);
+  // The model's config doesn't explicitly request a mode in the ORT config Json - hence the default should be used
+  ASSERT_TRUE(session_object_1.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 
   // The default value for graph_optimization_level is Level1
   // The model requests Level3 - hence that should be used
@@ -1659,10 +1659,10 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
   ASSERT_TRUE((st = session_object_2.Initialize()).IsOK()) << st.ErrorMessage();
 
-  // The default value for execution_mode is ORT_SEQUENTIAL
-  // Even though the model requests ORT_PARALLEL in the ORT config Json,
+  // The default value for enable_profiling is false
+  // Even though the model requests enable_profiling to be true in the ORT config Json,
   // the default value should be used as the feature is disabled
-  ASSERT_TRUE(session_object_2.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+  ASSERT_FALSE(session_object_2.GetSessionOptions().enable_profiling);
 
   // In the session options object fed in at session creation,
   // the request was for intra_op_num_threads to be 2 - that should be honored
@@ -1784,7 +1784,7 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
     ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
   }
 
- // Disable the feature before exiting the test as this process is likely to be used for running other tests
+  // Disable the feature before exiting the test as this process is likely to be used for running other tests
 #ifdef _WIN32
   _putenv(ort_load_config_from_model_env_var_disabled);
 #else

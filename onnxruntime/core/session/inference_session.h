@@ -112,13 +112,13 @@ class InferenceSession {
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     This ctor will throw on encountering model parsing issues.
     */
-  explicit InferenceSession(const SessionOptions& session_options,
-                            const std::string& model_uri,
-                            logging::LoggingManager* logging_manager = nullptr);
+  InferenceSession(const SessionOptions& session_options,
+                   const std::string& model_uri,
+                   logging::LoggingManager* logging_manager = nullptr);
 #ifdef _WIN32
-  explicit InferenceSession(const SessionOptions& session_options,
-                            const std::wstring& model_uri,
-                            logging::LoggingManager* logging_manager = nullptr);
+  InferenceSession(const SessionOptions& session_options,
+                   const std::wstring& model_uri,
+                   logging::LoggingManager* logging_manager = nullptr);
 #endif
 
   /**
@@ -133,9 +133,9 @@ class InferenceSession {
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     This ctor will throw on encountering model parsing issues.
     */
-  explicit InferenceSession(const SessionOptions& session_options,
-                            std::istream& model_istream,
-                            logging::LoggingManager* logging_manager = nullptr);
+  InferenceSession(const SessionOptions& session_options,
+                   std::istream& model_istream,
+                   logging::LoggingManager* logging_manager = nullptr);
 
   /**
     Create a new InferenceSession
@@ -150,10 +150,10 @@ class InferenceSession {
     See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
     This ctor will throw on encountering model parsing issues.
     */
-  explicit InferenceSession(const SessionOptions& session_options,
-                            const void* model_data,
-                            int model_data_len,
-                            logging::LoggingManager* logging_manager = nullptr);
+  InferenceSession(const SessionOptions& session_options,
+                   const void* model_data,
+                   int model_data_len,
+                   logging::LoggingManager* logging_manager = nullptr);
 
   virtual ~InferenceSession();
 

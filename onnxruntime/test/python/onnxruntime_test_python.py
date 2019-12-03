@@ -600,15 +600,15 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(self.get_name("model_with_valid_ort_config_json.onnx"))
             session_options = sess.get_session_options()
             
-            self.assertEqual(session_options.inter_op_num_threads, 5)
+            self.assertEqual(session_options.inter_op_num_threads, 5)  # from the ORT config
             
-            self.assertEqual(session_options.intra_op_num_threads, 2)
+            self.assertEqual(session_options.intra_op_num_threads, 2)  # from the ORT config
 
-            self.assertEqual(session_options.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
+            self.assertEqual(session_options.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)  # default option (not from the ORT config)
 
-            self.assertEqual(session_options.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
+            self.assertEqual(session_options.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)  # from the ORT config
 
-            self.assertEqual(session_options.enable_profiling, True)
+            self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
             
         except Exception: 
             raise
