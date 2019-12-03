@@ -606,7 +606,7 @@ class TestInferenceSession(unittest.TestCase):
 
             self.assertEqual(session_options.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
-            self.assertEqual(session_options.graph_optimization_level, 3)
+            self.assertEqual(session_options.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
 
             self.assertEqual(session_options.enable_profiling, True)
             
