@@ -87,7 +87,7 @@ CONTRIB_BINARY_OPS()
 // D: double
 // O: bool
 
-CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(AddGeluFusion)
+CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(BiasGelu)
 
 }  // namespace cuda
 }  // namespace contrib

@@ -281,7 +281,8 @@ class PlannerImpl {
     return elt_type->Size();
   }
 
-  static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1, const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
+  static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
+                       const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
     const auto& ptype1 = arg1.Type();
     const auto& ptype2 = arg2.Type();
     auto type1_size = GetElementSize(ptype1);
@@ -392,8 +393,8 @@ class PlannerImpl {
       // This is determined by the opkernel bound to the node.
       const KernelCreateInfo* kernel_create_info = nullptr;
       ORT_RETURN_IF_ERROR(kernel_registry_.SearchKernelRegistry(*pnode, &kernel_create_info));
-      auto p_kernelDef = kernel_create_info->kernel_def.get();
-      if (nullptr == p_kernelDef) {
+      auto p_kernel_def = kernel_create_info->kernel_def.get();
+      if (nullptr == p_kernel_def) {
         std::ostringstream errormsg;
         errormsg << "No suitable kernel definition found for op " << pnode->OpType();
         if (pnode->Op() != nullptr) {
@@ -402,14 +403,18 @@ class PlannerImpl {
         if (!pnode->Name().empty()) errormsg << " (node " << pnode->Name() << ")";
         return Status(ONNXRUNTIME, FAIL, errormsg.str());
       }
+
       auto exec_provider = execution_providers_.Get(*pnode);
       if (exec_provider == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ",
                                pnode->GetExecutionProviderType());
       }
 
+      bool is_implicit_input = false;
+
       // increment UseCount and add location information if applicable for the provided input def
-      auto process_input = [&graph_inputs, &exec_provider, &p_kernelDef, this](const NodeArg& input, size_t arg_idx) {
+      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+                            this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
 
@@ -422,14 +427,19 @@ class PlannerImpl {
                            return value && value->Name() == name;
                          }) != outer_scope_node_args_.cend()) {
           OrtValueIndex index = Index(name);
-          plan_.SetLocation(static_cast<size_t>(index),
-                            exec_provider->GetAllocator(0, p_kernelDef->InputMemoryType(arg_idx))->Info());
+
+          // implicit inputs do not have an entry in the kernel def so we use the default memory type.
+          // matching logic is used in TransformerMemcpyImpl::ProcessDefs
+          OrtMemType mem_type = is_implicit_input ? OrtMemTypeDefault : p_kernel_def->InputMemoryType(arg_idx);
+          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
         }
 
         return Status::OK();
       };
 
       ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->InputDefs(), process_input));
+
+      is_implicit_input = true;
       ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->ImplicitInputDefs(), process_input));
 
       auto outputs = pnode->OutputDefs();
@@ -440,12 +450,14 @@ class PlannerImpl {
         OrtValueIndex index = Index(node_output->Name());
         ProcessDef(index, node_output);
         ++UseCount(index);
-        plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, p_kernelDef->OutputMemoryType(i))->Info());
+        plan_.SetLocation(static_cast<size_t>(index),
+                          exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i))->Info());
       }
+
       // if sync is needed, mark allocation plan as create_fence_if_async=true
       // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,
       // in which case create_fence_if_async would be ignored when creating MLValue
-      if (p_kernelDef->ExecQueueId() != 0) {
+      if (p_kernel_def->ExecQueueId() != 0) {
         pnode->ForEachDef([this](const onnxruntime::NodeArg& arg, bool /*is_input*/) {
           OrtValueIndex index = Index(arg.Name());
           AllocPlan(index).create_fence_if_async = true;
