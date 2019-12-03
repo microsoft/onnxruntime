@@ -779,6 +779,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("get_providers", [](InferenceSession* sess) -> const std::vector<std::string>& {
         return sess->GetRegisteredProviderTypes();
       })
+      .def_property_readonly("session_options", [](InferenceSession* sess) -> const SessionOptions& {
+        return sess->GetSessionOptions();
+      })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
         OrtPybindThrowIfError(res.first);

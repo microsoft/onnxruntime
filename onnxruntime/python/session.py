@@ -40,6 +40,7 @@ class InferenceSession:
 
         self._sess.load_model(providers)
         
+        self._session_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._overridable_initializers = self._sess.overridable_initializers
@@ -62,6 +63,10 @@ class InferenceSession:
         self._model_meta = None
         self._providers = None
         self._sess = None
+
+    def get_session_options(self):
+        "Return the session options. See :class:`onnxruntime.SessionOptions`."
+        return self._session_options
 
     def get_inputs(self):
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
