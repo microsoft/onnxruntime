@@ -109,7 +109,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   bool session_options_from_model = false;
 
   // Get the value held by the environment variable - kOrtLoadConfigFromModelEnvVar
-  const std::string& load_config_from_model_env_var_value =
+  const std::string load_config_from_model_env_var_value =
       env_instance.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar);
 
   // Ascertain if the model is to be read for the ORT config from the afore parsed env var
@@ -380,10 +380,8 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     is_model_loaded_ = true;
 
     // since model load was successful, we don't need to hang on to the member 'model_proto_' anymore
-    // (free up the resource if applicable)
-    if (model_proto_ != nullptr) {
-      model_proto_.reset();
-    }
+    // (free up the resource if applicable - if the unique_ptr is a nullptr, reset() doesn't do anything)
+    model_proto_.reset();
 
     event_name_ = event_name;
 

@@ -251,7 +251,7 @@ class WindowsEnv : public Env {
     // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
     // For now, we assume that the environment variable is not found.
 
-    return std::string("");
+    return std::string();
   }
 
  private:
