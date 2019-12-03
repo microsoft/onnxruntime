@@ -450,7 +450,7 @@
 | |
 
 
-## Operators implemented by MKLDNNExecutionProvider
+## Operators implemented by DNNLExecutionProvider
 
 | Op Name | Parameters | OpSet Version | Types Supported |
 |---------|------------|---------------|-----------------|

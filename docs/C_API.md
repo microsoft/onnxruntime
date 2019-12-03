@@ -5,7 +5,7 @@
 * Creating an InferenceSession from an on-disk model file and a set of SessionOptions.
 * Registering customized loggers.
 * Registering customized allocators.
-* Registering predefined providers and set the priority order. ONNXRuntime has a set of predefined execution providers, like CUDA, MKLDNN. User can register providers to their InferenceSession. The order of registration indicates the preference order as well.
+* Registering predefined providers and set the priority order. ONNXRuntime has a set of predefined execution providers, like CUDA, DNNL. User can register providers to their InferenceSession. The order of registration indicates the preference order as well.
 * Running a model with inputs. These inputs must be in CPU memory, not GPU. If the model has multiple outputs, user can specify which outputs they want.
 * Converting an in-memory ONNX Tensor encoded in protobuf format to a pointer that can be used as model input.
 * Setting the thread pool size for each session.
