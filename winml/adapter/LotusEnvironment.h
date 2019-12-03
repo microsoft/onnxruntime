@@ -6,7 +6,7 @@
 #include "WinMLProfiler.h"
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
-#include "inc/WinMLAdapter.h"
+#include "WinMLAdapter.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4505)
