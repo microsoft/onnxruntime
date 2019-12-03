@@ -1448,7 +1448,8 @@ void DeviceLostRecoveryHelper()
   {
     session.Evaluate(binding, L"");
     FAIL() << "Evaluate should fail after removing the device";
-  } catch (...)
+  }
+  catch (...)
   {
   }
 
