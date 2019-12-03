@@ -78,8 +78,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
                 opt.AppendExecutionProvider_CPU(1);
-#if USE_MKLDNN
-                opt.AppendExecutionProvider_Mkldnn(0);
+#if USE_DNNL
+                opt.AppendExecutionProvider_Dnnl(0);
 #endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
@@ -1106,8 +1106,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var entryPointNames = new[]{
             "OrtGetApiBase",
             "OrtSessionOptionsAppendExecutionProvider_CPU"
-#if USE_MKLDNN
-            ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
+#if USE_DNNL
+            ,"OrtSessionOptionsAppendExecutionProvider_Dnnl"
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"
