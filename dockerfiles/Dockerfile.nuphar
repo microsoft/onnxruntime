@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
-ARG PYTHON_VERSION=3.5
+ARG PYTHON_VERSION=3.6
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_SERVER_BRANCH=master
 
