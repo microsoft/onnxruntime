@@ -574,6 +574,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
