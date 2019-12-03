@@ -93,6 +93,9 @@ fi
 if [ $DEVICE_TYPE = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
 fi
+
+echo $PACKAGE_LIST
+
 apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 
 locale-gen en_US.UTF-8
