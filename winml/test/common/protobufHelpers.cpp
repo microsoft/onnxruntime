@@ -1,18 +1,25 @@
-﻿// LotusRT
+﻿#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+
+// LotusRT
 #include "core/framework/allocatormgr.h"
 // #include "core/session/inference_session.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 
 #include "protobufHelpers.h"
-#include "onnx/defs/schema.h"
-#include "core/graph/onnx_protobuf.h"
+
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#include "onnx/onnx-ml.pb.h"
+#pragma warning(pop)
+
 #include <gtest/gtest.h>
 #include <fstream>
 
 #include "winrt/Windows.Storage.Streams.h"
 
 #pragma warning(disable : 4244)
+
 
 using namespace winrt::Windows::Storage::Streams;
 using namespace winrt::Windows::AI::MachineLearning;

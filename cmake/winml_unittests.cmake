@@ -40,7 +40,6 @@ function(add_winml_test)
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
-  target_compile_definitions(${_UT_TARGET} PRIVATE _SCL_SECURE_NO_WARNINGS)      # remove warnings about unchecked iterators
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
@@ -62,9 +61,6 @@ add_dependencies(winml_test_common
   winml_dll
 )
 set_winml_target_properties(winml_test_common)
-target_include_directories(winml_test_common PRIVATE ${REPO_ROOT}/cmake/external/onnx)
-target_compile_definitions(winml_test_common PRIVATE ONNX_ML)
-target_compile_definitions(winml_lib_core PRIVATE ONNX_NAMESPACE=onnx)
 
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
 add_winml_test(
