@@ -35,6 +35,7 @@ if [ $RunTestNative = "true" ]; then
   cd $LocalNuGetRepo
   TempDir=_tmp
   mkdir -p $TempDir && pushd $TempDir
+  export LD_LIBRARY_PATH=$LocalNuGetRepo/_tmp:${LD_LIBRARY_PATH}
   unzip ../$PackageName
   libs="-L runtimes/linux-x86/native -L runtimes/linux-x64/native -l onnxruntime"
   inc="-I build/native/include"
