@@ -34,7 +34,7 @@ else
   PYTHON_VER=3.6
   echo "Image used for testing is onnxruntime-$IMAGE"
 
-  docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.centos .
+  docker build -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f Dockerfile.centos .
 fi
 
 docker rm -f "onnxruntime-cpu" || true

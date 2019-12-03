@@ -574,7 +574,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip="Temporarily skipping this test.")]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
@@ -594,7 +593,19 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     libName = "libcustom_op_library.dylib";
                 }
 
-                option.RegisterCustomOpLibrary(libName);
+                string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
+                Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
+
+                try
+                {
+                    option.RegisterCustomOpLibrary(libFullPath);
+                }
+                catch(Exception ex)
+                {
+                    var msg = $"Failed to load custom op library {libFullPath}, error = {ex.Message}";
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
+
 
                 using (var session = new InferenceSession(modelPath, option))
                 {
