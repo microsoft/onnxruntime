@@ -437,6 +437,15 @@
             },
             "type": "git"
          }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
+               "repositoryUrl": "https://github.com/nlohmann/json.git"
+            },
+            "type": "git"
+         }
       }
    ],
    "Version": 1
