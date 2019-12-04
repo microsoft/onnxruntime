@@ -55,7 +55,7 @@ static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender,
 class LotusEnvironment {
  public:
   LotusEnvironment() {
-    const HRESULT etw_status = TraceLoggingRegister(winml_trace_logging_provider);
+    const HRESULT etw_status = TraceLoggingRegister(winmla::winml_trace_logging_provider);
     if (FAILED(etw_status)) {
       throw std::runtime_error("WinML TraceLogging registration failed. Logging will be broken: " + std::to_string(etw_status));
     }
@@ -78,7 +78,7 @@ class LotusEnvironment {
   }
 
   ~LotusEnvironment() {
-    TraceLoggingUnregister(winml_trace_logging_provider);
+    TraceLoggingUnregister(winmla::winml_trace_logging_provider);
     if (suspend_token_) {
       winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_token_);
     }
