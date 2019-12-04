@@ -23,7 +23,6 @@ if (onnxruntime_BUILD_CSHARP)
   check_language(CSharp)
   if (CMAKE_CSharp_COMPILER)
     enable_language(CSharp)
-    set(CMAKE_DOTNET_TARGET_FRAMEWORK_VERSION v4.6.1)
     set(CMAKE_CSharp_FLAGS ${CMAKE_CSharp_FLAGS} "/langversion:6")
     message(STATUS "CMAKE_Csharp_Compiler = ${CMAKE_CSharp_COMPILER}")
   else()
@@ -86,6 +85,7 @@ option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -94,6 +94,15 @@ set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
 endif()
+
+if(NOT WIN32)
+  #TODO: On Linux we may try https://github.com/microsoft/TraceLogging
+  if(onnxruntime_ENABLE_INSTRUMENT)
+    message(WARNING "Instrument is only supported on Windows now")
+    set(onnxruntime_ENABLE_INSTRUMENT OFF)
+  endif()
+endif()
+
 if(onnxruntime_USE_OPENMP)
   find_package(OpenMP)
   if (OPENMP_FOUND)
@@ -176,9 +185,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
-  #Disable 4100 globally. Too many this kind errors in protobuf
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4100")
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
   if (NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -340,6 +347,11 @@ if (onnxruntime_USE_ACL)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
 endif()
 
+# MKLML
+if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
+  include(mkldnn)
+endif()
+
 # TVM
 if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_CUDA)
@@ -349,6 +361,19 @@ if (onnxruntime_USE_TVM)
     set(USE_LLVM ON)
     add_definitions(-DUSE_TVM_WITH_LLVM)
   endif()
+  if (onnxruntime_USE_OPENMP)
+    set(USE_OPENMP "gnu")
+  endif()
+  if (onnxruntime_USE_MKLML)
+    set(USE_OPENMP "intel")
+    # make sure MKLML in ORT is used by TVM
+    if (WIN32)
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
+    else()
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
+    endif()
+  endif()
+
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
@@ -500,10 +525,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
-  include(mkldnn)
-endif()
-
 if(onnxruntime_USE_GEMMLOWP)
   add_definitions(-DUSE_GEMMLOWP=1)
 endif()
@@ -536,7 +557,7 @@ if (onnxruntime_USE_NGRAPH)
   add_definitions(-DUSE_NGRAPH=1)
   include(ngraph)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ngraph)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
 endif()
 
 if(onnxruntime_USE_OPENVINO)
@@ -663,6 +684,11 @@ if (onnxruntime_USE_DML)
 
   add_definitions(-DUSE_DML=1)
   include(dml)
+endif()
+
+# allow the caller to tell us where the nuget packages are going
+if ("${REPO_PACKAGE_LOCATION}" STREQUAL "")
+    set(REPO_PACKAGE_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/packages)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

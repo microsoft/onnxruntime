@@ -3,11 +3,8 @@
 
 #include "pch.h"
 
-#ifdef USE_DML
 #include "DirectML.h"
 #include <d3d11on12.h>
-#endif USE_DML
-
 #include <wil/winrt.h>
 #include "inc/DeviceHelpers.h"
 
@@ -147,7 +144,6 @@ bool IsFloat16Supported(ID3D12Device* device) {
     return false;
   }
 
-#ifdef USE_DML
   winrt::com_ptr<IDMLDevice> dmlDevice;
   winrt::check_hresult(DMLCreateDevice(
       device,
@@ -165,9 +161,6 @@ bool IsFloat16Supported(ID3D12Device* device) {
       &float16Data));
 
   return float16Data.IsSupported;
-#else
-  return false;
-#endif USE_DML
 }
 
 // uses Structured Exception Handling (SEH) to detect for delay load failures of target API.
@@ -301,7 +294,6 @@ HRESULT GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, I
 #endif
 
 HRESULT CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
-#ifdef USE_DML
   return DeviceHelpers::RunDelayLoadedApi(
       D3D11On12CreateDevice,
       device12,                          // pointer to d3d12 device
@@ -314,9 +306,6 @@ HRESULT CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11) {
       device11,                          // d3d11 device out param
       nullptr,                           // pointer to d3d11 device context (unused)
       nullptr);                          // pointer to the returned feature level (unused)
-#else
-  return E_NOTIMPL;
-#endif USE_DML
 }
 
 HRESULT GetGPUPreference(winrt::Windows::AI::MachineLearning::LearningModelDeviceKind deviceKind, DXGI_GPU_PREFERENCE* preference) noexcept {

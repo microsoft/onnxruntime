@@ -8,13 +8,15 @@
 #include "LearningModelBinding.h"
 #include "LearningModelSession.h"
 #include "TelemetryEvent.h"
+#include <onnxruntime_c_api.h>
+#include "LearningModel.h"
 
 using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
-    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
-  m_lotusBinding.attach(session.as<LearningModelSession>()->CreateSessionBinding());
+  Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
+  session.as<winmlp::LearningModelSession>()->CheckClosed();
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
 }
 WINML_CATCH_ALL
@@ -40,7 +42,7 @@ static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBi
 using NullableBindingPort = std::optional<std::pair<Windows::AI::MachineLearning::ILearningModelFeatureDescriptor, BindingType>>;
 
 static NullableBindingPort FindValidBinding(
-    LearningModel model,
+    winml::LearningModel model,
     const std::wstring& name) {
   if (auto descriptor = FindValidBinding(model.InputFeatures(), name)) {
     return std::make_pair(descriptor, BindingType::kInput);
@@ -156,13 +158,13 @@ void LearningModelBinding::Bind(
 
   auto featureName = WinML::Strings::UTF8FromHString(name);
   std::tie(bindingName, binding_value, bindingType) = CreateBinding(featureName, value, properties);
-
+  Ort::Value ortValue = binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr);
   switch (bindingType) {
     case BindingType::kInput:
-      WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, binding_value));
+      WINML_THROW_IF_FAILED(BindInput(bindingName, ortValue));
       break;
     case BindingType::kOutput:
-      WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, binding_value));
+      WINML_THROW_IF_FAILED(BindOutput(bindingName, ortValue));
       break;
     default:
       FAIL_FAST();
@@ -171,7 +173,11 @@ void LearningModelBinding::Bind(
 WINML_CATCH_ALL
 
 void LearningModelBinding::Clear() try {
-  m_lotusBinding.attach(m_session.as<LearningModelSession>()->CreateSessionBinding());
+  m_session.as<winmlp::LearningModelSession>()->CheckClosed();
+  inputs_.clear();
+  input_names_.clear();
+  outputs_.clear();
+  output_names_.clear();
   m_providers.clear();
 }
 WINML_CATCH_ALL
@@ -213,14 +219,11 @@ bool LearningModelBinding::HasKey(hstring const& key) {
 void LearningModelBinding::Split(
     Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
     Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second) {
+  ORT_UNUSED_PARAMETER(first);
+  ORT_UNUSED_PARAMETER(second);
   throw hresult_not_implemented();
 }
 
-_winmla::IIOBinding* LearningModelBinding::BindingCollection() {
-  _winmla::IIOBinding* p;
-  m_lotusBinding.copy_to(&p);
-  return p;
-}
 
 ONNXTensorElementDataType STDMETHODCALLTYPE GetONNXTensorElementDataType(winml::TensorKind kind) {
   if (kind == TensorKind::Float) {
@@ -385,7 +388,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 
 Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
-    Ort::Value& ort_value) {
+    Ort::Value& ort_value) {  
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
@@ -438,8 +441,8 @@ Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
 std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModelBinding::UpdateProviders() {
   std::unordered_map<std::string, Windows::Foundation::IInspectable> outputs;
 
-  auto& outputNames = m_lotusBinding->GetOutputNames();
-  auto& outputMLValues = m_lotusBinding->GetOutputs();
+  auto& outputNames = GetOutputNames();
+  auto& outputMLValues = GetOutputs();
   WINML_THROW_HR_IF_FALSE_MSG(
       E_UNEXPECTED,
       outputNames.size() == outputMLValues.size(),
@@ -447,7 +450,7 @@ std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModel
 
   for (unsigned i = 0; i < outputNames.size(); i++) {
     auto utf8Name = outputNames[i];
-    auto mlValue = outputMLValues[i];
+    OrtValue* mlValue = outputMLValues[i];
 
     if (m_providers.find(utf8Name) != std::end(m_providers)) {
       auto& providerInfo = m_providers[utf8Name];
@@ -497,14 +500,13 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
     std::tie(bindingName, binding_value_ptr, bindingType) = CreateBinding(featureName, to, nullptr);
-    Ort::Value bindingValue(binding_value_ptr);
-
+    Ort::Value ortValue = binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr);
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_FAILED(m_lotusBinding->BindInput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(BindInput(bindingName, ortValue));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_FAILED(m_lotusBinding->BindOutput(bindingName, bindingValue));
+        WINML_THROW_IF_FAILED(BindOutput(bindingName, ortValue));
         break;
       default:
         FAIL_FAST();
@@ -513,4 +515,107 @@ STDMETHODIMP LearningModelBinding::Bind(
   }
   WINML_CATCH_ALL_COM
 }
+
+static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, const std::string& name) {
+  auto it = std::find(std::begin(names), std::end(names), name);
+  if (it == std::end(names)) {
+    return {false, 0};
+  }
+  return {true, it - std::begin(names)};
+}
+
+// This method releases control of memory of ml_value from caller of BindInput
+HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_value) {
+  auto rc = Contains(input_names_, name);
+
+  auto add_or_replace = [this, &name](const bool exists, size_t index, Ort::Value& value) {
+    if (exists) {
+      inputs_[index] = Ort::Value(value.release());
+    } else {
+      input_names_.push_back(name);
+      inputs_.push_back(Ort::Value(value.release()));
+    }
+  };
+  if (ml_value.IsTensor()) {
+    Ort::Value new_mlvalue = Ort::Value(nullptr);
+    WINML_THROW_IF_FAILED(m_session.as<LearningModelSession>()
+      ->GetIInferenceSession()
+      ->CopyOneInputAcrossDevices(name.c_str(), ml_value, new_mlvalue.put()));
+    add_or_replace(rc.first, rc.second, new_mlvalue);
+  } else {
+    add_or_replace(rc.first, rc.second, ml_value);
+  }
+  return S_OK;
+}
+
+// This method releases control of memory of ml_value from caller of BindInput
+HRESULT LearningModelBinding::BindOutput(const std::string& name, Ort::Value& ml_value) {
+  auto rc = Contains(output_names_, name);
+  OrtValue* ml_value_data = ml_value.release();
+  if (rc.first) {
+    outputs_[rc.second] = ml_value_data ? Ort::Value(ml_value_data) : Ort::Value(nullptr);
+    return S_OK;
+  }
+
+  output_names_.push_back(name);
+  outputs_.push_back(ml_value_data ? Ort::Value(ml_value_data) : Ort::Value(nullptr));
+  return S_OK;
+}
+
+const std::vector<std::string>& LearningModelBinding::GetOutputNames() const {
+  return output_names_;
+}
+
+std::vector<Ort::Value>& LearningModelBinding::GetOutputs() { return outputs_; }
+
+const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
+  return input_names_;
+}
+
+const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const { return inputs_; }
+
+void LearningModelBinding::BindUnboundOutputs()
+{
+  auto& bound_output_names = GetOutputNames();
+  std::unordered_set<std::string> bound_output_names_set(
+      bound_output_names.begin(),
+      bound_output_names.end());
+
+  // Get model output feature names
+  auto model_impl = m_session.Model().as<winmlp::LearningModel>();
+  auto output_features = model_impl->OutputFeatures();
+  std::vector<ILearningModelFeatureDescriptor> output_descriptors(
+      begin(output_features),
+      end(output_features));
+
+  // Convert all output features to their feature names
+  std::vector<std::string> output_feature_names;
+  std::transform(
+      std::begin(output_descriptors),
+      std::end(output_descriptors),
+      std::back_inserter(output_feature_names),
+      [&](auto& descriptor) {
+        auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
+        const wchar_t* p_name;
+        uint32_t size;
+        WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
+        return WinML::Strings::UTF8FromUnicode(p_name, size);
+      });
+
+  // Find the set difference to determine if there are any unbound output features
+  std::vector<std::string> unbound_output_names;
+  std::copy_if(
+      std::begin(output_feature_names), std::end(output_feature_names),
+      std::inserter(unbound_output_names, std::begin(unbound_output_names)),
+      [&](const auto& outputFeatureName) {
+        return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
+      });
+
+  // Add all unbound outputs to binding collection
+  for (const auto& unbound_output : unbound_output_names) {
+    Ort::Value out(nullptr);
+    WINML_THROW_IF_FAILED(BindOutput(unbound_output, out));
+  }
+}
+
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

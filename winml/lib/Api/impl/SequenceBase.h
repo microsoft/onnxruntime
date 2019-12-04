@@ -34,6 +34,8 @@ struct SequenceBase : public winrt::implements<
     using TKey = std::string;
     using TValue = float;
     using Type = std::pair<std::vector<TKey>, std::vector<TValue>>;
+    using ABIKey = winrt::hstring;
+    using ABIValue = TValue;
   };
   template <>
   struct ValidLotusType<AbiMapInt64BitToFloat> {
@@ -41,6 +43,8 @@ struct SequenceBase : public winrt::implements<
     using TKey = int64_t;
     using TValue = float;
     using Type = std::pair<std::vector<TKey>, std::vector<TValue>>;
+    using ABIKey = TKey;
+    using ABIValue = TValue;
   };
 
   template <typename TElement>
@@ -189,8 +193,7 @@ struct SequenceBase : public winrt::implements<
     return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
   }
 
-  STDMETHOD(GetOrtValue)
-  (
+  STDMETHOD(GetOrtValue)(
       WinML::BindingContext& context,
       OrtValue** ort_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
@@ -214,13 +217,13 @@ struct SequenceBase : public winrt::implements<
     *ort_value = Ort::Value::CreateSequence(sequence_values).release();
     return S_OK;
 
-    /*    winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+    /*    winrt::com_ptr<winmla::IWinMLAdapter> adapter;
     RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
     auto lotus_type = adapter->GetVectorMapType(
         TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
         TensorKindFrom<ValidLotusType<T>::TValue>::Type);
 
-    winrt::com_ptr<_winmla::IOrtValue> ml_value_out;
+    winrt::com_ptr<winmla::IOrtValue> ml_value_out;
     adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
 
     *ml_value = ml_value_out.detach();*/
@@ -235,71 +238,60 @@ struct SequenceBase : public winrt::implements<
   }
 
   template <typename TRawType>
-  static TRawType
-  ConvertToABIType(
-      const typename ValidLotusType<TRawType>::Type& lotus_value) {
-    // make a copy
-    TRawType copy = lotus_value;
-    return copy;
+  static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
+    // make sure this is an array of these types
+    auto shape = ort_value.GetTensorTypeAndShapeInfo().GetShape();
+    // there needs to be only one dimension
+    THROW_HR_IF(E_INVALIDARG, shape.size() != 1);
+    auto lotus_value = ort_value.GetTensorMutableData<typename ValidLotusType<TRawType>::Type>();
+    // now go through all the entries
+    std::vector<TRawType> out;
+    for (auto i = 0; i < shape[0]; i++) {
+      out.push_back(lotus_value[i]);
+    }
+    // return the vector
+    return out;
   }
 
   template <>
-  static winrt::hstring
-  ConvertToABIType(
-      const typename ValidLotusType<winrt::hstring>::Type& lotus_value) {
-    return WinML::Strings::HStringFromUTF8(lotus_value);
-  }
-
-  static AbiMapStringToFloat
-  ConvertToABIType(
-      typename ValidLotusType<AbiMapStringToFloat>::TKey* keys,
-      typename ValidLotusType<AbiMapStringToFloat>::TValue* values,
-      size_t len) {
-    // need to make a copy to convert std::string to hstring
-    std::map<winrt::hstring, float> copy;
-    for (auto i = 0; i < len; ++i) {
-      auto key = WinML::Strings::HStringFromUTF8(keys[i]);
-      copy[key] = values[i];
+  static std::vector<winrt::hstring> ConvertToABIType<winrt::hstring>(Ort::Value& ort_value) {
+    auto strings = ort_value.GetStrings();
+    std::vector<winrt::hstring> out;
+    for (auto i = 0; i < strings.size(); ++i) {
+      out.push_back(WinML::Strings::HStringFromUTF8(strings[i].c_str()));
     }
-    return winrt::single_threaded_map<winrt::hstring, float>(
-        std::move(copy));
+    return out;
   }
 
-  static AbiMapInt64BitToFloat
-  ConvertToABIType(
-    typename ValidLotusType<AbiMapInt64BitToFloat>::TKey* keys,
-    typename ValidLotusType<AbiMapInt64BitToFloat>::TValue* values,
-    size_t len) {
-  // need to make a copy since stl objects are not ABI safe.
-    std::map<int64_t, float> copy;
-    for (auto i = 0; i < len; ++i) {
-        copy[keys[i]] = values[i];
-    }
-    return winrt::single_threaded_map<int64_t, float>(
-        std::move(copy));
-  }
-
-  STDMETHOD(UpdateSourceResourceData)
-  (
+  STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
       OrtValue* ort_value) {
+    ORT_UNUSED_PARAMETER(context);
     auto writable_vector = data_.as<wfc::IVector<T>>();
     writable_vector.Clear();
 
     Ort::AllocatorWithDefaultOptions allocator;
-    Ort::Value ort_value_in(ort_value);
-    auto len = ort_value_in.GetCount();
+    size_t len;
+    Ort::ThrowOnError(Ort::GetApi().GetValueCount(ort_value, &len));
     for (auto i = 0; i < len; ++i) {
-      auto map = ort_value_in.GetValue(i, allocator);
+      OrtValue* out = nullptr;
+      Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, i, allocator, &out));
+      Ort::Value map{out};
       auto keys = map.GetValue(0, allocator);
       auto values = map.GetValue(1, allocator);
 
-      auto keys_data = keys.GetTensorMutableData<ValidLotusType<T>::TKey>();
-      auto values_data = keys.GetTensorMutableData<ValidLotusType<T>::TValue>();
-    
-      writable_vector.Append(ConvertToABIType(keys_data, values_data, keys.GetTensorTypeAndShapeInfo().GetElementCount()));
-    }
+      auto keys_vector = ConvertToABIType<typename ValidLotusType<T>::ABIKey>(keys);
+      auto values_vector = ConvertToABIType<typename ValidLotusType<T>::ABIValue>(values);
 
+      std::map<typename ValidLotusType<T>::ABIKey, typename ValidLotusType<T>::ABIValue> std_map;
+      for (auto j = 0; j < keys_vector.size(); ++j) {
+        std_map[keys_vector[j]] = values_vector[j];
+      }
+      auto abi_map = winrt::single_threaded_map<typename ValidLotusType<T>::ABIKey, typename ValidLotusType<T>::ABIValue>(
+        std::move(std_map));
+    
+      writable_vector.Append(abi_map);
+    }
     return S_OK;
   }
 

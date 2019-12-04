@@ -41,7 +41,6 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
 
-  _winmla::IIOBinding* BindingCollection();
   std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
 
   const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
@@ -52,6 +51,13 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       UINT32 cchName,
       IUnknown* value);
 
+  const std::vector<std::string>& LearningModelBinding::GetOutputNames() const;
+  std::vector<Ort::Value>& LearningModelBinding::GetOutputs();
+  const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
+  const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
+  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value);
+  void BindUnboundOutputs();
+
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
   Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, Ort::Value& ort_value);
@@ -61,15 +67,18 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
   bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
-
+  HRESULT BindInput(const std::string& name, Ort::Value& ml_value);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  com_ptr<_winmla::IIOBinding> m_lotusBinding;
-  com_ptr<_winmla::IWinMLAdapter> adapter_;
+  com_ptr<winmla::IWinMLAdapter> adapter_;
+  std::vector<std::string> input_names_;
+  std::vector<Ort::Value> inputs_;
+  std::vector<std::string> output_names_;
+  std::vector<Ort::Value> outputs_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 

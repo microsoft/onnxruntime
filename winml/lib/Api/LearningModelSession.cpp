@@ -50,7 +50,7 @@ LearningModelSession::LearningModelSession(
 }
 WINML_CATCH_ALL
 
-_winmla::IModelProto*
+winmla::IModelProto*
 LearningModelSession::GetOptimizedModel() {
   // Get the model proto
 
@@ -61,9 +61,9 @@ LearningModelSession::GetOptimizedModel() {
   return GetOptimizedModel(should_close_model);
 }
 
-_winmla::IModelProto*
+winmla::IModelProto*
 LearningModelSession::GetOptimizedModel(bool should_close_model) {
-  com_ptr<_winmla::IModelProto> model_proto;
+  com_ptr<winmla::IModelProto> model_proto;
 
   {
     // Lock the model detach/copy since multiple threads can access concurrently
@@ -81,7 +81,7 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
   }
 
   // Ensure that the model is runnable on the device
-  com_ptr<_winmla::IWinMLAdapter> adapter;
+  com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
   WINML_THROW_IF_FAILED(adapter->EnsureModelDeviceCompatibility(model_, model_proto.get(), device_.as<winmlp::LearningModelDevice>()->GetD3DDeviceCache()->IsFloat16Supported()));
 
@@ -94,16 +94,16 @@ void LearningModelSession::Initialize() {
     _winmlt::EventCategory::kSessionCreation);
 
   // Get the optimized model proto from the learning model
-  com_ptr<_winmla::IModelProto> model_proto; 
+  com_ptr<winmla::IModelProto> model_proto; 
   model_proto.attach(GetOptimizedModel());
 
   // Create the session builder
   auto device_impl = device_.as<winmlp::LearningModelDevice>();
 
-  com_ptr<_winmla::IWinMLAdapter> adapter;
+  com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-  com_ptr<_winmla::IOrtSessionBuilder> session_builder;
+  com_ptr<winmla::IOrtSessionBuilder> session_builder;
   WINML_THROW_IF_FAILED(adapter->CreateOrtSessionBuilder(
     device_impl->GetD3DDevice(), 
     device_impl->GetDeviceQueue(),
@@ -121,7 +121,7 @@ void LearningModelSession::Initialize() {
       session_options_.BatchSizeOverride()));
   }
 
-  com_ptr<_winmla::IInferenceSession> session;
+  com_ptr<winmla::IInferenceSession> session;
   WINML_THROW_IF_FAILED(session_builder->CreateSession(
       options, session.put(), &cached_execution_provider_));
 
@@ -130,8 +130,7 @@ void LearningModelSession::Initialize() {
   WINML_THROW_IF_FAILED(session->RegisterCustomRegistry(model->GetOperatorRegistry()));
 
   // Register only the transformers not already in ORT
-  const bool registerLotusTransformers = false;
-  session->RegisterGraphTransformers(registerLotusTransformers);
+  session->RegisterGraphTransformers();
 
   // Load the model into the session
   WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()));
@@ -199,54 +198,20 @@ LearningModelSession::EvaluateFeaturesAsync(
   return EvaluateAsync(binding, correlation_id);
 }
 
-static _winmla::IIOBinding*
-GetIOBinding(
-  winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
-  winml::LearningModel& model) {
-  // Get the IOBinding Collection, and bound outputs
-  com_ptr<_winmla::IIOBinding> io_binding;
-  io_binding.attach(binding_impl->BindingCollection());
-  auto& bound_output_names = io_binding->GetOutputNames();
-  std::unordered_set<std::string> bound_output_names_set(
-    bound_output_names.begin(),
-    bound_output_names.end());
-
-  // Get model output feature names
-  auto model_impl = model.as<winmlp::LearningModel>();
-  auto output_features = model_impl->OutputFeatures();
-  std::vector<ILearningModelFeatureDescriptor> output_descriptors(
-    begin(output_features),
-    end(output_features));
-
-  // Convert all output features to their feature names
-  std::vector<std::string> output_feature_names;
-  std::transform(
-    std::begin(output_descriptors),
-    std::end(output_descriptors),
-    std::back_inserter(output_feature_names),
-    [&](auto& descriptor) {
-      auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
-      const wchar_t* p_name;
-      uint32_t size;
-      WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
-      return WinML::Strings::UTF8FromUnicode(p_name, size);
-    });
-
-  // Find the set difference to determine if there are any unbound output features
-  std::vector<std::string> unbound_output_names;
-  std::copy_if(
-    std::begin(output_feature_names), std::end(output_feature_names),
-    std::inserter(unbound_output_names, std::begin(unbound_output_names)),
-    [&](const auto& outputFeatureName) {
-      return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
-    });
-
-  // Add all unbound outputs to the iobinding collection
-  for (const auto& unbound_output : unbound_output_names) {
-    WINML_THROW_IF_FAILED(io_binding->BindOutput(unbound_output, nullptr));
-  }
-
-  return io_binding.detach();
+// copied from onnxruntime_cxx_inline.h
+inline OrtStatus* OrtRun(
+    OrtSession * session, 
+    const Ort::RunOptions& run_options, 
+    const char* const* input_names, 
+    const Ort::Value* input_values, 
+    size_t input_count,
+    const char* const* output_names, 
+    Ort::Value* output_values, 
+    size_t output_count) {
+  static_assert(sizeof(Ort::Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
+  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Ort::Value*>(input_values));
+  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
+  return Ort::GetApi().Run(session, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values);
 }
 
 uint64_t
@@ -256,13 +221,31 @@ LearningModelSession::Run(
   auto device = device_.as<LearningModelDevice>();
   CWinMLAutoLock lock(!device->IsCpuDevice() ? &evaluate_lock_ : nullptr);
   // TODO : set the run_options
-  onnxruntime::RunOptions run_options;
+  Ort::RunOptions run_options;
+  binding_impl->BindUnboundOutputs();
 
-  com_ptr<_winmla::IIOBinding> io_binding;
-  io_binding.attach(GetIOBinding(binding_impl, model_));
+  std::vector<const char*> inputNames_c;
+  for (int i=0; i < binding_impl->GetInputNames().size(); i++)
+  {
+    inputNames_c.push_back(binding_impl->GetInputNames()[i].c_str());
+  }
+  std::vector<const char*> outputNames_c;
+  for (int i = 0; i < binding_impl->GetOutputNames().size(); i++) {
+    outputNames_c.push_back(binding_impl->GetOutputNames()[i].c_str());
+  }
+  OrtSession* session = nullptr;
 
+  WINML_THROW_IF_FAILED(inference_session_->GetOrtSession(&session));
   // Invoke run on the ORT session.
-  WINML_THROW_IF_FAILED(inference_session_->Run(&run_options, io_binding.get()));
+  Ort::ThrowOnError(OrtRun(
+    session, 
+    run_options, 
+    inputNames_c.data(),
+    binding_impl->GetInputs().data(),
+    binding_impl->GetInputs().size(),
+    outputNames_c.data(),
+    binding_impl->GetOutputs().data(),
+    binding_impl->GetOutputs().size()));
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.
@@ -410,19 +393,11 @@ void LearningModelSession::Close() {
     inference_session_ = nullptr;
 }
 
-_winmla::IIOBinding*
-LearningModelSession::CreateSessionBinding() {
-  CheckClosed();
-  com_ptr<_winmla::IIOBinding> binding;
-  WINML_THROW_IF_FAILED(inference_session_->NewIOBinding(binding.put()));
-  return binding.detach();
-}
-
 void LearningModelSession::ApplyEvaluationProperties() try {
   if (evaluation_properties_) {
     auto is_debug_output_enabled = evaluation_properties_.HasKey(c_enable_debug_output);
     if (is_debug_output_enabled) {
-      com_ptr<_winmla::IWinMLAdapter> adapter;
+      com_ptr<winmla::IWinMLAdapter> adapter;
       WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
       adapter->EnableDebugOutput();
     }
@@ -448,6 +423,11 @@ void LearningModelSession::ToggleProfiler() {
 onnxruntime::IExecutionProvider*
 LearningModelSession::GetExecutionProvider() {
   return cached_execution_provider_;
+}
+
+winmla::IInferenceSession*
+LearningModelSession::GetIInferenceSession() {
+  return inference_session_.get();
 }
 
 void LearningModelSession::CheckClosed() {

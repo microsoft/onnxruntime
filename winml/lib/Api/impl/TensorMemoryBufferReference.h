@@ -25,7 +25,7 @@ struct DMLResource {
   winrt::com_ptr<ID3D12Resource> DXResource;
   UINT64 resource_width_;
   void* ExecutionProviderAllocatedResource = nullptr;
-  winrt::com_ptr<_winmla::IWinMLAdapter> adapter_;
+  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 };
 
 template <typename T>
@@ -47,7 +47,7 @@ struct TensorResources {
     try {
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
-        winrt::com_ptr<_winmla::IWinMLAdapter> adapter;
+        winrt::com_ptr<winmla::IWinMLAdapter> adapter;
         WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
         CpuResource = std::make_shared<WinML::Tensor<T>>(adapter.get(), shape);
       }

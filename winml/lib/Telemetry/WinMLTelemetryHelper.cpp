@@ -51,10 +51,10 @@ void WinMLTelemetryHelper::LogSessionCreation(const std::string& modelname, bool
 }
 
 void WinMLTelemetryHelper::LogModelCreation(bool fromStream,
-                                            const std::string& author,
-                                            const std::string& name,
-                                            const std::string& domain,
-                                            const std::string& description,
+                                            const char* author,
+                                            const char* name,
+                                            const char* domain,
+                                            const char* description,
                                             int64_t version,
                                             bool bUseFP16,
                                             const std::unordered_map<std::string, std::string>& modelMetadata) {
@@ -87,10 +87,10 @@ void WinMLTelemetryHelper::LogModelCreation(bool fromStream,
       //stream
       TraceLoggingBool(fromStream, "fromStream"),
       // Model Desc
-      TraceLoggingString(author.c_str(), "author"),
-      TraceLoggingString(name.c_str(), "name"),
-      TraceLoggingString(domain.c_str(), "domain"),
-      TraceLoggingString(description.c_str(), "description"),
+      TraceLoggingString(author, "author"),
+      TraceLoggingString(name, "name"),
+      TraceLoggingString(domain, "domain"),
+      TraceLoggingString(description, "description"),
       TraceLoggingInt64(version, "version"),
       TraceLoggingBool(bUseFP16, "usefp16"),
       TraceLoggingString(BitmapPixelFormatString.c_str(), "bitmappixelformat"),

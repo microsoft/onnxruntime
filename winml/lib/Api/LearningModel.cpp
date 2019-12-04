@@ -57,7 +57,7 @@ void LearningModel::Initialize() {
   WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
 }
 
-void LearningModel::LogCreationEvent(bool fromStream) {
+void LearningModel::LogCreationEvent(bool /*fromStream*/) {
   auto input_descriptors = InputFeatures();
   bool use_fp16 = false;
   for (auto descriptor : input_descriptors) {
@@ -66,6 +66,7 @@ void LearningModel::LogCreationEvent(bool fromStream) {
       break;
     }
   }
+#ifdef LAYERING_DONE
   telemetry_helper.LogModelCreation(
       fromStream,
       model_info_->author(),
@@ -75,6 +76,7 @@ void LearningModel::LogCreationEvent(bool fromStream) {
       model_info_->version(),
       use_fp16,
       model_info_->model_metadata());
+#endif
 }
 
 void LearningModel::ModelUseFP16(
@@ -140,15 +142,11 @@ WINML_CATCH_ALL
 
 wfc::IMapView<hstring, hstring>
 LearningModel::Metadata() try {
-  std::unordered_map<hstring, hstring> map_copy;
-  for (auto& pair : model_info_->model_metadata()) {
-    auto key = WinML::Strings::HStringFromUTF8(pair.first);
-    auto value = WinML::Strings::HStringFromUTF8(pair.second);
-    map_copy.emplace(std::move(key), std::move(value));
-  }
-  auto metadata = winrt::single_threaded_map<winrt::hstring, winrt::hstring>(
-      std::move(map_copy));
-  return metadata.GetView();
+  ABI::Windows::Foundation::Collections::IMapView<HSTRING,HSTRING>* metadata;
+  wfc::IMapView<hstring, hstring> out;
+  WINML_THROW_IF_FAILED(model_info_->GetModelMetadata(&metadata));
+  winrt::attach_abi(out, metadata);
+  return out;
 }
 WINML_CATCH_ALL
 
@@ -169,13 +167,21 @@ LearningModel::GetOperatorRegistry() {
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::InputFeatures() try {
-  return model_info_->input_features().GetView();
+  ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features;
+  wfc::IVectorView<winml::ILearningModelFeatureDescriptor> out;
+  WINML_THROW_IF_FAILED(model_info_->GetInputFeatures(&features));
+  winrt::attach_abi(out, features);
+  return out;
 }
 WINML_CATCH_ALL
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::OutputFeatures() try {
-  return model_info_->output_features().GetView();
+  ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features;
+  wfc::IVectorView<winml::ILearningModelFeatureDescriptor> out;
+  WINML_THROW_IF_FAILED(model_info_->GetOutputFeatures(&features));
+  winrt::attach_abi(out, features);
+  return out;
 }
 WINML_CATCH_ALL
 
@@ -247,9 +253,9 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
-_winmla::IModelProto*
+winmla::IModelProto*
 LearningModel::DetachModelProto() {
-  com_ptr<_winmla::IModelProto> detached_model_proto;
+  com_ptr<winmla::IModelProto> detached_model_proto;
   if (model_proto_ != nullptr) {
     detached_model_proto.attach(model_proto_.detach());
 
@@ -259,15 +265,15 @@ LearningModel::DetachModelProto() {
   return detached_model_proto.detach();
 }
 
-_winmla::IModelProto*
+winmla::IModelProto*
 LearningModel::CopyModelProto() {
   if (model_proto_ == nullptr) {
     return nullptr;
   }
 
-  com_ptr<_winmla::IWinMLAdapter> adapter;
+  com_ptr<winmla::IWinMLAdapter> adapter;
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-  com_ptr<_winmla::IModelProto> model_proto;
+  com_ptr<winmla::IModelProto> model_proto;
   WINML_THROW_IF_FAILED(adapter->CreateModelProto(model_proto_.get(), model_proto.put()));
 
   return model_proto.detach();

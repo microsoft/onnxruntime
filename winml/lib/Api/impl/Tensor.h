@@ -28,13 +28,13 @@ class Tensor {
 
   TensorBufferPtr m_buffer;
   std::vector<int64_t> shape_;
-  winrt::com_ptr<_winmla::IWinMLAdapter> adapter_;
+  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 
  public:
   Tensor() = delete;
 
   Tensor(
-      _winmla::IWinMLAdapter* adapter,
+      winmla::IWinMLAdapter* adapter,
       std::vector<int64_t> const& shape,
       winrt::Windows::Storage::Streams::IBuffer buffer) : shape_(shape),
                                                           m_buffer(
@@ -50,7 +50,7 @@ class Tensor {
   }
 
   Tensor(
-      _winmla::IWinMLAdapter* adapter,
+      winmla::IWinMLAdapter* adapter,
       std::vector<int64_t> const& shape) : shape_(shape),
                                            m_buffer(
                                                TensorBuffer::Create(
@@ -64,7 +64,7 @@ class Tensor {
   }
 
   Tensor(
-      _winmla::IWinMLAdapter* adapter,
+      winmla::IWinMLAdapter* adapter,
       std::vector<int64_t> const&& shape) : shape_(std::move(shape)),
                                             m_buffer(
                                                 TensorBuffer::Create(

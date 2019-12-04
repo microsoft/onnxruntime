@@ -18,7 +18,7 @@ set(WINML_TEST_INC_DIR
 
 function(set_winml_target_properties target)
   set_target_properties(${target} PROPERTIES
-    FOLDER "WinMLTest"
+    FOLDER "ONNXRuntimeTest/winml"
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS NO
@@ -44,7 +44,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest_main windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES})
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -55,6 +55,11 @@ endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
+add_dependencies(winml_test_common
+  onnx
+  winml_api
+  winml_dll
+)
 set_winml_target_properties(winml_test_common)
 
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
@@ -64,6 +69,22 @@ add_winml_test(
   LIBS winml_test_common
 )
 target_precompiled_header(winml_test_api testPch.h)
+
+if (onnxruntime_USE_DML)
+  file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+  set(winml_test_scenario_libs "onnxruntime_providers_dml")
+else()
+  set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+endif()
+add_winml_test(
+  TARGET winml_test_scenario
+  SOURCES ${winml_test_scenario_src}
+  LIBS winml_test_common ${winml_test_scenario_libs}
+)
+target_precompiled_header(winml_test_scenario testPch.h)
+set_target_properties(winml_test_scenario PROPERTIES LINK_FLAGS
+  "/DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll"
+)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
@@ -88,3 +109,4 @@ add_winml_collateral("${WINML_TEST_SRC_DIR}/collateral/images/*.png")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/collateral/models/*.onnx")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/common/testdata/squeezenet/*")
 add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.onnx")
+add_winml_collateral("${WINML_TEST_SRC_DIR}/scenario/models/*.onnx")

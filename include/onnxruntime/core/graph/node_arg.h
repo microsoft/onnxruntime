@@ -68,13 +68,13 @@ class NodeArg {
   @param strict If true, the shape update will fail if there are incompatible values. 
                 If false, will be lenient and merge only shape info that can be validly processed.
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
-  common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict = true);
+  common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, const logging::Logger& logger);
 
   /** Validate and merge type [and shape] info from node_arg.
   @param strict If true, the shape update will fail if there are incompatible values. 
                 If false, will be lenient and merge only shape info that can be validly processed.
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
-  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict = true);
+  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, const logging::Logger& logger);
 
   /** Gets this NodeArg as a ValueInfoProto. */
   const NodeArgInfo& ToProto() const noexcept { return node_arg_info_; }
