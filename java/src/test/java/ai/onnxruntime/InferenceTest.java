@@ -5,6 +5,7 @@
 package ai.onnxruntime;
 
 import ai.onnxruntime.OrtSession.SessionOptions;
+import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode;
 import ai.onnxruntime.OrtSession.SessionOptions.OptLevel;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
@@ -147,22 +148,20 @@ public class InferenceTest {
 
     @Test
     public void inferenceTest() {
-        canRunInferenceOnAModel(OptLevel.NO_OPT,true);
-        canRunInferenceOnAModel(OptLevel.NO_OPT,false);
-        canRunInferenceOnAModel(OptLevel.ALL_OPT,true);
-        canRunInferenceOnAModel(OptLevel.ALL_OPT,false);
+        canRunInferenceOnAModel(OptLevel.NO_OPT,ExecutionMode.PARALLEL);
+        canRunInferenceOnAModel(OptLevel.NO_OPT,ExecutionMode.SEQUENTIAL);
+        canRunInferenceOnAModel(OptLevel.ALL_OPT,ExecutionMode.PARALLEL);
+        canRunInferenceOnAModel(OptLevel.ALL_OPT,ExecutionMode.SEQUENTIAL);
     }
 
-    private void canRunInferenceOnAModel(OptLevel graphOptimizationLevel, boolean disableSequentialExecution) {
+    private void canRunInferenceOnAModel(OptLevel graphOptimizationLevel, ExecutionMode exectionMode) {
         String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
 
         // Set the graph optimization level for this session.
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("canRunInferenceOnAModel");
              SessionOptions options = new SessionOptions()) {
             options.setOptimizationLevel(graphOptimizationLevel);
-            if (disableSequentialExecution) {
-                options.setSequentialExecution(false);
-            }
+            options.setExecutionMode(exectionMode);
 
             try (OrtSession session = env.createSession(modelPath, options)) {
                 Map<String,NodeInfo> inputMetaMap = session.getInputInfo();
