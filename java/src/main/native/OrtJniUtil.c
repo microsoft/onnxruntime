@@ -55,7 +55,7 @@ GraphOptimizationLevel convertOptimizationLevel(jint level) {
  * Must be kept in sync with ExecutionMode and SessionOptions#ExecutionMode
  */
 ExecutionMode convertExecutionMode(jint mode) {
-    switch (level) {
+    switch (mode) {
         case 0:
             return ORT_SEQUENTIAL;
         case 1:
