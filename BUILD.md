@@ -96,7 +96,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Execution Providers**
 * [NVIDIA CUDA](#CUDA)
 * [NVIDIA TensorRT](#TensorRT)
-* [Intel MKL-DNN/MKL-ML](#MKLDNN-and-MKLML)
+* [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
@@ -189,7 +189,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5 but validated with the feature set equivalent to TensorRT 5. Some TensorRT 6 new features such as dynamic shape is not available at this time.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
@@ -203,15 +203,12 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 ---
 
-### MKLDNN and MKLML
-See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md).
+### DNNL and MKLML
+See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
-MKL-DNN: `./build.sh --use_mkldnn`
-
-MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn --use_mklml`
-
+DNNL: `./build.sh --use_dnnl`
 ---
 
 

@@ -25,6 +25,17 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     InitializedTensorSet constant_inputs;
 
+    // we currently constant fold using the CPU EP only.
+    // if the node is assigned to a different EP we can run it if it's an ONNX op as we have CPU based implementations
+    // for all ONNX ops. if it's from a different domain we can't.
+    // NOTE: This is in addition to the IsSupportedProvider check below which will optionally do further filtering
+    // on the EPs we constant fold for.
+    auto ep_type = node->GetExecutionProviderType();
+    bool cpu_ep = ep_type == kCpuExecutionProvider;
+    if (!cpu_ep && node->Domain() != kOnnxDomain) {
+      continue;
+    }
+
     // Check if constant folding can be applied on this node.
     if (!graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         excluded_op_types_.find(node->OpType()) != excluded_op_types_.end() ||
@@ -36,8 +47,18 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    // override the EP while setting up OptimizerExecutionFrame::Info so that it will use the CPU kernel for Compute.
+    if (!cpu_ep) {
+      node->SetExecutionProviderType(kCpuExecutionProvider);
+    }
+
     // Create execution frame for executing constant nodes.
     OptimizerExecutionFrame::Info info({node}, constant_inputs);
+
+    // undo the EP change in case something fails prior to node removal
+    if (!cpu_ep) {
+      node->SetExecutionProviderType(ep_type);
+    }
 
     std::vector<int> fetch_mlvalue_idxs;
     for (const auto* node_out : node->OutputDefs()) {
@@ -62,8 +83,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       OrtValue& ort_value = fetches[fetch_idx];
 
       if (!ort_value.IsTensor()) {
-          LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
-                                 << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+        LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
+                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
         unsupported_output_type = true;
         break;
       }
