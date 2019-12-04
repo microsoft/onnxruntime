@@ -594,5 +594,28 @@ class TestInferenceSession(unittest.TestCase):
         opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
+    def testLoadingSessionOptionsFromModel(self):
+        try:
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(1)
+            sess = onnxrt.InferenceSession(self.get_name("model_with_valid_ort_config_json.onnx"))
+            session_options = sess.get_session_options()
+            
+            self.assertEqual(session_options.inter_op_num_threads, 5)  # from the ORT config
+            
+            self.assertEqual(session_options.intra_op_num_threads, 2)  # from the ORT config
+
+            self.assertEqual(session_options.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)  # default option (not from the ORT config)
+
+            self.assertEqual(session_options.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)  # from the ORT config
+
+            self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
+            
+        except Exception: 
+            raise
+
+        finally:
+            # Make sure the usage of the feature is disabled after this test
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)       
+        
 if __name__ == '__main__':
     unittest.main()
