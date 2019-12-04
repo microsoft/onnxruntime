@@ -17,6 +17,8 @@ OrtLoggingLevel convertLoggingLevel(jint level);
 
 GraphOptimizationLevel convertOptimizationLevel(jint level);
 
+ExecutionMode convertExecutionMode(jint mode);
+
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type);
 
 ONNXTensorElementDataType convertToONNXDataFormat(jint type);

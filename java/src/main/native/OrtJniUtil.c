@@ -52,6 +52,20 @@ GraphOptimizationLevel convertOptimizationLevel(jint level) {
 }
 
 /**
+ * Must be kept in sync with ExecutionMode and SessionOptions#ExecutionMode
+ */
+ExecutionMode convertExecutionMode(jint mode) {
+    switch (level) {
+        case 0:
+            return ORT_SEQUENTIAL;
+        case 1:
+            return ORT_PARALLEL;
+        default:
+            return ORT_SEQUENTIAL;
+    }
+}
+
+/**
  * Must be kept in sync with convertToONNXDataFormat
  */
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
