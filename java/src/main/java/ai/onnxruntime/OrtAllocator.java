@@ -44,8 +44,8 @@ class OrtAllocator implements AutoCloseable {
             if (!isDefault) {
                 // Can only close custom allocators.
                 closeAllocator(OnnxRuntime.ortApiHandle, handle);
+                closed = true;
             }
-            closed = true;
         } else {
             throw new IllegalStateException("Trying to close an already closed OrtAllocator.");
         }
