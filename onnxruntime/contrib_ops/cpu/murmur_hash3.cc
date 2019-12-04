@@ -2,7 +2,9 @@
 // MurmurHash3 was written by Austin Appleby, and is placed in the public
 // domain. The author hereby disclaims copyright to this source code.
 
-// License from https://github.com/scikit-learn/scikit-learn/blob/master/COPYING
+//scikit-learn is a Python module for machine learning built on top of SciPy and
+//distributed under the 3-Clause BSD license. See https://github.com/scikit-learn/scikit-learn.
+//This material is licensed under the BSD License (see https://github.com/scikit-learn/scikit-learn/blob/master/COPYING);
 /* Modifications Copyright (c) Microsoft. */
 
 #include "contrib_ops/cpu/murmur_hash3.h"
@@ -154,7 +156,11 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
 
   h1 = fmix(h1);
 
-  *(uint32_t*)out = h1;
+  if (is_positive_) {
+    *(uint32_t*)out = h1;
+  } else {
+    *(int32_t*)out = h1;
+  }
 }
 
 Status MurmurHash3::Compute(OpKernelContext* ctx) const {
@@ -165,34 +171,40 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
   Tensor* output_tensor = ctx->Output(0, input_shape);
 
   const MLDataType keys_type = keys->DataType();
-  const int input_element_bytes = static_cast<int>(keys->DataType()->Size());
-  const int output_element_bytes = static_cast<int>(output_tensor->DataType()->Size());
+  const bool is_string = utils::IsDataTypeString(keys_type);
+
+  const auto input_element_bytes = keys->DataType()->Size();
+  const auto output_element_bytes = output_tensor->DataType()->Size();
   const int64_t input_count = input_shape.Size();
-  for (int i = 0; i < input_count; ++i) {
-    if (DataTypeImpl::GetType<std::string>() == keys_type) {
-      auto input = keys->DataRaw();
-      auto output = output_tensor->MutableDataRaw();
-      auto input_string = reinterpret_cast<const std::string*>(input)[i];
-      MurmurHash3_x86_32(input_string.c_str(),
-                         static_cast<int>(input_string.length()),
+  // Output type is inferred by the inference function and it can be of two types int32_t and uint32_t
+  // however, all is needed is a ptr that can step 4 bytes at a time and for that reason we choose
+  // raw data casted to a type of choice.
+  ORT_ENFORCE(sizeof(uint32_t) == output_element_bytes, "Invalid assumption of output element size");
+  auto output = reinterpret_cast<uint32_t*>(output_tensor->MutableDataRaw());
+
+  if (is_string) {
+    auto input = keys->Data<std::string>();
+    const auto input_end = input + input_count;
+    while (input != input_end) {
+      MurmurHash3_x86_32(input->c_str(),
+                         static_cast<int>(input->length()),
                          seed_,
-                         reinterpret_cast<uint32_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
-    } else {
-      auto output_type = output_tensor->DataType();
-      if ((DataTypeImpl::GetType<int32_t>() == keys_type || DataTypeImpl::GetType<uint32_t>() == keys_type) &&
-          (DataTypeImpl::GetType<int32_t>() == output_type || DataTypeImpl::GetType<uint32_t>() == output_type)) {
-        auto input = keys->DataRaw();
-        auto output = output_tensor->MutableDataRaw();
-        MurmurHash3_x86_32(reinterpret_cast<const uint8_t*>(input) + static_cast<int64_t>(i) * input_element_bytes,
-                           input_element_bytes,
-                           seed_,
-                           reinterpret_cast<uint8_t*>(output) + static_cast<int64_t>(i) * output_element_bytes);
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Type not supported.");
-      }
+                         output);
+      ++input;
+      ++output;
+    }
+  } else {
+    auto input = reinterpret_cast<const uint32_t*>(keys->DataRaw());
+    const auto input_end = input + input_count;
+    while (input != input_end) {
+      MurmurHash3_x86_32(input,
+                         static_cast<int>(input_element_bytes),
+                         seed_,
+                         output);
+      ++input;
+      ++output;
     }
   }
-
   return Status::OK();
 }
 

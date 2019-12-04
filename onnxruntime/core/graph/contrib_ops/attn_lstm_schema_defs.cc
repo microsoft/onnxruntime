@@ -331,5 +331,5 @@ OpSchema& RegisterAttnLSTMContribOpSchema(OpSchema&& op_schema){
     .SetDoc(AttnLSTM_ver1_doc);
 }
 
-}
-}
+}  // namespace contrib
+}  // namespace onnxruntime

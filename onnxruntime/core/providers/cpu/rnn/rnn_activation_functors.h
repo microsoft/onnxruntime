@@ -39,9 +39,8 @@ template <typename T>
 inline T Sigmoid(T x, T alpha RNN_UNUSED_PARAMETER, T beta RNN_UNUSED_PARAMETER) {
   if (x >= 0) {
     return 1 / (1 + exp(-x));
-  } else {
-    return exp(x) / (1 + exp(x));
   }
+  return exp(x) / (1 + exp(x));
 }
 
 template <typename T>
@@ -69,7 +68,7 @@ inline T Softsign(T x, T alpha, T beta);
 
 template <>
 inline float Softsign<float>(float x, float alpha ORT_ATTRIBUTE_UNUSED, float beta ORT_ATTRIBUTE_UNUSED) {
-  return x / (1 + fabs(x));
+  return x / (1 + std::fabs(x));
 }
 
 template <>

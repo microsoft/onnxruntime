@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <typeinfo>
+#include <cmath>
 
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
@@ -27,6 +28,7 @@ struct TestMap {
 
 // Try recursive type registration and compatibility tests
 using TestMapToMapInt64ToFloat = TestMap<int64_t, MapInt64ToFloat>;
+using VectorInt64 = std::vector<int64_t>;
 using TestMapStringToVectorInt64 = TestMap<std::string, VectorInt64>;
 
 // Trial to see if we resolve the setter properly
@@ -38,6 +40,7 @@ struct TestSequence {
   using value_type = T;
 };
 
+using VectorString = std::vector<std::string>;
 using TestSequenceOfSequence = TestSequence<VectorString>;
 
 /// Adding an Opaque type with type parameters
@@ -79,6 +82,8 @@ ORT_REGISTER_MAP(TestMapMLFloat16ToFloat);
 ORT_REGISTER_SEQ(MyOpaqueSeqCpp_1);
 ORT_REGISTER_SEQ(MyOpaqueSeqCpp_2);
 ORT_REGISTER_SEQ(TestSequenceOfSequence);
+ORT_REGISTER_SEQ(VectorString);
+ORT_REGISTER_SEQ(VectorInt64);
 
 ORT_REGISTER_OPAQUE_TYPE(TestOpaqueType_1, TestOpaqueDomain_1, TestOpaqueName_1);
 ORT_REGISTER_OPAQUE_TYPE(TestOpaqueType_2, TestOpaqueDomain_2, TestOpaqueName_2);
@@ -351,8 +356,58 @@ TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapInt64ToFloat>()->IsCompatible(tensor_type));
 }
 
+TEST_F(DataTypeTest, BFloat16Test) {
+  // Test data type
+  {
+    const float sample = 1.0f;
+    BFloat16 flt16(sample);
+    auto int_rep = flt16.val;
+    BFloat16 flt_from_int(int_rep);
+    const double diff = std::fabs(sample - flt_from_int.ToFloat());
+    if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample))) {
+      EXPECT_TRUE(false);
+    }
+  }
+  // Test bulk conversion
+  {
+    float sample[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    BFloat16 converted[sizeof(sample) / sizeof(float)];
+    static_assert(sizeof(sample) / sizeof(float) == sizeof(converted) / sizeof(BFloat16), "Must have the same count");
+    FloatToBFloat16(sample, converted, sizeof(sample) / sizeof(float));
+    for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
+      const double diff = std::fabs(sample[i] - converted[i].ToFloat());
+      if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample[i]))) {
+        EXPECT_TRUE(false);
+      }
+    }
+
+    float back_converted[sizeof(sample) / sizeof(float)];
+    BFloat16ToFloat(converted, back_converted, sizeof(sample) / sizeof(float));
+    for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
+      const double diff = std::fabs(sample[i] - back_converted[i]);
+      if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample[i]))) {
+        EXPECT_TRUE(false);
+      }
+    }
+  }
+}
+
 TEST_F(DataTypeTest, DataUtilsTest) {
   using namespace ONNX_NAMESPACE::Utils;
+  // Test simple seq
+  {
+    const std::string seq_float("seq(tensor(float))");
+    const auto* seq_proto = DataTypeImpl::GetSequenceTensorType<float>()->GetTypeProto();
+    EXPECT_NE(seq_proto, nullptr);
+    DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
+    EXPECT_NE(seq_dt, nullptr);
+    EXPECT_EQ(seq_float, *seq_dt);
+    DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
+    // Expect internalized strings
+    EXPECT_EQ(seq_dt, seq_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
+    EXPECT_TRUE(DataTypeImpl::GetSequenceTensorType<float>()->IsCompatible(from_dt_proto));
+  }
   // Test Tensor
   {
     const std::string tensor_uint64("tensor(uint64)");
@@ -366,6 +421,20 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     EXPECT_EQ(ten_dt, ten_from_str);
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
     EXPECT_TRUE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(from_dt_proto));
+  }
+  // Test Tensor with bfloat16
+  {
+    const std::string tensor_uint64("tensor(bfloat16)");
+    const auto* ten_proto = DataTypeImpl::GetTensorType<BFloat16>()->GetTypeProto();
+    EXPECT_NE(ten_proto, nullptr);
+    DataType ten_dt = DataTypeUtils::ToType(*ten_proto);
+    EXPECT_NE(ten_dt, nullptr);
+    EXPECT_EQ(tensor_uint64, *ten_dt);
+    DataType ten_from_str = DataTypeUtils::ToType(*ten_dt);
+    // Expect internalized strings
+    EXPECT_EQ(ten_dt, ten_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(ten_dt);
+    EXPECT_TRUE(DataTypeImpl::GetTensorType<BFloat16>()->IsCompatible(from_dt_proto));
   }
   // SparseTensor
   // Currently test only with proto, no MLDataType yet.
@@ -442,20 +511,6 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     EXPECT_EQ(map_dt, map_from_str);
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->IsCompatible(from_dt_proto));
-  }
-  // Test simple seq
-  {
-    const std::string seq_float("seq(tensor(float))");
-    const auto* seq_proto = DataTypeImpl::GetType<VectorFloat>()->GetTypeProto();
-    EXPECT_NE(seq_proto, nullptr);
-    DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
-    EXPECT_NE(seq_dt, nullptr);
-    EXPECT_EQ(seq_float, *seq_dt);
-    DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
-    // Expect internalized strings
-    EXPECT_EQ(seq_dt, seq_from_str);
-    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
-    EXPECT_TRUE(DataTypeImpl::GetType<VectorFloat>()->IsCompatible(from_dt_proto));
   }
   // Test Sequence with recursion
   {

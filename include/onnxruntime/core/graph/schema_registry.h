@@ -5,15 +5,9 @@
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#include "onnx/defs/schema.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+#include "core/platform/ort_mutex.h"
+
+#include "core/graph/onnx_protobuf.h"
 #include <mutex>
 #include <deque>
 #include "sstream"
@@ -42,10 +36,8 @@ class IOnnxRuntimeOpSchemaCollection : public ONNX_NAMESPACE::ISchemaRegistry {
 
   using ISchemaRegistry::GetSchema;
 
-  virtual const ONNX_NAMESPACE::OpSchema* GetSchema(
-      const std::string& key,
-      const int maxInclusiveVersion,
-      const std::string& domain) const final {
+  const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& key, const int maxInclusiveVersion,
+                                            const std::string& domain) const final {
     const ONNX_NAMESPACE::OpSchema* latest_schema = nullptr;
     int earliest_opset_where_unchanged = std::numeric_limits<int>::max();
     GetSchemaAndHistory(key, maxInclusiveVersion, domain, &latest_schema, &earliest_opset_where_unchanged);
@@ -95,12 +87,9 @@ class OnnxRuntimeOpSchemaRegistry : public IOnnxRuntimeOpSchemaCollection {
 
   using IOnnxRuntimeOpSchemaCollection::GetSchema;
 
-  void GetSchemaAndHistory(
-      const std::string& key,
-      const int maxInclusiveVersion,
-      const std::string& domain,
-      const ONNX_NAMESPACE::OpSchema** latest_schema,
-      int* earliest_opset_where_unchanged) const override;
+  void GetSchemaAndHistory(const std::string& key, int maxInclusiveVersion, const std::string& domain,
+                           const ONNX_NAMESPACE::OpSchema** latest_schema,
+                           int* earliest_opset_where_unchanged) const override;
 
   bool empty() const {
     return map_.empty();
@@ -111,7 +100,7 @@ class OnnxRuntimeOpSchemaRegistry : public IOnnxRuntimeOpSchemaCollection {
 
   common::Status RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema);
 
-  std::mutex mutex_;
+  OrtMutex mutex_;
 
   OpName_Domain_Version_Schema_Map map_;
   DomainToVersionRangeMap domain_version_range_map_;
@@ -153,12 +142,9 @@ class SchemaRegistryManager : public onnxruntime::IOnnxRuntimeOpSchemaCollection
   @param[out] earliest_opset_where_unchanged The earliest opset version preceding max_inclusive_version where the
   operator is known to be unchanged.
   */
-  void GetSchemaAndHistory(
-      const std::string& key,
-      const int max_inclusive_version,
-      const std::string& domain,
-      const ONNX_NAMESPACE::OpSchema** latest_schema,
-      int* earliest_opset_where_unchanged) const override;
+  void GetSchemaAndHistory(const std::string& key, int max_inclusive_version, const std::string& domain,
+                           const ONNX_NAMESPACE::OpSchema** latest_schema,
+                           int* earliest_opset_where_unchanged) const override;
 
  private:
   std::deque<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> registries;

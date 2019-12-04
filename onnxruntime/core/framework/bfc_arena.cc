@@ -9,7 +9,7 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
     : device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
+      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
   // Allocate the requested amount of memory.
@@ -75,18 +75,30 @@ bool BFCArena::Extend(size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = device_allocator_->Alloc(bytes);
-  if (mem_addr == nullptr && !started_backpedal_) {
-    // Only backpedal once.
-    started_backpedal_ = true;
+  auto safe_alloc = [this](size_t alloc_bytes) {
+    void* new_mem = nullptr;
+    try {
+      new_mem = device_allocator_->Alloc(alloc_bytes);
+    } catch (const std::bad_alloc&) {
+      // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
+      // so swallow the exception
+    }
 
+    return new_mem;
+  };
+
+  void* mem_addr = safe_alloc(bytes);
+
+  if (mem_addr == nullptr) {
     static constexpr float kBackpedalFactor = 0.9f;
 
     // Try allocating less memory.
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-      if (bytes < rounded_bytes) break;
-      mem_addr = device_allocator_->Alloc(bytes);
+      if (bytes < rounded_bytes)
+        break;
+
+      mem_addr = safe_alloc(bytes);
     }
   }
 
@@ -94,12 +106,12 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     return false;
   }
 
+  // we allocated the same number of bytes as the current region, so we have 2x that now
   if (!increased_allocation) {
-    // Increase the region size of the next required allocation.
     curr_region_allocation_bytes_ *= 2;
   }
 
-  LOGS_DEFAULT(INFO) << "Extending allocation by " << bytes
+  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes
                      << " bytes.";
 
   stats_.total_allocated_bytes += bytes;
@@ -167,7 +179,7 @@ void* BFCArena::Reserve(size_t size) {
   if (size == 0)
     return nullptr;
 
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = device_allocator_->Alloc(size);
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
@@ -180,7 +192,7 @@ void* BFCArena::Reserve(size_t size) {
 }
 
 size_t BFCArena::RequestedSize(const void* ptr) {
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
   ORT_ENFORCE(h != kInvalidChunkHandle);
   BFCArena::Chunk* c = ChunkFromHandle(h);
@@ -188,7 +200,7 @@ size_t BFCArena::RequestedSize(const void* ptr) {
 }
 
 size_t BFCArena::AllocatedSize(const void* ptr) {
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   BFCArena::ChunkHandle h = region_manager_.get_handle(ptr);
   ORT_ENFORCE(h != kInvalidChunkHandle);
   BFCArena::Chunk* c = ChunkFromHandle(h);
@@ -209,7 +221,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
   if (ptr != nullptr) {
     return ptr;
@@ -227,16 +239,16 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(WARNING) << "BFC Arena ran out of memory trying "
-                          << "to allocate " << num_bytes
-                          << ".  Current allocation summary follows.";
+    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying "
+                        << "to allocate " << num_bytes
+                        << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
   return nullptr;
 }
 
 void BFCArena::GetStats(AllocatorStats* stats) {
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   *stats = stats_;
 }
 
@@ -328,7 +340,7 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
-  std::lock_guard<std::mutex> lock(lock_);
+  std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(it->first);

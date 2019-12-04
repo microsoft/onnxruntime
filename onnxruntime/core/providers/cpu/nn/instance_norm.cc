@@ -16,9 +16,9 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 template <>
 Status InstanceNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const Tensor* input = p_op_kernel_context->Input<Tensor>(0);
-  const Tensor* scale = p_op_kernel_context->Input<Tensor>(1);
-  const Tensor* B = p_op_kernel_context->Input<Tensor>(2);
+  const auto* input = p_op_kernel_context->Input<Tensor>(0);
+  const auto* scale = p_op_kernel_context->Input<Tensor>(1);
+  const auto* B = p_op_kernel_context->Input<Tensor>(2);
 
   ORT_RETURN_IF_ERROR(InstanceNormHelper::ValidateInputs(input, scale, B));
   const int64_t N = input->Shape().GetDims()[0];

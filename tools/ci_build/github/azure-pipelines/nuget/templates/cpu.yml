@@ -1,0 +1,216 @@
+# Defined as pipeline variables
+# variables:
+#   AgentPoolWin : 'Win-CPU'
+#   AgentPoolLinux : 'Linux-CPU'
+#   AgentPoolMacOS : 'macOS-10.13'
+
+parameters:
+  DoEsrp: 'false'
+  DoCompliance: 'false'
+
+jobs: 
+- template: ../../templates/win-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
+    JobName: 'Windows_CI_Dev'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+- template: ../../templates/win-x86-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
+    JobName: 'Windows_CI_Dev_x86'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --x86'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
+     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     ren *.nupkg win-x86.zip
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+- job: 'Linux_CI_Dev'
+  workspace:
+    clean: all
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cd $(Build.BinariesDirectory)/linux-x64
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+    - template: ../../templates/clean-agent-build-directory-step.yml
+
+- template: ../../templates/mac-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolMacOS)
+    JobName: 'MacOS_CI_Dev'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
+    DoNugetPack : 'true'
+    NuPackScript: |
+     set -e -x
+     mkdir $(Build.BinariesDirectory)/osx-x64
+     find $(Build.BinariesDirectory)
+     cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
+     dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
+     strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
+     find $(Build.BinariesDirectory)/osx-x64 -ls
+     cwd=`pwd`
+     cd $(Build.BinariesDirectory)
+     zip -r osx-x64.zip osx-x64
+     cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)/testdata
+     cp $(Build.BinariesDirectory)/RelWithDebInfo/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
+     cd $cwd
+
+- job: NuGet_Packaging
+  workspace:
+    clean: all
+  pool: $(AgentPoolWin)
+  dependsOn:
+  - Windows_CI_Dev
+  - Windows_CI_Dev_x86
+  - Linux_CI_Dev
+  - MacOS_CI_Dev
+  condition: succeeded()
+  steps:  
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet'
+    inputs:
+      artifactName: 'drop-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    continueOnError: true
+
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Win-x86'
+    inputs:
+      artifactName: 'drop-win-x86-zip'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    continueOnError: true
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Linux'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    continueOnError: true
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - MacOS'
+    inputs:
+      artifactName: 'drop-osx'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    continueOnError: true
+
+  - template: bundle_dlls.yml
+
+  - template: ../../templates/esrp_nuget.yml
+    parameters:
+      DisplayName: 'ESRP - sign NuGet package'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
+      DoEsrp: ${{ parameters.DoEsrp }}
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline NuGet Artifact'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+- template: test_all_os.yml
+
+- job: Publish_NuGet_Package_And_Report
+  workspace:
+    clean: all
+  variables:
+  - group: Dashboard_MySQL_Secret
+  pool: 
+    name: Hosted Windows 2019 with VS2019
+    # AzureFileCopy@3 task has some bug that it depends on a particular version of azure power shell, 
+    # which is not available in OnnxRuntime build VMs, but available in the latest hosted agents. 
+    # So, all the copy/publish jobs are being run on hosted agent
+    # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
+    demands: azureps
+  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  dependsOn:
+  - NuGet_Test_Win
+  - NuGet_Test_Linux
+  - NuGet_Test_MacOS
+  steps:
+
+  - template: ../../templates/set-version-number-variables-step.yml
+
+  - template: upload-binary-sizes-from-nuget-package.yml
+    parameters:
+      downloadPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      gitCommitHash: $(OnnxRuntimeGitCommitHashShort)  
+
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+
+  - task: PowerShell@2
+    displayName: 'Get Current Date'
+    inputs:
+      targetType: 'inline'
+      script: |
+          $date = $(Get-Date -Format "yyyy-MM-dd")
+          Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
+
+  - task: AzureFileCopy@3
+    displayName: 'Copy Signed NuGet Package to Blob Store'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      destination: azureBlob
+      storage: ortpackages
+      containerName: ortpackages
+      blobPrefix: '$(CurrentDate)/'
+    continueOnError: true
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.$(NuGetPackageVersionNumber).nupkg'
+      feedPublish: 'OnnxRuntime'

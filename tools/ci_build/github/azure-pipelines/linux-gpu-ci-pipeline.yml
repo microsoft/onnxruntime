@@ -1,10 +1,8 @@
 jobs:
-- job: Linux_CI_GPU_Dev
-  pool: Linux-GPU-CUDA10
-  steps:
-    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)'
-      displayName: 'Command Line Script'
-
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
+- template: templates/linux-ci.yml
+  parameters:
+    AgentPool : 'Linux-GPU-CUDA10'
+    JobName: 'Linux_CI_GPU_Dev'
+    BuildCommand: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
+    DoNugetPack:  'false'
+    ArtifactName: 'drop-linux'

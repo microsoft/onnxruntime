@@ -20,8 +20,9 @@ class TestEnv {
   std::atomic_int next_test_to_run;
   TestResultStat& stat;
   FixedCountFinishCallback* finished;
-  const onnxruntime::SessionOptionsWrapper& sf;
-  TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, onnxruntime::SessionOptionsWrapper& sf1);
+  Ort::Env& env;
+  const Ort::SessionOptions& sf;
+  TestEnv(const std::vector<ITestCase*>& tests, TestResultStat& stat1, Ort::Env& env, Ort::SessionOptions& sf1);
   ~TestEnv();
 
  private:

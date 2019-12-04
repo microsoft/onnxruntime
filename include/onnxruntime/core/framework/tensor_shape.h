@@ -9,10 +9,6 @@
 #include <cstring>
 #include "onnxruntime_config.h"
 
-namespace ONNX_NAMESPACE {
-class TensorShapeProto;
-}
-
 namespace onnxruntime {
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -34,11 +30,13 @@ class TensorShape : private std::vector<int64_t> {
   TensorShape(TensorShape&& /*other*/) = default;
   TensorShape& operator=(TensorShape&& /*other*/) = default;
 
+  TensorShape(const std::vector<int64_t>& dims) : std::vector<int64_t>(dims) {}
+
+  TensorShape(std::vector<int64_t>&& dims) : std::vector<int64_t>(std::move(dims)) {}
+
+  TensorShape(const std::initializer_list<int64_t>& dims) : std::vector<int64_t>(dims) {}
+
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count);
-
-  TensorShape(const std::vector<int64_t>& dims);
-
-  TensorShape(const std::initializer_list<int64_t>& dims);
 
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end);
 
@@ -127,7 +125,8 @@ class TensorShape : private std::vector<int64_t> {
      empty shape or 1D shape (1) is regarded as scalar tensor
   */
   bool IsScalar() const {
-    return size() == 0 || (size() == 1 && at(0) == 1);
+    size_t len = size();
+    return len == 0 || (len == 1 && operator[](0) == 1);
   }
 
   static const TensorShape& ReinterpretBaseType(const std::vector<int64_t>& dimensions) {
@@ -139,8 +138,6 @@ class TensorShape : private std::vector<int64_t> {
 #pragma GCC diagnostic pop
 #endif
 // operator<< to nicely output to a stream
-std::ostream& operator<<(std::ostream& out, const ::onnxruntime::TensorShape& shape);
-
-std::ostream& operator<<(std::ostream& out, const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
+std::ostream& operator<<(std::ostream& out, const TensorShape& shape);
 
 }  // namespace onnxruntime

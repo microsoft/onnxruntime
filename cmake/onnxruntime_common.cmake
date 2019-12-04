@@ -4,6 +4,7 @@
 set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_INCLUDE_DIR}/core/common/*.h"
     "${ONNXRUNTIME_INCLUDE_DIR}/core/common/logging/*.h"
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.h"
@@ -15,6 +16,9 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
 )
 
 if(WIN32)
@@ -24,25 +28,56 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    # wndows platform adapter code uses advapi32
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
     )
+
+    if (onnxruntime_USE_SYSLOG)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.cc"
+        )
+    endif()
 endif()
 
-file(GLOB onnxruntime_common_src ${onnxruntime_common_src_patterns})
+file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
+    ${onnxruntime_common_src_patterns}
+    )
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
 
-if(NOT WIN32)
-	target_link_libraries(onnxruntime_common dl)
+if (onnxruntime_USE_MIMALLOC)
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+        message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
+    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+        # Some of the non-windows targets see strange runtime failures
+        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
+    else()
+        include(external/mimalloc.cmake)
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
+        list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
+        target_link_libraries(onnxruntime_common mimalloc-static)
+    endif()
 endif()
-target_include_directories(onnxruntime_common PRIVATE ${ONNXRUNTIME_ROOT} ${date_INCLUDE_DIR})
-# logging uses date. threadpool uses eigen
-add_dependencies(onnxruntime_common date eigen gsl)
+
+onnxruntime_add_include_to_target(onnxruntime_common date_interface)
+target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
+        PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+if(onnxruntime_USE_NSYNC)
+    target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC NSYNC_ATOMIC_CPP11)
+endif()
+
+target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})
+if(NOT onnxruntime_USE_OPENMP)
+  target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
+endif()
+add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
@@ -51,4 +86,19 @@ set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 if(WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
     set_target_properties(onnxruntime_common PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+endif()
+
+# check if we need to link against librt on Linux
+include(CheckLibraryExists)
+include(CheckFunctionExists)
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+  check_library_exists(rt clock_gettime "time.h" HAVE_CLOCK_GETTIME)
+
+  if (NOT HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES time.h)
+    check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+    set(CMAKE_EXTRA_INCLUDE_FILES)
+  else()
+    target_link_libraries(onnxruntime_common rt)
+  endif()
 endif()

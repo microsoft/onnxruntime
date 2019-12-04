@@ -2,44 +2,57 @@
 // Licensed under the MIT License.
 
 // onnxruntime dependencies
-#include <core/common/logging/sinks/clog_sink.h>
-#include <core/common/logging/logging.h>
-#include <core/framework/environment.h>
-#include <core/platform/env.h>
-
+#include <core/session/onnxruntime_c_api.h>
+#include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
 
 using namespace onnxruntime;
 
-int main(int argc, char* args[]) {
-  std::string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                  logging::Severity::kWARNING, false,
-                                                  logging::LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-
-  std::unique_ptr<Environment> env;
-  auto status = Environment::Create(env);
-  if (!status.IsOK()) {
-    LOGF_DEFAULT(ERROR, "failed to create environment:%s", status.ErrorMessage().c_str());
+#ifdef _WIN32
+int real_main(int argc, wchar_t* argv[]) {
+#else
+int real_main(int argc, char* argv[]) {
+#endif
+  perftest::PerformanceTestConfig test_config;
+  if (!perftest::CommandLineParser::ParseArguments(test_config, argc, argv)) {
+    perftest::CommandLineParser::ShowUsage();
     return -1;
   }
-
-  ::onnxruntime::perftest::PerformanceTestConfig test_config;
-  if (!::onnxruntime::perftest::CommandLineParser::ParseArguments(test_config, argc, args)) {
-    ::onnxruntime::perftest::CommandLineParser::ShowUsage();
+  Ort::Env env{nullptr};
+  try {
+    OrtLoggingLevel logging_level = test_config.run_config.f_verbose
+                                        ? ORT_LOGGING_LEVEL_VERBOSE
+                                        : ORT_LOGGING_LEVEL_WARNING;
+    env = Ort::Env(logging_level, "Default");
+  } catch (const Ort::Exception& e) {
+    fprintf(stderr, "Error creating environment: %s \n", e.what());
     return -1;
   }
-
-  ::onnxruntime::perftest::PerformanceRunner perf_runner(test_config);
-  status = perf_runner.Run();
+  std::random_device rd;
+  perftest::PerformanceRunner perf_runner(env, test_config, rd);
+  auto status = perf_runner.Run();
   if (!status.IsOK()) {
-    LOGF_DEFAULT(ERROR, "Run failed:%s", status.ErrorMessage().c_str());
+    printf("Run failed:%s\n", status.ErrorMessage().c_str());
     return -1;
   }
 
   perf_runner.SerializeResult();
 
   return 0;
+}
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[]) {
+#else
+int main(int argc, char* argv[]) {
+#endif
+  int retval = -1;
+  try {
+    retval = real_main(argc, argv);
+  } catch (std::exception& ex) {
+    fprintf(stderr, "%s\n", ex.what());
+    retval = -1;
+  }
+  return retval;
 }

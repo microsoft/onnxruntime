@@ -1,26 +1,53 @@
 jobs:
-- job: Ubuntu1604_py_Wheels
+- job: Manylinux2010_py_Wheels
+  workspace:
+    clean: all
   pool: Linux-CPU
   strategy:
     matrix:
       Python35:
         python.version: '3.5'
+        python.dir: '/opt/python/cp35-cp35m'
       Python36:
         python.version: '3.6'
+        python.dir: '/opt/python/cp36-cp36m'
       Python37:
         python.version: '3.7'
+        python.dir: '/opt/python/cp37-cp37m'
   steps:
-    - task: ShellScript@2
-      displayName: 'Run build script'
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: CmdLine@2
+      displayName: 'Download azcopy'
       inputs:
-        scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
+        script: |
+          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+          tar -zxvf azcopy.tar.gz --strip 1
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build --pull -t onnxruntime-manylinux-$(python.version)  --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.manylinux1 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so
+        workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/onnxruntime-*-manylinux1_x86_64.whl'
+        Contents: 'Release/dist/*-manylinux1_x86_64.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -28,12 +55,77 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
 
-- job: Ubuntu1604_py_GPU_Wheels
-  pool: Linux-GPU
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Manylinux2010_py_GPU_Wheels
+  workspace:
+    clean: all
+  pool: Linux-GPU-CUDA10
+  strategy:
+    matrix:
+      Python35:
+        python.version: '3.5'
+        python.dir: '/opt/python/cp35-cp35m'
+      Python36:
+        python.version: '3.6'
+        python.dir: '/opt/python/cp36-cp36m'
+      Python37:
+        python.version: '3.7'
+        python.dir: '/opt/python/cp37-cp37m'
+  steps:
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: CmdLine@2
+      displayName: 'Download azcopy'
+      inputs:
+        script: |
+          curl -so azcopy.tar.gz -L 'https://aka.ms/downloadazcopy-v10-linux'
+          tar -zxvf azcopy.tar.gz --strip 1
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build --pull -t onnxruntime-manylinux-gpu-$(python.version) --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.manylinux2010_gpu .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+        workingDirectory: $(Build.SourcesDirectory)
+
+    - task: CopyFiles@2
+      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)'
+        Contents: 'Release/dist/*-manylinux2010_x86_64.whl'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        ArtifactName: onnxruntime_gpu
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Windows_py_Wheels
+  workspace:
+    clean: all
+  pool: Win-CPU
+  timeoutInMinutes:  120  
   strategy:
     matrix:
       Python35:
@@ -42,37 +134,6 @@ jobs:
         python.version: '3.6'
       Python37:
         python.version: '3.7'
-  steps:
-    - task: ShellScript@2
-      displayName: 'Run build script'
-      inputs:
-        scriptPath: 'tools/ci_build/github/linux/run_dockerbuild.sh'
-        args: '-c Release -o ubuntu16.04 -d gpu -c cuda9.1-cudnn7.1 -r $(Build.BinariesDirectory) -p $(python.version) -x "--build_wheel --use_mkldnn"'
-
-    - task: CopyFiles@2
-      displayName: 'Copy Python Wheel to:  $(Build.ArtifactStagingDirectory)'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)'
-        Contents: 'Release/dist/onnxruntime*-manylinux1_x86_64.whl'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifact: ONNXRuntime python wheel'
-      inputs:
-        ArtifactName: onnxruntime_gpu
-
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
-
-- job: Windows_py_Wheels
-  pool: Win-CPU
-  strategy:
-    matrix:
-      Python35:
-        python.version: '3.5'
-      Python36:
-        python.version: '3.6'
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
   steps:
@@ -87,14 +148,14 @@ jobs:
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --build_dir $(buildDirectory) --config Release --build_wheel --use_mkldnn'
+        arguments: ' --build_dir $(buildDirectory) --config Release --use_openmp --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(buildDirectory)'
-        Contents: '**\dist\onnxruntime-*.whl'
+        Contents: '**\dist\*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -102,32 +163,27 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - task: CmdLine@1
-      displayName: 'Clean build folders/files'
-      inputs:
-        filename: rd
-        arguments: '/s /q $(Agent.BuildDirectory)'
-      continueOnError: true
-      condition: always()
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
 
-    - task: CmdLine@1
-      displayName: 'Deactivating Conda Environment'
-      inputs:
-        filename: deactivate
-      continueOnError: true
-      condition: always()
+    - template: templates/clean-agent-build-directory-step.yml
 
 - job:  Windows_py_GPU_Wheels
-  pool: Win-GPU
+  workspace:
+    clean: all
+  pool: Win-GPU-CUDA10
+  timeoutInMinutes:  120  
   variables:
     buildDirectory: '$(Build.SourcesDirectory)\build'
-    CUDA_VERSION: '9.1'
+    CUDA_VERSION: '10.0'
   strategy:
     matrix:
       Python35:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
+      Python37:
+        python.version: '3.7'
   steps:
     - task: CondaEnvironment@1
       inputs:
@@ -135,32 +191,32 @@ jobs:
         environmentName: 'py$(python.version)'
         packageSpecs: 'python=$(python.version)'
         cleanEnvironment: true
-
-    - task: PowerShell@1
-      displayName: 'Set CUDA path'
-      inputs:
-        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
-        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-9.1.85-windows10-x64-0 -CudaVersion $(CUDA_VERSION)'
 
     - task: BatchScript@1
       displayName: 'Setup VS2017 env vars'
       inputs:
         filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
-        arguments: 'amd64 -vcvars_ver=14.11'
+        arguments: 'amd64'
         modifyEnvironment: true
+    - task: PowerShell@1
+      displayName: 'Set CUDA path'
+      inputs:
+        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
 
     - task: BatchScript@1
       displayName: 'Run build script'
       inputs:
         filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda-9.1.85-windows10-x64-0" --cudnn_home="C:\local\cudnn-9.1-windows10-x64-v7.1\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
+        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10"
+      --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
         workingFolder: "$(Build.SourcesDirectory)"
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(buildDirectory)'
-        Contents: '**\dist\onnxruntime_gpu-*.whl'
+        Contents: '**\dist\*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -168,22 +224,19 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - task: CmdLine@1
-      displayName: 'Clean build folders/files'
+    - task: PowerShell@1
+      displayName: 'Clean up CUDA props files'
       inputs:
-        filename: rd
-        arguments: '/s /q $(Agent.BuildDirectory)'
-      continueOnError: true
-      condition: always()
+        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+        arguments: '-CudaVersion 10.0'
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
 
-    - task: CmdLine@1
-      displayName: 'Deactivating Conda Environment'
-      inputs:
-        filename: deactivate
-      continueOnError: true
-      condition: always()
-
+    - template: templates/clean-agent-build-directory-step.yml
+    
 - job: MacOS_py_Wheels
+  workspace:
+    clean: all
   pool:
     vmImage: 'macOS-10.13'
   strategy:
@@ -192,26 +245,25 @@ jobs:
         python.version: '3.5'
       Python36:
         python.version: '3.6'
-
+      Python37:
+        python.version: '3.7'
   steps:
-    - task: CondaEnvironment@1
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
       inputs:
-        createCustomEnvironment: true
-        environmentName: 'py$(python.version)'
-        packageSpecs: 'python=$(python.version)'
-        cleanEnvironment: true
+        versionSpec: $(python.version)
 
     - script: |
-        sudo python -m pip install numpy
+        sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --use_mkldnn --build_wheel
-      displayName: 'Command Line Script'
-
+        ./build.sh --config Release --skip_submodule_sync --parallel --use_openmp --build_wheel      
+      displayName: 'Command Line Script' 
+      
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
-        SourceFolder: '$(Build.SourcesDirectory)'
-        Contents: '**/dist/onnxruntime-*.whl'
+        SourceFolder: '$(Build.SourcesDirectory)/build/Linux/Release/dist'
+        Contents: '*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: PublishBuildArtifacts@1
@@ -219,13 +271,5 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - script: 'sudo rm -rf $(Agent.BuildDirectory)'
-      displayName: 'Clean build folders/files'
-      condition: always()
-
-    - task: CmdLine@1
-      displayName: 'Deactivating Conda Environment'
-      inputs:
-        filename: deactivate
-      continueOnError: true
-      condition: always()
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'

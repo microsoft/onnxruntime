@@ -1,0 +1,14 @@
+# Defined as pipeline variables
+# variables:
+#   AgentPoolWin : 'Win-CPU'
+#   AgentPoolLinux : 'Linux-CPU'
+#   AgentPoolMacOS : 'macOS-10.13'
+
+variables:
+  DisableContribOps: 'ON'
+
+jobs:
+- template: templates/cpu-nocontribops-arm64.yml
+  parameters:
+    AgentPool : $(AgentPoolWin)
+    DoEsrp: 'false'

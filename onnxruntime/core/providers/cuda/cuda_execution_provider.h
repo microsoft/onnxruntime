@@ -3,24 +3,21 @@
 
 #pragma once
 #include "cuda_pch.h"
-#include "core/graph/graph_transformer.h"
+#include "core/platform/ort_mutex.h"
+#include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
 namespace onnxruntime {
 
+const int CPU_ALLOCATOR_DEVICE_ID = 0;
+
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
-};
-
-enum CUDAStreamType : int {
-  kCudaStreamDefault = 0,
-  kCudaStreamCopyIn,
-  kCudaStreamCopyOut,
-  kTotalCudaStreams,
 };
 
 // Logical device representation.
@@ -29,11 +26,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
-
-  std::string Type() const override {
-    return onnxruntime::kCudaExecutionProvider;
-  }
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -41,41 +34,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd() override;
 
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override;
-
-  Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
-
-  const void* GetExecutionHandle() const noexcept override {
-    // The CUDA interface does not return anything interesting.
-    return nullptr;
-  }
-
   cublasHandle_t PerThreadCublasHandle() {
-    // Assure each thread has its TLS context.
-    if (!per_thread_context_)
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    return per_thread_context_->CublasHandle();
+    return GetPerThreadContext().CublasHandle();
   }
 
   cudnnHandle_t PerThreadCudnnHandle() {
-    // Assure each thread has its TLS context.
-    // TODO: improve its performance when calling cuda functions from multiple threads.
-    if (!per_thread_context_)
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    return per_thread_context_->CudnnHandle();
-  }
-
-  cudaStream_t GetStream(int queue_id) const {
-    ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalCudaStreams);
-    return streams_[queue_id];
+    return GetPerThreadContext().CudnnHandle();
   }
 
   template <typename T>
   const T* GetConstOnes(size_t count) {
-    // Assure each thread has its TLS context.
-    if (!per_thread_context_)
-      per_thread_context_ = std::make_shared<PerThreadContext>(device_id_);
-    return per_thread_context_->template GetConstOnes<T>(count);
+    return GetPerThreadContext().template GetConstOnes<T>(count);
   }
 
   void AddDeferredReleaseCPUPtr(void* p);
@@ -85,16 +54,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
+
+  int GetDeviceId() const { return device_id_; }
+
  private:
-  cudaStream_t streams_[kTotalCudaStreams];
   int device_id_;
 
   struct DeferredReleaseCPUPtrs {
@@ -102,7 +74,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::vector<void*> cpu_ptrs;
   };
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
-  std::mutex deferred_release_cpu_ptr_mutex_;
+  OrtMutex deferred_release_cpu_ptr_mutex_;
 
   class PerThreadContext final {
    public:
@@ -143,6 +115,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
       }
     }
 
+    AllocatorPtr GetAllocator() const {
+      return allocator_;
+    }
+
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
@@ -155,25 +131,20 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+
+    AllocatorPtr allocator_;
   };
 
   // thread local context during execution
-  static thread_local std::shared_ptr<PerThreadContext> per_thread_context_;
-
-  // thread local GPU memory allocator. could be used before execution
-  static thread_local AllocatorPtr per_thread_default_allocator_;
-
-  // reuse thread local GPU memory allocator for memory pattern
-  mutable std::deque<AllocatorPtr> default_allocator_pool_;
-  mutable std::mutex default_allocator_pool_mutex_;
+  using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::shared_ptr<PerThreadContext>>;
+  static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_map_;
 
   // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
-  mutable std::mutex context_pool_mutex_;
+  mutable std::deque<std::shared_ptr<PerThreadContext>> retired_context_pool_;
+  mutable OrtMutex context_pool_mutex_;
 
+  PerThreadContext& GetPerThreadContext() const;
   void ReleasePerThreadStuffs() const;
-
-  bool RNNNeedFallbackToCPU(const onnxruntime::Node& node, const std::vector<std::string> activations_supported, const std::string& op_type) const;
 };
 
 }  // namespace onnxruntime

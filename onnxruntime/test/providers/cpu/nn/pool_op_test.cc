@@ -4,9 +4,12 @@
 #include "core/providers/cpu/nn/pool.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {
+
+// Disable TensorRT on some of the tests because "pads" attribute is not supported
 
 TEST(PoolTest, MaxPool) {
   OpTester test("MaxPool");
@@ -49,10 +52,69 @@ TEST(PoolTest, MaxPool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 
-static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order=0) {
+// Only CUDA kernel has float 16 support
+// Disable for now, still investigating the issue with cudnn lib
+#ifdef USE_CUDA
+TEST(PoolTest, MaxPool_F16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+  OpTester test("MaxPool");
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{8, 8});
+
+  std::vector<float> x_vals = {
+      0.19151945412158966, 0.6221087574958801, 0.43772774934768677, 0.7853586077690125, 0.7799758315086365, 0.27259260416030884, 0.2764642536640167, 0.801872193813324,
+      0.9581393599510193, 0.8759326338768005, 0.35781726241111755, 0.5009950995445251, 0.683462917804718, 0.7127020359039307, 0.37025076150894165, 0.5611962080001831,
+      0.5030831694602966, 0.013768449425697327, 0.772826611995697, 0.8826411962509155, 0.36488598585128784, 0.6153962016105652, 0.07538124173879623, 0.3688240051269531,
+      0.9331400990486145, 0.6513781547546387, 0.39720258116722107, 0.7887301445007324, 0.3168361186981201, 0.5680986642837524, 0.8691273927688599, 0.4361734092235565,
+      0.802147626876831, 0.14376682043075562, 0.7042609453201294, 0.7045813202857971, 0.2187921106815338, 0.9248676300048828, 0.44214075803756714, 0.9093159437179565,
+      0.05980922281742096, 0.18428708612918854, 0.047355279326438904, 0.6748809218406677, 0.5946247577667236, 0.5333101749420166, 0.043324064463377, 0.5614330768585205,
+      0.32966843247413635, 0.5029668211936951, 0.11189431697130203, 0.6071937084197998, 0.5659446716308594, 0.006764062214642763, 0.617441713809967, 0.912122905254364,
+      0.7905241250991821, 0.9920814633369446, 0.9588017463684082, 0.7919641137123108, 0.2852509617805481, 0.6249167323112488, 0.47809380292892456, 0.19567517936229706,
+
+      0.382317453622818, 0.053873684257268906, 0.45164841413497925, 0.9820047616958618, 0.12394270300865173, 0.1193808987736702, 0.7385230660438538, 0.587303638458252,
+      0.47163254022598267, 0.10712681710720062, 0.22921857237815857, 0.8999651670455933, 0.41675353050231934, 0.5358516573905945, 0.0062085166573524475, 0.3006417155265808,
+      0.43689316511154175, 0.6121490001678467, 0.9181980490684509, 0.625736653804779, 0.7059975862503052, 0.14983370900154114, 0.7460634112358093, 0.8310070037841797,
+      0.6337257623672485, 0.4383098781108856, 0.15257278084754944, 0.5684096217155457, 0.5282242894172668, 0.9514287710189819, 0.48035916686058044, 0.5025595426559448,
+      0.5368781685829163, 0.8192020654678345, 0.05711563676595688, 0.6694217324256897, 0.7671166062355042, 0.7081153392791748, 0.7968671917915344, 0.5577608346939087,
+      0.9658365249633789, 0.14715689420700073, 0.02964700013399124, 0.5938934683799744, 0.11406569927930832, 0.9508098363876343, 0.32570740580558777, 0.19361868500709534,
+      0.4578116536140442, 0.9204025864601135, 0.8790691494941711, 0.252615749835968, 0.34800878167152405, 0.18258872628211975, 0.9017960429191589, 0.7065281867980957,
+      0.7266584634780884, 0.900087833404541, 0.7791637778282166, 0.5991547703742981, 0.29112523794174194, 0.1513952612876892, 0.33517464995384216, 0.6575517654418945,
+
+      0.07334254682064056, 0.055006396025419235, 0.32319480180740356, 0.5904818177223206, 0.8538985848426819, 0.2870624363422394, 0.17306722700595856, 0.13402120769023895,
+      0.9946538209915161, 0.1794978678226471, 0.3175468146800995, 0.568291425704956, 0.009348574094474316, 0.9006485939025879, 0.9772414565086365, 0.5568946599960327,
+      0.08477384597063065, 0.3330024778842926, 0.7284286618232727, 0.14243537187576294, 0.5524689555168152, 0.2730432450771332, 0.9744951128959656, 0.6677868962287903,
+      0.2556532919406891, 0.1083114966750145, 0.7761807441711426, 0.7824779748916626, 0.7616038918495178, 0.9144031405448914, 0.6586228013038635, 0.568367600440979,
+      0.20175568759441376, 0.6982963681221008, 0.952195405960083, 0.8899632692337036, 0.9935673475265503, 0.8187035322189331, 0.5451221466064453, 0.45125406980514526,
+      0.8905571699142456, 0.9732648134231567, 0.5934113264083862, 0.36607450246810913, 0.3230946958065033, 0.8714232444763184, 0.2156340628862381, 0.7349451780319214,
+      0.36561909317970276, 0.8016026020050049, 0.7827355861663818, 0.7013553977012634, 0.6227765679359436, 0.4936826527118683, 0.8405377268791199, 0.7120969891548157,
+      0.4439089894294739, 0.031034860759973526, 0.36323976516723633, 0.7307217717170715, 0.475566565990448, 0.3444169759750366, 0.6408804059028625, 0.12620532512664795};
+  std::vector<int64_t> x_dims = {1, 3, 8, 8};
+  int x_size = 1 * 3 * 8 * 8;
+  std::vector<int64_t> expected_dims = {1, 3, 1, 1};
+  std::vector<float> expected_vals = {0.9920814633369446, 0.9820047616958618, 0.9946538209915161};
+
+  std::vector<MLFloat16> f_X(x_size);
+  std::vector<MLFloat16> f_Y(3);
+  ConvertFloatToMLFloat16(x_vals.data(), f_X.data(), x_size);
+  ConvertFloatToMLFloat16(expected_vals.data(), f_Y.data(), 3);
+
+  test.AddInput<MLFloat16>("X", x_dims, f_X);
+  test.AddOutput<MLFloat16>("Y", expected_dims, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `!attrs.count("pads")' failed
+}
+#endif
+
+static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
   OpTester test("MaxPool", 8);
 
   test.AddAttribute("auto_pad", "");
@@ -100,11 +162,11 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order=0) {
     storage_order == 0 ? test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_row)
                        : test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_col);
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kMklDnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_8_With_Index) {
-  MaxPool_8_WithIndexTest(false);  // row major
+  MaxPool_8_WithIndexTest(false);                      // row major
   MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
   MaxPool_8_WithIndexTest(true, 1 /*storage_order*/);  // col major
 }
@@ -124,7 +186,7 @@ TEST(PoolTest, MaxPool1D) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
@@ -145,12 +207,205 @@ static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_8_With_Index) {
   MaxPool1D_8_WithIndexTest(0 /*storage_order*/);
   MaxPool1D_8_WithIndexTest(1 /*storage_order*/);
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_1d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{3});
+  test.AddAttribute("dilations", vector<int64_t>{3});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1, -3, -2, -4, -6, -5, -4, -2};
+  std::vector<int64_t> x_dims = {1, 1, 12};
+  std::vector<int64_t> expected_dims = {1, 1, 6};
+  std::vector<float> expected_vals = {4, 3, 2, 4, -1, -2};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_DefaultDilations) {
+  OpTester test("MaxPool");
+
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<float> x_vals = {0.f, 1.f, 2.f,
+                               3.f, 4.f, 5.f,
+                               6.f, 7.f, 8.f};
+
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<float> expected_vals = {1.f, 2.f,
+                                      4.f, 5.f,
+                                      7.f, 8.f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", vector<int64_t>{3});
+  test.AddAttribute("dilations", vector<int64_t>{3});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1, -3, -2, -4, -6, -5, -4, -2};
+  std::vector<int64_t> x_dims = {1, 1, 12};
+  std::vector<int64_t> expected_dims = {1, 1, 8};
+  std::vector<float> expected_vals = {2, 4, 3, 2, 4, -1, -2, -2};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 3};
+  std::vector<float> expected_vals = {10, 12, 10, 14, 16, 14};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 4, 5};
+  std::vector<float> expected_vals = {
+      7, 6, 8, 6, 8,
+      11, 10, 12, 10, 12,
+      15, 14, 16, 14, 16,
+      11, 10, 12, 10, 12};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+    {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 1, 3};
+  std::vector<float> expected_vals = {10, 12, 10};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 3};
+  std::vector<float> expected_vals = {10, 12, 10, 10, 12, 10};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
+  OpTester test("MaxPool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1, 1});
+  test.AddAttribute("pads", vector<int64_t>{1, 1, 1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2, 2});
+  test.AddAttribute("dilations", vector<int64_t>{2, 2, 2});
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4,
+      1, 3, 2, 4, -1,
+      5, 7, 6, 8, -2,
+      9, 11, 10, 12, -3,
+      13, 15, 14, 16, -4};
+  std::vector<int64_t> x_dims = {1, 1, 2, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 4, 5};
+  std::vector<float> expected_vals = {
+      7, 6, 8, 6, 8,
+      11, 10, 12, 10, 12,
+      15, 14, 16, 14, 16,
+      11, 10, 12, 10, 12,
+      7, 6, 8, 6, 8,
+      11, 10, 12, 10, 12,
+      15, 14, 16, 14, 16,
+      11, 10, 12, 10, 12};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, GlobalMaxPool) {
@@ -302,7 +557,7 @@ TEST(PoolTest, GlobalMaxPool3D) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, AveragePool) {
@@ -383,7 +638,7 @@ TEST(PoolTest, AveragePool) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, AveragePool_IncludePadPixel) {
@@ -407,7 +662,49 @@ TEST(PoolTest, AveragePool_IncludePadPixel) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// test 'strides' attribute not specified
+TEST(PoolTest, AveragePool_DefaultStrides) {
+  OpTester test("AveragePool");
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+  std::vector<float> x_vals = {0.f, 1.f, 2.f,
+                               3.f, 4.f, 5.f,
+                               6.f, 7.f, 8.f};
+
+  std::vector<int64_t> x_dims = {1, 3, 3};
+  std::vector<int64_t> expected_dims = {1, 3, 2};
+  std::vector<float> expected_vals = {0.5f, 1.5f,
+                                      3.5f, 4.5f,
+                                      6.5f, 7.5f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_10_ceil1_2d) {
+  OpTester test("AveragePool", 10);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3, 1});
+  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+
+  std::vector<float> x_vals = {
+      1, 3, 2, 4,
+      5, 7, 6, 8,
+      9, 11, 10, 12,
+      13, 15, 14, 16};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 3};
+  std::vector<float> expected_vals = {4.0f, 4.5f, 5.0f, 14.0f, 14.5f, 15.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
 
 TEST(PoolTest, GlobalAveragePool) {
@@ -1046,6 +1343,23 @@ TEST(PoolTest, GlobalLpPool) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run();
+}
+
+TEST(PoolTest, MaxPoolDimWithZeroForN) {
+  OpTester test("MaxPool", 10);
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  std::vector<float> x_vals = {};
+  std::vector<int64_t> x_dims = {0, 2, 4};  // N of 0 should be handled
+  std::vector<int64_t> expected_dims = {0, 2, 2};
+  std::vector<float> expected_vals = {};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
 }
 
 }  // namespace test

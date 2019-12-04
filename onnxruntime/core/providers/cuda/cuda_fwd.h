@@ -6,6 +6,6 @@
 namespace onnxruntime {
 namespace cuda {
 template <typename T>
-KernelCreateInfo BuildKernel();
+KernelCreateInfo BuildKernelCreateInfo();
 }
 }

@@ -3,12 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.IO;
-using Microsoft.ML.OnnxRuntime;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Diagnostics;
-
+using CommandLine;
 
 namespace Microsoft.ML.OnnxRuntime.PerfTool
 {
@@ -21,38 +18,52 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
         TotalCount = 4
     }
 
+    class CommandOptions
+    {
+        [Option('m', "model_file", Required = true, HelpText = "Model Path.")]
+        public string ModelFile { get; set; }
+
+        [Option('i', "input_file", Required = true, HelpText = "Input path.")]
+        public string InputFile { get; set; }
+
+        [Option('c', "iteration_count", Required = true, HelpText = "Iteration to run.")]
+        public int IterationCount { get; set; }
+
+        [Option('p', Required = false, HelpText = "Run with parallel exection. Default is false")]
+        public bool ParallelExecution { get; set; } = false;
+
+        [Option('o', "optimization_level", Required = false, HelpText = "Optimization Level. Default is 1, partial optimization.")]
+        public GraphOptimizationLevel OptimizationLevel { get; set; } = GraphOptimizationLevel.ORT_ENABLE_BASIC;
+    }
+
     class Program
     {
-
         public static void Main(string[] args)
         {
-            /*
-             args[0] = model-file-name
-             args[1] = input-file-name
-             args[2] = iteration count
-             */
-
-            if (args.Length < 3)
-            {
-                PrintUsage();
-                Environment.Exit(1);
-            }
-
-            string modelPath = args[0];
-            string inputPath = args[1];
-            int iteration = Int32.Parse(args[2]);
-            Console.WriteLine("Running model {0} in OnnxRuntime with input {1} for {2} times", modelPath, inputPath, iteration);
+            var cmdOptions = Parser.Default.ParseArguments<CommandOptions>(args);
+            cmdOptions.WithParsed(
+                options =>
+                {
+                    Run(options);
+                });
+        }
+        public static void Run(CommandOptions options)
+        {
+            string modelPath = options.ModelFile;
+            string inputPath = options.InputFile;
+            int iteration = options.IterationCount;
+            bool parallelExecution = options.ParallelExecution;
+            GraphOptimizationLevel optLevel = options.OptimizationLevel;
+            Console.WriteLine("Running model {0} in OnnxRuntime:", modelPath);
+            Console.WriteLine("input:{0}", inputPath);
+            Console.WriteLine("iteration count:{0}", iteration);
+            Console.WriteLine("parallel execution:{0}", parallelExecution);
+            Console.WriteLine("optimization level:{0}", optLevel);
             DateTime[] timestamps = new DateTime[(int)TimingPoint.TotalCount];
 
-            RunModelOnnxRuntime(modelPath, inputPath, iteration, timestamps);
+            RunModelOnnxRuntime(modelPath, inputPath, iteration, timestamps, parallelExecution, optLevel);
             PrintReport(timestamps, iteration);
             Console.WriteLine("Done");
-
-            Console.WriteLine("Running model {0} in Sonoma with input {1} for {2} times", modelPath, inputPath, iteration);
-            RunModelOnnxRuntime(modelPath, inputPath, iteration, timestamps);
-            PrintReport(timestamps, iteration);
-            Console.WriteLine("Done");
-
         }
 
 
@@ -74,16 +85,18 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
             return tensorData.ToArray();
         }
 
-        static void RunModelOnnxRuntime(string modelPath, string inputPath, int iteration, DateTime[] timestamps)
+        static void RunModelOnnxRuntime(string modelPath, string inputPath, int iteration, DateTime[] timestamps, bool parallelExecution, GraphOptimizationLevel optLevel)
         {
             if (timestamps.Length != (int)TimingPoint.TotalCount)
             {
-                throw new ArgumentException("Timestamps array must have "+(int)TimingPoint.TotalCount+" size");
+                throw new ArgumentException("Timestamps array must have " + (int)TimingPoint.TotalCount + " size");
             }
 
             timestamps[(int)TimingPoint.Start] = DateTime.Now;
-
-            using (var session = new InferenceSession(modelPath))
+            SessionOptions options = new SessionOptions();
+            if (parallelExecution) options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+            options.GraphOptimizationLevel = optLevel;
+            using (var session = new InferenceSession(modelPath, options))
             {
                 timestamps[(int)TimingPoint.ModelLoaded] = DateTime.Now;
                 var inputMeta = session.InputMetadata;
@@ -96,12 +109,12 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
                     container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
 
-                
+
 
                 timestamps[(int)TimingPoint.InputLoaded] = DateTime.Now;
 
                 // Run the inference
-                for (int i=0; i < iteration; i++)
+                for (int i = 0; i < iteration; i++)
                 {
                     var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
                     Debug.Assert(results != null);
@@ -120,7 +133,7 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
         static void PrintUsage()
         {
             Console.WriteLine("Usage:\n"
-                +"dotnet Microsoft.ML.OnnxRuntime.PerfTool <onnx-model-path> <input-file-path> <iteration-count>"
+                + "dotnet Microsoft.ML.OnnxRuntime.PerfTool <onnx-model-path> <input-file-path> <iteration-count>"
                 );
         }
 

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using Microsoft.ML.OnnxRuntime;
-using System.Numerics.Tensors;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace CSharpUsage
 {
@@ -24,8 +24,11 @@ namespace CSharpUsage
         {
             string modelPath = Directory.GetCurrentDirectory() + @"\squeezenet.onnx";
 
+            // Optional : Create session options and set the graph optimization level for the session
+            SessionOptions options = new SessionOptions();
+            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
 
-            using (var session = new InferenceSession(modelPath))
+            using (var session = new InferenceSession(modelPath, options))
             {
                 var inputMeta = session.InputMetadata;
                 var container = new List<NamedOnnxValue>();
@@ -39,15 +42,15 @@ namespace CSharpUsage
                 }
 
                 // Run the inference
-                var results = session.Run(container);  // results is an IReadOnlyList<NamedOnnxValue> container
-
-                // dump the results
-                foreach (var r in results)
+                using (var results = session.Run(container))  // results is an IDisposableReadOnlyCollection<DisposableNamedOnnxValue> container
                 {
-                    Console.WriteLine("Output for {0}", r.Name);
-                    Console.WriteLine(r.AsTensor<float>().GetArrayString());
+                    // dump the results
+                    foreach (var r in results)
+                    {
+                        Console.WriteLine("Output for {0}", r.Name);
+                        Console.WriteLine(r.AsTensor<float>().GetArrayString());
+                    }
                 }
-
             }
         }
 

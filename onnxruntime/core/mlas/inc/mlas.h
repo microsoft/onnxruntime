@@ -16,10 +16,9 @@ Abstract:
 --*/
 
 #pragma once
-// clang-format off
 
-#include <stdlib.h>
-#include <stdint.h>
+#include <cstdlib>
+#include <cstdint>
 
 //
 // Define the calling convention for Windows targets.
@@ -44,12 +43,75 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Single precision matrix/matrix multiply routine.
+// Forward declare the thread pool implementation class.
+//
+// N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
+// standalone MLAS test executables smaller.
+//
+
+namespace onnxruntime {
+    namespace concurrency {
+        class ThreadPool;
+    };
+};
+
+using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+
+//
+// Platform routines.
+//
+
+size_t
+MLASCALL
+MlasGetPreferredBufferAlignment(
+    void
+    );
+
+//
+// Activation routines.
+//
+
+enum MLAS_ACTIVATION_KIND {
+    MlasIdentityActivation,
+    MlasReluActivation,
+    MlasLeakyReluActivation,
+    MlasTanhActivation,
+    MlasLogisticActivation,
+    MlasClipActivation,
+};
+
+struct MLAS_ACTIVATION {
+    MLAS_ACTIVATION_KIND ActivationKind;
+    union {
+        struct {
+            float alpha;
+        } LeakyRelu;
+        struct {
+            float minimum;
+            float maximum;
+        } Clip;
+        float Values[2];
+    } Parameters;
+};
+
+void
+MLASCALL
+MlasActivation(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    );
+
+//
+// Matrix/matrix multiply routines.
 //
 
 void
 MLASCALL
-MlasSgemm(
+MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -62,7 +124,61 @@ MlasSgemm(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    double alpha,
+    const double* A,
+    size_t lda,
+    const double* B,
+    size_t ldb,
+    double beta,
+    double* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const int8_t* B,
+    size_t ldb,
+    int8_t offb,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasGemm(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    uint8_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    uint8_t offb,
+    int32_t* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -76,6 +192,7 @@ enum MLAS_CONV_ALGORITHM {
 };
 
 struct MLAS_CONV_PARAMETERS {
+    const MLAS_ACTIVATION* Activation;
     size_t Dimensions;
     size_t BatchCount;
     size_t GroupCount;
@@ -91,6 +208,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t OutputSize;
     size_t K;
     MLAS_CONV_ALGORITHM Algorithm;
+    int32_t ThreadCount;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -117,7 +235,9 @@ MlasConvPrepare(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     size_t FilterCount,
-    size_t* WorkingBufferSize
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
@@ -128,7 +248,8 @@ MlasConv(
     const float* Filter,
     const float* Bias,
     float* WorkingBuffer,
-    float* Output
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -139,6 +260,7 @@ enum MLAS_POOLING_KIND {
     MlasMaximumPooling,
     MlasAveragePoolingExcludePad,
     MlasAveragePoolingIncludePad,
+    MlasPoolingKindCount,
 };
 
 void
@@ -152,21 +274,8 @@ MlasPool(
     const int64_t* StrideShape,
     const int64_t* OutputShape,
     const float* Input,
-    float* Output
-    );
-
-//
-// Bias addition routine.
-//
-
-void
-MLASCALL
-MlasBiasAdd(
-    const float* Bias,
-    size_t M,
     float* Output,
-    size_t N,
-    size_t ldc
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -189,6 +298,14 @@ MlasComputeTanh(
     size_t N
     );
 
+void
+MLASCALL
+MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
 //
 // Half-precision floating-point routines.
 //
@@ -200,4 +317,86 @@ MlasConvertHalfToFloatBuffer(
     const unsigned short* Source,
     float* Destination,
     size_t Count
+    );
+
+//
+// Buffer reordering routines.
+//
+
+void
+MLASCALL
+MlasReorderInput(
+    const int64_t* InputShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderOutput(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderFilterOIHWBiBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderFilterOIHWBo(
+    const int64_t* FilterShape,
+    const float* S,
+    float* D
+    );
+
+//
+// Single precision NCHWc routines.
+//
+
+size_t
+MLASCALL
+MlasNchwcGetBlockSize(
+    void
+    );
+
+void
+MLASCALL
+MlasNchwcConv(
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t GroupCount,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* Output,
+    const MLAS_ACTIVATION* Activation,
+    bool ZeroMode,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void
+MLASCALL
+MlasNchwcPool(
+    MLAS_POOLING_KIND PoolingKind,
+    size_t Dimensions,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    const float* Input,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
     );

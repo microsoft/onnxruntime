@@ -3,46 +3,75 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/feeds_fetches_manager.h"
+#include "core/providers/cpu/controlflow/utils.h"
+#include "core/framework/ort_value_tensor_slicer.h"
 
 namespace onnxruntime {
-class Scan final : public OpKernel {
+namespace scan {
+namespace detail {
+// helpers for handling data on a non-CPU device.
+// Provide as needed when Scan is being run by a non-CPU based ExecutionProvider
+struct DeviceHelpers {
+  using ZeroData = std::function<common::Status(void* data, size_t size_in_bytes)>;
+  using Transpose = std::function<common::Status(const std::vector<size_t>& permutations,
+                                                 const Tensor& input, Tensor& output)>;
+  using CreateConstSlicer = std::function<OrtValueTensorSlicer<const OrtValue>(const OrtValue& ort_value,
+                                                                               int64_t slice_dimension /*=0*/,
+                                                                               int64_t dim0_offset /*=0*/)>;
+  using CreateMutableSlicer = std::function<OrtValueTensorSlicer<OrtValue>(OrtValue& ort_value,
+                                                                           int64_t slice_dimension /*=0*/,
+                                                                           int64_t dim0_offset /*=0*/)>;
+  // Scan 8 may need to zero out unused output data for short sequences
+  ZeroData set_data_to_zero_func;
+
+  // Scan 9 may need to transpose input or output data on a non-CPU device
+  Transpose transpose_func;
+
+  // Custom logic may be required to slice a tensor on a non-CPU device if the data pointer in an OrtValue
+  // can not be validly incremented using pointer arithmetic
+  // (e.g. it is a pointer to a handle rather than the actual data)
+  CreateConstSlicer create_const_slicer_func = OrtValueTensorSlicer<const OrtValue>::Create;
+  CreateMutableSlicer create_mutable_slicer_func = OrtValueTensorSlicer<OrtValue>::Create;
+};
+}  // namespace detail
+}  // namespace scan
+
+template <int OpSet>
+class Scan : public OpKernel, public controlflow::IControlFlowKernel {
  public:
-  Scan(const OpKernelInfo& info) : OpKernel(info) {
-    // make sure the attribute was present even though we don't need it here.
-    // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
-    // and a SessionState instance for executing the subgraph is created by InferenceSession.
-    // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
-    ONNX_NAMESPACE::GraphProto proto;
-    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
-    (void)proto;
-
-    ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
-
-    if (info.GetAttrs<int64_t>("directions", directions_).IsOK()) {
-      ORT_ENFORCE(gsl::narrow_cast<int64_t>(directions_.size()) == num_scan_inputs_,
-                          "Number of entries in 'directions' was ", directions_.size(),
-                          ". Must match 'num_scan_inputs' of ", num_scan_inputs_);
-      ORT_ENFORCE(std::all_of(directions_.cbegin(), directions_.cend(),
-                                      [](int64_t i) { return i == static_cast<int64_t>(Direction::kForward) ||
-                                                             i == static_cast<int64_t>(Direction::kReverse); }),
-                          "Invalid values in 'directions'. 0 == forward. 1 == reverse.");
-    } else {
-      // default to forward
-      directions_ = std::vector<int64_t>(num_scan_inputs_, static_cast<int64_t>(Direction::kForward));
-    }
-  }
+  Scan(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
 
-  enum class Direction { kForward = 0,
-                         kReverse = 1 };
+  common::Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                            const std::string& attribute_name,
+                                            const SessionState& subgraph_session_state) override;
+
+  // hide internal implementation details via forward declaration.
+  struct Info;
+  ~Scan();
+
+ protected:
+  void SetDeviceHelpers(const scan::detail::DeviceHelpers& device_helpers) {
+    device_helpers_ = device_helpers;  // copy
+  }
 
  private:
   int64_t num_scan_inputs_;
-  std::vector<int64_t> directions_;
+  std::vector<int64_t> input_directions_;
+  std::vector<int64_t> output_directions_;
+  std::vector<int64_t> input_axes_;
+  std::vector<int64_t> output_axes_;
+
+  // Info and FeedsFetchesManager re-used for each subgraph execution.
+  std::unique_ptr<Info> info_;
+  std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
+
+  scan::detail::DeviceHelpers device_helpers_;
 };
 }  // namespace onnxruntime

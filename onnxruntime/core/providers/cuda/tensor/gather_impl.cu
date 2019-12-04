@@ -24,6 +24,7 @@ __global__ void _GatherKernel(
   div_strides[1].divmod(block_offset, indices_index, offset);
   int block_size = div_strides[1].d_;
   int64_t idx = indices_data[indices_index];
+  idx = idx < 0 ? idx + indices_max : idx;
   if (idx < 0 || idx >= indices_max) {
     output_data[id] = 0;
     return;

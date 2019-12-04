@@ -10,7 +10,7 @@
 #include <DbgHelp.h>
 
 #include "core/common/logging/logging.h"
-#include "gsl/span"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 
@@ -33,7 +33,7 @@ class CaptureStackTrace {
 std::vector<std::string> GetStackTrace() {
 #ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug helper now
-#ifndef USE_TVM
+#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
   return detail::CaptureStackTrace().Trace();
 #else
   return {};
@@ -45,7 +45,7 @@ std::vector<std::string> GetStackTrace() {
 
 namespace detail {
 #ifndef NDEBUG
-#ifndef USE_TVM
+#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
 class SymbolHelper {
  public:
   SymbolHelper() noexcept {
@@ -68,7 +68,7 @@ class SymbolHelper {
       MaxNameLen = _countof(buffer);
     }
 
-    char buffer[1024];
+    char buffer[1024] = {0};
   };
 
   struct Line : IMAGEHLP_LINE64 {

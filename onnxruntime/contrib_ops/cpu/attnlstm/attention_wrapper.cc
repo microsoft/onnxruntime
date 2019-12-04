@@ -16,7 +16,7 @@ template <typename T>
 AttentionWrapper<T>::AttentionWrapper(AllocatorPtr alloc, const logging::Logger& logger,
                                       int batch_size, int attn_context_depth, int attn_layer_depth,
                                       int inner_cell_hidden_size, bool has_attn_layer,
-                                      const IAttentionMechanism<T>& attention_mechanism)
+                                      const IAttentionMechanism<T>& attention_mechanism, concurrency::ThreadPool* threadpool)
     : allocator_(alloc),
       logger_(logger),
       batch_size_(batch_size),
@@ -24,7 +24,8 @@ AttentionWrapper<T>::AttentionWrapper(AllocatorPtr alloc, const logging::Logger&
       attn_layer_depth_(attn_layer_depth),
       inner_cell_hidden_size_(inner_cell_hidden_size),
       has_attn_layer_(has_attn_layer),
-      attention_mechanism_(attention_mechanism) {
+      attention_mechanism_(attention_mechanism),
+      ttp_(threadpool) {
   auto mem_max_steps = attention_mechanism_.GetMaxMemorySteps();
   prev_alignments_ = Allocate(allocator_, batch_size_ * mem_max_steps, prev_alignments_ptr_, true);
   alignments_ = Allocate(allocator_, batch_size_ * mem_max_steps, alignments_ptr_, true);
@@ -37,11 +38,11 @@ template <typename T>
 void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_output) {
   if (has_attn_layer_) {
     // rnn_cell_output * cell_weights, (part of the attention layer above the attention mechanism).
-    math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                                 batch_size_, attn_layer_depth_, inner_cell_hidden_size_, T{1.0},
-                                 rnn_cell_output.data(), inner_cell_hidden_size_,
-                                 attn_layer_cell_weights_.data(), attn_layer_depth_, T{0.0},
-                                 attn_states_.data(), attn_layer_depth_, &CPUMathUtil::Instance());
+    math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
+                    batch_size_, attn_layer_depth_, inner_cell_hidden_size_, T{1.0},
+                    rnn_cell_output.data(), inner_cell_hidden_size_,
+                    attn_layer_cell_weights_.data(), attn_layer_depth_, T{0.0},
+                    attn_states_.data(), attn_layer_depth_, ttp_);
   }
 
   // Get the context which is calculated within attention mechanism.
@@ -54,11 +55,11 @@ void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_outpu
     //concat([p_cell_output, context]) * stack([attn_layer_cell_weights_, attn_layer_attn_weights_]) =
     //     p_cell_output * attn_layer_cell_weights_ + context * attn_layer_attn_weights_
     // The first part is calulated above. Here just add the later.
-    math::GemmEx<T, CPUMathUtil>(CblasNoTrans, CblasNoTrans,
-                                 batch_size_, attn_layer_depth_, attn_context_depth_, T{1.0},
-                                 attn_context_.data(), attn_context_depth_,
-                                 attn_layer_attn_weights_.data(), attn_layer_depth_, T{1.0},
-                                 attn_states_.data(), attn_layer_depth_, &CPUMathUtil::Instance());
+    math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
+                    batch_size_, attn_layer_depth_, attn_context_depth_, T{1.0},
+                    attn_context_.data(), attn_context_depth_,
+                    attn_layer_attn_weights_.data(), attn_layer_depth_, T{1.0},
+                    attn_states_.data(), attn_layer_depth_, ttp_);
   }
 }
 

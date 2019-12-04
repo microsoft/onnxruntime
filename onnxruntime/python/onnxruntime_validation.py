@@ -47,9 +47,6 @@ def check_distro_info():
         # warn the user ONNX Runtime may not work out of the box
         __my_distro__ = __my_distro__.lower()
         __my_distro_ver__ = __my_distro_ver__.lower()
-
-        if __my_distro__ != 'ubuntu' and __my_distro_ver__ != '16.04':
-            warnings.warn('Unsupported Linux distribution (%s-%s). ONNX Runtime supports Ubuntu 16.04 only.' % (__my_distro__, __my_distro_ver__))
     elif __my_system__ == 'darwin':
         __my_distro__ = __my_system__
         __my_distro_ver__ = platform.release().lower()

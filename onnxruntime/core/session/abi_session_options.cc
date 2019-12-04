@@ -2,101 +2,155 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
+#include "core/framework/error_code_helper.h"
 #include <cstring>
 #include <cassert>
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
 
-OrtSessionOptions::~OrtSessionOptions() {
-  assert(ref_count == 0);
-  for (OrtProviderFactoryInterface** p : provider_factories) {
-    OrtReleaseObject(p);
-  }
-}
+OrtSessionOptions::~OrtSessionOptions() = default;
 
 OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
   throw std::runtime_error("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
-    : value(other.value), custom_op_paths(other.custom_op_paths), provider_factories(other.provider_factories) {
-  for (OrtProviderFactoryInterface** p : other.provider_factories) {
-    OrtAddRefToObject(p);
+    : value(other.value), provider_factories(other.provider_factories) {
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
+  API_IMPL_BEGIN
+  *out = new OrtSessionOptions();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseSessionOptions, OrtSessionOptions* ptr) {
+  delete ptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
+  API_IMPL_BEGIN
+  *out = new OrtSessionOptions(*input);
+  return nullptr;
+  API_IMPL_END
+}
+
+// Set execution_mode.
+ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* options,
+                    ExecutionMode execution_mode) {
+  switch (execution_mode) {
+    case ORT_SEQUENTIAL:
+    case ORT_PARALLEL:
+      options->value.execution_mode = execution_mode;
+      break;
+    default:
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "execution_mode is not valid");
   }
-}
-ORT_API(OrtSessionOptions*, OrtCreateSessionOptions) {
-  std::unique_ptr<OrtSessionOptions> options = std::make_unique<OrtSessionOptions>();
-  return options.release();
+
+  return nullptr;
 }
 
-ORT_API(OrtSessionOptions*, OrtCloneSessionOptions, OrtSessionOptions* input) {
-  try {
-    return new OrtSessionOptions(*input);
-  } catch (std::exception&) {
-    return nullptr;
-  }
-}
-
-ORT_API(void, OrtSessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options, _In_ OrtProviderFactoryInterface** f) {
-  OrtAddRefToObject(f);
-  options->provider_factories.push_back(f);
-}
-
-ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options) {
-  options->value.enable_sequential_execution = true;
-}
-ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options) {
-  options->value.enable_sequential_execution = false;
+// set filepath to save optimized onnx model.
+ORT_API_STATUS_IMPL(OrtApis::SetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
+  options->value.optimized_model_filepath = optimized_model_filepath;
+  return nullptr;
 }
 
 // enable profiling for this session.
-ORT_API(void, OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const char* profile_file_prefix) {
+ORT_API_STATUS_IMPL(OrtApis::EnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;
   options->value.profile_file_prefix = profile_file_prefix;
+  return nullptr;
 }
-ORT_API(void, OrtDisableProfiling, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::DisableProfiling, _In_ OrtSessionOptions* options) {
   options->value.enable_profiling = false;
   options->value.profile_file_prefix.clear();
+  return nullptr;
 }
 
 // enable the memory pattern optimization.
 // The idea is if the input shapes are the same, we could trace the internal memory allocation
 // and generate a memory pattern for future request. So next time we could just do one allocation
 // with a big chunk for all the internal memory allocation.
-ORT_API(void, OrtEnableMemPattern, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::EnableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = true;
+  return nullptr;
 }
-ORT_API(void, OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::DisableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = false;
+  return nullptr;
 }
 
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
 // set this option to false if you don't want it.
-ORT_API(void, OrtEnableCpuMemArena, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::EnableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = true;
+  return nullptr;
 }
 
-ORT_API(void, OrtDisableCpuMemArena, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::DisableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = false;
+  return nullptr;
 }
 
 ///< logger id to use for session output
-ORT_API(void, OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionLogId, _In_ OrtSessionOptions* options, const char* logid) {
   options->value.session_logid = logid;
+  return nullptr;
 }
 
 ///< applies to session load, initialization, etc
-ORT_API(void, OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, uint32_t session_log_verbosity_level) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level) {
   options->value.session_log_verbosity_level = session_log_verbosity_level;
+  return nullptr;
 }
 
-///How many threads in the session thread pool.
-ORT_API(int, OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
-  if (session_thread_pool_size <= 0) return -1;
-  options->value.session_thread_pool_size = session_thread_pool_size;
-  return 0;
+ORT_API_STATUS_IMPL(OrtApis::SetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level) {
+  options->value.session_log_severity_level = session_log_severity_level;
+  return nullptr;
 }
 
-ORT_API(void, OrtAddCustomOp, _In_ OrtSessionOptions* options, const char* custom_op_path) {
-  options->custom_op_paths.emplace_back(custom_op_path);
+// Set Graph optimization level.
+ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
+                    GraphOptimizationLevel graph_optimization_level) {
+  if (graph_optimization_level < 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+  }
+
+  switch (graph_optimization_level) {
+    case ORT_DISABLE_ALL:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Default;
+      break;
+    case ORT_ENABLE_BASIC:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level1;
+      break;
+    case ORT_ENABLE_EXTENDED:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+      break;
+    case ORT_ENABLE_ALL:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
+      break;
+    default:
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+  }
+
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _In_ OrtSessionOptions* options, int intra_op_num_threads) {
+  options->value.intra_op_num_threads = intra_op_num_threads;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* options, int inter_op_num_threads) {
+  options->value.inter_op_num_threads = inter_op_num_threads;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
+                    _In_ const char* symbolic_dim, _In_ int64_t dim_override) {
+  options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
+  return nullptr;
 }

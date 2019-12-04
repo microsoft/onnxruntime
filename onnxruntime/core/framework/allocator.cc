@@ -3,62 +3,80 @@
 
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/utils.h"
+#include "core/session/ort_apis.h"
 #include <cstdlib>
 #include <sstream>
 
 namespace onnxruntime {
 
+#ifdef USE_MIMALLOC
+void* MiMallocAllocator::Alloc(size_t size) {
+  return mi_malloc(size);
+}
+
+void MiMallocAllocator::Free(void* p) {
+  mi_free(p);
+}
+
+const OrtMemoryInfo& MiMallocAllocator::Info() const { return *memory_info_; }
+#endif
+
 void* CPUAllocator::Alloc(size_t size) {
-  if (size <= 0)
-    return nullptr;
-  //todo: we should pin the memory in some case
-  void* p = malloc(size);
-  return p;
+  return utils::DefaultAlloc(size);
 }
 
 void CPUAllocator::Free(void* p) {
-  //todo: unpin the memory
-  free(p);
+  utils::DefaultFree(p);
 }
 
-const OrtAllocatorInfo& CPUAllocator::Info() const {
-  static constexpr OrtAllocatorInfo cpuAllocatorInfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
-  return cpuAllocatorInfo;
-}
+const OrtMemoryInfo& CPUAllocator::Info() const { return *memory_info_; }
 }  // namespace onnxruntime
 
-std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info) {
-  return (out << info.ToString());
-}
+std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
 
-ORT_API_STATUS_IMPL(OrtCreateAllocatorInfo, const char* name1, OrtAllocatorType type, int id1, OrtMemType mem_type1, OrtAllocatorInfo** out) {
-  *out = new OrtAllocatorInfo(name1, type, id1, mem_type1);
+ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, OrtAllocatorType type, int id1,
+                    OrtMemType mem_type1, _Out_ OrtMemoryInfo** out) {
+  if (strcmp(name1, onnxruntime::CPU) == 0) {
+    *out = new OrtMemoryInfo(name1, type, OrtDevice(), id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::CUDA) == 0) {
+    *out = new OrtMemoryInfo(
+        name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
+        mem_type1);
+  } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
+    *out = new OrtMemoryInfo(
+        name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
+  }
   return nullptr;
 }
 
-ORT_API(void, OrtReleaseAllocatorInfo, OrtAllocatorInfo* p) {
-  delete p;
+ORT_API(void, OrtApis::ReleaseMemoryInfo, _Frees_ptr_opt_ OrtMemoryInfo* p) { delete p; }
+
+ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetName, _In_ const OrtMemoryInfo* ptr, _Out_ const char** out) {
+  *out = ptr->name;
+  return nullptr;
 }
 
-ORT_API(const char*, OrtAllocatorInfoGetName, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->name;
+ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetId, _In_ const OrtMemoryInfo* ptr, _Out_ int* out) {
+  *out = ptr->id;
+  return nullptr;
 }
 
-ORT_API(int, OrtAllocatorInfoGetId, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->id;
+ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemType* out) {
+  *out = ptr->mem_type;
+  return nullptr;
 }
 
-ORT_API(OrtMemType, OrtAllocatorInfoGetMemType, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->mem_type;
+ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtAllocatorType* out) {
+  *out = ptr->type;
+  return nullptr;
 }
 
-ORT_API(OrtAllocatorType, OrtAllocatorInfoGetType, _In_ OrtAllocatorInfo* ptr) {
-  return ptr->type;
-}
-
-ORT_API(int, OrtCompareAllocatorInfo, _In_ const OrtAllocatorInfo* info1, _In_ const OrtAllocatorInfo* info2) {
-  if (*info1 == *info2) {
-    return 0;
-  }
-  return -1;
+ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1, _In_ const OrtMemoryInfo* info2,
+                    _Out_ int* out) {
+  *out = (*info1 == *info2) ? 0 : -1;
+  return nullptr;
 }

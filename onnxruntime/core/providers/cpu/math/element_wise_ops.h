@@ -139,7 +139,7 @@ class Log final : public OpKernel {
 };
 
 template <typename T>
-class Sum_6 final : public OpKernel {
+class Sum_6 : public OpKernel {
  public:
   Sum_6(const OpKernelInfo& info) : OpKernel(info) {
   }
@@ -270,19 +270,13 @@ class Mean_8 final : public OpKernel {
 };
 
 template <typename T>
-class Affine final : public OpKernel {
+class BitShift final : public OpKernel {
  public:
-  Affine(const OpKernelInfo& info) : OpKernel(info) {
-    // Either model-supplied or default values should be returned for alpha and beta
-    ORT_ENFORCE(info.GetAttr("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(info.GetAttr("beta", &beta_).IsOK());
-  }
-
+  explicit BitShift(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  float alpha_;
-  float beta_;
+  bool shift_left_;
 };
 
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
@@ -305,19 +299,6 @@ class Expand_8 final : public OpKernel {
 };
 
 template <typename T>
-class Scale final : public OpKernel {
- public:
-  Scale(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr("scale", &scale_).IsOK());
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  float scale_;
-};
-
-template <typename T>
 class Erf final : public OpKernel {
  public:
   Erf(const OpKernelInfo& info) : OpKernel(info) {
@@ -327,9 +308,9 @@ class Erf final : public OpKernel {
 };
 
 template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
 
 struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
@@ -347,6 +328,11 @@ struct BroadcastIterator {
       }
     }
     return index;
+  }
+
+  void Reserve(int64_t max_dims) {
+    deltas_.reserve(static_cast<size_t>(max_dims));
+    counts_.reserve(static_cast<size_t>(max_dims));
   }
 
   void Init(int64_t axis, int64_t largest) {
@@ -397,6 +383,8 @@ struct Broadcaster {
     size_t dimension_count_max = std::max(shape1.size(), shape2.size());
     size_t dimension_count_min = std::min(shape1.size(), shape2.size());
     output_shape_.resize(dimension_count_max);
+    iterator1_.Reserve(dimension_count_max);
+    iterator2_.Reserve(dimension_count_max);
 
     auto iter1 = shape1.end();
     auto iter2 = shape2.end();
@@ -405,9 +393,9 @@ struct Broadcaster {
     // Scalars are a special case, as it's always a broadcast
     size_t index = 0;
     if (dimension_count_min == 0) {
-      if (shape1.size() == 0)  // Shape1 is a scalar
+      if (shape1.empty())  // Shape1 is a scalar
       {
-        if (shape2.size() == 0)  // Two scalars?
+        if (shape2.empty())  // Two scalars?
         {
           iterator1_.Init(1, 1);
           iterator2_.Init(1, 1);
@@ -424,6 +412,31 @@ struct Broadcaster {
         *--output_shape = axis;
       }
       index++;  // Manually increment since we processed one axis
+    } else {
+      for (; index < dimension_count_min; index++) {
+        auto axis1 = *--iter1;
+        auto axis2 = *--iter2;
+
+        auto largest = std::max(axis1, axis2);
+        auto smallest = std::min(axis1, axis2);
+        auto dim_to_use = largest;
+
+        if (smallest == 0) {
+          ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
+          dim_to_use = smallest;
+        }
+
+        *--output_shape = dim_to_use;
+
+        // if both 1, or a 1 and 0, and there are more dims, we can let the next iteration do the Init
+        if (dim_to_use <= 1 && index + 1 < dimension_count_min)
+          continue;
+
+        iterator1_.Init(axis1, dim_to_use);
+        iterator2_.Init(axis2, dim_to_use);
+        index++;  // Manually increment since we processed one axis
+        break;
+      }
     }
 
     for (; index < dimension_count_min; index++) {
@@ -431,29 +444,21 @@ struct Broadcaster {
       auto axis2 = *--iter2;
 
       auto largest = std::max(axis1, axis2);
-      *--output_shape = largest;
+      auto smallest = std::min(axis1, axis2);
+      auto dim_to_use = largest;
 
-      if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
-        continue;
+      if (smallest == 0) {
+        ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
+        dim_to_use = smallest;
+      }
 
-      iterator1_.Init(axis1, largest);
-      iterator2_.Init(axis2, largest);
-      index++;  // Manually increment since we processed one axis
-      break;
-    }
-
-    for (; index < dimension_count_min; index++) {
-      auto axis1 = *--iter1;
-      auto axis2 = *--iter2;
-
-      auto largest = std::max(axis1, axis2);
-      *--output_shape = largest;
+      *--output_shape = dim_to_use;
 
       if (largest == 1)  // Nothing to do in this case
         continue;
 
-      iterator1_.Append(axis1, largest);
-      iterator2_.Append(axis2, largest);
+      iterator1_.Append(axis1, dim_to_use);
+      iterator2_.Append(axis2, dim_to_use);
     }
 
     // If one shape is bigger than another we need to broadcast the smaller onto the bigger from this point on
@@ -482,7 +487,7 @@ struct Broadcaster {
   std::vector<int64_t> output_shape_;
 };
 
-template <typename T>
+template <typename T0, typename T1>
 struct TBroadcaster {
   TBroadcaster(const Tensor& input0, const Tensor& input1)
       : input_tensor0_(input0),
@@ -495,26 +500,26 @@ struct TBroadcaster {
   bool IsInput0Scalar() const { return broadcaster_.iterator1_.deltas_.front() == 0; }
   bool IsInput1Scalar() const { return broadcaster_.iterator2_.deltas_.front() == 0; }
 
-  T NextScalar0() { return *Next0(); }
-  T NextScalar1() { return *Next1(); }
+  const T0& NextScalar0() { return *Next0(); }
+  const T1& NextScalar1() { return *Next1(); }
 
-  gsl::span<const T> NextSpan0() { return gsl::span<const T>(Next0(), span_size_); }
-  gsl::span<const T> NextSpan1() { return gsl::span<const T>(Next1(), span_size_); }
+  gsl::span<const T0> NextSpan0() { return gsl::span<const T0>(Next0(), span_size_); }
+  gsl::span<const T1> NextSpan1() { return gsl::span<const T1>(Next1(), span_size_); }
 
-  ConstEigenVectorMap<T> NextEigen0() { return ConstEigenVectorMap<T>(Next0(), span_size_); }
-  ConstEigenVectorMap<T> NextEigen1() { return ConstEigenVectorMap<T>(Next1(), span_size_); }
+  ConstEigenVectorMap<T0> NextEigen0() { return ConstEigenVectorMap<T0>(Next0(), span_size_); }
+  ConstEigenVectorMap<T1> NextEigen1() { return ConstEigenVectorMap<T1>(Next1(), span_size_); }
 
  private:
-  const T* Next0() { return input0_ + broadcaster_.iterator1_.AdvanceBy(span_size_); }
-  const T* Next1() { return input1_ + broadcaster_.iterator2_.AdvanceBy(span_size_); }
+  const T0* Next0() { return input0_ + broadcaster_.iterator1_.AdvanceBy(span_size_); }
+  const T1* Next1() { return input1_ + broadcaster_.iterator2_.AdvanceBy(span_size_); }
 
   const Tensor& input_tensor0_;
   const Tensor& input_tensor1_;
   Broadcaster broadcaster_{input_tensor0_.Shape().GetDims(), input_tensor1_.Shape().GetDims()};
   size_t span_size_{broadcaster_.GetSpanSize()};
 
-  const T* input0_{input_tensor0_.template Data<T>()};
-  const T* input1_{input_tensor1_.template Data<T>()};
+  const T0* input0_{input_tensor0_.template Data<T0>()};
+  const T1* input1_{input_tensor1_.template Data<T1>()};
 };
 
 template <typename T>
@@ -552,15 +557,14 @@ struct TBroadcastOutput {
 template <typename T>
 struct TensorAllocator {
   TensorAllocator(OpKernelContext& context) {
-    ORT_ENFORCE(context.GetTempSpaceAllocator(&allocator_).IsOK());
+    auto status = context.GetTempSpaceAllocator(&allocator_);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
-    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                    shape,
-                                    allocator_->Alloc(sizeof(T) * shape.Size()),
-                                    allocator_->Info(),
-                                    allocator_);
+    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+                                            shape,
+                                            allocator_);
   }
 
  private:
@@ -568,9 +572,11 @@ struct TensorAllocator {
 };
 
 // Broadcast loop for when using eigen, functions are in this form:
-// Input0Scalar: [](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1)
-// Input1Scalar: [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1)
-// General     : [](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1)
+// Input0Scalar: [](EigenVectorMap<TOutput> output, TInput0 input0, ConstEigenVectorMap<TInput1> input1)
+// Input1Scalar: [](EigenVectorMap<TOutput> output, ConstEigenVectorMap<TInput0> input0, TInput1 input1)
+// General     : [](EigenVectorMap<TOutput> output, ConstEigenVectorMap<TInput0> input0,
+//                  ConstEigenVectorMap<TInput1> input1)
+// Scalar parameters can also be of type const TX&.
 template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
 void BroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
   if (bc.IsInput0Scalar()) {
@@ -585,9 +591,28 @@ void BroadcastLoop(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, 
   }
 }
 
+// Broadcast loop for when using gsl::span<T>, functions are in this form:
+// Input0Scalar: [](gsl::span<TOutput> output, TInput0 input0, gsl::span<const TInput1> input1)
+// Input1Scalar: [](gsl::span<TOutput> output, gsl::span<const TInput0> input0, TInput1 input1)
+// General     : [](gsl::span<TOutput> output, gsl::span<const TInput0> input0, gsl::span<const TInput1> input1)
+// Scalar parameters can also be of type const TX&.
+template <typename TBroadcaster, typename Output, typename Input0Scalar, typename Input1Scalar, typename General>
+void BroadcastLoopSpan(TBroadcaster& bc, Output& output, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
+  if (bc.IsInput0Scalar()) {
+    while (output)
+      input0scalar(output.NextSpanOutput(), bc.NextScalar0(), bc.NextSpan1());
+  } else if (bc.IsInput1Scalar()) {
+    while (output)
+      input1scalar(output.NextSpanOutput(), bc.NextSpan0(), bc.NextScalar1());
+  } else {
+    while (output)
+      general(output.NextSpanOutput(), bc.NextSpan0(), bc.NextSpan1());
+  }
+}
+
 template <typename TInput, typename TOutput, typename Input0Scalar, typename Input1Scalar, typename General>
 Status BroadcastTwo(OpKernelContext& context, Input0Scalar input0scalar, Input1Scalar input1scalar, General general) {
-  TBroadcaster<TInput> bc(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
+  TBroadcaster<TInput, TInput> bc(*context.Input<Tensor>(0), *context.Input<Tensor>(1));
   TBroadcastOutput<TOutput> output(bc.GetSpanSize(), *context.Output(0, bc.GetOutputShape()));
   BroadcastLoop(bc, output, input0scalar, input1scalar, general);
 
@@ -615,7 +640,7 @@ Status BroadcastVariadic(const Node& node, OpKernelContext& context, Input0Scala
     auto& tensor0 = tempInput ? *tempInput : *context.Input<Tensor>(0);
     auto& tensor1 = *context.Input<Tensor>(i + 1);
 
-    TBroadcaster<TInput> bc(tensor0, tensor1);
+    TBroadcaster<TInput, TInput> bc(tensor0, tensor1);
 
     // Create a temporary output for all but the last iteration, which goes to the real output
     Tensor* p_output{};
@@ -634,6 +659,5 @@ Status BroadcastVariadic(const Node& node, OpKernelContext& context, Input0Scala
   }
   return Status::OK();
 }
-
 
 }  // namespace onnxruntime

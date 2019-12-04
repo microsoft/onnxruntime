@@ -1,1 +1,1 @@
-OrtCreateCUDAExecutionProviderFactory
+OrtSessionOptionsAppendExecutionProvider_CUDA

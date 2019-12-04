@@ -10,16 +10,17 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      RNN,                                                               \
-      kOnnxDomain,                                                       \
-      7,                                                                 \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      RNN,                                                                      \
+      kOnnxDomain,                                                              \
+      7,                                                                        \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder()                                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>())         \
+          .InputMemoryType<OrtMemTypeCPUInput>(RNN_Input_Index::sequence_lens), \
       RNN<T>);
 
 REGISTER_KERNEL_TYPED(float);

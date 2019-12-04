@@ -6,8 +6,8 @@
 #include <limits>
 
 #include "core/framework/op_kernel.h"
-#include "core/common/task_thread_pool.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -44,7 +44,7 @@ class DeepCpuLstmOp final : public OpKernel {
       }
     }
 
-    ORT_ENFORCE(activation_func_names.size() == num_directions_ * 3);
+    ORT_ENFORCE(activation_func_names.size() == static_cast<size_t>(num_directions_) * 3);
 
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,
@@ -82,7 +82,8 @@ class DeepCpuLstmOp final : public OpKernel {
   // across them. mutable due to this.
   // The alternative would be to create a threadpool in each call to Compute but that would incur thread creation
   // cost on every call.
-  mutable TaskThreadPool ttp_{std::thread::hardware_concurrency()};
+  mutable onnxruntime::concurrency::ThreadPool lstm_tp_{"DEEPCPU_LSTM",
+                                                        static_cast<int>(std::thread::hardware_concurrency())};
 };
 
 }  // namespace onnxruntime

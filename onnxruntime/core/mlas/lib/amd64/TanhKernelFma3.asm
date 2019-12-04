@@ -19,7 +19,6 @@
 
         .xlist
 INCLUDE mlasi.inc
-INCLUDE SgemmKernelCommon.inc
         .list
 
         EXTERN  MlasMaskMoveAvx:NEAR

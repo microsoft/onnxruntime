@@ -3,21 +3,25 @@
 
 #pragma once
 
+#ifdef _WIN32
+#pragma warning(disable : 4267)
+#endif
+
 #include <algorithm>
 #include <functional>
 #include <future>
 #include <string>
 #include <vector>
 
-#include "gsl/span"
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
-#include "core/common/task_thread_pool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 class Tensor;
@@ -35,14 +39,15 @@ enum Direction {
 inline Direction MakeDirection(const std::string& direction) {
   if (direction == "forward") {
     return kForward;
-  } else if (direction == "reverse") {
-    return kReverse;
-  } else if (direction == "bidirectional") {
-    return kBidirectional;
-  } else {
-    ORT_THROW("Invalid 'direction' argument of '", direction,
-              "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
   }
+  if (direction == "reverse") {
+    return kReverse;
+  }
+  if (direction == "bidirectional") {
+    return kBidirectional;
+  }
+  ORT_THROW("Invalid 'direction' argument of '", direction,
+            "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
 }
 
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe
@@ -111,11 +116,10 @@ void ReverseSequence(gsl::span<const T> inputs,
   for (int i = 0; i < batch_size; i++) {
     int seq_len = sequence_lengths[i];
 
-    if (seq_len == 0)
-      continue;
-
-    // Parallel execute the loop.
-    #pragma omp for
+#ifdef USE_OPENMP
+// Parallel execute the loop.
+#pragma omp parallel for
+#endif
     for (int j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
@@ -124,7 +128,10 @@ void ReverseSequence(gsl::span<const T> inputs,
       gsl::copy(src, dest);
     }
 
-    #pragma omp for
+#ifdef USE_OPENMP
+// Parallel execute the loop.
+#pragma omp parallel for
+#endif
     for (int j = seq_len; j < max_sequence_length; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * j * batch_size * input_size + i * input_size, input_size);
@@ -151,7 +158,7 @@ void ComputeGemm(const int M,
                  const float beta,
                  TSpanCIter C,
                  TSpanCIter C_end,
-                 const int ldc) {
+                 const int ldc, concurrency::ThreadPool* tp) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(lda >= K && ldb >= K && ldc >= N);
@@ -159,12 +166,12 @@ void ComputeGemm(const int M,
   ORT_ENFORCE(B + (N * ldb - (ldb - K)) <= B_end);
   ORT_ENFORCE(C + (M * ldc - (ldc - N)) <= C_end);
 
-  ::onnxruntime::math::GemmEx<float, CPUMathUtil>(
+  ::onnxruntime::math::GemmEx<float>(
       CblasNoTrans, CblasTrans,
       M, N, K, alpha,
       &*A, lda,
       &*B, ldb, beta,
-      &*C, ldc, &CPUMathUtil::Instance());
+      &*C, ldc, tp);
 }
 
 // helper to convert a span to a raw pointer
@@ -205,7 +212,8 @@ T* SafeRawPointer(typename gsl::span<T> span, size_t offset, size_t size) {
 
 template <typename TLambda>
 void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, int step,
-                             TaskThreadPool& ttp, const ::onnxruntime::logging::Logger& logger) {
+                             onnxruntime::concurrency::ThreadPool& ttp,
+                             const ::onnxruntime::logging::Logger& logger) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
 #ifdef NOTHREADS
@@ -217,23 +225,64 @@ void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, i
     std::bind(lambda, i)();
   }
 #else
-  std::vector<std::future<void> > task_results{};
-  task_results.reserve(static_cast<size_t>(std::ceil(max / step)));
 
-  for (int i = 0; i < max; i += step) {
-    std::packaged_task<void()> task{std::bind(lambda, i)};
-    task_results.emplace_back(task.get_future());
-    ttp.RunTask(std::move(task));
+  ORT_UNUSED_PARAMETER(name);
+  ORT_UNUSED_PARAMETER(logger);
+
+  // ORT_ENFORCE may and does throw at times from within the tasks that run
+  // on a thread-pool. Without propagating exceptions the process exits silently
+  // which will make diagnosing bugs more difficult.
+
+  // \! UGLY
+  // We have a problem here with the current thread-pool is that it takes std::function
+  // by value and copies it more than once (even though it is movable).
+  //
+  // To report status and exceptions properly it's better to use
+  // futures and promises but they are not copyable, so we can't come up with a functor
+  // with a promise member and we are downgrading to C++11 where we can't have captures that moved in.
+  //
+  // At the same time promises MUST live in the child thread so if we throw from the main thread
+  // we don't destroy any promises that are on the main thread stack which children threads may still be using.
+  //
+  // The only solution with the current Eigen that comes to mind is to have shared_ptr to with std::promise.
+  //
+  const int total_tasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
+  std::vector<std::future<void> > futures;
+  futures.reserve(total_tasks);
+
+  for (int i = 0, t = 0; i < max; i += step, ++t) {
+    auto p_ptr = std::make_shared<std::promise<void> >();
+    futures.push_back(p_ptr->get_future());
+    ttp.Schedule([p_ptr, lambda, i]() {
+      try {
+        lambda(i);
+        p_ptr->set_value();
+      } catch (...) {
+        p_ptr->set_exception(std::current_exception());
+      }
+    });
   }
 
-  try {
-    // wait for all and propagate any exceptions
-    for (auto& future : task_results)
-      future.get();
-  } catch (const std::exception& ex) {
-    LOGS(logger, ERROR) << name << " - exception running tasks: " << ex.what();
-    throw;
+  // We'd like to wait until all of the tasks have finished
+  // even though one or more have already thrown. We will store
+  // the first exception and then will re-throw at the end.
+  std::exception_ptr pending_exception;
+  for (auto& fut : futures) {
+    try {
+      // get() will re-throw any exceptions
+      // the running task may throw
+      fut.get();
+    } catch (...) {
+      if (!pending_exception) {
+        pending_exception = std::current_exception();
+      }
+    }
   }
+
+  if (pending_exception) {
+    std::rethrow_exception(pending_exception);
+  }
+
 #endif
 }
 
@@ -269,52 +318,53 @@ class ActivationFuncs {
 namespace deepcpu {
 
 using AddBiasIntoFuncPtr = void (*)(const float*, float*, const int);
-using ClipWithBiasFuncPtr = void (*)(const float, const float*, float*, const int);
-using ActivationFuncPtr = void (*)(float*, const int, const float, const float);
-using ActivationFuncBPtr = void (*)(const float*, float*, const int, const float, const float);
-using LstmMergeGatesFuncPtr = void (*)(const float*, float*, const float*, float*, const int, const float, const float);
-using GruResetGateFuncPtr = void (*)(const float*, float*, float*, const int, const float, const float);
-using GruOutputGateFuncPtr = void (*)(float*, const float*, const float*, float*, const int, const float, const float);
+using ClipWithBiasFuncPtr = void (*)(float, const float*, float*, const int);
+using ActivationFuncPtr = void (*)(float*, int, float, float);
+using ActivationFuncBPtr = void (*)(const float*, float*, int, float, float);
+using LstmMergeGatesFuncPtr = void (*)(const float*, float*, const float*, float*, int, float, float);
+using GruResetGateFuncPtr = void (*)(const float*, float*, float*, int, float, float);
+using GruOutputGateFuncPtr = void (*)(float*, const float*, const float*, float*, int, float, float);
 
 ActivationFuncPtr ActivationFuncByName(const std::string& func);
 LstmMergeGatesFuncPtr LstmMergeGatesFuncByName(const std::string& func);
 GruResetGateFuncPtr GruResetGateFuncByName(const std::string& func);
 GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func);
 
-void add_bias_into_ignore(const float* ignored, float* pd, const int c);
-void add_bias_into(const float* ps, float* pd, const int c);
-void clip(const float b, float* pd, const int c);
-void clip_add_bias(const float b, const float* pb, float* pd, const int c);
-void clip_ignore_bias(const float b, const float* pb, float* pd, const int c);
-void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void sigmoid_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void tanh_exact_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, const float alpha, const float beta);
-void sigmoid(float* pd, int c, const float alpha, const float beta);
-void tanh(float* pd, int c, const float alpha, const float beta);
-void relu(float* pd, int c, const float alpha, const float beta);
-void sigmoid_exact(float* pd, int c, const float alpha, const float beta);
-void tanh_exact(float* pd, int c, const float alpha, const float beta);
-void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr, const int c);
-void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, const int c, const float alpha, const float beta);
-void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, const int c, const float alpha, const float beta);
-void gru_reset_gate_relu(const float* ps1, float* ps2, float* pd, const int c, const float alpha, const float beta);
-void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po, const int c, const float alpha, const float beta);
-void gru_output_gate_sigmoid(float* ph, const float* pz, const float* ps, float* po, const int c, const float alpha, const float beta);
-void gru_output_gate_relu(float* ph, const float* pz, const float* ps, float* po, const int c, const float alpha, const float beta);
+void add_bias_into_ignore(const float* ignored, const float* pd, int c);
+void add_bias_into(const float* ps, float* pd, int c);
+void clip(float b, float* pd, int c);
+void clip_add_bias(float b, const float* pb, float* pd, int c);
+void clip_ignore_bias(float b, const float* pb, float* pd, int c);
+void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void relu_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void sigmoid_exact_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void tanh_exact_m(const float* ps1, const float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta);
+void sigmoid(float* pd, int c, float alpha, float beta);
+void tanh(float* pd, int c, float alpha, float beta);
+void relu(float* pd, int c, float alpha, float beta);
+void sigmoid_exact(float* pd, int c, float alpha, float beta);
+void tanh_exact(float* pd, int c, float alpha, float beta);
+void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
+                                int c);
+void gru_reset_gate_tanh(const float* ps1, float* ps2, float* pd, int c, float alpha, float beta);
+void gru_reset_gate_sigmoid(const float* ps1, float* ps2, float* pd, int c, float alpha, float beta);
+void gru_reset_gate_relu(const float* ps1, const float* ps2, float* pd, int c, float alpha, float beta);
+void gru_output_gate_tanh(float* ph, const float* pz, const float* ps, float* po, int c, float alpha, float beta);
+void gru_output_gate_sigmoid(float* ph, const float* pz, const float* ps, float* po, int c, float alpha, float beta);
+void gru_output_gate_relu(const float* ph, const float* pz, const float* ps, float* po, int c, float alpha, float beta);
 
-inline void elementwise_product(const float* op1, const float* op2, float* dest, const int size) {
+inline void elementwise_product(const float* op1, const float* op2, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] += op1[i] * op2[i];
 }
 
-inline void elementwise_sum1(const float* src, float* dest, const int size) {
+inline void elementwise_sum1(const float* src, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] += src[i];
 }
 
-inline void elementwise_sum2(const float* src1, const float* src2, float* dest, const int size) {
+inline void elementwise_sum2(const float* src1, const float* src2, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] += src1[i] + src2[i];
 }

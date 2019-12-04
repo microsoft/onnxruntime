@@ -77,7 +77,7 @@ void AccumulateTimeSpec(TIME_SPEC* base, TIME_SPEC* y, TIME_SPEC* x) {
 //Return the interval in seconds.
 //If the function fails, the return value is zero
 double TimeSpecToSeconds(TIME_SPEC* value) {
-  return value->tv_sec + value->tv_nsec / (double)1000000000;
+  return value->tv_sec + value->tv_nsec / static_cast<double>(1000000000);
 }
 
 }  // namespace onnxruntime

@@ -30,7 +30,7 @@ class ExecutionProviders {
       return status;
     }
 
-    for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
+    for (const auto& allocator : p_exec_provider->GetAllocators()) {
       if (allocator_idx_map_.find(allocator->Info()) != allocator_idx_map_.end()) {
         auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, allocator->Info(), " allocator already registered.");
         LOGS_DEFAULT(ERROR) << status.ErrorMessage();
@@ -43,12 +43,12 @@ class ExecutionProviders {
 
     ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
 
-    for (const auto& allocator : p_exec_provider->GetAllocatorMap()) {
+    for (const auto& allocator : p_exec_provider->GetAllocators()) {
       ORT_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
     }
 
+    exec_provider_ids_.push_back(provider_id);
     exec_providers_.push_back(std::move(p_exec_provider));
-
     return Status::OK();
   }
 
@@ -65,8 +65,8 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
-  const IExecutionProvider* Get(const OrtAllocatorInfo& allocator_info) const {
-    auto it = allocator_idx_map_.find(allocator_info);
+  const IExecutionProvider* Get(const OrtMemoryInfo& memory_info) const {
+    auto it = allocator_idx_map_.find(memory_info);
     if (it == allocator_idx_map_.end()) {
       return nullptr;
     }
@@ -74,19 +74,41 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info) const {
+    auto exec_provider = Get(memory_info);
+    if (exec_provider == nullptr) {
+      return nullptr;
+    }
+
+    return exec_provider->GetAllocator(memory_info.id, memory_info.mem_type);
+  }
+
   bool Empty() const { return exec_providers_.empty(); }
+
+  size_t NumProviders() const { return exec_providers_.size(); }
 
   using const_iterator = typename std::vector<std::unique_ptr<IExecutionProvider>>::const_iterator;
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }
   const_iterator end() const noexcept { return exec_providers_.cend(); }
 
+  OrtMemoryInfo GetDefaultCpuMemoryInfo() const {
+    return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault)->Info();
+  }
+
+  const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
+
  private:
+  // Some compilers emit incomprehensive output if this is allowed
+  // with a container that has unique_ptr or something move-only.
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
+
   std::vector<std::unique_ptr<IExecutionProvider>> exec_providers_;
+  std::vector<std::string> exec_provider_ids_;
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;
-  // using std::map as OrtAllocatorInfo would need a custom hash function to be used with unordered_map,
+  // using std::map as OrtMemoryInfo would need a custom hash function to be used with unordered_map,
   // and as this isn't performance critical it's not worth the maintenance overhead of adding one.
-  std::map<OrtAllocatorInfo, size_t> allocator_idx_map_;
+  std::map<OrtMemoryInfo, size_t> allocator_idx_map_;
 };
 }  // namespace onnxruntime

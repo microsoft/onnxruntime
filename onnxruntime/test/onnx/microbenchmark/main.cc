@@ -6,11 +6,12 @@
 #include <core/common/logging/logging.h>
 #include <core/platform/env.h>
 #include <core/providers/cpu/cpu_execution_provider.h>
-#include <core/framework/environment.h>
+#include "core/session/environment.h"
 #include <core/common/logging/sinks/clog_sink.h>
 #include <core/graph/model.h>
 #include <core/graph/graph.h>
 #include <core/framework/kernel_def_builder.h>
+#include <core/session/onnxruntime_c_api.h>
 #include <unordered_map>
 
 using namespace onnxruntime;
@@ -27,7 +28,7 @@ BENCHMARK(BM_CPUAllocator)->Arg(4)->Arg(sizeof(Tensor));
 
 static void BM_ResolveGraph(benchmark::State& state) {
   std::shared_ptr<onnxruntime::Model> model_copy;
-  auto st = onnxruntime::Model::Load("../models/opset8/test_tiny_yolov2/model.onnx", model_copy);
+  auto st = onnxruntime::Model::Load(ORT_TSTR("../models/opset8/test_tiny_yolov2/model.onnx"), model_copy);
   if (!st.IsOK()) {
     printf("Parse model failed: %s", st.ErrorMessage().c_str());
     abort();
@@ -48,18 +49,24 @@ static void BM_ResolveGraph(benchmark::State& state) {
 }
 
 BENCHMARK(BM_ResolveGraph);
+#define ORT_ABORT_ON_ERROR(expr)                         \
+  do {                                                   \
+    OrtStatus* onnx_status = (expr);                     \
+    if (onnx_status != NULL) {                           \
+      const char* msg = OrtGetErrorMessage(onnx_status); \
+      fprintf(stderr, "%s\n", msg);                      \
+      OrtReleaseStatus(onnx_status);                     \
+      abort();                                           \
+    }                                                    \
+  } while (0);
+
+OrtEnv* env = nullptr;
 
 int main(int argc, char** argv) {
   ::benchmark::Initialize(&argc, argv);
   if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return -1;
-  std::string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                  logging::Severity::kWARNING, false,
-                                                  logging::LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
-
-  std::unique_ptr<Environment> env;
-  auto status = Environment::Create(env);
+  ORT_ABORT_ON_ERROR(OrtCreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
   ::benchmark::RunSpecifiedBenchmarks();
+  OrtReleaseEnv(env);
   return 0;
 }

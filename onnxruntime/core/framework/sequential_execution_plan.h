@@ -6,6 +6,7 @@
 #include "core/graph/basic_types.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
+#include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {
 // Every ml-value has a unique name and is assigned a unique integral number.
@@ -13,35 +14,36 @@ namespace onnxruntime {
 // (that is, at inference time), there is no need to refer to names, and only
 // the integer index is used (e.g., to index into appropriate vectors in
 // the ExecutionFrame).
-using MLValueIndex = int;
-using MLValueName = std::string;
+using OrtValueIndex = int;
+using OrtValueName = std::string;
 
 class SessionState;
+
+// AllocPlanPerValue: (a simplified form of AllocationPlanPerValue above)
+// Captures information required to allocate/reuse buffer for a ml-value
+struct AllocPlanPerValue {
+  AllocKind alloc_kind{AllocKind::kAllocate};
+  MLDataType value_type{nullptr};
+  OrtMemoryInfo location;
+  // reused_buffer is valid only if alloc_kind == kReuse. It indicates
+  // which OrtValue's buffer must be reused for this OrtValue.
+  OrtValueIndex reused_buffer{0};
+  // if the value is used in async kernel, a fence object would be created
+  // note the fence object would be shared between MLValues reusing the same buffer
+  bool create_fence_if_async{false};
+
+ public:
+  AllocPlanPerValue() : location(CPU, OrtArenaAllocator) {}
+};
+
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
-struct SequentialExecutionPlan {
+struct SequentialExecutionPlan : public ExecutionPlanBase {
   // Allocation plan:
   // ExecutionFrame::GetOrCreateTensor() should use the following information
   // to decide whether to allocate a new buffer or reuse an existing buffer
 
-  // AllocPlanPerValue: (a simplified form of AllocationPlanPerValue above)
-  // Captures information required to allocate/reuse buffer for a ml-value
-  struct AllocPlanPerValue {
-    AllocKind alloc_kind{AllocKind::kAllocate};
-    MLDataType value_type{nullptr};
-    OrtAllocatorInfo location;
-    // reused_buffer is valid only if alloc_kind == kReuse. It indicates
-    // which MLValue's buffer must be reused for this MLValue.
-    MLValueIndex reused_buffer{0};
-    // if the value is used in async kernel, a fence object would be created
-    // note the fence object would be shared between MLValues reusing the same buffer
-    bool create_fence_if_async{false};
-
-   public:
-    AllocPlanPerValue() : location(CPU, OrtArenaAllocator) {}
-  };
-
-  // The following vector is indexed by MLValueIndex
+  // The following vector is indexed by OrtValueIndex
   std::vector<AllocPlanPerValue> allocation_plan;
 
   // The following indicates the order in which nodes should be executed and the
@@ -64,8 +66,32 @@ struct SequentialExecutionPlan {
   // Execution_plan: represents the nodes in the sequential order to be executed
   std::vector<NodeExecutionPlan> execution_plan;
 
+  // Records whether a given node has fence on its input or output, key is node index.
+  std::vector<bool> node_has_fence;
+
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
-  std::vector<MLValueIndex> to_be_freed;
+  std::vector<OrtValueIndex> to_be_freed;
+
+  const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
+    return allocation_plan[ort_value_index].location;
+  }
+
+  void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo& info) override {
+    allocation_plan[ort_value_index].location = info;
+  }
+
+  std::set<OrtMemoryInfo> GetAllLocations() const override {
+    std::set<OrtMemoryInfo> locations;
+    for (auto& alloc_plan : allocation_plan) {
+      if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
+    }
+    return locations;
+  }
+
+  // Whether a given node needs fence check or not.
+  bool NodeHasFence(onnxruntime::NodeIndex node_index) const {
+    return node_has_fence[node_index];
+  }
 };
 
 // Output details of an execution plan:

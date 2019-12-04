@@ -5,15 +5,7 @@
 
 #include <functional>
 #include <unordered_map>
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#include "onnx/defs/schema.h"
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/status.h"
 #include "core/graph/constants.h"
 
@@ -33,7 +25,9 @@ AttributeProto_AttributeType_FLOATS = 6,
 AttributeProto_AttributeType_INTS = 7,
 AttributeProto_AttributeType_STRINGS = 8,
 AttributeProto_AttributeType_TENSORS = 9,
-AttributeProto_AttributeType_GRAPHS = 10
+AttributeProto_AttributeType_GRAPHS = 10,
+AttributeProto_AttributeType_SPARSE_TENSOR = 22,
+AttributeProto_AttributeType_SPARSE_TENSORS = 23,
 */
 static constexpr const char* kAttrTypeStrings[] =
     {

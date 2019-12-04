@@ -24,10 +24,20 @@ const std::vector<MLDataType> castOpTypeConstraints{
     DataTypeImpl::GetTensorType<bool>()};
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      6, 8,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
+      Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      6,                                                          \
+      9,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -44,12 +54,14 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->template Data<SrcT>());
   size_t count = shape.Size();
 
-#define CASE(TP_TYPE, DstT)                                                                        \
-  case TP_TYPE:                                                                                    \
-    Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
-        x_data,                                                                                    \
-        reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->template MutableData<DstT>()), \
-        count);                                                                                    \
+#define CASE(TP_TYPE, DstT)                                                                          \
+  case TP_TYPE:                                                                                      \
+    if (count > 0) {                                                                                 \
+      Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
+          x_data,                                                                                    \
+          reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->template MutableData<DstT>()), \
+          count);                                                                                    \
+    }                                                                                                \
     break;
 
   switch (to_) {

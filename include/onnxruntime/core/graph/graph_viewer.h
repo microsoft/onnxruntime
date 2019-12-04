@@ -22,7 +22,7 @@ class GraphViewer {
   /**
   Construct a GraphViewer from the provided Graph instance.
   */
-  GraphViewer(const Graph& graph);
+  explicit GraphViewer(const Graph& graph);
 
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
@@ -37,6 +37,9 @@ class GraphViewer {
   @returns True if found. False if not.
   */
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
+
+  /** Returns true if an initializer value can be overridden by a graph input with the same name. */
+  bool CanOverrideInitializer() const noexcept;
 
   /**
   Gets the Graph inputs, excluding initializers.
@@ -96,6 +99,23 @@ class GraphViewer {
   @returns A NodeArg if found, a nullptr if not.
   */
   const NodeArg* GetNodeArg(const std::string& name) const;
+
+  /** Gets the map of operator domains to their opset versions. */
+  const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
+    return graph_->DomainToVersionMap();
+  }
+
+  /** Checks if this is a Subgraph */
+  bool IsSubgraph() const;
+
+  /** 
+  returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+  @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name' if not found in 'graph_'.
+  */
+  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
+  const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);

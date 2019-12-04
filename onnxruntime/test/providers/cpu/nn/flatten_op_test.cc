@@ -7,9 +7,11 @@
 namespace onnxruntime {
 namespace test {
 
+// Disable TensorRT on some of the tests because axis=0 is not supported
+
 class FlattenOpTest : public testing::Test {
  public:
-  FlattenOpTest() : test_("Flatten"), data0_(120, 1.0f) {}
+  FlattenOpTest() : test_("Flatten", 11), data0_(120, 1.0f) {}
 
  protected:
   OpTester test_;
@@ -24,7 +26,7 @@ TEST_F(FlattenOpTest, Flatten_axis0) {
   test_.AddAttribute<int64_t>("axis", 0L);
   test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
   test_.AddOutput<float>("output", {1L, 120L}, data0_);
-  test_.Run();
+  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST_F(FlattenOpTest, Flatten_default_axis) {
@@ -45,14 +47,22 @@ TEST_F(FlattenOpTest, Flatten_axis3) {
   test_.AddAttribute<int64_t>("axis", 3L);
   test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
   test_.AddOutput<float>("output", {24L, 5L}, data0_);
-  test_.Run();
+  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST_F(FlattenOpTest, Flatten_axis4) {
   test_.AddAttribute<int64_t>("axis", 4L);
   test_.AddInput<float>("data", {1L, 2L, 4L, 2L}, data1_);
   test_.AddOutput<float>("output", {16L, 1L}, data1_);
-  test_.Run();
+  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+
+TEST_F(FlattenOpTest, Flatten_neg_axis3) {
+  test_.AddAttribute<int64_t>("axis", -1L);
+  test_.AddInput<float>("data", {2L, 3L, 4L, 5L}, data0_);
+  test_.AddOutput<float>("output", {24L, 5L}, data0_);
+  test_.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

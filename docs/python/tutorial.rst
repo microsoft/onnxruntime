@@ -58,13 +58,13 @@ to convert other model formats into ONNX. Here we will use
     :store:
     :warningout: ImportWarning FutureWarning
 
-    from onnxmltools import convert_sklearn
-    from onnxmltools.utils import save_model
-    from onnxmltools.convert.common.data_types import FloatTensorType
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
 
     initial_type = [('float_input', FloatTensorType([1, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
-    save_model(onx, "logreg_iris.onnx")
+    with open("logreg_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
 
 Step 3: Load and run the model using ONNX Runtime
 +++++++++++++++++++++++++++++++++++++++++++++++++

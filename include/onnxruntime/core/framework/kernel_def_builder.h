@@ -19,14 +19,16 @@ class KernelDefBuilder;
 
 typedef std::map<size_t, OrtMemType> MemTypeMap;
 
-// note that input/output might be on CPU implicitly when the node is from CPU execution provider
-inline bool MemTypeOnCpuExplicitly(const MemTypeMap& mem_type_map, size_t index) {
-  auto iter = mem_type_map.find(index);
-  return iter != mem_type_map.end() && (iter->second == OrtMemTypeCPUInput || iter->second == OrtMemTypeCPUOutput);
-}
-
 class KernelDef {
+ private:
+  // note that input/output might be on CPU implicitly when the node is from CPU execution provider
+  static inline bool MemTypeOnCpuExplicitly(OrtMemType mem_type) {
+    return mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput;
+  }
+
  public:
+  explicit KernelDef() = default;
+
   const std::string& OpName() const {
     return op_name_;
   }
@@ -39,6 +41,12 @@ class KernelDef {
     *start = op_since_version_start_;
     *end = op_since_version_end_;
   }
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  const std::pair<int, int> SinceVersion() const {
+    return std::pair<int, int>(op_since_version_start_, op_since_version_end_);
+  }
+#endif
 
   onnxruntime::ProviderType Provider() const {
     return provider_type_;
@@ -56,17 +64,22 @@ class KernelDef {
     return alias_map_;
   }
 
-  const MemTypeMap& InputMemoryType() const {
-    return input_memory_type_args_;
+  OrtMemType InputMemoryType(size_t input_index) const {
+    auto it = input_memory_type_args_.find(input_index);
+    if (it == input_memory_type_args_.end())
+      return default_inputs_mem_type_;
+    return it->second;
   }
 
-  const MemTypeMap& OutputMemoryType() const {
-    return output_memory_type_args_;
-  }
+  bool IsInputOnCpu(size_t input_index) const { return MemTypeOnCpuExplicitly(InputMemoryType(input_index)); }
 
-  // legacy interface for winml, should not be used in onnxruntime
-  const MemTypeMap& MemoryType() const {
-    return output_memory_type_args_;
+  bool IsOutputOnCpu(size_t output_index) const { return MemTypeOnCpuExplicitly(OutputMemoryType(output_index)); }
+
+  OrtMemType OutputMemoryType(size_t output_index) const {
+    auto it = output_memory_type_args_.find(output_index);
+    if (it == output_memory_type_args_.end())
+      return default_outputs_mem_type_;
+    return it->second;
   }
 
   int ExecQueueId() const {
@@ -111,6 +124,10 @@ class KernelDef {
 
   // execution command queue id, 0 for default queue in execution provider
   int exec_queue_id_ = 0;
+  // Default memory type for all inputs
+  OrtMemType default_inputs_mem_type_{OrtMemTypeDefault};
+  // Default memory type for all outputs
+  OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
 };
 
 class KernelDefBuilder {
@@ -209,6 +226,22 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& ExecQueueId(int queue_id) {
     kernel_def_->exec_queue_id_ = queue_id;
+    return *this;
+  }
+
+  /**
+  Specify the default inputs memory type, if not specified, it is DefaultMemory
+  */
+  KernelDefBuilder& SetDefaultInputsMemoryType(OrtMemType mem_type) {
+    kernel_def_->default_inputs_mem_type_ = mem_type;
+    return *this;
+  }
+
+  /**
+  Specify the default outputs memory type, if not specified, it is DefaultMemory
+  */
+  KernelDefBuilder& SetDefaultOutputMemoryType(OrtMemType mem_type) {
+    kernel_def_->default_outputs_mem_type_ = mem_type;
     return *this;
   }
 

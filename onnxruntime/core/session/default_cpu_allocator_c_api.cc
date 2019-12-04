@@ -2,84 +2,65 @@
 // Licensed under the MIT License.
 
 #include <atomic>
+#include "core/framework/utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/ort_apis.h"
 #include <assert.h>
 
-#define ORT_ALLOCATOR_IMPL_BEGIN(CLASS_NAME)                                  \
-  class CLASS_NAME {                                                          \
-   private:                                                                   \
-    const OrtAllocatorInterface* vtable_ = &table_;                           \
-    std::atomic_int ref_count_;                                               \
-    static void* ORT_API_CALL Alloc_(void* this_ptr, size_t size) {           \
-      return ((CLASS_NAME*)this_ptr)->Alloc(size);                            \
-    }                                                                         \
-    static void ORT_API_CALL Free_(void* this_ptr, void* p) {                 \
-      return ((CLASS_NAME*)this_ptr)->Free(p);                                \
-    }                                                                         \
-    static const OrtAllocatorInfo* ORT_API_CALL Info_(const void* this_ptr) { \
-      return ((const CLASS_NAME*)this_ptr)->Info();                           \
-    }                                                                         \
-    static uint32_t ORT_API_CALL AddRef_(void* this_) {                       \
-      CLASS_NAME* this_ptr = (CLASS_NAME*)this_;                              \
-      return ++this_ptr->ref_count_;                                          \
-    }                                                                         \
-    static uint32_t ORT_API_CALL Release_(void* this_) {                      \
-      CLASS_NAME* this_ptr = (CLASS_NAME*)this_;                              \
-      uint32_t ret = --this_ptr->ref_count_;                                  \
-      if (ret == 0)                                                           \
-        delete this_ptr;                                                      \
-      return 0;                                                               \
-    }                                                                         \
-    static OrtAllocatorInterface table_;
+// In the future we'll have more than one allocator type. Since all allocators are of type 'OrtAllocator' and there is a single
+// OrtReleaseAllocator function, we need to have a common base type that lets us delete them.
+struct OrtAllocatorImpl : OrtAllocator {
+  virtual ~OrtAllocatorImpl() = default;
+};
 
-#define ORT_ALLOCATOR_IMPL_END \
-  }                            \
-  ;
-
-ORT_ALLOCATOR_IMPL_BEGIN(OrtDefaultAllocator)
-private:
-OrtAllocatorInfo* cpuAllocatorInfo;
-OrtDefaultAllocator() : ref_count_(1) {
-  ORT_THROW_ON_ERROR(OrtCreateAllocatorInfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault, &cpuAllocatorInfo));
-}
-~OrtDefaultAllocator() {
-  assert(ref_count_ == 0);
-  OrtReleaseAllocatorInfo(cpuAllocatorInfo);
+void ThrowOnError(OrtStatus* status) {
+  if (status) {
+    std::string ort_error_message = OrtApis::GetErrorMessage(status);
+    OrtErrorCode ort_error_code = OrtApis::GetErrorCode(status);
+    OrtApis::ReleaseStatus(status);
+    throw Ort::Exception(std::move(ort_error_message), ort_error_code);
+  }
 }
 
-public:
-OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
-OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
-OrtAllocatorInterface** Upcast() {
-  return const_cast<OrtAllocatorInterface**>(&vtable_);
-}
-static OrtAllocatorInterface** Create() {
-  return (OrtAllocatorInterface**)new OrtDefaultAllocator();
-}
-void* Alloc(size_t size) {
-  return ::malloc(size);
-}
-void Free(void* p) {
-  return ::free(p);
-}
-const OrtAllocatorInfo* Info() const {
-  return cpuAllocatorInfo;
-}
-ORT_ALLOCATOR_IMPL_END
-
-#define API_IMPL_BEGIN try {
-#define API_IMPL_END                                           \
-  }                                                            \
-  catch (std::exception & ex) {                                \
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
+struct OrtDefaultAllocator : OrtAllocatorImpl {
+  OrtDefaultAllocator() {
+    OrtAllocator::version = ORT_API_VERSION;
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultAllocator*>(this_)->Alloc(size); };
+    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultAllocator*>(this_)->Free(p); };
+    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtDefaultAllocator*>(this_)->Info(); };
+    ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }
 
-OrtAllocatorInterface OrtDefaultAllocator::table_ = {
-    {OrtDefaultAllocator::AddRef_, OrtDefaultAllocator::Release_}, OrtDefaultAllocator::Alloc_, OrtDefaultAllocator::Free_, OrtDefaultAllocator::Info_};
+  ~OrtDefaultAllocator() override { OrtApis::ReleaseMemoryInfo(cpu_memory_info); }
 
-ORT_API_STATUS_IMPL(OrtCreateDefaultAllocator, _Out_ OrtAllocator** out) {
+  void* Alloc(size_t size) {
+    return onnxruntime::utils::DefaultAlloc(size);
+  }
+  void Free(void* p) {
+    onnxruntime::utils::DefaultFree(p);
+  }
+  const OrtMemoryInfo* Info() const {
+    return cpu_memory_info;
+  }
+
+ private:
+  OrtDefaultAllocator(const OrtDefaultAllocator&) = delete;
+  OrtDefaultAllocator& operator=(const OrtDefaultAllocator&) = delete;
+
+  OrtMemoryInfo* cpu_memory_info;
+};
+
+#define API_IMPL_BEGIN try {
+#define API_IMPL_END                                                \
+  }                                                                 \
+  catch (std::exception & ex) {                                     \
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what()); \
+  }
+
+ORT_API_STATUS_IMPL(OrtApis::GetAllocatorWithDefaultOptions, _Out_ OrtAllocator** out) {
   API_IMPL_BEGIN
-  *out = OrtDefaultAllocator::Create();
+  static OrtDefaultAllocator ort_default_allocator;
+  *out = &ort_default_allocator;
   return nullptr;
   API_IMPL_END
 }

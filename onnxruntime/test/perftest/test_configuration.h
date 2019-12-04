@@ -7,6 +7,7 @@
 #include <string>
 
 #include "core/graph/constants.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
 namespace perftest {
@@ -23,9 +24,9 @@ enum class Platform : std::uint8_t {
 
 struct ModelInfo {
   std::string model_name;
-  std::string model_file_path;
-  std::string input_file_path;
-  std::string result_file_path;
+  std::basic_string<ORTCHAR_T> model_file_path;
+  std::basic_string<ORTCHAR_T> input_file_path;
+  std::basic_string<ORTCHAR_T> result_file_path;
 };
 
 struct MachineConfig {
@@ -34,19 +35,27 @@ struct MachineConfig {
 };
 
 struct RunConfig {
-  std::string profile_file;
+  std::basic_string<ORTCHAR_T> profile_file;
   TestMode test_mode{TestMode::kFixDurationMode};
   size_t repeated_times{1000};
   size_t duration_in_seconds{600};
+  size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
   bool f_verbose{false};
-  bool enable_sequential_execution{true};
+  bool enable_memory_pattern{true};
+  bool enable_cpu_mem_arena{true};
+  ExecutionMode execution_mode{ExecutionMode::ORT_SEQUENTIAL};
+  int intra_op_num_threads{0};
+  int inter_op_num_threads{0};
+  GraphOptimizationLevel optimization_level{ORT_ENABLE_EXTENDED};
+  std::basic_string<ORTCHAR_T> optimized_model_path;
 };
 
 struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  std::basic_string<ORTCHAR_T> backend = ORT_TSTR("ort");
 };
 
 }  // namespace perftest

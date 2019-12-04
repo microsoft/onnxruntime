@@ -19,6 +19,11 @@
 #include <sys/syscall.h>
 #endif
 #endif
+#include "core/platform/ort_mutex.h"
+
+#if __FreeBSD__
+#include <sys/thr.h> // Use thr_self() syscall under FreeBSD to get thread id
+#endif
 
 namespace onnxruntime {
 namespace logging {
@@ -52,8 +57,8 @@ static std::atomic<void*>& DefaultLoggerManagerInstance() noexcept {
 #pragma warning(disable : 26426)
 #endif
 
-static std::mutex& DefaultLoggerMutex() noexcept {
-  static std::mutex mutex;
+static OrtMutex& DefaultLoggerMutex() noexcept {
+  static OrtMutex mutex;
   return mutex;
 }
 
@@ -83,7 +88,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       default_filter_user_data_{filter_user_data},
       default_max_vlog_level_{default_max_vlog_level},
       owns_default_logger_{false} {
-  if (!sink_) {
+  if (sink_ == nullptr) {
     throw std::logic_error("ISink must be provided.");
   }
 
@@ -94,7 +99,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
 
     // lock mutex to create instance, and enable logging
     // this matches the mutex usage in Shutdown
-    std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+    std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
 
     if (DefaultLoggerManagerInstance().load() != nullptr) {
       throw std::logic_error("Only one instance of LoggingManager created with InstanceType::Default can exist at any point in time.");
@@ -114,7 +119,7 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
 LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
-    std::lock_guard<std::mutex> guard(DefaultLoggerMutex());
+    std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
 
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order::memory_order_release);
 
@@ -125,7 +130,6 @@ LoggingManager::~LoggingManager() {
 
 void LoggingManager::CreateDefaultLogger(const std::string& logger_id) {
   // this method is only called from ctor in scope where DefaultLoggerMutex() is already locked
-
   if (s_default_logger_ != nullptr) {
     throw std::logic_error("Default logger already set. ");
   }
@@ -141,7 +145,7 @@ std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_i
                                                      const Severity severity,
                                                      bool filter_user_data,
                                                      int vlog_level) {
-  auto logger = std::make_unique<Logger>(*this, logger_id, severity, filter_user_data, vlog_level);
+  auto logger = onnxruntime::make_unique<Logger>(*this, logger_id, severity, filter_user_data, vlog_level);
   return logger;
 }
 
@@ -185,7 +189,8 @@ std::exception LoggingManager::LogFatalAndCreateException(const char* category,
   // create Capture in separate scope so it gets destructed (leading to log output) before we throw.
   {
     ::onnxruntime::logging::Capture c{::onnxruntime::logging::LoggingManager::DefaultLogger(),
-                                      ::onnxruntime::logging::Severity::kFATAL, category, ::onnxruntime::logging::DataType::SYSTEM, location};
+                                      ::onnxruntime::logging::Severity::kFATAL, category, 
+									  ::onnxruntime::logging::DataType::SYSTEM, location};
     va_list args;
     va_start(args, format_str);
 
@@ -205,6 +210,10 @@ unsigned int GetThreadId() {
   uint64_t tid64;
   pthread_threadid_np(NULL, &tid64);
   return static_cast<unsigned int>(tid64);
+#elif __FreeBSD__
+  long tid;
+  thr_self(&tid);
+  return static_cast<unsigned int>(tid);
 #else
   return static_cast<unsigned int>(syscall(SYS_gettid));
 #endif

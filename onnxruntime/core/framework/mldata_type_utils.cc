@@ -6,9 +6,9 @@
 namespace onnxruntime {
 namespace utils {
 MLDataType GetMLDataType(const onnxruntime::NodeArg& arg) {
-  const ONNX_NAMESPACE::DataType ptype = arg.Type();
-  const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
-  return DataTypeImpl::TypeFromProto(type_proto);
+  auto type_proto = arg.TypeAsProto();
+  ORT_ENFORCE(nullptr != type_proto);
+  return DataTypeImpl::TypeFromProto(*type_proto);
 }
 }  // namespace utils
 }  // namespace onnxruntime

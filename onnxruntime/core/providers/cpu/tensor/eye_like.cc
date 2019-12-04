@@ -15,29 +15,37 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T1",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
-                                          DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<double>(),
                                           DataTypeImpl::GetTensorType<uint64_t>(),
+                                          DataTypeImpl::GetTensorType<int64_t>(),
+                                          DataTypeImpl::GetTensorType<int32_t>()
                                       })
-        .TypeConstraint("T2",
-                        std::vector<MLDataType>{
-                            DataTypeImpl::GetTensorType<float>(),
-                            DataTypeImpl::GetTensorType<uint64_t>(),
-                            DataTypeImpl::GetTensorType<int64_t>(),
-                        }),
+                        .TypeConstraint("T2",
+                                        std::vector<MLDataType>{
+                                            DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>(),
+                                            DataTypeImpl::GetTensorType<uint64_t>(),
+                                            DataTypeImpl::GetTensorType<int64_t>(),
+                                            DataTypeImpl::GetTensorType<int32_t>()
+                                        }),
     EyeLike);
 
 Status EyeLike::Compute(OpKernelContext* context) const {
-  const Tensor* T1 = context->Input<Tensor>(0);
+  const auto* T1 = context->Input<Tensor>(0);
   ORT_ENFORCE(T1 != nullptr);
 
-  auto output_tensor_dtype = has_dtype_ ? static_cast<onnx::TensorProto::DataType>(dtype_) : utils::GetTensorProtoType(*T1);
+  auto output_tensor_dtype = has_dtype_ ? static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype_) : T1->GetElementType();
   switch (output_tensor_dtype) {
-    case onnx::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       return ComputeImpl<float>(context, T1);
-    case onnx::TensorProto_DataType_INT64:
-      return ComputeImpl<int64_t>(context, T1);
-    case onnx::TensorProto_DataType_UINT64:
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return ComputeImpl<double>(context, T1);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return ComputeImpl<int32_t>(context, T1);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
       return ComputeImpl<uint64_t>(context, T1);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return ComputeImpl<int64_t>(context, T1);
     default:
       ORT_THROW("Unsupported 'dtype' value: ", output_tensor_dtype);
   }

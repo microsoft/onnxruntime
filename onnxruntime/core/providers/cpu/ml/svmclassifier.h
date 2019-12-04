@@ -19,7 +19,7 @@ class SVMCommon {
     std::vector<float> kernel_params;
     ORT_ENFORCE(info.GetAttrs<float>("kernel_params", kernel_params).IsOK());
 
-    if (kernel_params.size() > 0) {
+    if (!kernel_params.empty()) {
       gamma_ = kernel_params[0];
       coef0_ = kernel_params[1];
       degree_ = kernel_params[2];
@@ -30,31 +30,30 @@ class SVMCommon {
   KERNEL get_kernel_type() const { return kernel_type_; }
 
   float kernel_dot(const T* A, int64_t a, const std::vector<float>& B, int64_t b, int64_t len, KERNEL k) const {
-    float sum = 0.f;
+    double sum = 0;
+    const T* pA = A + a;
+    const float* pB = B.data() + b;
     if (k == KERNEL::POLY) {
-      for (int64_t i = 0; i < len; i++) {
-        sum += B[b + i] * static_cast<float>(A[a + i]);
-      }
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB)
+        sum += *pA * *pB;
       sum = gamma_ * sum + coef0_;
       sum = std::pow(sum, degree_);
     } else if (k == KERNEL::SIGMOID) {
-      for (int64_t i = 0; i < len; i++) {
-        sum += B[b + i] * static_cast<float>(A[a + i]);
-      }
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB)
+        sum += *pA * *pB;
       sum = gamma_ * sum + coef0_;
       sum = std::tanh(sum);
     } else if (k == KERNEL::RBF) {
-      for (int64_t i = 0; i < len; i++) {
-        float val = static_cast<float>(A[a + i]) - B[b + i];
-        sum += (val * val);
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB) {
+        double val = *pA - *pB;
+        sum += val * val;
       }
       sum = std::exp(-gamma_ * sum);
     } else if (k == KERNEL::LINEAR) {
-      for (int64_t i = 0; i < len; i++) {
-        sum += B[b + i] * static_cast<float>(A[a + i]);
-      }
+      for (int64_t i = len; i > 0; --i, ++pA, ++pB)
+        sum += *pA * *pB;
     }
-    return sum;
+    return (float)sum;
   }
 
  private:

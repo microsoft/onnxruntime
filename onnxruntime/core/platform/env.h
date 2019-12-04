@@ -21,10 +21,13 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/pointers>
+#include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/framework/callback.h"
 #include "core/platform/env_time.h"
+#include "core/platform/telemetry.h"
+#include "core/session/onnxruntime_c_api.h"  // for ORTCHAR_T
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -33,13 +36,12 @@ limitations under the License.
 
 namespace onnxruntime {
 
-class Thread;
-
-struct ThreadOptions;
 #ifdef _WIN32
 using PIDType = unsigned long;
+using FileOffsetType = int64_t;
 #else
 using PIDType = pid_t;
+using FileOffsetType = off_t;
 #endif
 
 /// \brief An interface used by the onnxruntime implementation to
@@ -53,13 +55,7 @@ using PIDType = pid_t;
 class Env {
  public:
   virtual ~Env() = default;
-  /// for use with Eigen::ThreadPool
-  using EnvThread = Thread;
 
-  /// for use with Eigen::ThreadPool
-  struct Task {
-    std::function<void()> f;
-  };
   /// \brief Returns a default environment suitable for the current operating
   /// system.
   ///
@@ -81,21 +77,38 @@ class Env {
   /// On Windows, it's the min time to sleep, not the actual one.
   virtual void SleepForMicroseconds(int64_t micros) const = 0;
 
-  /// for use with Eigen::ThreadPool
-  virtual EnvThread* CreateThread(std::function<void()> f) const = 0;
-  /// for use with Eigen::ThreadPool
-  virtual Task CreateTask(std::function<void()> f) const = 0;
-  /// for use with Eigen::ThreadPool
-  virtual void ExecuteTask(const Task& t) const = 0;
+  /**
+   * Gets the length of the specified file.
+   */
+  virtual common::Status GetFileLength(
+      const ORTCHAR_T* file_path, size_t& length) const = 0;
 
-  /// \brief Returns a new thread that is running fn() and is identified
-  /// (for debugging/performance-analysis) by "name".
-  ///
-  /// Caller takes ownership of the result and must delete it eventually
-  /// (the deletion will block until fn() stops running).
-  virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const std::string& name,
-                              std::function<void()> fn) const = 0;
+  /**
+   * Copies the content of the file into the provided buffer.
+   * @param file_path The path to the file.
+   * @param offset The file offset from which to start reading.
+   * @param length The length in bytes to read.
+   * @param buffer The buffer in which to write.
+   */
+  virtual common::Status ReadFileIntoBuffer(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      gsl::span<char> buffer) const = 0;
+
+  using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
+
+  /**
+   * Maps the content of the file into memory.
+   * This is a copy-on-write mapping, so any changes are not written to the
+   * actual file.
+   * @param file_path The path to the file.
+   * @param offset The file offset from which to start the mapping.
+   * @param length The length in bytes of the mapping.
+   * @param[out] mapped_memory A smart pointer to the mapped memory which
+   *             unmaps the memory (unless release()'d) when destroyed.
+   */
+  virtual common::Status MapFileIntoMemory(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
   //Mainly for use with protobuf library
@@ -141,35 +154,21 @@ class Env {
   // returns the name that LoadDynamicLibrary() can use
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const = 0;
 
+  // \brief returns a provider that will handle telemetry on the current platform
+  virtual const Telemetry& GetTelemetryProvider() const = 0;
+
+  // \brief returns a value for the queried variable name (var_name)
+  //
+  // Returns the corresponding value stored in the environment variable if available
+  // Returns empty string if there is no such environment variable available
+  virtual std::string GetEnvironmentVar(const std::string& var_name) const = 0;
+
  protected:
   Env();
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Env);
   EnvTime* env_time_ = EnvTime::Default();
-};
-
-/// Represents a thread used to run a onnxruntime function.
-class Thread {
- public:
-  Thread() noexcept = default;
-
-  /// Blocks until the thread of control stops running.
-  virtual ~Thread();
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Thread);
-};
-
-/// \brief Options to configure a Thread.
-///
-/// Note that the options are all hints, and the
-/// underlying implementation may choose to ignore it.
-struct ThreadOptions {
-  /// Thread stack size to use (in bytes).
-  size_t stack_size = 0;  // 0: use system default value
-  /// Guard area size to use near thread stacks to use (in bytes)
-  size_t guard_size = 0;  // 0: use system default value
 };
 
 }  // namespace onnxruntime

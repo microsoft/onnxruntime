@@ -27,9 +27,10 @@ struct TestCaseTask {
 };
 
 void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
-//TODO: implement this function for Linux
 void ORT_CALLBACK RunSingleDataItem(ORT_CALLBACK_INSTANCE instance, void* context, ORT_WORK work);
 ::onnxruntime::common::Status OnTestCaseFinished(ORT_CALLBACK_INSTANCE pci, TestCaseTask* task, std::shared_ptr<TestCaseResult> result);
+
+struct MockedOrtAllocator;
 
 class DataRunner {
  protected:
@@ -43,7 +44,7 @@ class DataRunner {
  private:
   OrtSession* session;
   CALL_BACK on_finished;
-  OrtAllocatorInterface** const default_allocator;
+  std::unique_ptr<MockedOrtAllocator> default_allocator;
   EXECUTE_RESULT RunTaskImpl(size_t task_id);
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(DataRunner);
 
@@ -51,10 +52,7 @@ class DataRunner {
   DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1);
   virtual void OnTaskFinished(size_t task_id, EXECUTE_RESULT res, ORT_CALLBACK_INSTANCE pci) noexcept = 0;
   void RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result);
-  virtual ~DataRunner() {
-    OrtReleaseSession(session);
-    OrtReleaseObject(default_allocator);
-  }
+  virtual ~DataRunner();
 
   virtual void Start(ORT_CALLBACK_INSTANCE pci, size_t concurrent_runs) = 0;
 
@@ -129,10 +127,13 @@ struct DataTask {
   const size_t task_id;
 };
 
-std::vector<ITestCase*> LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
-                                  const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-                                  OrtAllocator* env);
+void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
+               const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
+               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::function<void(ITestCase*)>& process_function);
+
 //Do not run this function in the thread pool passed in
 ::onnxruntime::common::Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_count, PThreadPool tpool);
 EXECUTE_RESULT StatusCodeToExecuteResult(int input);
-void RunSingleTestCase(ITestCase* info, const onnxruntime::SessionOptionsWrapper& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);
+void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs,
+                       size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished);

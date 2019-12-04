@@ -15,7 +15,7 @@ class TreeEnsembleRegressor final : public OpKernel {
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
-  common::Status ProcessTreeNode(std::unordered_map<int64_t, float>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const;
+  common::Status ProcessTreeNode(std::unordered_map < int64_t, std::tuple<float, float, float>>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const;
 
   std::vector<int64_t> nodes_treeids_;
   std::vector<int64_t> nodes_nodeids_;

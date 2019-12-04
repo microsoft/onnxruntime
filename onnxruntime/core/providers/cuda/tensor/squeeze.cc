@@ -6,10 +6,21 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    1, 10,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Squeeze);
+
+// explicit support for negative axis.
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    1,
+    11,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)
@@ -19,7 +30,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& X_shape = X->Shape();
-  std::vector<int64_t> output_shape = ComputeOutputShape(X_shape.GetDims(), axes_);
+  std::vector<int64_t> output_shape = ComputeOutputShape(X_shape, axes_);
 
   Tensor* Y = ctx->Output(0, TensorShape(output_shape));
 

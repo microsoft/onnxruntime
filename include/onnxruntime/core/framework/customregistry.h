@@ -15,10 +15,11 @@ namespace onnxruntime {
 /**
    Represents a registry that contains both custom kernels and custom schemas.
 */
-class CustomRegistry : public KernelRegistry, public onnxruntime::OnnxRuntimeOpSchemaRegistry {
+class CustomRegistry final {
  public:
-  CustomRegistry() = default;
-  ~CustomRegistry() override = default;
+  CustomRegistry() : 
+      kernel_registry_(std::make_shared<KernelRegistry>()),
+      opschema_registry_(std::make_shared<onnxruntime::OnnxRuntimeOpSchemaRegistry>()) {} 
 
   /**
    * Register a kernel definition together with kernel factory method to this session.
@@ -31,8 +32,18 @@ class CustomRegistry : public KernelRegistry, public onnxruntime::OnnxRuntimeOpS
 
   common::Status RegisterCustomKernel(KernelCreateInfo&);
 
+  common::Status RegisterOpSet(std::vector<ONNX_NAMESPACE::OpSchema>& schemas, const std::string& domain, 
+                               int baseline_opset_version, int opset_version); 
+
+  const std::shared_ptr<KernelRegistry>& GetKernelRegistry();
+
+  const std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry>& GetOpschemaRegistry();
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomRegistry);
+  std::shared_ptr<KernelRegistry> kernel_registry_;
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> opschema_registry_; 
+
 };
 
 }  // namespace onnxruntime

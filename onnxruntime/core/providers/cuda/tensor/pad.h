@@ -6,6 +6,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/tensor/pad.h"
 
+using onnxruntime::PadBase;
+
 namespace onnxruntime {
 namespace cuda {
 

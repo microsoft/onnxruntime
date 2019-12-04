@@ -12,7 +12,7 @@
 //
 #ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug heap alloc
-#ifndef USE_TVM
+#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
 constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak trace
 #define VALIDATE_HEAP_EVERY_ALLOC 0    // Call HeapValidate on every new/delete
 
@@ -204,7 +204,14 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     "Static mutexes are leaked intentionally. It is not thread-safe to try to clean them up."
     // Which explains this leak inside of: void Mutex::ThreadSafeLazyInit()
     //     critical_section_ = new CRITICAL_SECTION;
-    if (string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
+    //
+    // in google/re2 re2.cc initializes leaking singletons
+    //     std::call_once(empty_once, []() {
+    //     empty_string = new string;
+    //     empty_named_groups = new std::map<string, int>;
+    //     empty_group_names = new std::map<int, string>; });
+    if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
+        string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos) {
       if (leaked_bytes == 0)
@@ -231,11 +238,7 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     else {
       // If we're on the command line (like on a build machine), output to the console and exit(-1)
       std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
-#if 0
-      // There is currently a memory leak due to a static thread_local variable not being destroyed on exit in mkldnn_common.h
-      // The bug is caused by sync_api.h using the windows thread pool functions instead of C++ std::async libraries.
       exit(-1);
-#endif
     }
 
   } else {

@@ -5,7 +5,6 @@
 
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
-#include "core/graph/graph_transformer.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
@@ -16,66 +15,50 @@ struct CPUExecutionProviderInfo {
 
   explicit CPUExecutionProviderInfo(bool use_arena)
       : create_arena(use_arena) {}
+
   CPUExecutionProviderInfo() = default;
 };
 
-using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&, std::vector<std::unique_ptr<ComputeCapability>>&)>;
+using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&,
+                                      std::vector<std::unique_ptr<ComputeCapability>>&)>;
 
 // Logical device representation.
 class CPUExecutionProvider : public IExecutionProvider {
  public:
-  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info) {
-    DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) {
-          return std::make_unique<CPUAllocator>(); }, std::numeric_limits<size_t>::max()});
+  explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
+      : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
+    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
+                                                [](int) { return onnxruntime::make_unique<TAllocator>(); },
+                                                std::numeric_limits<size_t>::max()};
+
 #ifdef USE_JEMALLOC
+#if defined(USE_MIMALLOC)
+#error jemalloc and mimalloc should not both be enabled
+#endif
+
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
-            std::make_unique<DummyArena>(device_info.factory(0))));
+            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
 #else
+//Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+#if defined(__amd64__) || defined(_M_AMD64)
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
+#endif
       InsertAllocator(
           std::shared_ptr<IArenaAllocator>(
-              std::make_unique<DummyArena>(device_info.factory(0))));
+              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+
 #endif
   }
 
-  std::string Type() const override {
-    return onnxruntime::kCpuExecutionProvider;
-  }
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
-  virtual std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
-
-  ///requires src.buffer_deleter_ == nullptr
-  Status CopyTensor(const Tensor& src, Tensor& dst) const override {
-    ORT_ENFORCE(strcmp(dst.Location().name, CPU) == 0);
-
-    // Todo: support copy with different devices.
-    if (strcmp(src.Location().name, CPU) != 0) {
-      ORT_NOT_IMPLEMENTED("copy from ", src.Location().name, " is not implemented");
-    }
-
-    // no really copy needed if is copy to cpu.
-    dst.ShallowCopy(src);
-
-    return Status::OK();
-  }
-
-  const void* GetExecutionHandle() const noexcept override {
-    // The CPU interface does not return anything interesting.
-    return nullptr;
-  }
-
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
-  void InsertFusedRules(FuseRuleFn rule);
-
- protected:
+ private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
 }  // namespace onnxruntime

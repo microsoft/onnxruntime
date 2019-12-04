@@ -33,7 +33,12 @@
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_unique.h"
 #include "core/common/status.h"
+
+#ifdef USE_MIMALLOC
+#include <mimalloc.h>
+#endif
 
 namespace onnxruntime {
 
@@ -73,6 +78,9 @@ using common::Status;
   static_cast<void>(fn)
 
 std::vector<std::string> GetStackTrace();
+// these is a helper function that gets defined by platform/Telemetry
+void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
+                     const char* function, uint32_t line);
 
 // __PRETTY_FUNCTION__ isn't a macro on gcc, so use a check for _MSC_VER
 // so we only define it as one for MSVC
@@ -136,10 +144,25 @@ std::vector<std::string> GetStackTrace();
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(TypeName);           \
   ORT_DISALLOW_MOVE(TypeName)
 
-#define ORT_RETURN_IF_ERROR(expr)          \
-  do {                                     \
-    auto _status = (expr);                 \
-    if ((!_status.IsOK())) return _status; \
+#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)  \
+  do {                                       \
+    auto _status = (expr);                   \
+    if ((!_status.IsOK())) {                 \
+      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
+      return _status;                        \
+    }                                        \
+  } while (0)
+
+#define ORT_RETURN_IF_ERROR_SESSIONID_(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id_)
+#define ORT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, 0)
+
+#define ORT_THROW_IF_ERROR(expr)               \
+  do {                                         \
+    auto _status = (expr);                     \
+    if ((!_status.IsOK())) {                   \
+      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
+      ORT_THROW(_status);                      \
+    }                                          \
   } while (0)
 
 // use this macro when cannot early return
@@ -150,8 +173,8 @@ std::vector<std::string> GetStackTrace();
     }                                  \
   } while (0)
 
-// C++ Core Guideline check suppression
-#ifdef _MSC_VER
+// C++ Core Guideline check suppression.
+#if defined(_MSC_VER) && !defined(__NVCC__)
 #define GSL_SUPPRESS(tag) [[gsl::suppress(tag)]]
 #else
 #define GSL_SUPPRESS(tag)
@@ -196,22 +219,18 @@ inline long long TimeDiffMicroSeconds(TimePoint start_time, TimePoint end_time) 
   return std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 }
 
-inline std::string GetCurrentTimeString() {
-  auto now = std::chrono::system_clock::now();
-  auto in_time_t = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm;  //NOLINT
-
-#ifdef _WIN32
-  localtime_s(&local_tm, &in_time_t);
-#else
-  localtime_r(&in_time_t, &local_tm);
-#endif
-
-  char time_str[32];
-  strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H-%M-%S", &local_tm);
-  return std::string(time_str);
-}
-
 struct null_type {};
+inline std::string ToMBString(const std::string& s) { return s; }
+#ifdef _WIN32
+/**
+ * Convert a wide character string into a narrow one, with local ANSI code page(like CP936)
+ * DO NOT assume the result string is encoded in UTF-8
+ */
+std::string ToMBString(const std::wstring& s);
 
+std::wstring ToWideString(const std::string& s);
+inline std::wstring ToWideString(const std::wstring& s) { return s; }
+#else
+inline std::string ToWideString(const std::string& s) { return s; }
+#endif
 }  // namespace onnxruntime

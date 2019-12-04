@@ -21,6 +21,7 @@ limitations under the License.
 #include <atomic>              // NOLINT
 #include <chrono>              // NOLINT
 #include <condition_variable>  // NOLINT
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -31,11 +32,11 @@ class Notification {
     // In case the notification is being used to synchronize its own deletion,
     // force any prior notifier to leave its critical section before the object
     // is destroyed.
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<OrtMutex> l(mu_);
   }
 
   void Notify() {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<OrtMutex> l(mu_);
     assert(!HasBeenNotified());
     notified_.store(true, std::memory_order_release);
     cv_.notify_all();
@@ -47,7 +48,7 @@ class Notification {
 
   void WaitForNotification() {
     if (!HasBeenNotified()) {
-      std::unique_lock<std::mutex> l(mu_);
+      std::unique_lock<OrtMutex> l(mu_);
       while (!HasBeenNotified()) {
         cv_.wait(l);
       }
@@ -60,7 +61,7 @@ class Notification {
   bool WaitForNotificationWithTimeout(int64_t timeout_in_us) {
     bool notified = HasBeenNotified();
     if (!notified) {
-      std::unique_lock<std::mutex> l(mu_);
+      std::unique_lock<OrtMutex> l(mu_);
       do {
         notified = HasBeenNotified();
       } while (!notified &&
@@ -70,8 +71,8 @@ class Notification {
     return notified;
   }
 
-  std::mutex mu_;               // protects mutations of notified_
-  std::condition_variable cv_;  // signaled when notified_ becomes non-zero
+  OrtMutex mu_;                 // protects mutations of notified_
+  OrtCondVar cv_;               // signaled when notified_ becomes non-zero
   std::atomic<bool> notified_;  // mutations under mu_
 };
 

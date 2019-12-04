@@ -4,12 +4,17 @@
 #pragma once
 
 #include <unordered_map>
+#include "gsl/gsl"
 
 #include "core/common/status.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
+#include "core/framework/func_api.h"
+#include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
 class GraphViewer;
+class Node;
 }  // namespace onnxruntime
 namespace onnxruntime {
 
@@ -22,25 +27,46 @@ class KernelRegistryManager;
 */
 typedef std::map<int, AllocatorPtr> AllocatorMap;
 
+// if we are export the fused function to dll, the function will still in the same binary as lotus
+// use std function to give execution provider some chance to capture some state.
+using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
+using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
+using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
+
+struct NodeComputeInfo {
+  CreateFunctionStateFunc create_state_func;
+  ComputeFunc compute_func;
+  DestroyFunctionStateFunc release_state_func;
+};
+
 class IExecutionProvider {
+ protected:
+  IExecutionProvider(const std::string& type) : type_{type} {}
+
  public:
   virtual ~IExecutionProvider() = default;
 
   /**
      Get all IAllocators for <*this> execution provider.
   */
-  std::vector<AllocatorPtr> GetAllocatorMap() const {
-    std::vector<AllocatorPtr> values;
-    for (auto& kv : allocators_) {
-      values.push_back(kv.second);
-    }
-    return values;
+  const std::vector<gsl::not_null<const IAllocator*>>& GetAllocators() const {
+    return allocator_list_;
   }
 
   /**
-     Get allocator with specified MemType
-  */
+   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
+   */
   virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+
+  /**
+   * Returns a data transfer object that implements methods to copy to and
+   * from this device.
+   * If no copy is required for the successful operation of this provider,
+   * return a nullptr.
+   */
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
 
   /**
      Get execution provider's capability for the specified <graph>.
@@ -68,18 +94,7 @@ class IExecutionProvider {
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const = 0;
-
-  /**
-     Copy tensor between execution providers
-  */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const = 0;
-
-  /**
-     Copy tensor between execution providers on specified exec queue
-  */
-  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst,
-                                    int exec_queue_id) const;
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const;
 
   /**
      Returns an opaque handle whose exact type varies based on the provider
@@ -87,14 +102,16 @@ class IExecutionProvider {
      For Direct3D operator kernels, this may return an IUnknown supporting
      QueryInterface to ID3D12GraphicsCommandList1.
   */
-  virtual const void* GetExecutionHandle() const noexcept = 0;
+  virtual const void* GetExecutionHandle() const noexcept {
+    return nullptr;
+  }
 
   /**
      @return type of the execution provider; should match that set in the node
      through the SetExecutionProvider API. Example valid return values are:
      kCpuExecutionProvider, kCudaExecutionProvider
   */
-  virtual std::string Type() const = 0;
+  const std::string& Type() const { return type_; }
 
   /**
      Blocks until the device has completed all preceding requested tasks.
@@ -121,7 +138,37 @@ class IExecutionProvider {
 
   void InsertAllocator(AllocatorPtr allocator);
 
+  /**
+  Given a list of fused_node, return create_state/compute/release_state func for each node.
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  /**
+  Given a list of fused_node, return a dll that expose functions for each node.
+  For each node, there should be three symbols:
+     Create_State_${node_name}
+     Compute_${node_name}
+     Release_State_${node_name}
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
+                                 std::string& dll_path);
+
+  void SetLogger(const logging::Logger* logger) {
+    logger_ = logger;
+  }
+
+  const logging::Logger* GetLogger() const {
+    return logger_;
+  }
+
  private:
+  const std::string type_;
   AllocatorMap allocators_;
+  //It will be set when this object is registered to a session
+  const logging::Logger* logger_ = nullptr;
+  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
+  // contains the same instances as allocators_
+  std::vector<gsl::not_null<const IAllocator*>> allocator_list_;
 };
 }  // namespace onnxruntime

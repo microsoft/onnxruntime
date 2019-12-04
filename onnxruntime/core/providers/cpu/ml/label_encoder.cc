@@ -3,25 +3,26 @@
 
 #include "core/providers/cpu/ml/label_encoder.h"
 #include <algorithm>
-#include <gsl/span>
+#include <gsl/gsl>
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 namespace ml {
 
-ONNX_CPU_OPERATOR_ML_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_ML_KERNEL(
     LabelEncoder,
-    1,
+    1, 1,
     KernelDefBuilder().TypeConstraint("T1",
                                       std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>(),
                                                               DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("T2",
                         std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>(),
-                                                DataTypeImpl::GetTensorType<int64_t>()}),
+                                                DataTypeImpl::GetTensorType<int64_t>()})
+        .SinceVersion(1, 2),
     LabelEncoder);
 
 Status LabelEncoder::Compute(OpKernelContext* context) const {
-  const Tensor* tensor_pointer = context->Input<Tensor>(0);
+  const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const TensorShape& shape = X.Shape();
@@ -29,8 +30,8 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
 
   auto input_type = X.DataType();
 
-  if (input_type == DataTypeImpl::GetType<std::string>()) {
-    if (Y.DataType() != DataTypeImpl::GetType<int64_t>())
+  if (utils::IsDataTypeString(input_type)) {
+    if (!utils::IsPrimitiveDataType<int64_t>(Y.DataType()))
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(string) must have output of tensor(int64)");
 
     auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());
@@ -47,7 +48,7 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
                     ++out;
                   });
   } else {
-    if (Y.DataType() != DataTypeImpl::GetType<std::string>())
+    if (!utils::IsDataTypeString(Y.DataType()))
       return Status(ONNXRUNTIME, FAIL, "Input of tensor(int64) must have output of tensor(string)");
 
     auto input = gsl::make_span(X.template Data<int64_t>(), shape.Size());
@@ -66,6 +67,108 @@ Status LabelEncoder::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    float_string,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()}),
+    LabelEncoder_2<float, std::string>);
+
+template <>
+void LabelEncoder_2<float, std::string>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_floats";
+  _value_field_name = "values_strings";
+  info.GetAttrOrDefault<std::string>("default_string", &_default_value, std::string("_Unused"));
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    string_float,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>()}),
+    LabelEncoder_2<std::string, float>);
+
+template <>
+void LabelEncoder_2<std::string, float>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_strings";
+  _value_field_name = "values_floats";
+  info.GetAttrOrDefault<float>("default_float", &_default_value, -0.0f);
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    int64_float,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>()}),
+    LabelEncoder_2<std::int64_t, float>);
+
+template <>
+void LabelEncoder_2<std::int64_t, float>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_int64s";
+  _value_field_name = "values_floats";
+  info.GetAttrOrDefault<float>("default_float", &_default_value, -0.0f);
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    float_int64,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()}),
+    LabelEncoder_2<float, std::int64_t>);
+
+template <>
+void LabelEncoder_2<float, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_floats";
+  _value_field_name = "values_int64s";
+  info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    int64_string,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()}),
+    LabelEncoder_2<std::int64_t, std::string>)
+
+template <>
+void LabelEncoder_2<std::int64_t, std::string>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_int64s";
+  _value_field_name = "values_strings";
+  info.GetAttrOrDefault<std::string>("default_string", &_default_value, std::string("_Unused"));
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder,
+    2,
+    string_int64,
+    KernelDefBuilder().TypeConstraint("T1",
+                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("T2",
+                        std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()}),
+    LabelEncoder_2<std::string, std::int64_t>)
+
+template <>
+void LabelEncoder_2<std::string, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
+  _key_field_name = "keys_strings";
+  _value_field_name = "values_int64s";
+  info.GetAttrOrDefault<std::int64_t>("default_int64", &_default_value, (std::int64_t)-1);
+};
 
 }  // namespace ml
 }  // namespace onnxruntime

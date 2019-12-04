@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/feature_vectorizer.h"
 
-#include <gsl/span>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace ml {
@@ -28,12 +28,11 @@ static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
                          gsl::span<float>::iterator out_iter);
 
 Status FeatureVectorizer::Compute(OpKernelContext* context) const {
-  auto input_count = context->NumVariadicInputs(0);
-  ORT_ENFORCE(input_count == input_dimensions_.size(),
-              "Number of inputs (", input_count, ") does not match number of inputdimensions values (",
-              input_dimensions_.size(), ").");
+  int input_count = context->NumVariadicInputs(0);
+  ORT_ENFORCE(input_count >= 0 && static_cast<size_t>(input_count) == input_dimensions_.size(), "Number of inputs (",
+              input_count, ") does not match number of inputdimensions values (", input_dimensions_.size(), ").");
 
-  const Tensor* tensor_pointer = context->Input<Tensor>(0);
+  const auto* tensor_pointer = context->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
   const auto& x_dims = X.Shape().GetDims();
@@ -54,7 +53,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
   // for each feature, write out its data in one pass
   for (int index = 0; index < input_count; ++index) {
-    const Tensor* input_tensor_ptr = context->Input<Tensor>(index);
+    const auto* input_tensor_ptr = context->Input<Tensor>(index);
     ORT_ENFORCE(input_tensor_ptr != nullptr);
     auto& input_tensor = *input_tensor_ptr;
 
@@ -63,14 +62,14 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
     auto data_type = input_tensor.DataType();
     auto cur_out = out.begin() + feature_offset;
 
-    if (data_type == DataTypeImpl::GetType<float>()) {
+    if (utils::IsPrimitiveDataType<float>(data_type)) {
       // straight copy for float to float
       VectorizeTensor<float>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
+    } else if (utils::IsPrimitiveDataType<int32_t>(data_type)) {
       VectorizeTensor<int32_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+    } else if (utils::IsPrimitiveDataType<int64_t>(data_type)) {
       VectorizeTensor<int64_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<double>()) {
+    } else if (utils::IsPrimitiveDataType<double>(data_type)) {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed
@@ -121,7 +120,7 @@ static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
                          typename gsl::span<const T>::const_iterator end,
                          gsl::span<float>::iterator out_iter) {
   std::for_each(begin, end,
-                [&out_iter](const typename gsl::span<T>::const_iterator::reference value) {
+                [&out_iter](const typename gsl::span<T>::const_reference value) {
                   *out_iter = static_cast<float>(value);
                   ++out_iter;
                 });

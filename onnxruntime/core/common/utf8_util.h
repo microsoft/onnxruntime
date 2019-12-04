@@ -31,6 +31,23 @@ inline bool utf8_bytes(unsigned char ch, size_t& len) {
   return false;
 }
 
+// Computes length of the utf8 string in characters
+inline bool utf8_len(const unsigned char* s, size_t bytes, size_t& len) {
+  size_t result = 0;
+  while (bytes > 0) {
+    size_t char_bytes = 0;
+    bool valid = utf8_bytes(*s, char_bytes);
+    if (!valid || bytes < char_bytes) {
+      return false;
+    }
+    bytes -= char_bytes;
+    s += char_bytes;
+    ++result;
+  }
+  len = result;
+  return true;
+}
+
 inline bool utf8_validate(const unsigned char* s, size_t len, size_t& utf8_chars) {
   size_t utf8_len = 0;
   size_t idx = 0;

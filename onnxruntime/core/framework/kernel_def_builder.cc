@@ -24,12 +24,22 @@ inline bool AreVectorsOverlap(const std::vector<T>& v1, const std::vector<T>& v2
 }
 }  // namespace
 
+//TODO: Tell user why it has conflicts
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
     return false;
-  int start = 0, end = 0;
-  other.SinceVersion(&start, &end);
-  if (!AreIntervalsOverlap(op_since_version_start_, op_since_version_end_, start, end))
+  int other_since_version_start = 0;
+  int other_since_version_end = 0;
+  other.SinceVersion(&other_since_version_start, &other_since_version_end);
+
+  //When max version is INT_MAX, it means that it should be determined based on the
+  //SinceVersion of schema from a higher version.  Since this sometimes isn't known until
+  //all custom schema are available, make a conservative assumption here that the operator
+  //is valid for only one version.
+  int op_since_version_conservative_end = (op_since_version_end_ == INT_MAX) ? op_since_version_start_ : op_since_version_end_;
+  int other_conservative_since_version_end = (other_since_version_end == INT_MAX) ? other_since_version_start : other_since_version_end;
+
+  if (!AreIntervalsOverlap(op_since_version_start_, op_since_version_conservative_end, other_since_version_start, other_conservative_since_version_end))
     return false;
   //only one case they don't conflict:
   //There is a type_constraint, it exists in both hands, but they don't overlap
@@ -66,20 +76,20 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
     return false;
 
   //check memory type
-  auto other_input_mem_types = other.InputMemoryType();
+  auto& other_input_mem_types = other.input_memory_type_args_;
   for (auto it : input_memory_type_args_) {
-    if (other_input_mem_types.count(it.first) && other_input_mem_types[it.first] == it.second)
+    if (other_input_mem_types.count(it.first) && other_input_mem_types.find(it.first)->second == it.second)
       return false;
   }
-  if (input_memory_type_args_.empty() && !other.InputMemoryType().empty())
+  if (input_memory_type_args_.empty() && !other.input_memory_type_args_.empty())
     return false;
 
-  auto other_output_mem_types = other.OutputMemoryType();
+  auto& other_output_mem_types = other.output_memory_type_args_;
   for (auto it : output_memory_type_args_) {
-    if (other_output_mem_types.count(it.first) && other_output_mem_types[it.first] == it.second)
+    if (other_output_mem_types.count(it.first) && other_output_mem_types.find(it.second)->second == it.second)
       return false;
   }
-  return !(output_memory_type_args_.empty() && !other.OutputMemoryType().empty());
+  return !(output_memory_type_args_.empty() && !other.output_memory_type_args_.empty());
 }
 
 KernelDefBuilder& KernelDefBuilder::SetName(const std::string& op_name) {

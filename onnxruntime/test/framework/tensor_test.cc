@@ -19,7 +19,7 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
   auto data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
   EXPECT_TRUE(data);
-  Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), nullptr, offset);
+  Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset);
   auto tensor_shape = t.Shape();
   EXPECT_EQ(shape, tensor_shape);
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
@@ -33,10 +33,7 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   EXPECT_EQ(*(T*)((char*)data + offset), (T)0);
   alloc->Free(data);
 
-  // owned buffer
-  data = alloc->Alloc(sizeof(T) * (shape.Size() + offset));
-  EXPECT_TRUE(data);
-  Tensor new_t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), alloc, offset);
+  Tensor new_t(DataTypeImpl::GetType<T>(), shape, alloc, offset);
 
   tensor_shape = new_t.Shape();
   EXPECT_EQ(shape, tensor_shape);
@@ -140,24 +137,6 @@ TEST(TensorTest, EmptyTensorTest) {
   EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
 }
 
-TEST(TensorTest, TensorCopyAssignOpTest) {
-  TensorShape shape({1, 2, 3});
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-  auto data = alloc->Alloc(sizeof(int) * shape.Size());
-  EXPECT_TRUE(data);
-  Tensor t1(DataTypeImpl::GetType<int>(), shape, data, alloc->Info());
-  Tensor t2 = t1;
-  EXPECT_EQ(t2.DataType(), DataTypeImpl::GetType<int>());
-  EXPECT_EQ(t2.Shape(), shape);
-  auto location = t2.Location();
-  ASSERT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
-  auto t_data = t2.template Data<int>();
-  EXPECT_EQ((void*)t_data, data);
-  alloc->Free(data);
-}
-
 TEST(TensorTest, StringTensorTest) {
 //add scope to explicitly delete tensor
 #ifdef _MSC_VER
@@ -168,8 +147,7 @@ TEST(TensorTest, StringTensorTest) {
   {
     TensorShape shape({2, 3});
     auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    auto buffer = alloc->Alloc(sizeof(std::string) * (shape.Size()));
-    Tensor t(DataTypeImpl::GetType<std::string>(), shape, buffer, alloc->Info(), alloc);
+    Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
     EXPECT_EQ(shape, tensor_shape);
@@ -188,14 +166,6 @@ TEST(TensorTest, StringTensorTest) {
     EXPECT_EQ(tensor_data[1], "b");
     string_ptr = new_data;
   }
-  // on msvc, check does the ~string be called when release tensor
-  // It may be not stable as access to a deleted pointer could have
-  // undefined behavior. If we find it is failure on other platform
-  // go ahead to remove it.
-#ifdef _MSC_VER
-  EXPECT_EQ(string_ptr->size(), 0);
-  EXPECT_EQ((string_ptr + 1)->size(), 0);
-#endif
 }
 
 TEST(TensorTest, ConvertToString) {

@@ -10,15 +10,15 @@ class GemmHelper {
  public:
   GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
     //dimension check
-    ORT_ENFORCE(left.NumDimensions() == 2);
+    ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
     ORT_ENFORCE(right.NumDimensions() == 2);
 
     if (trans_left) {
-      M_ = left[1];
-      K_ = left[0];
+      M_ = left.NumDimensions() == 2 ? left[1] : left[0];
+      K_ = left.NumDimensions() == 2 ? left[0] :1 ;
     } else {
-      M_ = left[0];
-      K_ = left[1];
+      M_ = left.NumDimensions() == 2 ? left[0] : 1;
+      K_ = left.NumDimensions() == 2 ? left[1] : left[0];
     }
 
     int k_dim;
@@ -40,7 +40,8 @@ class GemmHelper {
     if (!IsValidBroadcast(bias, M_, N_))
       status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
 
-    ORT_ENFORCE(M_ > 0 && N_ > 0 && K_ > 0);
+    // it is possible the input is empty tensor, for example the output of roipool in fast rcnn.
+    ORT_ENFORCE(M_ >= 0 && K_ > 0 && N_ >= 0);
   }
 
   int64_t M() const { return M_; }
@@ -49,17 +50,18 @@ class GemmHelper {
   Status State() const { return status_; }
 
  private:
-  bool IsValidBroadcast(const TensorShape& shape, int64_t M, int64_t N) {
-    if (shape.NumDimensions() != 1 && shape.NumDimensions() != 2)
+  bool IsValidBroadcast(const TensorShape& bias_shape, int64_t M, int64_t N) {
+    // valid shapes are (,) , (1, N) , (M, 1) , (M, N)
+    if (bias_shape.NumDimensions() > 2)
       return false;
     // shape is (1,) or (1, 1), or (,)
-    if (shape.Size() == 1)
+    if (bias_shape.Size() == 1)
       return true;
-    // shape is (N,) or (1, N) or (M, 1)
-    // or (M, N), in last case no broadcast needed, but don't fail it
-    return ((shape.NumDimensions() == 1 && shape[0] == N) ||
-            (shape.NumDimensions() == 2 && shape[0] == M && (shape[1] == 1 || shape[1] == N)) ||
-            (shape.NumDimensions() == 2 && shape[0] == 1 && shape[1] == N));
+    // valid bias_shape (s) are (N,) or (1, N) or (M, 1) or (M, N), 
+    // In last case no broadcasting needed, so don't fail it
+    return ((bias_shape.NumDimensions() == 1 && bias_shape[0] == N) ||
+            (bias_shape.NumDimensions() == 2 && bias_shape[0] == M && (bias_shape[1] == 1 || bias_shape[1] == N)) ||
+            (bias_shape.NumDimensions() == 2 && bias_shape[0] == 1 && bias_shape[1] == N));
   }
 
  private:

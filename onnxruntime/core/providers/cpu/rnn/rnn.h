@@ -34,7 +34,7 @@ class RNN : public OpKernel {
       activations_.resize(1);
     }
 
-    ORT_ENFORCE(activations_.size() == num_directions);
+    ORT_ENFORCE(activations_.size() == static_cast<size_t>(num_directions));
     for (int direction = 1; direction < num_directions; direction++) {
       ORT_ENFORCE(allowed_activations.find(activations_[direction]) != allowed_activations.end());
     }

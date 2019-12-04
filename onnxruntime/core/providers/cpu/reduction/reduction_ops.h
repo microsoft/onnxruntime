@@ -16,7 +16,7 @@ class ReduceKernelBase {
     if (allow_multi_axes) {
       axes_ = info.GetAttrsOrDefault<int64_t>("axes");
     } else {
-      int64_t v = info.GetAttrOrDefault<int64_t>("axis", 0);
+      auto v = info.GetAttrOrDefault<int64_t>("axis", 0);
       axes_.push_back(v);
     }
     int64_t keepdims = 1;

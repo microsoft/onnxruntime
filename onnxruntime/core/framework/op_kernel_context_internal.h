@@ -3,56 +3,67 @@
 
 #pragma once
 
+#include <functional>
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/session/onnxruntime_c_api.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
 // APIs that aren't desirable to add to the public OpKernelContext API
 
 namespace onnxruntime {
 class SessionState;
+class ExecutionFrame;
 
 class OpKernelContextInternal : public OpKernelContext {
  public:
-  explicit OpKernelContextInternal(ExecutionFrame& frame,
+  explicit OpKernelContextInternal(const SessionState& session_state,
+                                   IExecutionFrame& frame,
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
-                                   const std::vector<NodeArg*>& implicit_inputs,
                                    const bool& terminate_flag)
-      : OpKernelContext(&frame, &kernel, logger),
-        implicit_inputs_{implicit_inputs},
-        terminate_flag_{terminate_flag} {
+      : OpKernelContext(&frame, &kernel, session_state.GetThreadPool(), logger),
+        session_state_(session_state),
+        terminate_flag_(terminate_flag) {
+    const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
+    int num_implicit_inputs = static_cast<int>(implicit_inputs.size());
+    implicit_input_values_.reserve(num_implicit_inputs);
+
+    for (int i = 0; i < num_implicit_inputs; ++i) {
+      const auto* entry = GetImplicitInputMLValue(i);
+      ORT_ENFORCE(entry != nullptr, "All implicit inputs should have OrtValue instances by now. ",
+                  implicit_inputs[i]->Name(), " does not.");
+      implicit_input_values_.push_back(entry);
+    }
   }
 
   const SessionState* SubgraphSessionState(const std::string& attribute_name) {
-    return GetSessionState().GetSubgraphSessionState(GetNodeIndex(), attribute_name);
+    return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
-  const MLValue* GetInputMLValue(int index) const {
+  const OrtValue* GetInputMLValue(int index) const {
     return OpKernelContext::GetInputMLValue(index);
   }
 
-  MLValue* GetOutputMLValue(int index) {
+  OrtValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
-  std::unordered_map<std::string, const MLValue*> GetImplicitInputs() const {
-    // we need to convert implicit_inputs_ to a name to MLValue map so it can be used in the ExecutionFrame
-    // for a subgraph (the index numbers will be different there).
-    std::unordered_map<std::string, const MLValue*> implicit_inputs_map;
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
+    return OpKernelContext::OutputMLValue(index, shape);
+  }
 
-    for (int i = 0, end = gsl::narrow_cast<int>(implicit_inputs_.size()); i < end; ++i) {
-      implicit_inputs_map[implicit_inputs_[i]->Name()] = GetImplicitInputMLValue(i);
-    }
-
-    return implicit_inputs_map;
+  // Get the OrtValue's for all implicit inputs. Order is same as Node::ImplicitInputDefs(). No nullptr entries.
+  const std::vector<const OrtValue*>& GetImplicitInputs() const {
+    return implicit_input_values_;
   }
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
  private:
-  const std::vector<NodeArg*>& implicit_inputs_;
+  const SessionState& session_state_;
   const bool& terminate_flag_;
+  std::vector<const OrtValue*> implicit_input_values_;
 };
 
 }  // namespace onnxruntime

@@ -1,0 +1,3 @@
+LIBRARY "onnxruntime_pybind11_state.pyd"
+EXPORTS
+ PyInit_onnxruntime_pybind11_state @1

@@ -27,19 +27,24 @@
 namespace onnxruntime {
 
 template <typename T>
-class BatchNorm final : public OpKernel {
+class BatchNorm : public OpKernel {
  public:
-  BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
-    float tmp_eplison;
-    if (op_kernel_info.GetAttr<float>("epsilon", &tmp_eplison).IsOK()) {
-      epsilon_ = tmp_eplison;
-    }
+  explicit BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+    auto st = op_kernel_info.GetAttr<float>("epsilon", &epsilon_);
+    ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
+
+    // For opset 6-8, if spatial attribute exists, pick up the value (by default spatial == 1)
+    // From opset 9 onwards, by default, only the spatial case (spatial == 1) is defined per spec
+    is_spatial_ = op_kernel_info.GetAttrOrDefault<int64_t>("spatial", 1) == 1 ? true : false;
+
+    //TODO: momentum
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
- private:
-  float epsilon_ = 1e-5f;
-  int64_t is_test_;  // ignored in this implementation since we're doing inferencing only.
+ protected:
+  float epsilon_;
+  bool is_spatial_;
+  //int64_t is_test_;   ignored in this implementation since we're doing inferencing only.
 };
 }  // namespace onnxruntime

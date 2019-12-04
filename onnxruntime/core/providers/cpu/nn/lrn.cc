@@ -23,7 +23,7 @@ namespace onnxruntime {
 
 template <>
 Status LRN<float>::Compute(OpKernelContext* context) const {
-  const Tensor* X = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
   Tensor* Y = context->Output(0, X->Shape());
@@ -37,8 +37,8 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   const int image_size = C * H * W;
   const int pre_pad = (size_ - 1) / 2;
 
-  const float* Xdata = X->template Data<float>();
-  float* Ydata = Y->template MutableData<float>();
+  const auto* Xdata = X->template Data<float>();
+  auto* Ydata = Y->template MutableData<float>();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -46,13 +46,13 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   const int Xsize = gsl::narrow_cast<int>(X->Shape().Size());
   auto sdata = alloc->Alloc(sizeof(float) * Xsize);
   BufferUniquePtr scale_buffer(sdata, BufferDeleter(alloc));
-  float* scale_data = static_cast<float*>(scale_buffer.get());
+  auto* scale_data = static_cast<float*>(scale_buffer.get());
   math::Set<float, CPUMathUtil>(Xsize, bias_, scale_data, &CPUMathUtil::Instance());
 
   const size_t padded_square_size = (C + size_ - 1) * H * W;
   auto psdata = alloc->Alloc(sizeof(float) * padded_square_size);
   BufferUniquePtr padded_square_buffer(psdata, BufferDeleter(alloc));
-  float* padded_square_data = static_cast<float*>(padded_square_buffer.get());
+  auto* padded_square_data = static_cast<float*>(padded_square_buffer.get());
   math::Set<float, CPUMathUtil>(padded_square_size, 0.0f, padded_square_data, &CPUMathUtil::Instance());
 
   const float alpha_over_size = alpha_ / size_;

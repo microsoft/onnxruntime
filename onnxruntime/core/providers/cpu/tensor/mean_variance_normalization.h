@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 namespace onnxruntime {
 template <typename T>
 class MeanVarianceNormalization_0 : public OpKernel {
@@ -20,7 +20,7 @@ class MeanVarianceNormalization_0 : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    const Tensor* X = context->Input<Tensor>(0);
+    const auto* X = context->Input<Tensor>(0);
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
     const auto dims = X->Shape().GetDims();
