@@ -142,8 +142,6 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   return func;
 }
 
-thread_local int saved_tvm_model_cnt = 0;
-
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module) {
   fs::path path;
 
@@ -156,7 +154,7 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   if (existing_files.count(filename) == 0 &&
       GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
     existing_files.insert(filename);
-    path.append("cached_" + std::to_string(saved_tvm_model_cnt++) + ".o");
+    path.append(filename + ".o");
     if (fs::exists(path)) {
       LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
       return;
@@ -165,9 +163,9 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   }
 }
 
-std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target) {
+std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target, int64_t parallel_min_workloads) {
   // in C, a function does not allow its name starting with a digit.
-  return NormalizeCppName("_" + subgraph.UniqueId() + " " + codegen_target.GetTargetName());
+  return NormalizeCppName("_" + subgraph.UniqueId() + "_" + codegen_target.GetTargetName() + "_p" + std::to_string(parallel_min_workloads));
 }
 
 bool TryCreateConstantScalar(

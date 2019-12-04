@@ -390,7 +390,7 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    T value = 0;
+    T value = static_cast<T>(0);
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
       ORT_ENFORCE(value_tensor->IsDataType<T>() &&

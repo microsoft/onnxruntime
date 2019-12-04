@@ -70,7 +70,7 @@ static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::st
 common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   for (auto& provider : provider_types_) {
     if (provider != onnxruntime::kCpuExecutionProvider &&
-        provider != onnxruntime::kMklDnnExecutionProvider &&
+        provider != onnxruntime::kDnnlExecutionProvider &&
         provider != onnxruntime::kNGraphExecutionProvider &&
         provider != onnxruntime::kNupharExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider &&

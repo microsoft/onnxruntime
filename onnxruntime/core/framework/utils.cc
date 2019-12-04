@@ -97,7 +97,7 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kMklDnnExecutionProvider ||
+         provider_type == onnxruntime::kDnnlExecutionProvider ||
          provider_type == onnxruntime::kNGraphExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||

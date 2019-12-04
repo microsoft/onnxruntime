@@ -21,7 +21,7 @@ __global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, cons
 
 template <typename T>
 __global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
-  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, K);
   auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis] * K / dimension;
   auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
   auto output_offset = left + id * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
