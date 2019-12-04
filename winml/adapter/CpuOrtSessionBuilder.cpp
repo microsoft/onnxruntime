@@ -12,7 +12,7 @@
 #define ERROR 0
 
 #include "CpuOrtSessionBuilder.h"
-#include "inc/WinMLAdapter.h"
+#include "WinMLAdapter.h"
 
 // winml includes
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"

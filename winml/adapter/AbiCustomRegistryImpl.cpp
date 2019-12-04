@@ -5,7 +5,7 @@
 
 #ifdef USE_DML
 
-#include "inc/AbiCustomRegistryImpl.h"
+#include "AbiCustomRegistryImpl.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
 

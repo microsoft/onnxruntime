@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "pch.h"
-#include "inc/WinMLAdapter.h"
-#include "inc/CustomRegistryHelper.h"
+#include "WinMLAdapter.h"
+#include "CustomRegistryHelper.h"
 #include "PheonixSingleton.h"
-#include "inc/LotusEnvironment.h"
-#include "inc/AbiCustomRegistryImpl.h"
+#include "LotusEnvironment.h"
+#include "AbiCustomRegistryImpl.h"
 
 #ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"

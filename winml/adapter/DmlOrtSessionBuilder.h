@@ -3,16 +3,16 @@
 
 #pragma once
 
-#include "inc/WinMLAdapter.h"
+#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning::Adapter {
 
-class CpuOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
+class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
     winmla::IOrtSessionBuilder> {
 
  public:
-     CpuOrtSessionBuilder();
+  DmlOrtSessionBuilder(ID3D12Device* device, ID3D12CommandQueue*  queue);
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
       OrtSessionOptions** options) override;
@@ -25,6 +25,10 @@ class CpuOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
   HRESULT STDMETHODCALLTYPE Initialize(
       winmla::IInferenceSession* p_session,
       onnxruntime::IExecutionProvider* p_provider) override;
+
+ private:
+  winrt::com_ptr<ID3D12Device> device_;
+  winrt::com_ptr<ID3D12CommandQueue> queue_;
 };
 
 }  // namespace Windows::AI::MachineLearning::Adapter

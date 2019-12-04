@@ -3,6 +3,8 @@
 
 #include "pch.h"
 
+#ifdef USE_DML
+
 // Needed to work around the fact that OnnxRuntime defines ERROR
 #ifdef ERROR
 #undef ERROR
@@ -15,7 +17,7 @@
 
 // winml includes
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
-#include "inc/CustomRegistryHelper.h"
+#include "CustomRegistryHelper.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "LearningModelDevice.h"
 #include "core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.h"
@@ -157,3 +159,5 @@ HRESULT DmlOrtSessionBuilder::Initialize(
 WINML_CATCH_ALL_COM
 
 } // Windows::AI::MachineLearning::Adapter
+
+#endif USE_DML
