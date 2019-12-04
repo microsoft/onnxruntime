@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
+import itertools
 from os.path import expanduser
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
@@ -491,15 +492,15 @@ def setup_tensorrt_vars(args):
                              "tensorrt_home='{}' valid={}."
                              .format(tensorrt_home, tensorrt_home_valid))
 
-        # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests
-        os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
-
         # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
-        os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
-
+        os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "1000"
+        
+        # Set minimum subgraph node size in graph partitioning for TensorRT
+        os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
+        
     return tensorrt_home
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
@@ -605,9 +606,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           cmd += ['-d', '1']
 
         if config != 'Debug' and os.path.exists(model_dir):
-          # some models in opset9 and above are not supported by TensorRT yet
-          if provider == 'tensorrt':
-            model_dir = os.path.join(model_dir, "opset8")
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
@@ -619,6 +617,33 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         if enable_parallel_executor_test:
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
+# tensorrt function to run onnx test and model test.
+def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+    for config in configs:
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+           exe = os.path.join(cwd, config, 'onnx_test_runner')
+           model_dir = os.path.join(cwd, "models")
+        else:
+           exe = os.path.join(cwd, 'onnx_test_runner')
+           model_dir = os.path.join(build_dir, "models")
+        cmd_base = ['-e', 'tensorrt', '-j', '1'] 
+
+        #onnx test
+        if os.path.exists(onnx_test_data_dir):
+          onnx_test_cmd = cmd_base + [onnx_test_data_dir]
+          run_subprocess([exe] + onnx_test_cmd, cwd=cwd)
+
+        # model test
+        # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
+        if config != 'Debug' and os.path.exists(model_dir):
+          model_dir_opset8 = os.path.join(model_dir, "opset8")          
+          model_dir_opset8 = glob.glob(os.path.join(model_dir_opset8, "test_*"))
+          model_dir_opset10 = os.path.join(model_dir, "opset10")
+          model_dir_opset10 = glob.glob(os.path.join(model_dir_opset10, "tf_inception_v1"))
+          for dir_path in itertools.chain(model_dir_opset8, model_dir_opset10):
+            model_test_cmd = cmd_base + [dir_path]
+            run_subprocess([exe] + model_test_cmd, cwd=cwd)
 
 # dnnl temporary function for running onnx tests and model tests separately.
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
@@ -956,7 +981,9 @@ def main():
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
+                tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+              else:
+                tensorrt_run_onnx_tests(build_dir, configs, "")
 
             if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
