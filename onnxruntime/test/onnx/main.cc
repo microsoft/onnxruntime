@@ -557,6 +557,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
+  broken_tests.insert({"coreml_VGG16_ImageNet", "failed: bad allocation"});
 #endif
 
 #ifdef DISABLE_CONTRIB_OPS
