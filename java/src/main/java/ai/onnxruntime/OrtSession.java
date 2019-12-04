@@ -245,7 +245,7 @@ public class OrtSession implements AutoCloseable {
     public static class SessionOptions implements AutoCloseable {
 
         /**
-         * The optimisation level to use.
+         * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum in the C API.
          */
         public enum OptLevel {
             NO_OPT(0), BASIC_OPT(1), EXTENDED_OPT(2), ALL_OPT(99);
@@ -266,7 +266,7 @@ public class OrtSession implements AutoCloseable {
         }
 
         /**
-         * The execution mode to use.
+         * The execution mode to use. Needs to be kept in sync with the ExecutionMode enum in the C API.
          */
         public enum ExecutionMode {
             SEQUENTIAL(0), PARALLEL(1);
