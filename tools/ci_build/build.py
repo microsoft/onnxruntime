@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
+import itertools
 from os.path import expanduser
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
