@@ -37,6 +37,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/parallel_executor.h"
 #include "core/framework/session_state_initializer.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/utils.h"
@@ -633,7 +634,7 @@ common::Status InferenceSession::Initialize() {
     // handle any subgraphs
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, session_state_));
     is_inited_ = true;
-    
+
     // and log telemetry
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
@@ -737,7 +738,6 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor.");
       }
-
       auto expected_element_type = expected_type->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
@@ -748,6 +748,23 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         const auto& input_shape = input_ml_value.Get<Tensor>().Shape();
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
+    } else if (input_ml_value.IsSparseTensor()) {
+      if (!expected_type->IsSparseTensorType()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
+                               " is not expected to be of type sparse tensor.");
+      }
+      auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
+      auto input_element_type = input_ml_value.Get<SparseTensor>().Values().DataType();
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
+      // TODO: In the future, when sparsetensors are in use, find out how to properly verify the shape
+    } else if (input_ml_value.IsTensorSequence()) {
+      if (!expected_type->IsTensorSequenceType()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
+                               " is not expected to be of type tensor sequence.");
+      }
+      auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
+      auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
+      ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type));
     } else {
       auto input_type = input_ml_value.Type();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_type, expected_type));
@@ -1151,7 +1168,6 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
       add_transformers(level);
     }
   }
-
 }
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {

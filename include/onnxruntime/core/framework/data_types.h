@@ -40,7 +40,7 @@ using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 class DataTypeImpl;
 class TensorTypeBase;
 class SparseTensorTypeBase;
-class SequenceTensorBase;
+class SequenceTensorTypeBase;
 class NonTensorTypeBase;
 class PrimitiveDataTypeBase;
 
@@ -172,7 +172,7 @@ class DataTypeImpl {
     return nullptr;
   }
 
-  virtual const SequenceTensorBase* AsSequenceTensorBase() const {
+  virtual const SequenceTensorTypeBase* AsSequenceTensorBase() const {
     return nullptr;
   }
 
@@ -646,11 +646,11 @@ class SequenceType : public NonTensorType<CPPType> {
 };
 
 /**
- * \brief SequenceTensorBase serves as a base type class for
+ * \brief SequenceTensorTypeBase serves as a base type class for
  *        Tensor sequences. Akin TensorTypeBase.
  *        Runtime representation is always TensorSeq.
  */
-class SequenceTensorBase : public DataTypeImpl {
+class SequenceTensorTypeBase : public DataTypeImpl {
  public:
   static MLDataType Type();
 
@@ -660,7 +660,7 @@ class SequenceTensorBase : public DataTypeImpl {
     return true;
   }
 
-  const SequenceTensorBase* AsSequenceTensorBase() const override {
+  const SequenceTensorTypeBase* AsSequenceTensorBase() const override {
     return this;
   }
 
@@ -675,12 +675,12 @@ class SequenceTensorBase : public DataTypeImpl {
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 
-  SequenceTensorBase(const SequenceTensorBase&) = delete;
-  SequenceTensorBase& operator=(const SequenceTensorBase&) = delete;
+  SequenceTensorTypeBase(const SequenceTensorTypeBase&) = delete;
+  SequenceTensorTypeBase& operator=(const SequenceTensorTypeBase&) = delete;
 
  protected:
-  SequenceTensorBase();
-  ~SequenceTensorBase();
+  SequenceTensorTypeBase();
+  ~SequenceTensorTypeBase();
 
   ONNX_NAMESPACE::TypeProto& mutable_type_proto();
 
@@ -700,7 +700,7 @@ class SequenceTensorBase : public DataTypeImpl {
  *          The type is required to have value_type defined
  */
 template <typename TensorElemType>
-class SequenceTensorType : public SequenceTensorBase {
+class SequenceTensorType : public SequenceTensorTypeBase {
  public:
   static MLDataType Type();
 
@@ -869,15 +869,15 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return SequenceType<TYPE>::Type();       \
   }
 
-#define ORT_REGISTER_SEQ_TENSOR_TYPE(ELEM_TYPE)                \
-  template <>                                                            \
-  MLDataType SequenceTensorType<ELEM_TYPE>::Type() {           \
-    static SequenceTensorType<ELEM_TYPE> sequence_tensor_type; \
-    return &sequence_tensor_type;                                        \
-  }                                                                      \
-  template <>                                                            \
-  MLDataType DataTypeImpl::GetSequenceTensorType<ELEM_TYPE>() {          \
-    return SequenceTensorType<ELEM_TYPE>::Type();              \
+#define ORT_REGISTER_SEQ_TENSOR_TYPE(ELEM_TYPE)                 \
+  template <>                                                   \
+  MLDataType SequenceTensorType<ELEM_TYPE>::Type() {            \
+    static SequenceTensorType<ELEM_TYPE> sequence_tensor_type;  \
+    return &sequence_tensor_type;                               \
+  }                                                             \
+  template <>                                                   \
+  MLDataType DataTypeImpl::GetSequenceTensorType<ELEM_TYPE>() { \
+    return SequenceTensorType<ELEM_TYPE>::Type();               \
   }
 
 #define ORT_REGISTER_PRIM_TYPE(TYPE)               \

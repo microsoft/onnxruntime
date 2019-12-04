@@ -46,13 +46,13 @@ MLDataType DataTypeImpl::GetType<SparseTensor>() {
 
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() {
-  return SequenceTensorBase::Type();
+  return SequenceTensorTypeBase::Type();
 }
 
-static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
-  int sz = tensor_type_proto.shape().dim_size();
-  return sz == 0 || sz == 1;
-}
+//static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
+//  int sz = tensor_type_proto.shape().dim_size();
+//  return sz == 0 || sz == 1;
+//}
 
 namespace data_types_internal {
 
@@ -396,18 +396,18 @@ MLDataType SparseTensorTypeBase::Type() {
   return &sparse_tensor_base;
 }
 
-///// SequenceTensorBase
+///// SequenceTensorTypeBase
 
-struct SequenceTensorBase::Impl : public data_types_internal::TypeProtoImpl {
+struct SequenceTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {
 };
 
-SequenceTensorBase::SequenceTensorBase() : impl_(new Impl()) {}
+SequenceTensorTypeBase::SequenceTensorTypeBase() : impl_(new Impl()) {}
 
-SequenceTensorBase::~SequenceTensorBase() {
+SequenceTensorTypeBase::~SequenceTensorTypeBase() {
   delete impl_;
 }
 
-bool SequenceTensorBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
+bool SequenceTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
   const auto* thisProto = GetTypeProto();
   if (&type_proto == thisProto) {
     return true;
@@ -422,24 +422,24 @@ bool SequenceTensorBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_prot
   return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
 }
 
-size_t SequenceTensorBase::Size() const {
+size_t SequenceTensorTypeBase::Size() const {
   return sizeof(TensorSeq);
 }
 
-DeleteFunc SequenceTensorBase::GetDeleteFunc() const {
+DeleteFunc SequenceTensorTypeBase::GetDeleteFunc() const {
   return &Delete<TensorSeq>;
 }
 
-const ONNX_NAMESPACE::TypeProto* SequenceTensorBase::GetTypeProto() const {
+const ONNX_NAMESPACE::TypeProto* SequenceTensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
-ONNX_NAMESPACE::TypeProto& SequenceTensorBase::mutable_type_proto() {
+ONNX_NAMESPACE::TypeProto& SequenceTensorTypeBase::mutable_type_proto() {
   return impl_->mutable_type_proto();
 }
 
-MLDataType SequenceTensorBase::Type() {
-  static SequenceTensorBase sequence_tensor_base;
+MLDataType SequenceTensorTypeBase::Type() {
+  static SequenceTensorTypeBase sequence_tensor_base;
   return &sequence_tensor_base;
 }
 
@@ -815,127 +815,10 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
 MLDataType DataTypeImpl::TypeFromProto(const ONNX_NAMESPACE::TypeProto& proto) {
   const auto& registry = data_types_internal::DataTypeRegistry::instance();
 
-  switch (proto.value_case()) {
-    case TypeProto::ValueCase::kTensorType: {
-      const auto& tensor_type = proto.tensor_type();
-      ORT_ENFORCE(utils::HasElemType(tensor_type));
-      return TensorTypeFromONNXEnum(tensor_type.elem_type());
-    } break;  // kTensorType
-    case TypeProto::ValueCase::kSparseTensorType: {
-      const auto& sparse_tensor_type = proto.sparse_tensor_type();
-      ORT_ENFORCE(utils::HasElemType(sparse_tensor_type));
-      return SparseTensorTypeFromONNXEnum(sparse_tensor_type.elem_type());
-    } break;  // kSparseTensorType
-    case TypeProto::ValueCase::kMapType: {
-      const auto& maptype = proto.map_type();
-      auto keytype = maptype.key_type();
-      const auto& value_type = maptype.value_type();
-
-      if (value_type.value_case() == TypeProto::ValueCase::kTensorType &&
-          IsTensorTypeScalar(value_type.tensor_type())) {
-        auto value_elem_type = value_type.tensor_type().elem_type();
-        switch (value_elem_type) {
-          case TensorProto_DataType_STRING: {
-            switch (keytype) {
-              case TensorProto_DataType_STRING:
-                return DataTypeImpl::GetType<MapStringToString>();
-              case TensorProto_DataType_INT64:
-                return DataTypeImpl::GetType<MapInt64ToString>();
-              default:
-                break;
-            }
-          } break;
-          case TensorProto_DataType_INT64:
-            switch (keytype) {
-              case TensorProto_DataType_STRING:
-                return DataTypeImpl::GetType<MapStringToInt64>();
-              case TensorProto_DataType_INT64:
-                return DataTypeImpl::GetType<MapInt64ToInt64>();
-              default:
-                break;
-            }
-            break;
-          case TensorProto_DataType_FLOAT:
-            switch (keytype) {
-              case TensorProto_DataType_STRING:
-                return DataTypeImpl::GetType<MapStringToFloat>();
-              case TensorProto_DataType_INT64:
-                return DataTypeImpl::GetType<MapInt64ToFloat>();
-              default:
-                break;
-            }
-            break;
-          case TensorProto_DataType_DOUBLE:
-            switch (keytype) {
-              case TensorProto_DataType_STRING:
-                return DataTypeImpl::GetType<MapStringToDouble>();
-              case TensorProto_DataType_INT64:
-                return DataTypeImpl::GetType<MapInt64ToDouble>();
-              default:
-                break;
-            }
-            break;
-          default:
-            break;
-        }
-        MLDataType type = registry.GetMLDataType(proto);
-        ORT_ENFORCE(type != nullptr, "Map with key type: ", keytype, " value type: ", value_elem_type, " is not registered");
-        return type;
-      }  // not if(scalar tensor) pre-reg types
-      MLDataType type = registry.GetMLDataType(proto);
-      if (type == nullptr) {
-        DataType str_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(proto);
-        ORT_NOT_IMPLEMENTED("type: ", *str_type, " is not registered");
-      }
-      return type;
-
-    } break;  // kMapType
-    case TypeProto::ValueCase::kSequenceType: {
-      auto& seq_type = proto.sequence_type();
-      auto& val_type = seq_type.elem_type();
-
-      switch (val_type.value_case()) {
-        case TypeProto::ValueCase::kMapType: {
-          auto& maptype = val_type.map_type();
-          auto keytype = maptype.key_type();
-          auto& value_type = maptype.value_type();
-
-          if (value_type.value_case() == TypeProto::ValueCase::kTensorType &&
-              IsTensorTypeScalar(value_type.tensor_type())) {
-            auto value_elem_type = value_type.tensor_type().elem_type();
-            switch (value_elem_type) {
-              case TensorProto_DataType_FLOAT: {
-                switch (keytype) {
-                  case TensorProto_DataType_STRING:
-                    return DataTypeImpl::GetType<VectorMapStringToFloat>();
-                  case TensorProto_DataType_INT64:
-                    return DataTypeImpl::GetType<VectorMapInt64ToFloat>();
-                  default:
-                    break;
-                }
-              }
-              default:
-                break;
-            }
-          }
-        }  // MapType
-        break;
-        case TypeProto::ValueCase::kTensorType: {
-          return DataTypeImpl::GetType<TensorSeq>();
-        }  // kTensorType
-        break;
-        default:
-          break;
-      }  // Sequence value case
-    }    // kSequenceType
-    break;
-    default:
-      break;
-  }  // proto.value_case()
   MLDataType type = registry.GetMLDataType(proto);
   if (type == nullptr) {
     DataType str_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(proto);
-    ORT_NOT_IMPLEMENTED("type: ", *str_type, " is not currently registered or supported");
+    ORT_NOT_IMPLEMENTED("MLDataType for: ", *str_type, " is not currently registered or supported");
   }
   return type;
 }

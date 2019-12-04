@@ -510,6 +510,7 @@ class OpTester {
     auto num_tensors = seq_tensors.tensors.size();
     std::vector<Tensor> tensors;
     tensors.resize(num_tensors);
+    auto elem_type = DataTypeImpl::GetType<T>();
     for (size_t i = 0; i < num_tensors; ++i) {
       TensorShape shape{seq_tensors.tensors[i].shape};
       auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
@@ -519,7 +520,7 @@ class OpTester {
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       auto& tensor = tensors[i];
 
-      tensor = Tensor(DataTypeImpl::GetType<T>(),
+      tensor = Tensor(elem_type,
                       shape,
                       allocator);
 
@@ -531,7 +532,7 @@ class OpTester {
 
     OrtValue value;
     auto mltype = DataTypeImpl::GetType<TensorSeq>();
-    auto ptr = onnxruntime::make_unique<TensorSeq>(DataTypeImpl::GetType<T>());
+    auto ptr = onnxruntime::make_unique<TensorSeq>(elem_type);
     ptr->SetElements(std::move(tensors));
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
