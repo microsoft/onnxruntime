@@ -75,7 +75,7 @@ public interface OnnxValue extends AutoCloseable {
 
     /**
      * Calls close on each element of the map.
-     * @param itr A map of closeable OnnxValues.
+     * @param map A map of closeable OnnxValues.
      */
     public static void close(Map<String,? extends OnnxValue> map) {
         for (OnnxValue t : map.values()) {

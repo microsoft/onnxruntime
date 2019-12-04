@@ -26,6 +26,9 @@ import java.util.logging.Logger;
  */
 public class OrtEnvironment implements AutoCloseable {
 
+    /**
+     * The logging level for messages from the environment and session.
+     */
     public enum LoggingLevel {
         ORT_LOGGING_LEVEL_VERBOSE(0),
         ORT_LOGGING_LEVEL_INFO(1),
@@ -75,6 +78,7 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
      * using the supplied name and {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
+     * @param name The name of the environment used in logging.
      * @return An onnxruntime environment.
      */
     public static OrtEnvironment getEnvironment(String name) {
@@ -84,6 +88,7 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
      * using the {@link OrtEnvironment#DEFAULT_NAME} and the supplied logging level.
+     * @param logLevel The logging level to use.
      * @return An onnxruntime environment.
      */
     public static OrtEnvironment getEnvironment(LoggingLevel logLevel) {

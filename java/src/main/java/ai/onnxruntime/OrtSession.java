@@ -340,6 +340,7 @@ public class OrtSession implements AutoCloseable {
 
         /**
          * Add CUDA as an execution backend, using device 0.
+         * @throws OrtException If there was an error in native code.
          */
         public void addCUDA() throws OrtException {
             addCUDA(0);
@@ -348,6 +349,7 @@ public class OrtSession implements AutoCloseable {
         /**
          * Add CUDA as an execution backend, using the specified CUDA device id.
          * @param deviceNum The CUDA device id.
+         * @throws OrtException If there was an error in native code.
          */
         public void addCUDA(int deviceNum) throws OrtException {
             addCUDA(OnnxRuntime.ortApiHandle,nativeHandle,deviceNum);
