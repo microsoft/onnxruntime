@@ -38,7 +38,7 @@ jobs:
         EnvSetupScript: ${{ parameters.EnvSetupScript }}
         buildArch: ${{ parameters.msbuildArchitecture }}
         setVcvars: ${{ parameters.SetVcvars }}
-    - template: win-ci-helper.yml
+    - template: win-x86-ci-helper.yml
       parameters:
         BuildCommand: $(BuildCommand)
         DoDebugBuild: ${{ parameters.DoDebugBuild }}

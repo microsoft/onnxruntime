@@ -233,7 +233,7 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
-      p_seq_tensors->tensors[i] = std::move(*(p_tensor.release()));
+      p_seq_tensors->tensors[i] = std::move(*p_tensor);
     }
   }
 

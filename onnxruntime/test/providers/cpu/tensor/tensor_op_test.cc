@@ -30,7 +30,7 @@ TEST(TensorOpTest, ReshapeWithEmptyDim) {
   test.AddInput<float>("data", {1, 1, 1}, std::vector<float>(1, 1.0f));
   test.AddInput<int64_t>("shape", {0}, {}, true);
   test.AddOutput<float>("reshaped", {}, std::vector<float>(1, 1.0f));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // TensorRT doesn't support empty dimension
 }
 
 TEST(TensorOpTest, ReshapeWithInitializer) {

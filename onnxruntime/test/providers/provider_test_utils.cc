@@ -460,7 +460,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
         // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
-        if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
+        if (provider_type != kDnnlExecutionProvider && provider_type != kNGraphExecutionProvider) {
           EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
         }
       } else {
@@ -569,7 +569,7 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
-        kMklDnnExecutionProvider,
+        kDnnlExecutionProvider,
         kNGraphExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
@@ -622,8 +622,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
-        else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
-          execution_provider = DefaultMkldnnExecutionProvider();
+        else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+          execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kNGraphExecutionProvider)
           execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)

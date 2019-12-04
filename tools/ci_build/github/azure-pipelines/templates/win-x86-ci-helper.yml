@@ -12,6 +12,15 @@ parameters:
   MsbuildArguments: '/m'
 
 steps:
+  - powershell: |
+      if($env:TELEMETRYGUID)
+      {
+        $length = $env:TELEMETRYGUID.length
+        $fileContent = "#define ENABLE_TELEMETRY`n#define ENABLE_TELEMETRY\n#define TraceLoggingOptionMicrosoftTelemetry() \
+          TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+        New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+      }
+      displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
   - task: CmdLine@1
     displayName: 'Download test data and generate cmake config'
     inputs:

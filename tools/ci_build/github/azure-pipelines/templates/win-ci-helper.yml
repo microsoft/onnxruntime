@@ -13,6 +13,15 @@ parameters:
   OrtPackageId: Microsoft.ML.OnnxRuntime
 
 steps:
+  - powershell: |
+      if($env:TELEMETRYGUID)
+      {
+        $length = $env:TELEMETRYGUID.length
+        $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
+          TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+        New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+      }
+    displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
   # Copy CUDA props files if needed
   - ${{ if eq(parameters['CudaVersion'], '10.0') }}:
     - task: PowerShell@1
