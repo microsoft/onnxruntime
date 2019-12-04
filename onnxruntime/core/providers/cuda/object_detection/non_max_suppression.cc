@@ -66,7 +66,9 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
           GetCenterPointBox(),
           batch_index,
           class_index,
-          max_output_boxes_per_class,
+          max_output_boxes_per_class > std::numeric_limits<int>::max()
+              ? std::numeric_limits<int>::max()
+              : static_cast<int>(max_output_boxes_per_class),
           iou_threshold,
           score_threshold,
           d_selected_indices,
@@ -130,4 +132,4 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
 }
 
 }  // namespace cuda
-};  // namespace onnxruntime
+}  // namespace onnxruntime
