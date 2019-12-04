@@ -26,8 +26,9 @@ LearningModel::LearningModel(
       WinMLRuntimePerf::kLoadModel);
 
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(path.c_str(), model_proto_.put()));
+  WINML_THROW_IF_FAILED(adapter_->RegisterLotusEnvironment());
+  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
 
   Initialize();
 
@@ -42,10 +43,11 @@ LearningModel::LearningModel(
       WinMLRuntimePerf::kLoadModel);
 
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(
       static_cast<ABI::Windows::Storage::Streams::IRandomAccessStreamReference*>(winrt::get_abi(stream)),
       model_proto_.put()));
+  WINML_THROW_IF_FAILED(adapter_->RegisterLotusEnvironment());
+  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
 
   Initialize();
 

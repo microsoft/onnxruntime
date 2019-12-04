@@ -256,9 +256,6 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
 
  public:
-  WinMLAdapter() : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()) {
-  }
-
   // factory methods for creating an ort model from a path
   HRESULT STDMETHODCALLTYPE CreateModelProto(
       const char* path,
@@ -328,6 +325,11 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
   void STDMETHODCALLTYPE EnableDebugOutput() override {
     WinML::CWinMLLogSink::EnableDebugOutput();
+  }
+
+  HRESULT STDMETHODCALLTYPE RegisterLotusEnvironment() override {
+    lotus_environment_ = std::shared_ptr<WinML::LotusEnvironment> (PheonixSingleton<WinML::LotusEnvironment>());
+    return S_OK;
   }
 
   static bool IsFeatureDescriptorFp16(

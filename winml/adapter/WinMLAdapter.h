@@ -64,7 +64,7 @@ MIDL_INTERFACE("2746f03a-7e08-4564-b5d0-c670fef116ee") IOrtSessionBuilder : IUnk
 MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown {
 
     virtual void STDMETHODCALLTYPE EnableDebugOutput() = 0;
-
+    virtual HRESULT STDMETHODCALLTYPE RegisterLotusEnvironment() = 0;
     virtual HRESULT STDMETHODCALLTYPE EnsureModelDeviceCompatibility(
         winml::LearningModel const& model,
         IModelProto* p_model_proto,
