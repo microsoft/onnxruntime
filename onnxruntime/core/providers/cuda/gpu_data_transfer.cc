@@ -8,13 +8,12 @@ namespace onnxruntime {
 GPUDataTransfer::GPUDataTransfer() {
   // create streams, default is nullptr
   streams_[kCudaStreamDefault] = nullptr;
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
+  // put all copy stream back to default stream to avoid async memory conflict.
+  streams_[kCudaStreamCopyIn] = nullptr;
+  streams_[kCudaStreamCopyOut] = nullptr;
 }
 
 GPUDataTransfer::~GPUDataTransfer() {
-  CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
-  CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
 }
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
