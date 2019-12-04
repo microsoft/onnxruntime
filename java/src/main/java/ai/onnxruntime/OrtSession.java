@@ -360,8 +360,6 @@ public class OrtSession implements AutoCloseable {
             addNuphar(OnnxRuntime.ortApiHandle,nativeHandle,allowUnalignedBuffers?1:0, settings);
         }
 
-        //ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
-        //ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
         private native void setSequentialExecution(long apiHandle, long nativeHandle, boolean enable) throws OrtException;
 
         private native void setOptimizationLevel(long apiHandle, long nativeHandle, int level) throws OrtException;
