@@ -136,7 +136,7 @@ bool IsDimensionSupported(const Node* node) {
 bool IsUnsupportedOp(std::string name, std::string device){
 
   std::set<std::string> unsupported_ops_cpu = {
-    "Where",
+    // "Where",
     "Hardmax",
     "ReduceL1",
     "ReduceL2",
@@ -434,6 +434,7 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
     return false;
   }
 
+  std::cout << "Type is " << type_proto->tensor_type().elem_type();
   switch (type_proto->tensor_type().elem_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
@@ -789,7 +790,7 @@ common::Status IntelExecutionProvider::Compile(
       try {
         function_state->intel_graph->Infer(model_proto, *api, context);
       } catch (const char* msg) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL);
+        return common::Status(common::ONNXRUNTIME, common::FAIL, msg);
       }
       return Status::OK();
     };
