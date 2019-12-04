@@ -5,9 +5,9 @@
 #include "environment.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
 
-#include "core/providers/mkldnn/mkldnn_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
 
 #endif
 
@@ -67,8 +67,8 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
 }
 
 void ServerEnvironment::RegisterExecutionProviders(){
-  #ifdef USE_MKLDNN
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(options_, 1));
+  #ifdef USE_DNNL
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(options_, 1));
   #endif
 
   #ifdef USE_NGRAPH

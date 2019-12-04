@@ -116,12 +116,12 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
       // TODO: Check if we can upgrade all the current opset 6 models that are being tested
       // in CI to opset 7 or above
       LOGS(logger, WARNING) << "ONNX Runtime only *guarantees* support for models stamped "
-                                "with opset version 7 or above for opset domain 'ai.onnx'. "
-                                "Please upgrade your model to opset 7 or higher. "
-                                "For now, this opset "
-                             << version
-                             << " model may run depending upon legacy support "
-                                "of some older opset version operators.";
+                               "with opset version 7 or above for opset domain 'ai.onnx'. "
+                               "Please upgrade your model to opset 7 or higher. "
+                               "For now, this opset "
+                            << version
+                            << " model may run depending upon legacy support "
+                               "of some older opset version operators.";
     }
     // We need to overwrite the domain here with ("") or else the loop below will try to find ("")
     // in the map and if not found (when domain == kOnnxDomainAlias), adds an entry for ("", 11).
@@ -284,10 +284,8 @@ Status Model::Load(std::unique_ptr<ModelProto> p_model_proto, std::shared_ptr<Mo
   return Status::OK();
 }
 
-template <typename T>
-static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
-                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                        const logging::Logger& logger) {
+template <typename T, typename Loader>
+static Status LoadModelHelper(const T& file_path, Loader loader) {
   int fd;
   Status status = Env::Default().FileOpenRd(file_path, fd);
   if (!status.IsOK()) {
@@ -304,8 +302,8 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
     }
   }
   try {
-    status = Model::Load(fd, p_model, local_registries, logger);
-  } catch (std::exception& ex) {
+    status = loader(fd);
+  } catch (const std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
@@ -319,13 +317,33 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
 }
 
 template <typename T>
+static Status LoadModel(const T& file_path, ONNX_NAMESPACE::ModelProto& model_proto) {
+  const auto loader = [&model_proto](int fd) {
+    return Model::Load(fd, model_proto);
+  };
+
+  return LoadModelHelper(file_path, loader);
+}
+
+template <typename T>
+static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
+                        const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                        const logging::Logger& logger) {
+  const auto loader = [&p_model, local_registries, &logger](int fd) {
+    return Model::Load(fd, p_model, local_registries, logger);
+  };
+
+  return LoadModelHelper(file_path, loader);
+}
+
+template <typename T>
 static Status SaveModel(Model& model, const T& file_path) {
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
   try {
     status = Model::Save(model, fd);
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return Status(ONNXRUNTIME, FAIL, ex.what());
@@ -344,6 +362,11 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 }
 #endif
 
+Status Model::Load(const std::basic_string<ORTCHAR_T>& file_path,
+                   ONNX_NAMESPACE::ModelProto& model_proto) {
+  return LoadModel(file_path, model_proto);
+}
+
 GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
 GSL_SUPPRESS(r .35)
 Status Model::Load(const std::basic_string<ORTCHAR_T>& file_path, std::shared_ptr<Model>& p_model,
@@ -356,15 +379,25 @@ Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
-                            const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
-  std::unique_ptr<ModelProto> modelProto = onnxruntime::make_unique<ModelProto>();
-  const bool result = modelProto->ParseFromArray(p_bytes, count);
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
+  const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 
-  p_model = std::make_shared<Model>(std::move(modelProto), local_registries, logger);
+  return Status::OK();
+}
+
+Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
+                            const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
+  ModelProto model_proto;
+
+  auto status = LoadFromBytes(count, p_bytes, model_proto);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  p_model = std::make_shared<Model>(model_proto, local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
@@ -375,16 +408,14 @@ using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 using ::google::protobuf::io::ZeroCopyInputStream;
 
-Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                   const logging::Logger& logger) {
+Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> less than 0.");
   }
 
-  std::unique_ptr<ModelProto> model_proto = onnxruntime::make_unique<ModelProto>();
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
   FileInputStream fs(fd);
-  const bool result = model_proto->ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  const bool result = model_proto.ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
@@ -402,7 +433,16 @@ Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOp
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }
 #endif
-  p_model = std::make_shared<Model>(std::move(model_proto), local_registries, logger);
+  return Status::OK();
+}
+
+Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger) {
+  ModelProto model_proto;
+
+  ORT_RETURN_IF_ERROR(Load(fd, model_proto));
+
+  p_model = std::make_shared<Model>(model_proto, local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 

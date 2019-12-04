@@ -5,29 +5,29 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/mkldnn/mkldnn_fwd.h"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
+#include "core/providers/dnnl/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
+#include "core/providers/dnnl/subgraph/dnnl_kernel.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 template <typename T>
-class MklDnnRelu : public MklDnnKernel {
+class DnnlRelu : public DnnlKernel {
  public:
-  MklDnnRelu(const MklDnnNode& node,
-             MKLDNNExecutionProvider* provider,
+  DnnlRelu(const DnnlNode& node,
+             DNNLExecutionProvider* provider,
              const NodeAttributes& attributes,
-             const std::string attributes_prefix = "") : MklDnnKernel(node, provider) {
+             const std::string attributes_prefix = "") : DnnlKernel(node, provider) {
     ORT_UNUSED_PARAMETER(attributes);
     ORT_UNUSED_PARAMETER(attributes_prefix);
   }
 
   void CreatePrimitives(const OrtCustomOpApi* api,
                         OrtKernelContext* context,
-                        mkldnn::engine& cpu_engine,
-                        std::vector<mkldnn::primitive>& net,
-                        std::vector<std::unordered_map<int, mkldnn::memory>>& net_args) {
+                        dnnl::engine& cpu_engine,
+                        std::vector<dnnl::primitive>& net,
+                        std::vector<std::unordered_map<int, dnnl::memory>>& net_args) {
     Ort::CustomOpApi ort{*api};
     int input_index = mklnode_ptr_->input_start_index < 0 ? 0 : mklnode_ptr_->input_start_index;
 
@@ -41,7 +41,7 @@ class MklDnnRelu : public MklDnnKernel {
       auto xshape = tensor_shape.data();
       auto xdim = tensor_shape.size();
 
-      mkldnn::memory::dims dims(xdim);
+      dnnl::memory::dims dims(xdim);
 
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
 
@@ -52,19 +52,19 @@ class MklDnnRelu : public MklDnnKernel {
         return;
       }
 
-      mkldnn::memory::dims src_dims(
+      dnnl::memory::dims src_dims(
           x_shape.GetDims().begin(), x_shape.GetDims().end());
 
-      ort_source_desc_ = mkldnn::memory::desc(
-          {src_dims}, MklDnnType<T>(), ort_source_format_);
+      ort_source_desc_ = dnnl::memory::desc(
+          {src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
-          mkldnn::memory::desc({src_dims}, MklDnnType<T>(), ort_source_format_));
-      src_mem_ = onnxruntime::make_unique<mkldnn::memory>(
-          mkldnn::memory({{src_dims}, MklDnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
+      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+          dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
+      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          dnnl::memory({{src_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
     } else {
-      src_md_ = onnxruntime::make_unique<mkldnn::memory::desc>(
-          mkldnn::memory::desc(parents_[0].get()->primitive_dst_desc_));
+      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+          dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
       src_mem_ = parents_[0].get()->primitive_dst_mem_;
       x_shape = parents_[0].get()->primitive_dst_shape_;
       ort_source_format_ = parents_[0].get()->ort_source_format_;
@@ -74,12 +74,12 @@ class MklDnnRelu : public MklDnnKernel {
 
     primitive_dst_shape_ = TensorShape(x_shape);
 
-    mkldnn::memory::dims dst_dims_mkl(primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
-    mkldnn::algorithm algo = mkldnn::algorithm::eltwise_relu;
-    fwd_desc_ = onnxruntime::make_unique<mkldnn::eltwise_forward::desc>(
-        mkldnn::eltwise_forward::desc(mkldnn::prop_kind::forward_inference, algo, *src_md_, 0));
-    relu_fwd_pd_ = onnxruntime::make_unique<mkldnn::eltwise_forward::primitive_desc>(
-        mkldnn::eltwise_forward::primitive_desc(*fwd_desc_, cpu_engine));
+    dnnl::memory::dims dst_dims_mkl(primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
+    dnnl::algorithm algo = dnnl::algorithm::eltwise_relu;
+    fwd_desc_ = onnxruntime::make_unique<dnnl::eltwise_forward::desc>(
+        dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, *src_md_, 0));
+    relu_fwd_pd_ = onnxruntime::make_unique<dnnl::eltwise_forward::primitive_desc>(
+        dnnl::eltwise_forward::primitive_desc(*fwd_desc_, cpu_engine));
 
     primitive_src_desc_ = relu_fwd_pd_.get()->src_desc();
     primitive_dst_desc_ = relu_fwd_pd_.get()->dst_desc();
@@ -89,29 +89,29 @@ class MklDnnRelu : public MklDnnKernel {
       if (primitive_dst_desc_ != ort_source_desc_) {
         // reorder neded. Use primitive output as input to reorder and
         // allocate buffer for reorder output, final output of this subgraph
-        primitive_dst_mem_ = std::make_shared<mkldnn::memory>(mkldnn::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine));
+        primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine));
       } else {
         // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_ = std::make_shared<mkldnn::memory>(mkldnn::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine, nullptr));
+        primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine, nullptr));
       }
     } else {
-      // Intermediate node. Use mkldnn kernel internal memory for output and
+      // Intermediate node. Use dnnl kernel internal memory for output and
       // use this as input to next node.
-      primitive_dst_mem_ = std::make_shared<mkldnn::memory>(mkldnn::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine));
+      primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_fwd_pd_.get()->dst_desc(), cpu_engine));
     }
 
-    relu_fwd_ = onnxruntime::make_unique<mkldnn::eltwise_forward>(
-        mkldnn::eltwise_forward(*relu_fwd_pd_));
+    relu_fwd_ = onnxruntime::make_unique<dnnl::eltwise_forward>(
+        dnnl::eltwise_forward(*relu_fwd_pd_));
 
     net.push_back(*relu_fwd_);
 
-    net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
-                        {MKLDNN_ARG_DST, *primitive_dst_mem_}});
+    net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                        {DNNL_ARG_DST, *primitive_dst_mem_}});
 
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
-      mkldnn::memory::data_type t = MklDnnType<T>();
+      dnnl::memory::data_type t = DnnnType<T>();
       InitDstReorderOutput(cpu_engine, t, net, net_args);
     }
   }
@@ -147,13 +147,13 @@ class MklDnnRelu : public MklDnnKernel {
   }
 
  private:
-  std::shared_ptr<mkldnn::memory> src_mem_;
+  std::shared_ptr<dnnl::memory> src_mem_;
 
-  std::unique_ptr<mkldnn::eltwise_forward::desc> fwd_desc_;
-  std::unique_ptr<mkldnn::eltwise_forward::primitive_desc> relu_fwd_pd_;
-  std::unique_ptr<mkldnn::primitive> relu_fwd_;
+  std::unique_ptr<dnnl::eltwise_forward::desc> fwd_desc_;
+  std::unique_ptr<dnnl::eltwise_forward::primitive_desc> relu_fwd_pd_;
+  std::unique_ptr<dnnl::primitive> relu_fwd_;
 
-  std::unique_ptr<mkldnn::memory::desc> src_md_;
+  std::unique_ptr<dnnl::memory::desc> src_md_;
 };
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

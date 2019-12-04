@@ -14,7 +14,7 @@ Options:
 	
 	-c: [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.
 	
-	-e: [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|acl]: Specifies the execution provider 'cpu','cuda','mkldnn','tensorrt', 'ngraph', 'openvino', 'nuphar' or 'acl'. Default is 'cpu'.
+	-e: [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|acl]: Specifies the execution provider 'cpu','cuda','dnnn','tensorrt', 'ngraph', 'openvino', 'nuphar' or 'acl'. Default is 'cpu'.
         
 	-m: [test_mode]: Specifies the test mode. Value coulde be 'duration' or 'times'. Provide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. Default:'duration'.
         
@@ -32,7 +32,7 @@ Options:
         
 	-v: Show verbose information.
         
-	-x: [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes. A value of 0 means the test will auto-select a default. Must >=0. If OpenMP is enabled, this configuration will be ignored.
+	-x: [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes. A value of 0 means the test will auto-select a default. Must >=0.
 	
 	-y: [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means the test will auto-select a default. Must >=0.
 	
