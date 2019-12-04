@@ -43,7 +43,9 @@
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
 	url = https://github.com/microsoft/wil
-
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/json"]
+	path = cmake/external/json
+	url = https://github.com/nlohmann/json
