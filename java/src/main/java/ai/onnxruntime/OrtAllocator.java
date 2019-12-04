@@ -4,18 +4,7 @@
  */
 package ai.onnxruntime;
 
-import ai.onnxruntime.TensorInfo.OnnxTensorType;
-
 import java.io.IOException;
-import java.lang.reflect.Array;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.nio.LongBuffer;
-import java.nio.ShortBuffer;
 
 /**
  * An ONNX Runtime memory allocator.
@@ -55,8 +44,8 @@ class OrtAllocator implements AutoCloseable {
             if (!isDefault) {
                 // Can only close custom allocators.
                 closeAllocator(OnnxRuntime.ortApiHandle, handle);
+                closed = true;
             }
-            closed = true;
         } else {
             throw new IllegalStateException("Trying to close an already closed OrtAllocator.");
         }

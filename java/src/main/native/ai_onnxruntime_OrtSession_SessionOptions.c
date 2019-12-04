@@ -19,18 +19,15 @@
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    setSequentialExecution
- * Signature: (JJZ)V
+ * Method:    setExecutionMode
+ * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setSequentialExecution
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jboolean setSequential) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setExecutionMode
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint mode) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
-    if (setSequential) {
-        checkOrtStatus(jniEnv,api,api->SetSessionExecutionMode((OrtSessionOptions*) handle,ORT_SEQUENTIAL));
-    } else {
-        checkOrtStatus(jniEnv,api,api->SetSessionExecutionMode((OrtSessionOptions*) handle,ORT_PARALLEL));
-    }
+    ExecutionMode exMode = convertExecutionMode(mode);
+    checkOrtStatus(jniEnv,api,api->SetSessionExecutionMode((OrtSessionOptions*) handle,exMode));
 }
 
 /*

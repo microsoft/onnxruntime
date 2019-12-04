@@ -214,7 +214,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct FloatBuffer.
+     * Create an OnnxTensor backed by a direct FloatBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
@@ -228,7 +228,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct FloatBuffer.
+     * Create an OnnxTensor backed by a direct FloatBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
@@ -258,7 +258,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct DoubleBuffer.
+     * Create an OnnxTensor backed by a direct DoubleBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
@@ -272,7 +272,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct DoubleBuffer.
+     * Create an OnnxTensor backed by a direct DoubleBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
@@ -302,7 +302,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct ByteBuffer.
+     * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
@@ -316,7 +316,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct ByteBuffer.
+     * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
@@ -345,7 +345,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct ShortBuffer.
+     * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
@@ -359,7 +359,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct ShortBuffer.
+     * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
@@ -389,7 +389,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct IntBuffer.
+     * Create an OnnxTensor backed by a direct IntBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
@@ -403,7 +403,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct IntBuffer.
+     * Create an OnnxTensor backed by a direct IntBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
@@ -433,7 +433,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct LongBuffer.
+     * Create an OnnxTensor backed by a direct LongBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
@@ -447,7 +447,7 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
-     * Create an OnnxTensor backed by a direct LongBuffer.
+     * Create an OnnxTensor backed by a direct LongBuffer. The buffer should be in nativeOrder.
      *
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the supplied allocator.
@@ -531,6 +531,20 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
+     * Turns on or off the telemetry.
+     * @param sendTelemetry If true then send telemetry on onnxruntime usage.
+     * @throws OrtException If the call failed.
+     */
+    public void setTelemetry(boolean sendTelemetry) throws OrtException {
+        setTelemetry(OnnxRuntime.ortApiHandle,nativeHandle,sendTelemetry);
+    }
+
+    @Override
+    public String toString() {
+        return "OrtEnvironment(name="+curName+",logLevel="+curLogLevel+")";
+    }
+
+    /**
      * Closes the OrtEnvironment. If this is the last reference to the environment then it closes the native handle.
      * @throws OrtException If the close failed.
      */
@@ -569,7 +583,7 @@ public class OrtEnvironment implements AutoCloseable {
      * @return The pointer to the native object.
      * @throws OrtException If the creation failed.
      */
-    private native long createHandle(long apiHandle, int loggingLevel, String name) throws OrtException;
+    private static native long createHandle(long apiHandle, int loggingLevel, String name) throws OrtException;
 
     /**
      * Gets a reference to the default allocator.
@@ -585,7 +599,16 @@ public class OrtEnvironment implements AutoCloseable {
      * @param nativeHandle The handle to free.
      * @throws OrtException If an error was caused by freeing the handle.
      */
-    private native void close(long apiHandle, long nativeHandle) throws OrtException;
+    private static native void close(long apiHandle, long nativeHandle) throws OrtException;
+
+    /**
+     * Enables or disables the telemetry.
+     * @param apiHandle The API pointer.
+     * @param nativeHandle The native handle for the environment.
+     * @param sendTelemetry Turn on or off the telemetry.
+     * @throws OrtException If an error was caused when setting the telemetry status.
+     */
+    private static native void setTelemetry(long apiHandle, long nativeHandle, boolean sendTelemetry) throws OrtException;
 
     private static native long createTensor(long apiHandle, long allocatorHandle, Object data, long[] shape, int onnxType) throws OrtException;
     private static native long createTensorFromBuffer(long apiHandle, long allocatorHandle, Buffer data, long bufferSize, long[] shape, int onnxType) throws OrtException;

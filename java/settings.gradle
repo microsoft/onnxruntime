@@ -1,5 +1,0 @@
-/*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
- * Licensed under the MIT License.
- */
-rootProject.name = 'onnxruntime4j'

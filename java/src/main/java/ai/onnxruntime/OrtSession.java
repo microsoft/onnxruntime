@@ -191,6 +191,11 @@ public class OrtSession implements AutoCloseable {
         }
     }
 
+    @Override
+    public String toString() {
+        return "OrtSession(numInputs="+numInputs+",numOutputs="+numOutputs+")";
+    }
+
     /**
      * Closes the session, releasing it's resources.
      * @throws OrtException If it failed to close.
@@ -240,9 +245,10 @@ public class OrtSession implements AutoCloseable {
     public static class SessionOptions implements AutoCloseable {
 
         /**
-         * The optimisation level to use.
+         * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum in the C API.
          */
-        public enum OptLevel { NO_OPT(0), BASIC_OPT(1), EXTENDED_OPT(2), ALL_OPT(99);
+        public enum OptLevel {
+            NO_OPT(0), BASIC_OPT(1), EXTENDED_OPT(2), ALL_OPT(99);
 
             private final int id;
 
@@ -252,6 +258,26 @@ public class OrtSession implements AutoCloseable {
 
             /**
              * Gets the int id used in native code for this optimisation level.
+             * @return The int id.
+             */
+            public int getID() {
+                return id;
+            }
+        }
+
+        /**
+         * The execution mode to use. Needs to be kept in sync with the ExecutionMode enum in the C API.
+         */
+        public enum ExecutionMode {
+            SEQUENTIAL(0), PARALLEL(1);
+            private final int id;
+
+            ExecutionMode(int id) {
+                this.id = id;
+            }
+
+            /**
+             * Gets the int id used in native code for the execution mode.
              * @return The int id.
              */
             public int getID() {
@@ -277,12 +303,12 @@ public class OrtSession implements AutoCloseable {
         }
 
         /**
-         * Turns on sequential execution.
-         * @param enable True if the model should execute sequentially.
+         * Sets the execution mode of this options object, overriding the old setting.
+         * @param mode The execution mode to use.
          * @throws OrtException If there was an error in native code.
          */
-        public void setSequentialExecution(boolean enable) throws OrtException {
-            setSequentialExecution(OnnxRuntime.ortApiHandle,nativeHandle,enable);
+        public void setExecutionMode(ExecutionMode mode) throws OrtException {
+            setExecutionMode(OnnxRuntime.ortApiHandle,nativeHandle,mode.getID());
         }
 
         /**
@@ -355,9 +381,7 @@ public class OrtSession implements AutoCloseable {
             addNuphar(OnnxRuntime.ortApiHandle,nativeHandle,allowUnalignedBuffers?1:0, settings);
         }
 
-        //ORT_API(void, OrtEnableSequentialExecution, _In_ OrtSessionOptions* options);
-        //ORT_API(void, OrtDisableSequentialExecution, _In_ OrtSessionOptions* options);
-        private native void setSequentialExecution(long apiHandle, long nativeHandle, boolean enable) throws OrtException;
+        private native void setExecutionMode(long apiHandle, long nativeHandle, int mode) throws OrtException;
 
         private native void setOptimizationLevel(long apiHandle, long nativeHandle, int level) throws OrtException;
 
