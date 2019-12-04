@@ -382,19 +382,19 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
             (*jniEnv)->SetShortArrayRegion(jniEnv, typedArr, 0, outputLength, (jshort * ) tensor);
             return consumedSize;
         }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:      // maps to c type uint32_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: { // maps to c type int32_t
             jintArray typedArr = (jintArray) output;
             (*jniEnv)->SetIntArrayRegion(jniEnv, typedArr, 0, outputLength, (jint * ) tensor);
             return consumedSize;
         }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:      // maps to c type uint64_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: { // maps to c type int64_t
             jlongArray typedArr = (jlongArray) output;
             (*jniEnv)->SetLongArrayRegion(jniEnv, typedArr, 0, outputLength, (jlong * ) tensor);
             return consumedSize;
         }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: { // stored as a uint16_t
             float *floatArr = malloc(sizeof(float) * outputLength);
             uint16_t *halfArr = (uint16_t *) tensor;
             for (uint32_t i = 0; i < outputLength; i++) {
@@ -410,13 +410,14 @@ size_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxTy
             (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, (jfloat * ) tensor);
             return consumedSize;
         }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {    // maps to c type double
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: { // maps to c type double
             jdoubleArray typedArr = (jdoubleArray) output;
             (*jniEnv)->SetDoubleArrayRegion(jniEnv, typedArr, 0, outputLength, (jdouble * ) tensor);
             return consumedSize;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: { // maps to c++ type std::string
-            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported.");
+            // Shouldn't reach here, as it's caught by a different codepath in the initial OnnxTensor.getArray call.
+            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported by this codepath, please raise a Github issue as it should not reach here.");
             return 0;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {

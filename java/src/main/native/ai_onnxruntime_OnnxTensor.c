@@ -10,6 +10,32 @@
 
 /*
  * Class:     ai_onnxruntime_OnnxTensor
+ * Method:    getBuffer
+ * Signature: (JJ)Ljava/nio/ByteBuffer;
+ */
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
+        (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtTensorTypeAndShapeInfo* info;
+    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape((OrtValue*) handle, &info));
+    size_t arrSize;
+    checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(info,&arrSize));
+    ONNXTensorElementDataType onnxTypeEnum;
+    checkOrtStatus(jniEnv,api,api->GetTensorElementType(info,&onnxTypeEnum));
+    api->ReleaseTensorTypeAndShapeInfo(info);
+
+    size_t typeSize = onnxTypeSize(onnxTypeEnum);
+    size_t sizeBytes = arrSize*typeSize;
+
+    uint8_t* arr;
+    checkOrtStatus(jniEnv,api,api->GetTensorMutableData((OrtValue*)handle,(void**)&arr));
+
+    return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, sizeBytes);
+}
+
+/*
+ * Class:     ai_onnxruntime_OnnxTensor
  * Method:    getFloat
  * Signature: (JI)F
  */

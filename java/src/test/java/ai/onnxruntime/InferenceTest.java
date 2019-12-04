@@ -363,6 +363,9 @@ public class InferenceTest {
             try (OrtSession.Result res = session.run(container)) {
                 resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
                 assertArrayEquals(flatInput, resultArray, 1e-6f);
+                float[] resultBufferArray = new float[flatInput.length];
+                ((OnnxTensor)res.get(0)).getFloatBuffer().get(resultBufferArray);
+                assertArrayEquals(flatInput,resultBufferArray,1e-6f);
                 OnnxValue.close(container);
             }
             container.clear();
