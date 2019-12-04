@@ -351,15 +351,32 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return skipModels;
         }
 
+        private static Dictionary<string, string> GetSkippedOpsets()
+        {
+            var skipOpsets = new Dictionary<string, string>() {
+                { "coreml", "Inputs and Outputs use tml.proto format which is specific to winml and is not supported in C#."},
+                { "keras2coreml", "Inputs and Outputs use tml.proto format which is specific to winml and is not supported in C#." },
+                { "scikit", "Inputs and Outputs use tml.proto format which is specific to winml and is not supported in C#."},
+                { "xgboost_and_libsvm", "Inputs and Outputs use tml.proto format which is specific to winml and is not supported in C#."},
+            };
+
+            return skipOpsets;
+        }
+
         public static IEnumerable<object[]> GetModelsForTest()
         {
             var modelsDir = GetTestModelsDir();
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels();
+            var skipOpsets = GetSkippedOpsets();
 
             foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
             {
-                //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
+                if (skipOpsets.ContainsKey(opsetDir.Name))
+                {
+                    continue;
+                }
+
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
                     if (!skipModels.ContainsKey(modelDir.Name))
