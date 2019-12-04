@@ -173,12 +173,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   graph_transformation_mgr_ = onnxruntime::make_unique<GraphTransformerManager>(
       session_options_.max_num_graph_transformation_steps);
   logging_manager_ = logging_manager;
-#ifndef USE_OPENMP
+
   thread_pool_ = concurrency::CreateThreadPool("intra_op_thread_pool",
                                                session_options_.intra_op_num_threads);
-#else
-  thread_pool_ = nullptr;
-#endif
 
   inter_op_thread_pool_ = session_options_.execution_mode == ExecutionMode::ORT_PARALLEL
                               ? concurrency::CreateThreadPool("inter_op_thread_pool",
