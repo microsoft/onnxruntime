@@ -38,7 +38,7 @@ jobs:
         setVcvars: 'false'
         DoDataDownload: 'false'
     - template: win-download-test-data.yml
-    - template: win-ci-helper.yml
+    - template: ../../templates/win-ci-helper.yml
       parameters:
         BuildCommand:  ${{ parameters.WindowsCIBuildCommand }}
         DoDebugBuild: 'false'
@@ -78,7 +78,7 @@ jobs:
         setVcvars: 'false'
         DoDataDownload: 'false'
     - template: win-download-test-data.yml
-    - template: win-x86-ci-helper.yml
+    - template: ../../templates/win-x86-ci-helper.yml
       parameters:
         BuildCommand:  ${{ parameters.Windowsx86CIBuildCommand }}
         DoDebugBuild: 'false'
@@ -143,7 +143,7 @@ jobs:
   steps:
     - template: set-test-data-variables-step.yml
     - template: mac-set-variables-and-download.yml
-    - template: mac-ci-build-and-test.yml
+    - template: ../../templates/mac-ci-build-and-test.yml
       parameters:
         BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
         DoNugetPack : 'true'
