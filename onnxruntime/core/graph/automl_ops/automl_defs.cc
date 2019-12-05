@@ -30,17 +30,17 @@ void RegisterAutoMLSchemas() {
              "The input represents a number of seconds passed since the epoch, suitable to properly construct"
              "an instance of std::chrono::system_clock::time_point",
              "T1")
-      .Output(0, "Y", "The output which is a Microsoft::DateTimeFeaturizer::TimePoint structure", "T2")
+      .Output(0, "Y", "The output which is a Microsoft::DateTimeFeaturizer::TimePoint structure", "T1")
       .TypeConstraint(
           "T1",
           {"tensor(int64)"},
-          "Constrain input type to int64 scalar tensor.")
-      .TypeConstraint(
-          "T2",
-          {"opaque(com.microsoft.automl,DateTimeFeaturizer_TimePoint)"},
-          "Constrain output type to an AutoML specific Microsoft::Featurizers::TimePoint type"
-          "currently not part of ONNX standard. When it becomes a part of the standard we will adjust this"
-          "kernel definition and move it to ONNX repo");
+          "Constrain input type to int64 scalar tensor.");
+      //.TypeConstraint(
+      //    "T2",
+      //    {"opaque(com.microsoft.automl,DateTimeFeaturizer_TimePoint)"},
+      //    "Constrain output type to an AutoML specific Microsoft::Featurizers::TimePoint type"
+      //    "currently not part of ONNX standard. When it becomes a part of the standard we will adjust this"
+      //    "kernel definition and move it to ONNX repo");
 }
 }  // namespace automl
 }  // namespace onnxruntime

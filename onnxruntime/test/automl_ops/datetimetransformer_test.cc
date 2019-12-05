@@ -4,9 +4,9 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "core/automl/featurizers/src/FeaturizerPrep/Featurizers/DateTimeFeaturizer.h"
+#include "Featurizers/DateTimeFeaturizer.h"
 
-namespace dft = Microsoft::Featurizer::DateTimeFeaturizer;
+namespace dft = Microsoft::Featurizer::Featurizers;
 
 using SysClock = std::chrono::system_clock;
 
