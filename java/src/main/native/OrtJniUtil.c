@@ -181,9 +181,15 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
     }
 }
 
+typedef union FP32 {
+    int intVal;
+    float floatVal;
+} FP32;
+
 jfloat convertHalfToFloat(uint16_t half) {
-    float floatVal = (float&) (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
-    return floatVal;
+    FP32 output;
+    output.intVal = (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
+    return output.floatVal;
 }
 
 jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * info) {
