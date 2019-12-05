@@ -170,6 +170,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node* p_expand_node = nullptr;
     Node* p_shape_node = nullptr;
     std::vector<const Node::EdgeEnd*> pg_edges;
+    bool isValidEmbedSubNode = true;
     if (graph_utils::IsConstantInitializer(graph, position_gather_node.MutableInputDefs()[1]->Name())) {
       // Check if the second input of position gather is a tensor with values evenly spaced by 1 starting from 0. 
       std::vector<int64_t> data;
@@ -180,7 +181,8 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
       for (size_t i = 1; i < data.size(); i++) {
         if (data[i - 1] + 1 != data[i]) {
-          return Status::OK();
+          isValidEmbedSubNode = false;
+          break;
         }
       }
     } else {
@@ -217,7 +219,8 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
       for (size_t i = 0; i < edges.size(); i++) {
         if (edges[i]->GetNode().GetOutputEdgesCount() != 1) {
-          return Status::OK();
+          isValidEmbedSubNode = false;
+          break;
         }
       }
       // Check if the two paths of position gather lead to the same input. 
@@ -226,6 +229,9 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         continue;
       }
 
+    }
+    if (!isValidEmbedSubNode) {
+      continue;
     }
 
     // Get input "input_ids" from node.
