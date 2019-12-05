@@ -9,12 +9,12 @@ import java.nio.Buffer;
 import java.util.Arrays;
 
 /**
- * Describes a tensor, including it's size, shape and element type.
+ * Describes an {@link OnnxTensor}, including it's size, shape and element type.
  */
 public class TensorInfo implements ValueInfo {
 
     /**
-     * Maximum number of dimensions supported by these methods.
+     * Maximum number of dimensions supported by the Java interface methods.
      */
     public static final int MAX_DIMENSIONS = 8;
 
@@ -23,18 +23,18 @@ public class TensorInfo implements ValueInfo {
      */
     public enum OnnxTensorType {
         ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED(0),
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8(1),   // maps to c type uint8_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8(2),    // maps to c type int8_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16(3),  // maps to c type uint16_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16(4),   // maps to c type int16_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32(5),      // maps to c type uint32_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32(6),   // maps to c type int32_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64(7),      // maps to c type uint64_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64(8),   // maps to c type int64_t
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16(9),
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT(10),   // maps to c type float
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8(1),        // maps to c type uint8_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8(2),         // maps to c type int8_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16(3),       // maps to c type uint16_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16(4),        // maps to c type int16_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32(5),       // maps to c type uint32_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32(6),        // maps to c type int32_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64(7),       // maps to c type uint64_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64(8),        // maps to c type int64_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16(9),      // stored as a uint16_t
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT(10),       // maps to c type float
         ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE(11),      // maps to c type double
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING(12),  // maps to c++ type std::string
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING(12),      // maps to c++ type std::string
         ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL(13),
         ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64(14),   // complex with float32 real and imaginary components
         ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128(15),  // complex with float64 real and imaginary components
@@ -112,6 +112,12 @@ public class TensorInfo implements ValueInfo {
      */
     public final OnnxTensorType onnxType;
 
+    /**
+     * Constructs a TensorInfo with the specified shape, Java type and native type.
+     * @param shape The tensor shape.
+     * @param type The Java type.
+     * @param onnxType The native type.
+     */
     TensorInfo(long[] shape, OnnxJavaType type, OnnxTensorType onnxType) {
         this.shape = shape;
         this.type = type;

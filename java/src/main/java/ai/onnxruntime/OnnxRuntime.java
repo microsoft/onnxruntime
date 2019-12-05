@@ -36,7 +36,9 @@ final class OnnxRuntime {
 
     private static boolean loaded = false;
 
-    // The API handle.
+    /**
+     * The API handle.
+     */
     static long ortApiHandle;
 
     /**
@@ -113,7 +115,18 @@ final class OnnxRuntime {
         }
     }
 
-    private static String createTempFileFromResource(String path, boolean debugLogging) throws IOException, IllegalArgumentException {
+    /**
+     * Copies out the named file from the class path into a temporary directory so it can be loaded
+     * by {@link System#load}.
+     * <p>
+     * The file is marked delete on exit. Throws {@link IllegalArgumentException} if the
+     * supplied path is not absolute.
+     * @param path The path to the file in the classpath.
+     * @param debugLogging If true turn on debug logging.
+     * @return The path to the extracted file on disk.
+     * @throws IOException If the file failed to read or write.
+     */
+    private static String createTempFileFromResource(String path, boolean debugLogging) throws IOException {
         if (!path.startsWith("/")) {
             throw new IllegalArgumentException("The path has to be absolute (start with '/').");
         } else {

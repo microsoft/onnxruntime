@@ -7,7 +7,7 @@ package ai.onnxruntime;
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 
 /**
- * An enum over supported Java primitives (and String).
+ * An enum representing onnxruntime supported Java primitive types (and String).
  */
 public enum OnnxJavaType {
     FLOAT(1, float.class, 4),
@@ -52,10 +52,12 @@ public enum OnnxJavaType {
     }
 
     /**
+     * Maps from the {@link OnnxTensorType} enum to the corresponding OnnxJavaType
+     * enum, converting types as appropriate.
+     * <p>
      * Must match the values from OrtJniUtil.c.
-     *
-     * @param onnxValue The value from OrtJniUtil.c
-     * @return A JavaDataType instance representing the Java type
+     * @param onnxValue The native value type.
+     * @return A OnnxJavaType instance representing the Java type
      */
     public static OnnxJavaType mapFromOnnxTensorType(OnnxTensorType onnxValue) {
         switch (onnxValue) {
@@ -93,7 +95,7 @@ public enum OnnxJavaType {
      * Maps from a Java class object into the enum type, returning {@link OnnxJavaType#UNKNOWN}
      * for unsupported types.
      * @param clazz The class to use.
-     * @return An ONNXJavaType instance.
+     * @return An OnnxJavaType instance.
      */
     public static OnnxJavaType mapFromClass(Class<?> clazz) {
         if (clazz.equals(Byte.TYPE) || clazz.equals(Byte.class)) {

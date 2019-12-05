@@ -24,12 +24,24 @@ public class MapInfo implements ValueInfo {
      */
     public final OnnxJavaType valueType;
 
+    /**
+     * Construct a MapInfo with the specified key type and value type.
+     * The size is unknown and set to -1.
+     * @param keyType The Java type of the keys.
+     * @param valueType The Java type of the values.
+     */
     MapInfo(OnnxJavaType keyType, OnnxJavaType valueType) {
         this.size = -1;
         this.keyType = keyType;
         this.valueType = valueType;
     }
 
+    /**
+     * Construct a MapInfo with the specified size, key type and value type.
+     * @param size The size.
+     * @param keyType The Java type of the keys.
+     * @param valueType The Java type of the values.
+     */
     MapInfo(int size, OnnxJavaType keyType, OnnxJavaType valueType) {
         this.size = size;
         this.keyType = keyType;

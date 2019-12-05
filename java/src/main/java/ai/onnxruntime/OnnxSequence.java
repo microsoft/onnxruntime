@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * A sequence of OnnxValue all of the same type.
+ * A sequence of {@link OnnxValue}s all of the same type.
  *
  * Supports the types mentioned in "onnxruntime_c_api.h",
  * currently String, Long, Float, Double, Map&gt;String,Float&lt;, Map&gt;Long,Float&lt;.
@@ -33,6 +33,14 @@ public class OnnxSequence implements OnnxValue {
 
     private final SequenceInfo info;
 
+    /**
+     * Creates the wrapper object for a native sequence.
+     * <p>
+     * Called from native code.
+     * @param nativeHandle The reference to the native sequence object.
+     * @param allocatorHandle The reference to the allocator.
+     * @param info The sequence type information.
+     */
     OnnxSequence(long nativeHandle, long allocatorHandle, SequenceInfo info) {
         this.nativeHandle = nativeHandle;
         this.allocatorHandle = allocatorHandle;
@@ -47,7 +55,7 @@ public class OnnxSequence implements OnnxValue {
     /**
      * Extracts a Java object from the native ONNX type.
      *
-     * Returns either a {@link List} of primitives, {@link String}s, or {@link java.util.Map}s.
+     * Returns either a {@link List} of boxed primitives, {@link String}s, or {@link java.util.Map}s.
      * @return A Java object containing the value.
      * @throws OrtException If the runtime failed to read an element.
      */
@@ -70,9 +78,9 @@ public class OnnxSequence implements OnnxValue {
                 case FLOAT:
                     float[] floats = getFloats(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle);
                     ArrayList<Object> boxed = new ArrayList<>(floats.length);
-                    for (int i = 0; i < floats.length; i++) {
-                        // cast float to Float
-                        boxed.add(floats[i]);
+                    for (float aFloat : floats) {
+                        // box float to Float
+                        boxed.add(aFloat);
                     }
                     return boxed;
                 case DOUBLE:
@@ -113,6 +121,12 @@ public class OnnxSequence implements OnnxValue {
         close(OnnxRuntime.ortApiHandle,nativeHandle);
     }
 
+    /**
+     * Extract the keys for the map at the specified index.
+     * @param index The index to extract.
+     * @return The map keys as an array.
+     * @throws OrtException If the native code failed to read the keys.
+     */
     private Object[] getMapKeys(int index) throws OrtException {
         if (info.mapInfo.keyType == OnnxJavaType.STRING) {
             return getStringKeys(OnnxRuntime.ortApiHandle,nativeHandle,allocatorHandle,index);
@@ -121,6 +135,12 @@ public class OnnxSequence implements OnnxValue {
         }
     }
 
+    /**
+     * Extract the values for the map at the specified index.
+     * @param index The index to extract.
+     * @return The map values as an array.
+     * @throws OrtException If the native code failed to read the values.
+     */
     private Object[] getMapValues(int index) throws OrtException {
         switch (info.mapInfo.valueType) {
             case STRING: {

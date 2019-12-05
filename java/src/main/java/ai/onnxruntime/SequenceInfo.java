@@ -5,7 +5,7 @@
 package ai.onnxruntime;
 
 /**
- * Describes a sequence, including it's element type.
+ * Describes an {@link OnnxSequence}, including it's element type if known.
  */
 public class SequenceInfo implements ValueInfo {
 
@@ -29,6 +29,12 @@ public class SequenceInfo implements ValueInfo {
      */
     public final int length;
 
+    /**
+     * Construct a sequence of known length, with the specified type.
+     * This sequence does not contain maps.
+     * @param length The length of the sequence.
+     * @param sequenceType The element type of the sequence.
+     */
     SequenceInfo(int length, OnnxJavaType sequenceType) {
         this.length = length;
         this.sequenceType = sequenceType;
@@ -36,6 +42,11 @@ public class SequenceInfo implements ValueInfo {
         this.mapInfo = null;
     }
 
+    /**
+     * Construct a sequence of known length containing maps.
+     * @param length The length of the sequence.
+     * @param mapInfo The map type information.
+     */
     SequenceInfo(int length, MapInfo mapInfo) {
         this.length = length;
         this.sequenceOfMaps = true;
@@ -43,6 +54,12 @@ public class SequenceInfo implements ValueInfo {
         this.sequenceType = OnnxJavaType.UNKNOWN;
     }
 
+    /**
+     * Constructs a sequence of known lenght containing maps.
+     * @param length The length of the sequence.
+     * @param keyType The map key type.
+     * @param valueType The map value type.
+     */
     SequenceInfo(int length, OnnxJavaType keyType, OnnxJavaType valueType) {
         this.length = length;
         this.sequenceType = OnnxJavaType.UNKNOWN;
@@ -50,6 +67,10 @@ public class SequenceInfo implements ValueInfo {
         this.mapInfo = new MapInfo(keyType,valueType);
     }
 
+    /**
+     * Is this a sequence of maps?
+     * @return True if it's a sequence of maps.
+     */
     public boolean isSequenceOfMaps() {
         return sequenceOfMaps;
     }
