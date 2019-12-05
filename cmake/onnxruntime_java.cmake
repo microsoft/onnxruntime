@@ -77,8 +77,19 @@ add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
 
 # Copy the binaries
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:onnxruntime4j_jni>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_LINKER_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
 
+if (WIN32) 
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
+# Update the with-binaries jar so it includes the binaries
+add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD
+            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_binaries_platform} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime>
+            DEPENDS onnxruntime4j
+            COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
+            VERBATIM
+        )
+else ()
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_LINKER_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
 # Update the with-binaries jar so it includes the binaries
 add_custom_command(
             TARGET onnxruntime4j_jni POST_BUILD
@@ -87,6 +98,7 @@ add_custom_command(
             COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
             VERBATIM
         )
+endif()
 
 create_javadoc(onnxruntime4j_javadoc
            FILES ${onnxruntime4j_src}
