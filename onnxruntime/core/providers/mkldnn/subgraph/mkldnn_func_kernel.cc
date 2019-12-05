@@ -4,18 +4,18 @@
 #pragma warning(disable : 4505)  //Unreferenced local function has been removed
 #endif
 
+#if 0
+
 #include "mkldnn_func_kernel.h"
-#include "core/common/exceptions.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/mkldnn/mkldnn_common.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_conv.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_batchnorm.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_conv_batchnorm.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_activations.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_pool.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_sum.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_lrn.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "../mkldnn_common.h"
+#include "mkldnn_conv.h"
+#include "mkldnn_batchnorm.h"
+#include "mkldnn_conv_batchnorm.h"
+#include "mkldnn_activations.h"
+#include "mkldnn_pool.h"
+#include "mkldnn_sum.h"
+#include "mkldnn_lrn.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
@@ -271,3 +271,5 @@ template class MkldnnFuncKernel<float>;
 
 }  // namespace mkl_dnn
 }  // namespace onnxruntime
+
+#endif

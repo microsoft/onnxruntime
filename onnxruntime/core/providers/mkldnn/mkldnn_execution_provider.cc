@@ -5,13 +5,23 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/shared_library/bridge_protobuf.h"
-#include "core/framework/allocator.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/kernel_registry.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_func_kernel.h"
+#include "fake_proto.h"
+#include <unordered_set>
+#include "subgraph/mkldnn_func_kernel.h"
 #include "mkldnn_execution_provider.h"
 #include "mkldnn_fwd.h"
+
+const OrtApi* ORT_API_CALL GetApi(uint32_t version) NO_EXCEPTION { return nullptr; }
+const char* ORT_API_CALL GetVersionString() NO_EXCEPTION { return "invalid"; }
+
+static OrtApiBase ort_api_base = {
+    &GetApi,
+    &GetVersionString,
+};
+
+const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
+  return &ort_api_base;
+}
 
 namespace onnxruntime {
 constexpr const char* MKLDNN = "MklDnn";

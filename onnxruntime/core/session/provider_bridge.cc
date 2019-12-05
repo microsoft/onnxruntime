@@ -38,27 +38,34 @@ namespace onnxruntime {
 
 struct ProviderHostImpl : ProviderHost {
   ProviderHostImpl() {
+#if 0
     google_protobuf_internal_RepeatedPtrFieldBase_Reserve = private_cast_RepeatedPtrFieldBase_Reserve();
     google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto = private_cast_Arena_CreateMaybeMessage_onnx_TensorProto();
 
     google_protobuf_internal_GetEmptyStringAlreadyInited = &google::protobuf::internal::GetEmptyStringAlreadyInited;
+#endif
 
     DataTypeImpl_GetType_Tensor = &DataTypeImpl::GetType<Tensor>;
     DataTypeImpl_GetType_float = &DataTypeImpl::GetType<float>;
     DataTypeImpl_GetTensorType_float = &DataTypeImpl::GetTensorType<float>;
 
+#if 0
     onnx_AttributeProto_CopyFrom = &onnx::AttributeProto::CopyFrom;
     onnx_TensorProto_CopyFrom = &onnx::TensorProto::CopyFrom;
 
     onnx_AttributeProto_AttributeType_IsValid = &onnx::AttributeProto_AttributeType_IsValid;
-    CreateAllocator = &onnxruntime::CreateAllocator;
+#endif
+
+    //    CreateAllocator = &onnxruntime::CreateAllocator;
+
+#if 0
 
     CPUIDInfo_GetCPUIDInfo = &CPUIDInfo::GetCPUIDInfo;
-
     KernelDefBuilder_Provider = &KernelDefBuilder::Provider;
     KernelDefBuilder_SetName = &KernelDefBuilder::SetName;
     KernelDefBuilder_SetDomain = &KernelDefBuilder::SetDomain;
     KernelDefBuilder_TypeConstraint = &KernelDefBuilder::TypeConstraint;
+#endif
   }
 
   logging::Logger*
@@ -69,6 +76,27 @@ struct ProviderHostImpl : ProviderHost {
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete p; }
 
+  const TensorShape& Tensor_Shape(const void* this_) override {
+    return reinterpret_cast<const Tensor*>(this_)->Shape();
+  }
+
+  void KernelDefBuilder_Provider(void* this_, char const* p1) override {
+    reinterpret_cast<KernelDefBuilder*>(this_)->Provider(p1);
+  }
+
+  void KernelDefBuilder_SetName(void* this_, char const* p1) override {
+    reinterpret_cast<KernelDefBuilder*>(this_)->SetName(p1);
+  }
+
+  void KernelDefBuilder_SetDomain(void* this_, char const* p1) override {
+    reinterpret_cast<KernelDefBuilder*>(this_)->SetDomain(p1);
+  }
+
+  void KernelDefBuilder_TypeConstraint(void* this_, char const* p1, const DataTypeImpl* p2) override {
+    reinterpret_cast<KernelDefBuilder*>(this_)->TypeConstraint(p1, p2);
+  }
+
+#if 0
   void onnx_AttributeProto_constructor(void* _this) override {
     new (_this) onnx::AttributeProto();
   }
@@ -102,7 +130,13 @@ struct ProviderHostImpl : ProviderHost {
                              *reinterpret_cast<const FuncManager*>(p6),
                              *reinterpret_cast<const DataTransferManager*>(p7));
   }
+#endif
 
+  void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) override {
+    return ::onnxruntime::LogRuntimeError(session_id, status, file, function, line);
+  }
+
+#if 0
   void* CPUAllocator_Alloc(CPUAllocator* _this, uint64_t p1) override {
     return _this->CPUAllocator::Alloc(p1);
   }
@@ -171,6 +205,22 @@ struct ProviderHostImpl : ProviderHost {
     return _this->Node::OpType();
   }
 
+  void onnxruntime_Node_NodeConstIterator_constructor(void* _this, void* p1) override {
+    new (_this) Node::NodeConstIterator(*reinterpret_cast<Node::EdgeConstIterator*>(p1));
+  }
+
+  bool Node_NodeConstIterator_operator_not_equal(const void* _this, const void* p1) {
+    return reinterpret_cast<const Node::NodeConstIterator*>(_this)->operator!=(*reinterpret_cast<const Node::NodeConstIterator*>(p1));
+  }
+
+  void Node_NodeConstIterator_operator_plusplus(void* _this) {
+    reinterpret_cast<Node::NodeConstIterator*>(_this)->operator++();
+  }
+
+  const Node& Node_NodeConstIterator_operator_star(const void* _this) {
+    return reinterpret_cast<const Node::NodeConstIterator*>(_this)->operator*();
+  }
+
   const std::string& NodeArg_Name(const NodeArg* _this) override {
     return _this->NodeArg::Name();
   }
@@ -186,16 +236,21 @@ struct ProviderHostImpl : ProviderHost {
   void onnxruntime_TensorShape_constructor(void* _this, int64_t const* p1, uint64_t p2) override {
     new (_this) TensorShape(p1, p2);
   }
+#endif
 
-  int64_t TensorShape_Size(const TensorShape* _this) override {
-    return _this->TensorShape::Size();
+  void* TensorShape_TensorShape(const std::initializer_list<int64_t>& dims) override {
+    return new TensorShape(dims);
   }
 
-  TensorShape TensorShape_Slice(const TensorShape* _this, uint64_t p1) override {
-    return _this->TensorShape::Slice(p1);
+  int64_t TensorShape_Size(const void* _this) override {
+    return reinterpret_cast<TensorShape*>(_this)->Size();
   }
-}  // namespace onnxruntime
-provider_host_;
+
+  void* TensorShape_Slice(const TensorShape* _this, uint64_t p1) override {
+    return reinterpret_cast<TensorShape*>(_this)->Slice(p1);
+  }
+
+} provider_host_;
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int device_id) {
   void* handle;

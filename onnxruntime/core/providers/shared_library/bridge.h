@@ -1,9 +1,25 @@
+namespace ONNX_NAMESPACE {
+class ValueInfoProto;
+class TensorProto;
+class TensorShapeProto;
+class TypeProto;
+class AttributeProto;
+class OpSchema;
+// String pointer as unique TypeProto identifier.
+using DataType = const std::string*;
+}  // namespace ONNX_NAMESPACE
+
 namespace onnxruntime {
+
+using NodeIndex = size_t;
+class Graph;
+class NodeArg;
+class Node;
+class GraphNodes;
 
 struct IExecutionProviderFactory;
 struct ProviderHost;
 struct KernelCreateInfo;
-class CPUIDInfo;
 
 namespace logging {
 class Logger;
@@ -29,14 +45,19 @@ struct ProviderHost {
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
-  const ::std::string& (*google_protobuf_internal_GetEmptyStringAlreadyInited)();
-  void (google::protobuf::internal::RepeatedPtrFieldBase::*google_protobuf_internal_RepeatedPtrFieldBase_Reserve)(int new_size);
-  onnx::TensorProto* (*google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto)(google::protobuf::Arena*);
+  //  const ::std::string& (*google_protobuf_internal_GetEmptyStringAlreadyInited)();
+  //  void (google::protobuf::internal::RepeatedPtrFieldBase::*google_protobuf_internal_RepeatedPtrFieldBase_Reserve)(int new_size);
+  //  onnx::TensorProto* (*google_protobuf_Arena_CreateMaybeMessage_onnx_TensorProto)(google::protobuf::Arena*);
 
+  virtual const TensorShape& Tensor_Shape(const void* _this) = 0;
+
+#if 0
   // Special functions in bridge_special.h that route through these
   virtual void onnx_AttributeProto_constructor(void* _this) = 0;
   virtual void onnx_AttributeProto_copy_constructor(void* _this, void* copy) = 0;
   virtual void onnx_AttributeProto_destructor(void* _this) = 0;
+
+  virtual void onnxruntime_Node_NodeConstIterator_constructor(void* _this, void* param) = 0;
 
   virtual void onnxruntime_Status_constructor_1(void* _this, const void* category, int code, char const* msg) = 0;
   virtual void onnxruntime_Status_constructor_2(void* _this, const void* category, int code, const void* std_string_msg) = 0;
@@ -46,17 +67,21 @@ struct ProviderHost {
   virtual void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void* p3, void* p4, void* p5, void* p6, void* p7) = 0;
   virtual void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* copy) = 0;
   //
+#endif
 
-  void (onnx::AttributeProto::*onnx_AttributeProto_CopyFrom)(onnx::AttributeProto const& p1);
+  //  void (onnx::AttributeProto::*onnx_AttributeProto_CopyFrom)(onnx::AttributeProto const& p1);
 
-  bool (*onnx_AttributeProto_AttributeType_IsValid)(int p1);
+  //  bool (*onnx_AttributeProto_AttributeType_IsValid)(int p1);
 
-  void (onnx::TensorProto::*onnx_TensorProto_CopyFrom)(onnx::TensorProto const& p1);
+  //  void (onnx::TensorProto::*onnx_TensorProto_CopyFrom)(onnx::TensorProto const& p1);
 
-  std::shared_ptr<IAllocator> (*CreateAllocator)(DeviceAllocatorRegistrationInfo info, int device_id);
+  //  std::shared_ptr<IAllocator> (*CreateAllocator)(DeviceAllocatorRegistrationInfo info, int device_id);
 
-  const CPUIDInfo& (*CPUIDInfo_GetCPUIDInfo)();
+  //  const CPUIDInfo& (*CPUIDInfo_GetCPUIDInfo)();
 
+  virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) = 0;
+
+#if 0
   virtual void* CPUAllocator_Alloc(CPUAllocator* _this, uint64_t p1) = 0;
   virtual void CPUAllocator_Free(CPUAllocator* _this, void* p1) = 0;
   virtual const OrtMemoryInfo& CPUAllocator_Info(const CPUAllocator* _this) = 0;
@@ -71,12 +96,14 @@ struct ProviderHost {
   virtual const Node* GraphViewer_GetNode(const GraphViewer* _this, NodeIndex p1) = 0;
   virtual int GraphViewer_MaxNodeIndex(const GraphViewer* _this) = 0;
   virtual const std::string& GraphViewer_Name(const GraphViewer* _this) = 0;
+#endif
 
-  KernelDefBuilder& (KernelDefBuilder::*KernelDefBuilder_Provider)(char const* p1);
-  KernelDefBuilder& (KernelDefBuilder::*KernelDefBuilder_SetName)(char const* p1);
-  KernelDefBuilder& (KernelDefBuilder::*KernelDefBuilder_SetDomain)(char const* p1);
-  KernelDefBuilder& (KernelDefBuilder::*KernelDefBuilder_TypeConstraint)(char const* p1, const DataTypeImpl* p2);
+  virtual void KernelDefBuilder_Provider(void* _this, char const* p1) = 0;
+  virtual void KernelDefBuilder_SetName(void* _this, char const* p1) = 0;
+  virtual void KernelDefBuilder_SetDomain(void* _this, char const* p1) = 0;
+  virtual void KernelDefBuilder_TypeConstraint(void* _this, char const* p1, const DataTypeImpl* p2) = 0;
 
+#if 0
   virtual Status KernelRegistry_Register(KernelRegistry* _this, KernelCreateInfo&& p1) = 0;
 
   virtual const NodeAttributes& Node_GetAttributes(const Node* _this) = 0;
@@ -84,12 +111,18 @@ struct ProviderHost {
   virtual const ONNX_NAMESPACE::OpSchema* Node_Op(const Node* _this) = 0;
   virtual const std::string& Node_OpType(const Node* _this) = 0;
 
+  virtual bool Node_NodeConstIterator_operator_not_equal(const void* _this, const void* p1) = 0;
+  virtual void Node_NodeConstIterator_operator_plusplus(void* _this) = 0;
+  virtual const Node& Node_NodeConstIterator_operator_star(const void* _this) = 0;
+
   virtual const std::string& NodeArg_Name(const NodeArg* _this) = 0;
   virtual const ONNX_NAMESPACE::TensorShapeProto* NodeArg_Shape(const NodeArg* _this) = 0;
   virtual ONNX_NAMESPACE::DataType NodeArg_Type(const NodeArg* _this) = 0;
+#endif
 
-  virtual int64_t TensorShape_Size(const TensorShape* _this) = 0;
-  virtual TensorShape TensorShape_Slice(const TensorShape* _this, uint64_t) = 0;
-};
+  virtual void* TensorShape_TensorShape(const std::initializer_list<int64_t>& dims) override {
+    virtual int64_t TensorShape_Size(const void* _this) = 0;
+    //  virtual TensorShape TensorShape_Slice(const TensorShape* _this, uint64_t) = 0;
+  };
 
 }  // namespace onnxruntime

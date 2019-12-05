@@ -6,8 +6,11 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "core/framework/op_node_proto_helper.h"
-#include "core/graph/graph.h"
+//#include "core/common/common.h"
+//#include "core/common/const_pointer_container.h"
+//#include "core/framework/op_node_proto_helper.h"
+//#include "core/graph/graph.h"
+#include "core/providers/providers.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {
@@ -20,7 +23,7 @@ struct MklDnnNode {
   int output_index = -1;       // index in output()
   std::string weight_name;
   std::string output_name;
-  std::vector<size_t> parent_nodes; // index to parents in vector mklnodes
+  std::vector<size_t> parent_nodes;  // index to parents in vector mklnodes
 
   std::string ToString() const {
     std::string key;
@@ -49,7 +52,7 @@ struct Subgraph {
     std::vector<std::string> outputs_as_input_other_node;
     std::vector<onnxruntime::NodeIndex> subgraph_node_indexes;
 
-	void Reset() {
+    void Reset() {
       subgraph_node_indexes.clear();
       inputs.clear();
       outputs.clear();

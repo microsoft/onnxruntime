@@ -2,12 +2,12 @@
 // Licensed under the MIT License
 
 #pragma once
-#include "core/framework/op_kernel.h"
+//#include "core/framework/op_kernel.h"
 #include "core/providers/mkldnn/mkldnn_fwd.h"
 #include "core/providers/mkldnn/mkldnn_execution_provider.h"
 #include "core/providers/mkldnn/subgraph/mkldnn_kernel.h"
 #include "core/providers/mkldnn/memcpy_s.h"
-#include "core/util/math.h"
+//#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {

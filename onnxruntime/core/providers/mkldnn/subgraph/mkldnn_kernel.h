@@ -7,10 +7,11 @@
 #endif
 
 #include "mkldnn.hpp"
-#include "core/common/cpuid_info.h"
+//#include "core/common/cpuid_info.h"
+#include "gsl/gsl-lite.hpp"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/mkldnn/subgraph/subgraph.h"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
+#include "subgraph.h"
+#include "../mkldnn_execution_provider.h"
 
 namespace onnxruntime {
 namespace mkl_dnn {

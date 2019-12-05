@@ -1,4 +1,5 @@
 #include <string>
+#include <set>
 #include "bridge_special.h"
 
 namespace std {
@@ -20,6 +21,22 @@ AttributeProto::~AttributeProto() { onnx_AttributeProto_destructor(this); }
 }  // namespace onnx
 
 namespace onnxruntime {
+
+class Node {
+ public:
+  class EdgeEnd {};
+  struct EdgeEndCompare {};
+
+  using EdgeSet = std::set<EdgeEnd, EdgeEndCompare>;
+  using EdgeConstIterator = EdgeSet::const_iterator;
+
+  class NodeConstIterator {
+   public:
+    NodeConstIterator(EdgeConstIterator p_iter);
+  };
+};
+
+Node::NodeConstIterator::NodeConstIterator(EdgeConstIterator p_iter) { onnxruntime_Node_NodeConstIterator_constructor(this, (void*)&p_iter); }
 
 namespace common {
 enum StatusCategory {};
@@ -47,7 +64,6 @@ class TensorShape {
 
 TensorShape::TensorShape(const int64_t* p1, uint64_t p2) { onnxruntime_TensorShape_constructor(this, p1, p2); }
 
-struct Node;
 struct KernelDef;
 struct IExecutionProvider;
 struct OrtValue {};

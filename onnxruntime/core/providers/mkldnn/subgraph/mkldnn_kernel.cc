@@ -1,6 +1,7 @@
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
+#include "..\fake_proto.h"
 #include "mkldnn_kernel.h"
 
 namespace onnxruntime {

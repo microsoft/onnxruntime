@@ -2,10 +2,10 @@
 // Licensed under the MIT License
 #pragma once
 
-#include "core/graph/onnx_protobuf.h"
-#include "core/providers/mkldnn/mkldnn_execution_provider.h"
+#include "../fake_proto.h"
+//#include "core/graph/onnx_protobuf.h"
+#include "../mkldnn_execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/framework/func_api.h"
 #include "mkldnn_kernel.h"
 
 namespace onnxruntime {

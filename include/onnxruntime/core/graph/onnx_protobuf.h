@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#ifndef NO_PROTOBUF
 //TODO(): delete this file from public interface
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -32,3 +33,4 @@
 #else
 #pragma warning(pop)
 #endif
+#endif // NO_PROTOBUF

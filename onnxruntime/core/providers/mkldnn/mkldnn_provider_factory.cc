@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "fake_proto.h"
+#include "core/providers/shared_library/bridge.h"
 #include "core/providers/mkldnn/mkldnn_provider_factory.h"
 #include <atomic>
 #include "mkldnn_execution_provider.h"
-#include "core/session/abi_session_options_impl.h"
-#include "core/providers/shared_library/bridge.h"
 
 using namespace onnxruntime;
 
@@ -50,7 +50,6 @@ struct Provider_Mkldnn : Provider {
 
   void SetProviderHost(ProviderHost& host) override {
     g_host = &host;
-    logging::LoggingManager::s_default_logger_ = g_host->LoggingManager_GetDefaultLogger();
   }
 } provider_;
 

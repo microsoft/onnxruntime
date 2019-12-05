@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
+//#include "core/common/common.h"
+#include "fake_proto.h"
 #include "mkldnn.hpp"
 #include <unordered_map>
 #include <list>

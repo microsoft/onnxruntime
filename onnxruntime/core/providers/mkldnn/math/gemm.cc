@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "../fake_proto.h"
 #include "gemm.h"
-#include "core/providers/cpu/math/gemm_helper.h"
-#include "core/util/math_cpuonly.h"
 #include "mkldnn.h"
 #include "mkldnn.hpp"
-#include "core/providers/mkldnn/mkldnn_fwd.h"
+#include "../mkldnn_fwd.h"
+#include "gsl/gsl"
+#include "Eigen/Core"
 
 namespace onnxruntime {
+
 namespace mkl_dnn {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -18,6 +20,23 @@ ONNX_OPERATOR_KERNEL_EX(
     kMklDnnExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gemm<float>);
+
+class GemmHelper {
+ public:
+  GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias);
+
+  int64_t M() const;
+  int64_t N() const;
+  int64_t K() const;
+  Status State() const;
+};
+
+template <typename T>
+using EigenMatrixMapRowMajor = Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+template <typename T>
+using ConstEigenVectorMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>;
+template <typename T>
+using ConstEigenMatrixMapRowMajor = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
 
 template <>
 Status Gemm<float>::Compute(OpKernelContext* ctx) const {
@@ -35,7 +54,7 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   auto Y = ctx->Output(0, TensorShape({M, N}));
 
   if (M <= 0)
-	return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Empty Tensor not supported");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Empty Tensor not supported");
 
   if (beta_ != 0) {
     auto output_mat = EigenMatrixMapRowMajor<float>(
@@ -85,7 +104,7 @@ Status Gemm<float>::Compute(OpKernelContext* ctx) const {
   auto status = mkldnn_sgemm(trans_A_ ? 'T' : 'N',
                              trans_B_ ? 'T' : 'N',
                              M, N, K,
-                             alpha_, X->template Data<float>() , trans_A_ ? M : K,
+                             alpha_, X->template Data<float>(), trans_A_ ? M : K,
                              W->template Data<float>(), trans_B_ ? K : N,
                              beta_, Y->template MutableData<float>(), N);
   if (status == mkldnn_success) {

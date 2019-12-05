@@ -4,18 +4,20 @@
 // This is the provider DLL side of the bridge to let providers be built as a DLL
 // It implements all of the unresolved externals and routes them across to the real functions in onnxruntime
 
-#include "bridge_protobuf.h"
-#include "core/framework/data_types.h"
-#include "core/framework/tensor.h"
-#include "core/framework/allocatormgr.h"
-#include "core/framework/execution_provider.h"
+//#include "bridge_protobuf.h"
+#include "core/providers/mkldnn/fake_proto.h"
+//#include "core/framework/data_types.h"
+//#include "core/framework/tensor.h"
+//#include "core/framework/allocatormgr.h"
+//#include "core/framework/execution_provider.h"
 
-#include "core/framework/kernel_def_builder.h"
-#include "core/graph/node_arg.h"
+//#include "core/framework/kernel_def_builder.h"
+//#include "core/graph/node_arg.h"
 #include "bridge.h"
 
 onnxruntime::ProviderHost* g_host;
 
+#if 0
 // Constructors/Destructors can't be routed across directly, so instead we create a special 'empty' version of the class in bridge_special.h
 // that generates methods with the same signature as the real ones to keep the linker happy, and lets us then pass the 'this' pointer across
 // to the real functions where we do a placement new or destructor call. The fake class must be empty and do nothing in order to not interfere
@@ -30,6 +32,10 @@ void onnx_AttributeProto_copy_constructor(void* _this, void* copy) {
 
 void onnx_AttributeProto_destructor(void* _this) {
   g_host->onnx_AttributeProto_destructor(_this);
+}
+
+void onnxruntime_Node_NodeConstIterator_constructor(void* _this, void* p1) {
+  g_host->onnxruntime_Node_NodeConstIterator_constructor(_this, p1);
 }
 
 void onnxruntime_Status_constructor_1(void* _this, const void* category, int code, char const* msg) {
@@ -51,6 +57,7 @@ void onnxruntime_OpKernelInfo_constructor(void* _this, void* p1, void* p2, void*
 void onnxruntime_OpKernelInfo_copy_constructor(void* _this, void* copy) {
   g_host->onnxruntime_OpKernelInfo_copy_constructor(_this, copy);
 }
+#endif
 
 // Override default new/delete so that we match the host's allocator
 void* operator new(size_t n) { return g_host->HeapAllocate(n); }
@@ -209,9 +216,13 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
 #endif
 }  // namespace onnxruntime
 
+#include <assert.h>
+#if 0
 #include "core/common/cpuid_info.h"
-#include "core/framework/allocatormgr.h"
+//#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
+#endif
+#if 0
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
@@ -224,9 +235,11 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
 #include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#endif
 
 namespace onnx {
 
+#if 0
 void AttributeProto::CheckTypeAndMergeFrom(google::protobuf::MessageLite const&) { assert(false); }
 
 void AttributeProto::CopyFrom(AttributeProto const& p1) { (this->*g_host->onnx_AttributeProto_CopyFrom)(p1); }
@@ -260,7 +273,10 @@ std::string AttributeProto::GetTypeName() const {
 }
 
 void TensorProto::CopyFrom(TensorProto const& p1) { (this->*g_host->onnx_TensorProto_CopyFrom)(p1); }
+#endif
 }  // namespace onnx
+
+#if 0
 
 google::protobuf::internal::LogMessage::LogMessage(google::protobuf::LogLevel, char const*, int) { assert(false); }
 google::protobuf::internal::LogMessage::~LogMessage() { assert(false); }
@@ -309,8 +325,10 @@ onnx::TensorProto* google::protobuf::Arena::CreateMaybeMessage<onnx::TensorProto
 const ::std::string& google::protobuf::internal::GetEmptyStringAlreadyInited() {
   return g_host->google_protobuf_internal_GetEmptyStringAlreadyInited();
 }
+#endif
 
 namespace onnxruntime {
+#if 0
 
 CPUIDInfo::CPUIDInfo() noexcept { assert(false); }
 
@@ -335,10 +353,16 @@ const std::string& Status::ErrorMessage() const noexcept {
 }
 
 }  // namespace common
+#endif
 
 std::vector<std::string> GetStackTrace() {
   assert(false);
   return {};
+}
+
+#if 0
+void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file, const char* function, uint32_t line) {
+  return g_host->LogRuntimeError(session_id, status, file, function, line);
 }
 
 const CPUIDInfo& CPUIDInfo::GetCPUIDInfo() {
@@ -408,10 +432,13 @@ std::ostream& operator<<(std::ostream& out, const DataTypeImpl* /*data_type*/) {
   return out;
 }
 
+#endif
+
 int64_t TensorShape::Size() const {
-  return g_host->TensorShape_Size(this);
+  return g_host->TensorShape_Size(this_);
 }
 
+#if 0
 TensorShape TensorShape::Slice(uint64_t p1) const {
   return g_host->TensorShape_Slice(this, p1);
 }
@@ -420,23 +447,29 @@ std::string TensorShape::ToString() const {
   assert(false);
   return "";
 }
+#endif
 
 KernelDefBuilder& KernelDefBuilder::Provider(char const* p1) {
-  return (this->*g_host->KernelDefBuilder_Provider)(p1);
+  g_host->KernelDefBuilder_Provider(this_, p1);
+  return *this;
 }
 
 KernelDefBuilder& KernelDefBuilder::SetName(char const* p1) {
-  return (this->*g_host->KernelDefBuilder_SetName)(p1);
+  g_host->KernelDefBuilder_SetName(this_, p1);
+  return *this;
 }
 
 KernelDefBuilder& KernelDefBuilder::SetDomain(char const* p1) {
-  return (this->*g_host->KernelDefBuilder_SetDomain)(p1);
+  g_host->KernelDefBuilder_SetDomain(this_, p1);
+  return *this;
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(char const* p1, const DataTypeImpl* p2) {
-  return (this->*g_host->KernelDefBuilder_TypeConstraint)(p1, p2);
+  g_host->KernelDefBuilder_TypeConstraint(this_, p1, p2);
+  return *this;
 }
 
+#if 0
 const NodeAttributes& Node::GetAttributes() const noexcept {
   return g_host->Node_GetAttributes(this);
 }
@@ -450,6 +483,18 @@ const std::string& Node::OpType() const noexcept {
 
 const ONNX_NAMESPACE::OpSchema* Node::Op() const noexcept {
   return g_host->Node_Op(this);
+}
+
+bool Node::NodeConstIterator::operator!=(const Node::NodeConstIterator& p1) const {
+  return g_host->Node_NodeConstIterator_operator_not_equal(this, &p1);
+}
+
+void Node::NodeConstIterator::operator++() {
+  return g_host->Node_NodeConstIterator_operator_plusplus(this);
+}
+
+const Node& Node::NodeConstIterator::operator*() const {
+  return g_host->Node_NodeConstIterator_operator_star(this);
 }
 
 const std::string&
@@ -544,9 +589,10 @@ const KernelDef& OpKernelInfo::GetKernelDef() const {
   assert(false);
   return *(KernelDef*)nullptr;
 }
-
+#endif
 }  // namespace onnxruntime
 
+#if 0
 #if 0
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/nn/pool.h"
@@ -596,4 +642,5 @@ Status Conv<float>::Compute(OpKernelContext*) const {
   return Status::OK();
 }
 }  // namespace onnxruntime
+#endif
 #endif

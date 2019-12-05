@@ -9,10 +9,10 @@
 #include <memory.h>
 
 #include "core/platform/ort_mutex.h"
-#include "core/graph/constants.h"
-#include "core/framework/allocatormgr.h"
-#include "core/framework/execution_provider.h"
-#include "core/providers/mkldnn/subgraph/subgraph.h"
+//#include "core/graph/constants.h"
+//#include "core/framework/allocatormgr.h"
+//#include "core/framework/execution_provider.h"
+#include "subgraph/subgraph.h"
 
 namespace mkldnn {
 struct memory;
