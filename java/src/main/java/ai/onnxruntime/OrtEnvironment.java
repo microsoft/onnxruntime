@@ -64,7 +64,7 @@ public class OrtEnvironment implements AutoCloseable {
 
     private static volatile LoggingLevel curLogLevel;
 
-    private static volatile String curName;
+    private static volatile String curLoggingName;
 
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
@@ -78,7 +78,7 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
      * using the supplied name and {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
-     * @param name The name of the environment used in logging.
+     * @param name The logging id of the environment.
      * @return An onnxruntime environment.
      */
     public static OrtEnvironment getEnvironment(String name) {
@@ -100,7 +100,7 @@ public class OrtEnvironment implements AutoCloseable {
      * using the supplied name and logging level. If an environment already exists with a different name,
      * that environment is returned and a warning is logged.
      * @param loggingLevel The logging level to use.
-     * @param name The name to log.
+     * @param name The log id.
      * @return The OrtEnvironment singleton.
      */
     public static synchronized OrtEnvironment getEnvironment(LoggingLevel loggingLevel, String name) {
@@ -108,12 +108,12 @@ public class OrtEnvironment implements AutoCloseable {
             try {
                 INSTANCE = new OrtEnvironment(loggingLevel, name);
                 curLogLevel = loggingLevel;
-                curName = name;
+                curLoggingName = name;
             } catch (OrtException e) {
                 throw new IllegalStateException("Failed to create OrtEnvironment",e);
             }
         } else {
-            if ((loggingLevel.value != curLogLevel.value) || (!name.equals(curName))) {
+            if ((loggingLevel.value != curLogLevel.value) || (!name.equals(curLoggingName))) {
                 logger.warning("Tried to change OrtEnvironment's logging level or name while a reference exists.");
             }
         }
@@ -138,7 +138,7 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Create an OrtEnvironment using the specified name and log level.
      * @param loggingLevel The logging level to use.
-     * @param name The environment name.
+     * @param name The logging id of the environment.
      * @throws OrtException If the environment couldn't be created.
      */
     private OrtEnvironment(LoggingLevel loggingLevel, String name) throws OrtException {
@@ -219,7 +219,7 @@ public class OrtEnvironment implements AutoCloseable {
 
     @Override
     public String toString() {
-        return "OrtEnvironment(name="+curName+",logLevel="+curLogLevel+")";
+        return "OrtEnvironment(name="+ curLoggingName +",logLevel="+curLogLevel+")";
     }
 
     /**
