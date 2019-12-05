@@ -543,8 +543,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   // which would be a compatibility risk.
   HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
     // lazy load the lotus_environment. This is the first place where WinML requires the LotusEnvironment to be initialized.
-    lotus_environment_ = std::shared_ptr<WinML::LotusEnvironment>(
-        PheonixSingleton<WinML::LotusEnvironment>());
+    lotus_environment_ = PheonixSingleton<WinML::LotusEnvironment>();
 #ifdef USE_DML
     static std::once_flag schema_override_once_flag;
     std::call_once(schema_override_once_flag, []() {
