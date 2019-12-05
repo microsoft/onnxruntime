@@ -8,7 +8,6 @@
 #include <d3d11on12.h>
 #include "D3DDeviceCache.h"
 
-#include "TelemetryEvent.h"
 #include "ConverterResourceStore.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
@@ -28,9 +27,6 @@ LearningModelDevice::LearningModelDevice(Windows::AI::MachineLearning::LearningM
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
   if (m_isCpuDevice) {
     assert(m_deviceCache->GetD3D12Device() == nullptr);
-  } else if (telemetry_helper.IsMeasureSampled()) {
-    profiler.Enable(ProfilerType::GPU);
-    profiler.Reset(ProfilerType::GPU);
   }
 }
 WINML_CATCH_ALL

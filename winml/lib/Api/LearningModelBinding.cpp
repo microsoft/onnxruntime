@@ -7,7 +7,6 @@
 #include "FeatureValues.h"
 #include "LearningModelBinding.h"
 #include "LearningModelSession.h"
-#include "TelemetryEvent.h"
 #include <onnxruntime_c_api.h>
 #include "LearningModel.h"
 
@@ -150,7 +149,6 @@ void LearningModelBinding::Bind(
     hstring const& name,
     Windows::Foundation::IInspectable const& value,
     Windows::Foundation::Collections::IPropertySet const& properties) try {
-  _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
 
   BindingType bindingType;
   std::string bindingName;
@@ -487,7 +485,6 @@ STDMETHODIMP LearningModelBinding::Bind(
     UINT32 cchName,
     IUnknown* value) {
   try {
-    _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
 
     BindingType bindingType;
     std::string bindingName;

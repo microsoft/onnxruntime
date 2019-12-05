@@ -4,7 +4,6 @@
 #include "pch.h"
 #include <windows.h>
 #include <Hstring.h>
-#include "WinMLProfiler.h"
 
 #include "LearningModelDevice.h"
 
@@ -31,18 +30,9 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
       // Register the TraceLogging provider feeding telemetry.  It's OK if this fails;
       // trace logging calls just become no-ops.
       telemetry_helper.Register();
-
-      // Log Dll load
-      telemetry_helper.LogDllAttachEvent();
-      // Enable Profiling if the device is sampled at measure level
-      if (telemetry_helper.IsMeasureSampled()) {
-        profiler.Enable(ProfilerType::CPU);
-        profiler.Reset(ProfilerType::CPU);
-      }
       wil::SetResultTelemetryFallback(&OnErrorReported);
       break;
     case DLL_PROCESS_DETACH:
-      telemetry_helper.LogRuntimePerf(profiler, true);
       // Unregister Trace Logging Provider feeding telemetry
       telemetry_helper.UnRegister();
 

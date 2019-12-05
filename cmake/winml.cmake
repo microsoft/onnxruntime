@@ -77,11 +77,9 @@ target_midl(winml_api_native_internal
 
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_telemetry STATIC
-  ${winml_lib_telemetry_dir}/inc/TelemetryEvent.h
   ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfig.h
   ${winml_lib_common_dir}/inc/WinMLTelemetryHelper.h
   ${winml_lib_telemetry_dir}/Telemetry.cpp
-  ${winml_lib_telemetry_dir}/TelemetryEvent.cpp
   ${winml_lib_telemetry_dir}/WinMLTelemetryHelper.cpp
   ${winml_lib_telemetry_dir}/pch.h
 )

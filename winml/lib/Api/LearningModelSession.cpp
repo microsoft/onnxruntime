@@ -13,7 +13,6 @@
 #include "LearningModelDevice.h"
 #include "LearningModelSessionOptions.h"
 #include "TensorFeatureDescriptor.h"
-#include "TelemetryEvent.h"
 
 #include "D3DDeviceCache.h"
 
@@ -89,9 +88,6 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
 }
 
 void LearningModelSession::Initialize() {
-  // Begin recording session creation telemetry
-  _winmlt::TelemetryEvent session_creation_event(
-    _winmlt::EventCategory::kSessionCreation);
 
   // Get the optimized model proto from the learning model
   com_ptr<winmla::IModelProto> model_proto; 
@@ -142,11 +138,6 @@ void LearningModelSession::Initialize() {
 
   // Cache the constructed session
   inference_session_ = session;
-
-  telemetry_helper.LogSessionCreation(
-    WinML::Strings::UTF8FromHString(model_.Name()),
-    device_impl->IsCpuDevice(),
-    device_impl->GetDeviceLuid());
 }
 
 wfc::IPropertySet
@@ -312,7 +303,6 @@ wf::IAsyncOperation<winml::LearningModelEvaluationResult>
 LearningModelSession::EvaluateAsync(
     winml::LearningModelBinding binding,
     hstring const correlation_id) {
-  _winmlt::PerformanceTelemetryEvent kEvaluateModel_event(WinMLRuntimePerf::kEvaluateModel);
 
   auto device = device_.as<LearningModelDevice>();
 
@@ -361,7 +351,6 @@ LearningModelSession::Evaluate(
     winml::LearningModelBinding binding,
     hstring const& correlation_id) try {
   ToggleProfiler();
-  _winmlt::PerformanceTelemetryEvent kEvaluateModel_event(WinMLRuntimePerf::kEvaluateModel);
 
   ApplyEvaluationProperties();
 

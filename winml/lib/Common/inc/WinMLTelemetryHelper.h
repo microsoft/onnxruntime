@@ -80,20 +80,8 @@ class WinMLTelemetryHelper {
   void UnRegister() {
     TraceLoggingUnregister(provider_);
   }
-
-  void LogDllAttachEvent();
-  void LogSessionCreation(const std::string& modelname, bool isCpu, LUID adapterLuid);
-  void LogModelCreation(bool fromStream,
-                        const char* author,
-                        const char* name,
-                        const char* domain,
-                        const char* description,
-                        int64_t version,
-                        bool bUseFP16,
-                        const std::unordered_map<std::string, std::string>& modelMetadata);
   void LogRuntimeError(HRESULT hr, std::string message, PCSTR file, PCSTR function, int line);
   void LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line);
-  void LogRuntimePerf(Profiler<WinMLRuntimePerf>& profiler, bool force);
   void LogRegisterOperatorKernel(
       const char* name,
       const char* domain,

@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/common/logging/isink.h"
-#include "WinMLProfiler.h"
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include "WinMLAdapter.h"
@@ -44,12 +43,7 @@ inline onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
 }
 
 static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::ApplicationModel::SuspendingEventArgs const& args) {
-#ifdef LAYERING_DONE
-    if (!profiler.IsStillReset())  //If profiler is still reset, then don't log RuntimePerf
-  {
-    telemetry_helper.LogRuntimePerf(profiler, true);
-  }
-#endif
+
 }
 
 class LotusEnvironment {

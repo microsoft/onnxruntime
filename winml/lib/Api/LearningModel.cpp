@@ -5,8 +5,6 @@
 
 #include "LearningModel.h"
 
-#include "TelemetryEvent.h"
-
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
@@ -22,8 +20,6 @@ WINML_CATCH_ALL
 LearningModel::LearningModel(
     const std::string& path,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
-  _winmlt::PerformanceTelemetryEvent kLoadModel_event(
-      WinMLRuntimePerf::kLoadModel);
 
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
@@ -31,15 +27,12 @@ LearningModel::LearningModel(
 
   Initialize();
 
-  LogCreationEvent(true);
 }
 WINML_CATCH_ALL
 
 LearningModel::LearningModel(
     const wss::IRandomAccessStreamReference stream,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
-  _winmlt::PerformanceTelemetryEvent kLoadModel_event(
-      WinMLRuntimePerf::kLoadModel);
 
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
@@ -49,62 +42,11 @@ LearningModel::LearningModel(
 
   Initialize();
 
-  LogCreationEvent(true);
 }
 WINML_CATCH_ALL
 
 void LearningModel::Initialize() {
   WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
-}
-
-void LearningModel::LogCreationEvent(bool /*fromStream*/) {
-  auto input_descriptors = InputFeatures();
-  bool use_fp16 = false;
-  for (auto descriptor : input_descriptors) {
-    ModelUseFP16(descriptor, use_fp16);
-    if (use_fp16) {
-      break;
-    }
-  }
-#ifdef LAYERING_DONE
-  telemetry_helper.LogModelCreation(
-      fromStream,
-      model_info_->author(),
-      model_info_->name(),
-      model_info_->domain(),
-      model_info_->description(),
-      model_info_->version(),
-      use_fp16,
-      model_info_->model_metadata());
-#endif
-}
-
-void LearningModel::ModelUseFP16(
-    winml::ILearningModelFeatureDescriptor descriptor,
-    bool& use_fp16) {
-  auto kind = descriptor.Kind();
-  switch (kind) {
-    case LearningModelFeatureKind::Image:
-      //images do not support float16 yet
-      break;
-    case LearningModelFeatureKind::Map: {
-      auto map_descriptor = descriptor.as<MapFeatureDescriptor>();
-      ModelUseFP16(map_descriptor->ValueDescriptor(), use_fp16);
-    } break;
-    case LearningModelFeatureKind::Sequence: {
-      auto sequence_descriptor = descriptor.as<SequenceFeatureDescriptor>();
-      ModelUseFP16(sequence_descriptor->ElementDescriptor(), use_fp16);
-    } break;
-    case LearningModelFeatureKind::Tensor: {
-      auto tensor_descriptor = descriptor.as<TensorFeatureDescriptor>();
-      if (tensor_descriptor->TensorKind() == TensorKind::Float16) {
-        use_fp16 = true;
-        return;
-      }
-    } break;
-    default:
-      break;
-  }
 }
 
 hstring

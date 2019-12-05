@@ -11,7 +11,3 @@ TRACELOGGING_DEFINE_PROVIDER(
     WINML_PROVIDER_GUID,
     TraceLoggingOptionMicrosoftTelemetry());
 
-//
-// Perf profiling support
-//
-Profiler<WinMLRuntimePerf> profiler;
