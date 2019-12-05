@@ -262,9 +262,15 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
                          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                          IWinMLAdapter> {
  private:
-  std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
+  // TODO: Making this static is only temporary. A fix addressing the resulting the memory leaks is needed.
+  static std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
 
  public:
+  WinMLAdapter() {
+    if (lotus_environment_ == nullptr) {
+      lotus_environment_ = PheonixSingleton<WinML::LotusEnvironment>();
+    }
+  }
   // factory methods for creating an ort model from a path
   HRESULT STDMETHODCALLTYPE CreateModelProto(
       const char* path,
@@ -567,10 +573,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   // deferred until first evaluation.  It also prevents a situation where inference functions in externally
   // registered schema are reachable only after upstream schema have been revised in a later OS release,
   // which would be a compatibility risk.
-  HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
-    // lazy load the lotus_environment. This is the first place where WinML requires the LotusEnvironment to be initialized.
-    lotus_environment_ = std::shared_ptr<WinML::LotusEnvironment>(
-        PheonixSingleton<WinML::LotusEnvironment>());
+  HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override try {
 #ifdef USE_DML
     static std::once_flag schema_override_once_flag;
     std::call_once(schema_override_once_flag, []() {
@@ -644,6 +647,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   }
   WINML_CATCH_ALL_COM
 };  // namespace Windows::AI::MachineLearning::Adapter
+std::shared_ptr<WinML::LotusEnvironment> WinMLAdapter::lotus_environment_ = nullptr;
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) try {
   // make an adapter instance
