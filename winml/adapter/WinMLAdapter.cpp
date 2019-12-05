@@ -256,9 +256,6 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
 
  public:
-  WinMLAdapter() : lotus_environment_(PheonixSingleton<WinML::LotusEnvironment>()) {
-  }
-
   // factory methods for creating an ort model from a path
   HRESULT STDMETHODCALLTYPE CreateModelProto(
       const char* path,
@@ -545,6 +542,9 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   // registered schema are reachable only after upstream schema have been revised in a later OS release,
   // which would be a compatibility risk.
   HRESULT STDMETHODCALLTYPE OverrideSchemaInferenceFunctions() override {
+    // lazy load the lotus_environment. This is the first place where WinML requires the LotusEnvironment to be initialized.
+    lotus_environment_ = std::shared_ptr<WinML::LotusEnvironment>(
+        PheonixSingleton<WinML::LotusEnvironment>());
 #ifdef USE_DML
     static std::once_flag schema_override_once_flag;
     std::call_once(schema_override_once_flag, []() {
