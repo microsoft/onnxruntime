@@ -91,7 +91,7 @@ add_custom_command(
 create_javadoc(onnxruntime4j_javadoc
            FILES ${onnxruntime4j_src}
            DOCTITLE "Onnx Runtime Java API"
-           WINDOWTITLE "Onnx Runtime Java API - javadoc"
+           WINDOWTITLE "OnnxRuntime-Java-API"
            AUTHOR FALSE
            USE TRUE
            VERSION FALSE
