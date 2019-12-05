@@ -9,10 +9,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "intel_execution_provider.h"
-#include "intel_graph.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
+#include "backend_manager.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -84,19 +84,6 @@ IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo&
   }
 
 } */
-//Save ONNX Model
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
-   int fd;
-   Status status = Env::Default().FileOpenWr(file_path,fd);
-
-   google::protobuf::io::FileOutputStream output(fd);
-   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-   if(result)
-  return Status::OK();
-   else
-        return Status::OK();
-}
-
 
 //Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
@@ -868,49 +855,27 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
-  const auto* node_function = fused_node->GetFunctionBody();
-
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
-
-  const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
-
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
-
-  if(intel_ep::IsDebugEnabled())
-    SaveModel(model_proto, "intel_model.onnx");
-  return model_proto;
-}
-
 common::Status IntelExecutionProvider::Compile(
     const std::vector<onnxruntime::Node*>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
-    std::shared_ptr<intel_ep::IntelGraph> intel_graph;
-    intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node);
-    auto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
+    std::shared_ptr<intel_ep::BackendManager> backend_manager = std::make_shared<intel_ep::BackendManager>(fused_node, *GetLogger());
 
     compute_info.create_state_func =
-        [intel_graph](ComputeContext* context, FunctionState* state) {
+        [backend_manager](ComputeContext* context, FunctionState* state) {
           IntelEPFunctionState* p = new IntelEPFunctionState();
           p->allocate_func = context->allocate_func;
           p->destroy_func = context->release_func;
           p->allocator_handle = context->allocator_handle;
-          p->intel_graph = intel_graph;
+          p->backend_manager = backend_manager;
           *state = static_cast<FunctionState>(p);
           return 0;
         };
-    compute_info.compute_func = [model_proto](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<IntelEPFunctionState*>(state);
       try {
-        function_state->intel_graph->Infer(model_proto, *api, context);
+        function_state->backend_manager->Compute(*api, context);
       } catch (const char* msg) {
         return common::Status(common::ONNXRUNTIME, common::FAIL, msg);
       }

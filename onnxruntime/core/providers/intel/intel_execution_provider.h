@@ -8,7 +8,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/allocatormgr.h"
-#include "intel_graph.h"
+#include "backend_manager.h"
+// #include "intel_graph.h"
 //#include "intel_custom_op.h"
 #include <map>
 
@@ -36,8 +37,7 @@ struct IntelEPFunctionState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc destroy_func = nullptr;
   AllocatorHandle allocator_handle = nullptr;
-  std::shared_ptr<intel_ep::IntelGraph> intel_graph = nullptr;
-  const onnxruntime::Node* fused_node_copy;
+  std::shared_ptr<intel_ep::BackendManager> backend_manager;
 };
 
 // Logical device representation.
@@ -63,8 +63,6 @@ class IntelExecutionProvider : public IExecutionProvider {
   //const onnxruntime::Node* fused_node_copy;
  private:
   IntelExecutionProviderInfo info_;
-  const onnxruntime::Node* fused_node_copy;
-  std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 };
 
 }  // namespace onnxruntime

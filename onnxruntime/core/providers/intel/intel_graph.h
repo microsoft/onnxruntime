@@ -16,9 +16,9 @@ bool IsDebugEnabled();
 
 class IntelGraph {
  public:
-  IntelGraph(const onnxruntime::Node* fused_node);
+  IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision);
 
-  void Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi ort, OrtKernelContext* context);
+  void Infer(Ort::CustomOpApi ort, OrtKernelContext* context);
 
   static const std::string log_tag;
 
@@ -29,7 +29,7 @@ class IntelGraph {
 
   void SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network);
 
-  size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor, InferenceEngine::SizeVector graph_dims);
+  // size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor, InferenceEngine::SizeVector graph_dims);
 
   void GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[], std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
@@ -39,13 +39,15 @@ class IntelGraph {
 
   void CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[], size_t batch_slice_idx, size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
-  std::string name_ = "test";
-  const onnxruntime::Node* fused_node_;
-  size_t num_inf_reqs_;
-  mutable std::mutex compute_lock_;
-  std::string device_id_;
   std::vector<int> input_indexes_;
+  std::string device_id_;
   InferenceEngine::Precision precision_;
+  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
+  size_t num_inf_reqs_;
+  //InferenceEngine::ExecutableNetwork exec_network_;
+  InferenceEngine::Core ie_;
+  std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
+  mutable std::mutex compute_lock_;
 };
 }  // namespace intel_ep
 }  // namespace onnxruntime
