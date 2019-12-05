@@ -1,5 +1,6 @@
 parameters:
   AgentPool : 'Hosted macOS High Sierra'
+  IsMacOS : 'true'
 
 jobs:
 - job: NuGet_Test_MacOS
@@ -38,7 +39,8 @@ jobs:
                $(Build.BinariesDirectory)/nuget-artifact \
                $(Build.SourcesDirectory) \
                $(Build.BinariesDirectory) \
-               $(NuGetPackageVersionNumber)
+               $(NuGetPackageVersionNumber) \
+               ${{ parameters.IsMacOS }}
 
      if [ $? -ne 0 ]; then
          echo "Failed to run test"

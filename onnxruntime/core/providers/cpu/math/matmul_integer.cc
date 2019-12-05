@@ -100,8 +100,7 @@ Status MatMulInteger<uint8_t, int8_t>::Compute(OpKernelContext* ctx) const {
       auto t = ctx->Input<Tensor>(input_idx);
       ORT_ENFORCE(t->Shape().NumDimensions() <= 1 && t->Shape().Size() == 1,
                   "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
-      ORT_ENFORCE(utils::IsPrimitiveDataType<int8_t>(t->DataType()) ||
-                  utils::IsPrimitiveDataType<uint8_t>(t->DataType()));
+      ORT_ENFORCE(t->IsDataType<int8_t>() || t->IsDataType<uint8_t>());
       auto data = reinterpret_cast<const int8_t*>(t->DataRaw());
       auto vec = std::vector<int8_t>(data, data + t->Shape().Size());
       return std::all_of(vec.begin(), vec.end(), [](int8_t v) { return v == 0; });
