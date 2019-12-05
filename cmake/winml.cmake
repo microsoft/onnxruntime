@@ -329,6 +329,7 @@ set_target_properties(winml_lib_api
   ${target_folder})
 
 # Add deps
+add_dependencies(winml_lib_api onnx)
 add_dependencies(winml_lib_api winml_sdk_cppwinrt)
 add_dependencies(winml_lib_api winml_api)
 add_dependencies(winml_lib_api winml_api_native)
