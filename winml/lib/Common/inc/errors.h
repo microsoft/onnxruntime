@@ -109,3 +109,8 @@ inline __declspec(noinline) winrt::hresult_error _to_hresult() noexcept {
   catch (...) {                    \
     return _to_hresult().to_abi(); \
   }
+
+#define WINML_CATCH_ALL_DONOTHING        \
+  catch (...) {                    \
+    return; \
+  }

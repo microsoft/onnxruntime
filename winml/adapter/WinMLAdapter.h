@@ -119,12 +119,16 @@ public:
 
     InferenceSession(onnxruntime::InferenceSession * session);
 
-    onnxruntime::InferenceSession* STDMETHODCALLTYPE get() override { return session_.get(); }
-    HRESULT STDMETHODCALLTYPE GetOrtSession(OrtSession ** out) override {
+    onnxruntime::InferenceSession* STDMETHODCALLTYPE get() noexcept override { 
+      return session_.get(); 
+    }
+
+    HRESULT STDMETHODCALLTYPE GetOrtSession(OrtSession ** out) noexcept override {
         // (OrtSession *) are really (InferenceSession *) as well
         *out = reinterpret_cast<OrtSession*>(session_.get());
         return S_OK;
     }
+    
     void STDMETHODCALLTYPE RegisterGraphTransformers() override;
     HRESULT STDMETHODCALLTYPE RegisterCustomRegistry(IMLOperatorRegistry* registry) override;
     HRESULT STDMETHODCALLTYPE LoadModel(IModelProto* model_proto) override;
