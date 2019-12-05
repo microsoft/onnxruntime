@@ -106,7 +106,7 @@ Internal copy node
 }
 
 Environment::~Environment() {
-  // TODO:  we need to 2 support 2 things:
+  // TODO:  we need to support 2 things:
   // we need to NOT shutdown the lib so that folks can create more Env's and use them
   // we need to have a way to NOT leak memory since ORT can be a DLL
   //::google::protobuf::ShutdownProtobufLibrary();
