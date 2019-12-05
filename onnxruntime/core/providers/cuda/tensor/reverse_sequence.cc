@@ -20,7 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
     ReverseSequenceOp);
 
 #define ReverseSequenceCallCudaImplTypeAs(T, TEqual)                                                 \
-  if (data_type == DataTypeImpl::GetType<T>()) {                                                     \
+  if (X.IsDataType<T>()) {                                                    \
     CUDA_RETURN_IF_ERROR(ReverseSequenceCudaImpl(                                                    \
         reinterpret_cast<const typename ToCudaType<TEqual>::MappedType*>(X.template Data<T>()),      \
         seq_lengths.Data<int64_t>(),                                                                 \
@@ -32,7 +32,6 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status ReverseSequenceOp::ComputeInternal(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
-  const auto data_type = X.DataType();
   const auto& dims = X.Shape();
 
   const auto batch_size = time_major_ ? dims[1] : dims[0];
@@ -65,7 +64,7 @@ Status ReverseSequenceOp::ComputeInternal(OpKernelContext* context) const {
   ReverseSequenceCallCudaImplTypeAs(uint64_t, int64_t);
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Type for ", data_type, " is not supported yet in ReverseSequence.");
+                         "Type for ", X.DataType(), " is not supported yet in ReverseSequence.");
 }
 
 }  // namespace cuda
