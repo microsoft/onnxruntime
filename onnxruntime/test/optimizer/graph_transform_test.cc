@@ -1290,6 +1290,11 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(op_to_count["Shape"] == 0);
   ASSERT_TRUE(op_to_count["Expand"] == 0);
   ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 0);
+  ASSERT_TRUE(op_to_count["NonZero"] == 0);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["Squeeze"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
   ASSERT_TRUE(op_to_count["Attention"] == 1);
