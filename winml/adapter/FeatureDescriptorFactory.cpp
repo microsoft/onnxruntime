@@ -80,9 +80,7 @@ std::wstring GetModulePath()
     return val;
 }
 
-extern "C"
-int32_t WINRT_CALL WINRT_RoGetActivationFactory(void* classId, winrt::guid const& iid, void** factory) noexcept
-{
+extern "C" int32_t __stdcall WINRT_RoGetActivationFactory(void* classId, winrt::guid const& iid, void** factory) noexcept {
     *factory = nullptr;
     HSTRING classId_hstring = (HSTRING)classId;
     std::wstring_view name{ WindowsGetStringRawBuffer(classId_hstring, nullptr), WindowsGetStringLen(classId_hstring) };
