@@ -223,8 +223,8 @@ Status PadCpuImpl(OpKernelContext* ctx,
   std::vector<int64_t> input_extents;
 
   // Calculate output dimensions, and handle any negative padding
-  input_starts.reserve(2 * new_dims_count);
-  input_extents.reserve(2 * new_dims_count);
+  input_starts.reserve(new_dims_count);
+  input_extents.reserve(new_dims_count);
   for (size_t i = 0; i < new_dims_count; i++) {
     input_starts.push_back(-1 * reshaped_slice[i]);
     input_extents.push_back(reshaped_input_dims[i] + reshaped_slice[i] + reshaped_slice[i + new_dims_count]);
