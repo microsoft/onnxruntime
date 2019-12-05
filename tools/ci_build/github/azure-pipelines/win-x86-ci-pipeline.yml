@@ -96,7 +96,7 @@ jobs:
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'      
 
-  - ${{ if eq(variables['BuildConfig'], 'RelWithDebInfo') }}:
+  - ${{ if eq($(BuildConfig), 'RelWithDebInfo') }}:
     - task: DotNetCoreCLI@2
       displayName: 'Test C#'
       inputs:
