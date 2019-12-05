@@ -686,11 +686,6 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
-# allow the caller to tell us where the nuget packages are going
-if ("${REPO_PACKAGE_LOCATION}" STREQUAL "")
-    set(REPO_PACKAGE_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/packages)
-endif()
-
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
