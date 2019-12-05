@@ -163,13 +163,13 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
             return 2;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:      // maps to c type uint32_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:   // maps to c type float
             return 4;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:      // maps to c type uint64_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:   // maps to c type int64_t
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:      // maps to c type double
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
             return 8;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
@@ -182,7 +182,8 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
 }
 
 jfloat convertHalfToFloat(uint16_t half) {
-    return ((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13);
+    float floatVal = (float&) (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
+    return floatVal;
 }
 
 jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * info) {
