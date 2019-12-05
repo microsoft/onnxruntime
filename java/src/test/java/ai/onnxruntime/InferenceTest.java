@@ -171,7 +171,7 @@ public class InferenceTest {
                 float[] inputData = loadTensorFromFile(resourcePath.resolve("bench.in"));
                 // this is the data for only one input tensor for this model
                 Object tensorData = OrtUtil.reshape(inputData,((TensorInfo) inputMeta.getInfo()).getShape());
-                OnnxTensor inputTensor = env.createTensor(tensorData);
+                OnnxTensor inputTensor = OnnxTensor.createTensor(env,tensorData);
                 container.put(inputMeta.getName(),inputTensor);
 
                 // Run the inference
@@ -221,7 +221,7 @@ public class InferenceTest {
                 inputDataInt[i] = (int) inputData[i];
             }
             Object tensor = OrtUtil.reshape(inputDataInt,inputShape);
-            container.put(inputMeta.getName(),env.createTensor(tensor));
+            container.put(inputMeta.getName(),OnnxTensor.createTensor(env,tensor));
             try {
                 session.run(container);
                 OnnxValue.close(container.values());
@@ -248,7 +248,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             long[] inputShape = ((TensorInfo)inputMeta.getInfo()).shape;
             Object tensor = OrtUtil.reshape(inputData, inputShape);
-            container.put(inputMeta.getName(),env.createTensor(tensor));
+            container.put(inputMeta.getName(),OnnxTensor.createTensor(env,tensor));
             ExecutorService executor = Executors.newFixedThreadPool(numThreads);
             for (int i = 0; i < numThreads; i++) {
                 executor.submit(() -> {
@@ -327,7 +327,7 @@ public class InferenceTest {
                             float[] dataIn = loadTensorFromFilePb(inputDataPath);
                             float[] dataOut = loadTensorFromFilePb(outputDataPath);
                             List<OnnxTensor> nov = new ArrayList<>();
-                            nov.add(env.createTensor(OrtUtil.reshape(dataIn, inputShape)));
+                            nov.add(OnnxTensor.createTensor(env,OrtUtil.reshape(dataIn, inputShape)));
                             OrtSession.Result res = session.run(nov);
                             float[] resultArray = TestHelpers.flattenFloat(res.values().iterator().next().getValue());
                             assertArrayEquals(dataOut, resultArray, 1e-6f);
@@ -356,7 +356,7 @@ public class InferenceTest {
             Map<String, OnnxTensor> container = new HashMap<>();
             float[] flatInput = new float[]{1.0f, 2.0f, -3.0f, Float.MIN_VALUE, Float.MAX_VALUE};
             Object tensorIn = OrtUtil.reshape(flatInput, shape);
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName, ov);
             float[] resultArray;
             try (OrtSession.Result res = session.run(container)) {
@@ -371,7 +371,7 @@ public class InferenceTest {
 
             // Now test loading from buffer
             FloatBuffer buffer = FloatBuffer.wrap(flatInput);
-            OnnxTensor newTensor = env.createTensor(buffer,shape);
+            OnnxTensor newTensor = OnnxTensor.createTensor(env,buffer,shape);
             container.put(inputName,newTensor);
             try (OrtSession.Result res = session.run(container)) {
                 resultArray = TestHelpers.flattenFloat(res.get(0).getValue());
@@ -393,7 +393,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             boolean[] flatInput = new boolean[] { true, false, true, false, true };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
             try (OrtSession.Result res = session.run(container)) {
                 boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
@@ -415,7 +415,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             int[] flatInput = new int[] { 1, -2, -3, Integer.MIN_VALUE, Integer.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
             try (OrtSession.Result res = session.run(container)) {
                 int[] resultArray = TestHelpers.flattenInteger(res.get(0).getValue());
@@ -437,7 +437,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             double[] flatInput = new double[] { 1.0, 2.0, -3.0, 5, 5 };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
             try (OrtSession.Result res = session.run(container)) {
                 double[] resultArray = TestHelpers.flattenDouble(res.get(0).getValue());
@@ -459,7 +459,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             byte[] flatInput = new byte[] { 1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
             try (OrtSession.Result res = session.run(container)) {
                 byte[] resultArray = TestHelpers.flattenByte(res.get(0).getValue());
@@ -481,7 +481,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             short[] flatInput = new short[] { 1, 2, 3, Short.MIN_VALUE, Short.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
             try (OrtSession.Result res = session.run(container)) {
                 short[] resultArray = TestHelpers.flattenShort(res.get(0).getValue());
@@ -503,7 +503,7 @@ public class InferenceTest {
             Map<String,OnnxTensor> container = new HashMap<>();
             long[] flatInput = new long[] { 1, 2, -3, Long.MIN_VALUE, Long.MAX_VALUE };
             Object tensorIn = OrtUtil.reshape(flatInput, new long[] { 1, 5 });
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
             try (OrtSession.Result res = session.run(container)) {
                 long[] resultArray = TestHelpers.flattenLong(res.get(0).getValue());
@@ -538,7 +538,7 @@ public class InferenceTest {
             long[] shape = new long[] { 1, 2 };
             float[] flatInput = new float[] {5.8f, 2.8f};
             Object tensorIn = OrtUtil.reshape(flatInput,shape);
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(session.getInputNames().iterator().next(),ov);
 
             try (OrtSession.Result outputs = session.run(container)) {
@@ -598,7 +598,7 @@ public class InferenceTest {
             long[] shape = new long[] { 1, 2 };
             float[] flatInput = new float[] {5.8f, 2.8f};
             Object tensorIn = OrtUtil.reshape(flatInput,shape);
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(session.getInputNames().iterator().next(),ov);
 
             try (OrtSession.Result outputs = session.run(container)) {
@@ -650,7 +650,7 @@ public class InferenceTest {
 
             Map<String,OnnxTensor> container = new HashMap<>();
             String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test"}};
-            OnnxTensor ov = env.createTensor(tensorIn);
+            OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
 
             try (OrtSession.Result outputs = session.run(container)) {
@@ -672,7 +672,7 @@ public class InferenceTest {
             }
 
             String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
-            ov = env.createTensor(tensorInFlatArr, new long[]{2,2});
+            ov = OnnxTensor.createTensor(env,tensorInFlatArr, new long[]{2,2});
             container.put(inputName,ov);
 
             try (OrtSession.Result outputs = session.run(container)) {

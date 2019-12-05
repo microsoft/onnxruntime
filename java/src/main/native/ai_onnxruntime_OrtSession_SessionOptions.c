@@ -10,7 +10,7 @@
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
-#include "onnxruntime/core/providers/mkldnn/mkldnn_provider_factory.h"
+#include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/ngraph/ngraph_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
@@ -123,14 +123,14 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addMkldnn
+ * Method:    addDnnl
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMkldnn
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnnl
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
     (void)jobj;
-  #ifdef USE_MKLDNN
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Mkldnn((OrtSessionOptions*) handle,useArena));
+  #ifdef USE_DNNL
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*) handle,useArena));
   #else
     (void)apiHandle;(void)handle;(void)useArena; // Parameters used when MKL-DNN is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MKL-DNN support.");
