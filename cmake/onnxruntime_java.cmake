@@ -12,7 +12,7 @@ include_directories(${JNI_INCLUDE_DIRS})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
-set(CMAKE_JAVA_COMPILE_FLAGS "-source" "1.8" "-target" "1.8")
+set(CMAKE_JAVA_COMPILE_FLAGS "-source" "1.8" "-target" "1.8" "-encoding" "UTF-8")
 if (onnxruntime_RUN_ONNX_TESTS)
   set(JAVA_DEPENDS onnxruntime ${test_data_target})
 else()
