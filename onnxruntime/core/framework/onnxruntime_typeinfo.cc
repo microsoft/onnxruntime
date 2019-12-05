@@ -82,6 +82,11 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
     return nullptr;
   }
 
+  if (type->IsTensorSequenceType()) {
+    *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
+    return nullptr;
+  }
+
   const auto* type_proto = type->GetTypeProto();
   if (type_proto != nullptr) {
     // Place Opaque first as tensors will be mostly handled above and maps and sequences are not common
