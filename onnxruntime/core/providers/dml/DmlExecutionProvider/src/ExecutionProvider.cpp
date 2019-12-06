@@ -133,8 +133,6 @@ namespace Dml
         }
     }
 
-
-
     ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
