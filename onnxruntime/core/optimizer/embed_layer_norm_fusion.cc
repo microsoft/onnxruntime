@@ -4,6 +4,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "float.h"
 
 #define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
@@ -15,7 +16,7 @@ namespace onnxruntime {
 // Add a Cast to convert Input from int64 to int32.
 static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
-  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     return input;
   }
   const TensorShapeProto* input_shape = input->Shape();
@@ -128,7 +129,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg* segment_embedding = segment_gather_node.MutableInputDefs()[0];
     auto sg_shape = segment_embedding->Shape();
     if (sg_shape == nullptr || sg_shape->dim_size() != 2 ||
-        !sg_shape->dim()[1].has_dim_value() ||
+        !utils::HasDimValue(sg_shape->dim()[1]) ||
         sg_shape->dim()[1].dim_value() <= 0) {
       continue;
     }
@@ -149,7 +150,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg* word_embedding = word_gather_node.MutableInputDefs()[0];
     auto wg_shape = word_embedding->Shape();
     if (wg_shape == nullptr || wg_shape->dim_size() != 2 ||
-        !wg_shape->dim()[1].has_dim_value() ||
+        !utils::HasDimValue(wg_shape->dim()[1]) ||
         wg_shape->dim()[1].dim_value() != sg_shape->dim()[1].dim_value()) {
       continue;
     }
@@ -170,7 +171,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg* position_embedding = position_gather_node.MutableInputDefs()[0];
     auto pg_shape = position_embedding->Shape();
     if (pg_shape == nullptr || pg_shape->dim_size() != 2 ||
-        !pg_shape->dim()[1].has_dim_value() ||
+        !utils::HasDimValue(pg_shape->dim()[1]) ||
         pg_shape->dim()[1].dim_value() != sg_shape->dim()[1].dim_value()) {
       continue;
     }
@@ -275,17 +276,13 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (!input_ids->Shape()->dim()[1].has_dim_value()) {
-      DEBUG_LOG("Input_ids should have value in dimension 1. ");
-      continue;
-    }
-    if (input_ids->Shape()->dim()[0].dim_value() != segment_ids->Shape()->dim()[0].dim_value() || 
-      input_ids->Shape()->dim()[1].dim_value() != segment_ids->Shape()->dim()[1].dim_value()) {
+    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) != 
+      utils::GetTensorShapeFromTensorShapeProto(*(segment_ids->Shape()))) {
       DEBUG_LOG("Input_ids and segment id should have the same shape. ");
       continue;
     }
-    if (input_ids->Shape()->dim()[0].dim_value() != mask->Shape()->dim()[0].dim_value() ||
-        input_ids->Shape()->dim()[1].dim_value() != mask->Shape()->dim()[1].dim_value()) {
+    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) != 
+      utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape()))) {
       DEBUG_LOG("Input_ids and mask should have the same shape. ");
       continue;
     }
