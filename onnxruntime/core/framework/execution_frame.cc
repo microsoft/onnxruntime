@@ -13,6 +13,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
 
 using namespace onnxruntime::common;
@@ -373,6 +374,14 @@ static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTyp
   return Status::OK();
 }
 
+static Status AllocateTensorSequence (OrtValue& ort_value) {
+  auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+  auto p_tensor_sequence = onnxruntime::make_unique<TensorSeq>();
+  ort_value.Init(p_tensor_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+
+  return Status::OK();
+}
+
 static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
@@ -457,6 +466,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
+  } else if (ml_type->IsTensorSequenceType()) {
+    return AllocateTensorSequence(ort_value);
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }

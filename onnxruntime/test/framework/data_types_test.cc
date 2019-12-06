@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -221,18 +222,43 @@ TEST_F(DataTypeTest, OpaqueRegistrationTest) {
 
   EXPECT_FALSE(DataTypeImpl::GetType<TestOpaqueType_1>()->IsCompatible(opaque_proto_1));
   EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueType_2>()->IsCompatible(opaque_proto_1));
+
+  auto op_ml1 = DataTypeImpl::GetType<TestOpaqueType_1>();
+  auto op_ml2 = DataTypeImpl::GetType<TestOpaqueType_2>();
+  // Test IsOpaqueType
+  EXPECT_TRUE(utils::IsOpaqueType(op_ml1, TestOpaqueDomain_1, TestOpaqueName_1));
+  EXPECT_FALSE(utils::IsOpaqueType(op_ml1, TestOpaqueDomain_1, TestOpaqueName_2));
+  EXPECT_TRUE(utils::IsOpaqueType(op_ml2, TestOpaqueDomain_2, TestOpaqueName_2));
+  EXPECT_FALSE(utils::IsOpaqueType(op_ml2, TestOpaqueDomain_1, TestOpaqueName_2));
+  EXPECT_FALSE(utils::IsOpaqueType(DataTypeImpl::GetTensorType<float>(), TestOpaqueDomain_1, TestOpaqueName_1));
+
+  utils::ContainerChecker c_checker(DataTypeImpl::GetType<MyOpaqueMapCpp_1>());
+  EXPECT_TRUE(c_checker.IsMap());
+  bool result = c_checker.IsMapOf<int64_t, TestOpaqueType_1>();
+  EXPECT_TRUE(result);
 }
 
 TEST_F(DataTypeTest, MapStringStringTest) {
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
+  auto ml_str_str = DataTypeImpl::GetType<MapStringToString>();
   EXPECT_TRUE(DataTypeImpl::GetTensorType<float>()->IsCompatible(tensor_type));
   EXPECT_FALSE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(tensor_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(tensor_type));
+  EXPECT_FALSE(ml_str_str->IsCompatible(tensor_type));
+  utils::ContainerChecker c_checker(ml_str_str);
+  bool result = c_checker.IsMapOf<std::string, std::string>();
+  EXPECT_TRUE(result);
+  result =  c_checker.IsMapOf<std::string, int64_t>();
+  EXPECT_FALSE(result);
+
+  utils::ContainerChecker c_checker1(DataTypeImpl::GetTensorType<float>());
+  result =  c_checker1.IsMapOf<std::string, int64_t>();
+  EXPECT_FALSE(result);
+
 
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_STRING> maps2s_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
-  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(maps2s_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(maps2i_type));
+  EXPECT_TRUE(ml_str_str->IsCompatible(maps2s_type));
+  EXPECT_FALSE(ml_str_str->IsCompatible(maps2i_type));
 }
 
 TEST_F(DataTypeTest, MapStringInt64Test) {
@@ -242,6 +268,10 @@ TEST_F(DataTypeTest, MapStringInt64Test) {
   EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2s_type));
   EXPECT_TRUE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2i_type));
   EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(tensor_type));
+
+  utils::ContainerChecker c_checker(DataTypeImpl::GetType<MapStringToInt64>());
+  bool result = c_checker.IsMapOf<std::string, int64_t>();
+  EXPECT_TRUE(result);
 }
 
 TEST_F(DataTypeTest, MapStringFloatTest) {
@@ -339,6 +369,9 @@ TEST_F(DataTypeTest, VectorMapStringToFloatTest) {
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2d_type));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2i_type));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(tensor_type));
+  utils::ContainerChecker c_check(DataTypeImpl::GetType<VectorMapStringToFloat>());
+  bool result =  c_check.IsSequenceOf<MapStringToFloat>();
+  EXPECT_TRUE(result);
 }
 
 TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {

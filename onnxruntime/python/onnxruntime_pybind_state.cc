@@ -8,6 +8,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
@@ -181,10 +182,8 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
   const auto& seq_tensors = val.Get<TensorSeq>();
-  size_t num_tensors = seq_tensors.tensors.size();
   py::list py_list;
-  for (size_t i = 0; i < num_tensors; ++i) {
-    const auto& rtensor = seq_tensors.tensors[i];
+  for (const auto& rtensor : seq_tensors) {
     py::object obj;
     GetPyObjFromTensor(rtensor, obj);
     py_list.append(obj);
@@ -194,30 +193,38 @@ void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
 
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
-  if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
+  auto val_type = val.Type();
+  if (val_type->IsTensorSequenceType()) {
     AddNonTensor<TensorSeq>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
-    AddNonTensor<MapStringToString>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
-    AddNonTensor<MapStringToInt64>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToFloat>()) {
-    AddNonTensor<MapStringToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapStringToDouble>()) {
-    AddNonTensor<MapStringToDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToString>()) {
-    AddNonTensor<MapInt64ToString>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToInt64>()) {
-    AddNonTensor<MapInt64ToInt64>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToFloat>()) {
-    AddNonTensor<MapInt64ToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToDouble>()) {
-    AddNonTensor<MapInt64ToDouble>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
-    AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
-  } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
-    AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
   } else {
-    throw std::runtime_error("Output is a non-tensor type which is not supported.");
+    utils::ContainerChecker c_checker(val_type);
+    if (c_checker.IsMap()) {
+      if (c_checker.IsMapOf<std::string, std::string>()) {
+        AddNonTensor<MapStringToString>(val, pyobjs);
+      } else if (c_checker.IsMapOf<std::string, int64_t>()) {
+        AddNonTensor<MapStringToInt64>(val, pyobjs);
+      } else if (c_checker.IsMapOf<std::string, float>()) {
+        AddNonTensor<MapStringToFloat>(val, pyobjs);
+      } else if (c_checker.IsMapOf<std::string, double>()) {
+        AddNonTensor<MapStringToDouble>(val, pyobjs);
+      } else if (c_checker.IsMapOf<int64_t, std::string>()) {
+        AddNonTensor<MapInt64ToString>(val, pyobjs);
+      } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
+        AddNonTensor<MapInt64ToInt64>(val, pyobjs);
+      } else if (c_checker.IsMapOf<int64_t, float>()) {
+        AddNonTensor<MapInt64ToFloat>(val, pyobjs);
+      } else if (c_checker.IsMapOf<int64_t, double>()) {
+        AddNonTensor<MapInt64ToDouble>(val, pyobjs);
+      }
+    } else {
+      if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
+        AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
+      } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
+        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
+      } else {
+        throw std::runtime_error("Output is a non-tensor type which is not supported.");
+      }
+    }
   }
 }
 
