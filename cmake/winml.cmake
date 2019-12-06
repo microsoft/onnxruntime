@@ -415,10 +415,17 @@ set_target_properties(winml_dll
   PROPERTIES
   OUTPUT_NAME windows.ai.machinelearning)
 
-set_target_properties(winml_dll
-  PROPERTIES
-  LINK_FLAGS
-  "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll")
+if (onnxruntime_USE_DML)
+  set_target_properties(winml_dll
+    PROPERTIES
+    LINK_FLAGS
+    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll")
+else
+  set_target_properties(winml_dll
+    PROPERTIES
+    LINK_FLAGS
+    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll")
+endif(onnxruntime_USE_DML)
 
 set_target_properties(winml_dll
   PROPERTIES
