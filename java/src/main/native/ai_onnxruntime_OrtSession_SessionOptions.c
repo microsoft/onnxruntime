@@ -132,8 +132,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
   #ifdef USE_DNNL
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*) handle,useArena));
   #else
-    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when MKL-DNN is defined.
-    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with MKL-DNN support.");
+    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
   #endif
 }
 
@@ -216,7 +216,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addNup
     (void)jobj;
   #ifdef USE_NUPHAR
     const char* settings = (*jniEnv)->GetStringUTFChars(jniEnv, settingsString, NULL);
-    checkOrtStatus(jniEnv,OrtSessionOptionsAppendExecutionProvider_Nuphar((OrtSessionOptions*) handle, allowUnalignedBuffers, settings));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Nuphar((OrtSessionOptions*) handle, allowUnalignedBuffers, settings));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,settingsString,settings);
   #else
     (void)apiHandle;(void)handle;(void)allowUnalignedBuffers;(void)settingsString; // Parameters used when Nuphar is defined.
