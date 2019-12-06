@@ -90,6 +90,8 @@ Use the individual flags to only run the specified stages.
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
 
+    # Java bindings
+    parser.add_argument("--build_java", action='store_true', help="Build Java bindings.")
 
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
