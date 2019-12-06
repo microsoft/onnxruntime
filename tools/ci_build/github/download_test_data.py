@@ -124,6 +124,18 @@ def download_additional_data(build_dir, azure_region):
     os.makedirs(dest_folder,exist_ok=True)
     subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', opencpp_url, os.path.join(dest_folder,'installer.exe')],check=True)
 
+    # Download JDK
+    jdk_url = urljoin(additional_data_url, 'openjdk-11-28_windows-x64_bin.zip')
+    print("Starting download for OpenJDK-11 " + jdk_url)
+    download_and_unzip(build_dir, jdk_url, 'jdk_temp', False)
+
+    dest_folder = os.path.join(build_dir,'jdk-11')
+    if os.path.exists(dest_folder):
+        print('deleting %s' % dest_folder)
+        shutil.rmtree(dest_folder)
+    shutil.move(os.path.join(build_dir,'jdk_temp','openjdk-11-28_windows-x64_bin'),dest_dir)
+    
+
 args = parse_arguments()
 models_folder = 'models'
 
