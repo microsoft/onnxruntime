@@ -147,6 +147,16 @@ public class OrtEnvironment implements AutoCloseable {
     }
 
     /**
+     * Create a session using the default {@link SessionOptions}, model and the default memory allocator.
+     * @param modelPath Path on disk to load the model from.
+     * @return An {@link OrtSession} with the specified model.
+     * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
+     */
+    public OrtSession createSession(String modelPath) throws OrtException {
+        return createSession(modelPath,new OrtSession.SessionOptions());
+    }
+
+    /**
      * Create a session using the specified {@link SessionOptions}, model and the default memory allocator.
      * @param modelPath Path on disk to load the model from.
      * @param options The session options.
@@ -182,6 +192,16 @@ public class OrtEnvironment implements AutoCloseable {
      */
     public OrtSession createSession(byte[] modelArray, SessionOptions options) throws OrtException {
         return createSession(modelArray,defaultAllocator,options);
+    }
+
+    /**
+     * Create a session using the default {@link SessionOptions}, model and the default memory allocator.
+     * @param modelArray Byte array representing an ONNX model.
+     * @return An {@link OrtSession} with the specified model.
+     * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+     */
+    public OrtSession createSession(byte[] modelArray) throws OrtException {
+        return createSession(modelArray,new OrtSession.SessionOptions());
     }
 
     /**

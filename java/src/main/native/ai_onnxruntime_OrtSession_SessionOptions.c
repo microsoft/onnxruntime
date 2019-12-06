@@ -68,6 +68,20 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setInt
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setOptimizationModelFilePath
+ * Signature: (JJLjava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setOptimizationModelFilePath
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring pathString) {
+    (void) jobj; // Required JNI parameter not needed by function which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    const char* path = (*jniEnv)->GetStringUTFChars(jniEnv, pathString, NULL);
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->SetOptimizedModelFilePath((OrtSessionOptions*) handle, path));
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv,pathString,path);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    createOptions
  * Signature: (J)J
  */

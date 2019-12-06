@@ -197,7 +197,7 @@ public class OrtSession implements AutoCloseable {
                     inputHandles[i] = t.getValue().getNativeHandle();
                     i++;
                 } else {
-                    throw new IllegalArgumentException("Unknown input name " + t.getKey() + ", expected one of " + inputNames.toString());
+                    throw new OrtException("Unknown input name " + t.getKey() + ", expected one of " + inputNames.toString());
                 }
             }
             String[] outputNamesArray = new String[requestedOutputs.size()];
@@ -207,7 +207,7 @@ public class OrtSession implements AutoCloseable {
                     outputNamesArray[i] = s;
                     i++;
                 } else {
-                    throw new IllegalArgumentException("Unknown output name " + s + ", expected one of " + outputNames.toString());
+                    throw new OrtException("Unknown output name " + s + ", expected one of " + outputNames.toString());
                 }
             }
             OnnxValue[] outputValues = run(OnnxRuntime.ortApiHandle,nativeHandle, allocator.handle, inputNamesArray, inputHandles, numInputs, outputNamesArray, numOutputs);
@@ -370,6 +370,15 @@ public class OrtSession implements AutoCloseable {
         }
 
         /**
+         * Sets the output path for the optimized model.
+         * @param outputPath The output path to write the model to.
+         * @throws OrtException If there was an error in native code.
+         */
+        public void setOptimizedModelFilePath(String outputPath) throws OrtException {
+            setOptimizationModelFilePath(OnnxRuntime.ortApiHandle,nativeHandle,outputPath);
+        }
+
+        /**
          * Add CUDA as an execution backend, using device 0.
          * @throws OrtException If there was an error in native code.
          */
@@ -460,6 +469,8 @@ public class OrtSession implements AutoCloseable {
 
         private native void setInterOpNumThreads(long apiHandle, long nativeHandle, int numThreads) throws OrtException;
         private native void setIntraOpNumThreads(long apiHandle, long nativeHandle, int numThreads) throws OrtException;
+
+        private native void setOptimizationModelFilePath(long apiHandle, long nativeHandle, String modelPath) throws OrtException;
 
         private native long createOptions(long apiHandle);
 

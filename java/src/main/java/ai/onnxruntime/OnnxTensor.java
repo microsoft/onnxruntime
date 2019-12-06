@@ -355,7 +355,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct FloatBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
      * @param env The current OrtEnvironment.
@@ -370,7 +370,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct FloatBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
      * @param env The current OrtEnvironment.
@@ -401,7 +401,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct DoubleBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
      * @param env The current OrtEnvironment.
@@ -416,7 +416,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct DoubleBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
      * @param env The current OrtEnvironment.
@@ -447,9 +447,9 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
+     * of the tensor. Uses the default allocator. Tells the runtime it's {@link OnnxJavaType#INT8}.
      * @param env The current OrtEnvironment.
      * @param data The tensor data.
      * @param shape The shape of tensor.
@@ -462,9 +462,9 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor.
+     * of the tensor. Tells the runtime it's {@link OnnxJavaType#INT8}.
      * @param env The current OrtEnvironment.
      * @param allocator The allocator to use.
      * @param data The tensor data.
@@ -473,9 +473,41 @@ public class OnnxTensor implements OnnxValue {
      * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
      */
     static OnnxTensor createTensor(OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape) throws OrtException {
+        return createTensor(env,allocator,data,shape,OnnxJavaType.INT8);
+    }
+
+    /**
+     * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
+     * <p>
+     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
+     * of the tensor. Uses the default allocator. Tells the runtime it's the specified type.
+     * @param env The current OrtEnvironment.
+     * @param data The tensor data.
+     * @param shape The shape of tensor.
+     * @param type The type to use for the byte buffer elements.
+     * @return An OnnxTensor of the required shape.
+     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
+     */
+    public static OnnxTensor createTensor(OrtEnvironment env, ByteBuffer data, long[] shape, OnnxJavaType type) throws OrtException {
+        return createTensor(env,env.defaultAllocator,data,shape,type);
+    }
+
+    /**
+     * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
+     *
+     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
+     * of the tensor. Tells the runtime it's the specified type.
+     * @param env The current OrtEnvironment.
+     * @param allocator The allocator to use.
+     * @param data The tensor data.
+     * @param shape The shape of tensor.
+     * @param type The type to use for the byte buffer elements.
+     * @return An OnnxTensor of the required shape.
+     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
+     */
+    static OnnxTensor createTensor(OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape, OnnxJavaType type) throws OrtException {
         if ((!env.isClosed()) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.INT8;
-            int bufferSize = data.capacity()*type.size;
+            int bufferSize = data.capacity();
             ByteBuffer tmp;
             if (data.isDirect()) {
                 tmp = data;
@@ -492,7 +524,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
      * @param env The current OrtEnvironment.
@@ -507,7 +539,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
      * @param env The current OrtEnvironment.
@@ -538,7 +570,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct IntBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
      * @param env The current OrtEnvironment.
@@ -553,7 +585,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct IntBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor.
      * @param env The current OrtEnvironment.
@@ -584,7 +616,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct LongBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the default allocator.
      * @param env The current OrtEnvironment.
@@ -599,7 +631,7 @@ public class OnnxTensor implements OnnxValue {
 
     /**
      * Create an OnnxTensor backed by a direct LongBuffer. The buffer should be in nativeOrder.
-     *
+     * <p>
      * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
      * of the tensor. Uses the supplied allocator.
      * @param env The current OrtEnvironment.

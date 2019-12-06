@@ -846,5 +846,5 @@ if (onnxruntime_BUILD_JAVA)
     get_property(onnxruntime_test_jar_name TARGET onnxruntime4j_test PROPERTY JAR_FILE)
 
     # Run the tests with JUnit's console launcher
-    add_test(NAME java-api COMMAND ${Java_JAVA_EXECUTABLE} -jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar -cp ${onnxruntime_test_jar_name} -cp ${onnxruntime_jar_binaries_platform} --scan-class-path --fail-if-no-tests --reports-dir=${CMAKE_CURRENT_BINARY_DIR}/java-tests/results --disable-banner WORKING_DIRECTORY ${REPO_ROOT})
+    add_test(NAME java-api COMMAND ${Java_JAVA_EXECUTABLE} -jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar -cp ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar -cp ${onnxruntime_test_jar_name} -cp ${onnxruntime_jar_binaries_platform} --scan-class-path --fail-if-no-tests --reports-dir=${CMAKE_CURRENT_BINARY_DIR}/java-tests/results --disable-banner WORKING_DIRECTORY ${REPO_ROOT})
 endif()
