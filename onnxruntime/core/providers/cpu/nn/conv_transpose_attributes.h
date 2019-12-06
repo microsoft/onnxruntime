@@ -152,7 +152,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
       int64_t dim_size = -1;
 
       if (output_shape_size != 0) {
-        dim_size = output_shape[dim + 2];
+        dim_size = output_shape_size == rank ? output_shape[dim] : output_shape[dim + 2];
       }
 
       ComputeTransposePadAndOutputShape(
