@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -21,7 +21,7 @@ public final class OrtUtil {
 
     /**
      * Converts an long shape into a int shape.
-     *
+     * <p>
      * Validates that the shape has more than 1 elements,
      * less than 9 elements, each element is less than {@link Integer#MAX_VALUE}
      * and that each entry is non-negative.
@@ -47,8 +47,8 @@ public final class OrtUtil {
 
     /**
      * Converts an int shape into a long shape.
-     *
-     * Validates that the shape has more than 1 elements, less than 9 elements and that each entry is non-negative.
+     * <p>
+     * Validates that the shape has more than 1 element, less than 9 elements and that each entry is non-negative.
      * @param shape The int shape.
      * @return The long shape.
      */
@@ -71,7 +71,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive boolean array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A boolean array.
      */
@@ -82,7 +82,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive byte array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A byte array.
      */
@@ -93,7 +93,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive short array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A short array.
      */
@@ -104,7 +104,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive int array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A int array.
      */
@@ -115,7 +115,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive long array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A long array.
      */
@@ -126,7 +126,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive float array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A float array.
      */
@@ -137,7 +137,7 @@ public final class OrtUtil {
 
     /**
      * Creates a new primitive double array of up to 8 dimensions, using the supplied shape.
-     *
+     * <p>
      * @param shape The shape of array to create.
      * @return A double array.
      */
@@ -237,6 +237,15 @@ public final class OrtUtil {
         return output;
     }
 
+    /**
+     * Copies elements from the flat input array to the
+     * appropriate primitive array of the output.
+     * Recursively calls itself as it traverses the output array.
+     * @param input The input array.
+     * @param output The output multidimensional array.
+     * @param position The current position in the input array.
+     * @return The new position in the input array.
+     */
     private static int reshape(Object input, Object output, int position) {
         if (output.getClass().isArray()) {
             Object[] outputArray = (Object[]) output;
@@ -302,14 +311,19 @@ public final class OrtUtil {
      * @return A single dimensional String array.
      */
     public static String[] flattenString(Object o) {
-        List<String> output = new ArrayList<>();
+        ArrayList<String> output = new ArrayList<>();
 
         flattenString((Object[]) o,output);
 
         return output.toArray(new String[0]);
     }
 
-    private static void flattenString(Object[] input, List<String> output) {
+    /**
+     * Flattens a multidimensional String array into the ArrayList.
+     * @param input The multidimensional String array.
+     * @param output The output ArrayList.
+     */
+    private static void flattenString(Object[] input, ArrayList<String> output) {
         for (Object i : input) {
             Class<?> iClazz = i.getClass();
             if (iClazz.isArray()) {
@@ -324,5 +338,17 @@ public final class OrtUtil {
                 throw new IllegalStateException("Found an element type where there should have been an array. Class = " + iClazz);
             }
         }
+    }
+
+    /**
+     * Stores a boxed primitive in a single element array of the boxed type.
+     * Otherwise returns the input.
+     * @param data The boxed primitive.
+     * @return The boxed primitive in an array.
+     */
+    static Object convertBoxedPrimitiveToArray(Object data) {
+        Object array = Array.newInstance(data.getClass(), 1);
+        Array.set(array, 0, data);
+        return array;
     }
 }

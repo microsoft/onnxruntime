@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -11,12 +11,6 @@ import java.io.IOException;
  */
 class OrtAllocator implements AutoCloseable {
 
-    final long handle;
-
-    private final boolean isDefault;
-
-    private boolean closed = false;
-
     static {
         try {
             OnnxRuntime.init();
@@ -25,17 +19,42 @@ class OrtAllocator implements AutoCloseable {
         }
     }
 
+    final long handle;
+
+    private final boolean isDefault;
+
+    private boolean closed = false;
+
+    /**
+     * Constructs an OrtAllocator wrapped around a native reference.
+     * @param handle The reference to a native OrtAllocator.
+     * @param isDefault Is this the default allocator.
+     */
     OrtAllocator(long handle, boolean isDefault) {
         this.handle = handle;
         this.isDefault = isDefault;
     }
 
+    /**
+     * Is this allocator closed?
+     * @return True if the allocator is closed.
+     */
     public boolean isClosed() {
         return closed;
     }
 
     /**
+     * Is this the default allocator?
+     * @return True if it is the default allocator.
+     */
+    public boolean isDefault() {
+        return isDefault;
+    }
+
+    /**
      * Closes the allocator, must be done after all it's child objects have been closed.
+     * <p>
+     * The default allocator is not closeable, and this operation is a no-op on that allocator.
      * @throws OrtException If it failed to close.
      */
     @Override

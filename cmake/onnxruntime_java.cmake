@@ -12,7 +12,7 @@ include_directories(${JNI_INCLUDE_DIRS})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
-set(CMAKE_JAVA_COMPILE_FLAGS "-source" "1.8" "-target" "1.8")
+set(CMAKE_JAVA_COMPILE_FLAGS "-source" "1.8" "-target" "1.8" "-encoding" "UTF-8")
 if (onnxruntime_RUN_ONNX_TESTS)
   set(JAVA_DEPENDS onnxruntime ${test_data_target})
 else()
@@ -24,16 +24,17 @@ set(onnxruntime4j_src
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/MapInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/NodeInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxRuntime.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtAllocator.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtEnvironment.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtException.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxJavaType.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxMap.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxSequence.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtSession.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxTensor.java
-        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtUtil.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OnnxValue.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtAllocator.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtEnvironment.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtException.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtSession.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/OrtUtil.java
+        ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/package-info.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/SequenceInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/TensorInfo.java
         ${REPO_ROOT}/java/src/main/java/ai/onnxruntime/ValueInfo.java
@@ -76,8 +77,19 @@ add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
 
 # Copy the binaries
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:onnxruntime4j_jni>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_LINKER_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
 
+if (WIN32) 
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
+# Update the with-binaries jar so it includes the binaries
+add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD
+            COMMAND ${Java_JAR_EXECUTABLE} -uf ${onnxruntime_jar_binaries_platform} -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime4j_jni> -C ${CMAKE_CURRENT_BINARY_DIR}/java-libs lib/$<TARGET_FILE_NAME:onnxruntime>
+            DEPENDS onnxruntime4j
+            COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
+            VERBATIM
+        )
+else ()
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_LINKER_FILE:onnxruntime>" ${CMAKE_CURRENT_BINARY_DIR}/java-libs/lib/)
 # Update the with-binaries jar so it includes the binaries
 add_custom_command(
             TARGET onnxruntime4j_jni POST_BUILD
@@ -86,4 +98,13 @@ add_custom_command(
             COMMENT "Rebuilding Java archive ${_JAVA_TARGET_OUTPUT_NAME}"
             VERBATIM
         )
+endif()
 
+create_javadoc(onnxruntime4j_javadoc
+           FILES ${onnxruntime4j_src}
+           DOCTITLE "Onnx Runtime Java API"
+           WINDOWTITLE "OnnxRuntime-Java-API"
+           AUTHOR FALSE
+           USE TRUE
+           VERSION FALSE
+           )

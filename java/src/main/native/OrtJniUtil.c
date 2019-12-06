@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -55,7 +55,7 @@ GraphOptimizationLevel convertOptimizationLevel(jint level) {
  * Must be kept in sync with ExecutionMode and SessionOptions#ExecutionMode
  */
 ExecutionMode convertExecutionMode(jint mode) {
-    switch (level) {
+    switch (mode) {
         case 0:
             return ORT_SEQUENTIAL;
         case 1:
@@ -163,13 +163,13 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
             return 2;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:      // maps to c type uint32_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:   // maps to c type float
             return 4;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:      // maps to c type uint64_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:   // maps to c type int64_t
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:      // maps to c type double
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
             return 8;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
@@ -181,8 +181,15 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
     }
 }
 
+typedef union FP32 {
+    int intVal;
+    float floatVal;
+} FP32;
+
 jfloat convertHalfToFloat(uint16_t half) {
-    return ((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13);
+    FP32 output;
+    output.intVal = (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
+    return output.floatVal;
 }
 
 jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, OrtTypeInfo * info) {

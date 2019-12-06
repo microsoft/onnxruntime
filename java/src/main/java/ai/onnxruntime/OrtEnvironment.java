@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -26,6 +26,9 @@ import java.util.logging.Logger;
  */
 public class OrtEnvironment implements AutoCloseable {
 
+    /**
+     * The logging level for messages from the environment and session.
+     */
     public enum LoggingLevel {
         ORT_LOGGING_LEVEL_VERBOSE(0),
         ORT_LOGGING_LEVEL_INFO(1),
@@ -61,7 +64,7 @@ public class OrtEnvironment implements AutoCloseable {
 
     private static volatile LoggingLevel curLogLevel;
 
-    private static volatile String curName;
+    private static volatile String curLoggingName;
 
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
@@ -75,6 +78,7 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
      * using the supplied name and {@link LoggingLevel#ORT_LOGGING_LEVEL_WARNING}.
+     * @param name The logging id of the environment.
      * @return An onnxruntime environment.
      */
     public static OrtEnvironment getEnvironment(String name) {
@@ -84,6 +88,7 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Gets the OrtEnvironment. If there is not an environment currently created, it creates one
      * using the {@link OrtEnvironment#DEFAULT_NAME} and the supplied logging level.
+     * @param logLevel The logging level to use.
      * @return An onnxruntime environment.
      */
     public static OrtEnvironment getEnvironment(LoggingLevel logLevel) {
@@ -95,7 +100,7 @@ public class OrtEnvironment implements AutoCloseable {
      * using the supplied name and logging level. If an environment already exists with a different name,
      * that environment is returned and a warning is logged.
      * @param loggingLevel The logging level to use.
-     * @param name The name to log.
+     * @param name The log id.
      * @return The OrtEnvironment singleton.
      */
     public static synchronized OrtEnvironment getEnvironment(LoggingLevel loggingLevel, String name) {
@@ -103,12 +108,12 @@ public class OrtEnvironment implements AutoCloseable {
             try {
                 INSTANCE = new OrtEnvironment(loggingLevel, name);
                 curLogLevel = loggingLevel;
-                curName = name;
+                curLoggingName = name;
             } catch (OrtException e) {
                 throw new IllegalStateException("Failed to create OrtEnvironment",e);
             }
         } else {
-            if ((loggingLevel.value != curLogLevel.value) || (!name.equals(curName))) {
+            if ((loggingLevel.value != curLogLevel.value) || (!name.equals(curLoggingName))) {
                 logger.warning("Tried to change OrtEnvironment's logging level or name while a reference exists.");
             }
         }
@@ -133,347 +138,12 @@ public class OrtEnvironment implements AutoCloseable {
     /**
      * Create an OrtEnvironment using the specified name and log level.
      * @param loggingLevel The logging level to use.
-     * @param name The environment name.
+     * @param name The logging id of the environment.
      * @throws OrtException If the environment couldn't be created.
      */
     private OrtEnvironment(LoggingLevel loggingLevel, String name) throws OrtException {
         nativeHandle = createHandle(OnnxRuntime.ortApiHandle,loggingLevel.getValue(),name);
         defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle),true);
-    }
-
-    /**
-     * Create a Tensor from a Java primitive or String multidimensional array.
-     * The shape is inferred from the array using reflection.
-     * The default allocator is used.
-     * @param data The data to store in a tensor.
-     * @return An OnnxTensor storing the data.
-     * @throws OrtException If the onnx runtime threw an error.
-     */
-    public OnnxTensor createTensor(Object data) throws OrtException {
-        return createTensor(defaultAllocator,data);
-    }
-
-    /**
-     * Create a Tensor from a Java primitive or String multidimensional array.
-     * The shape is inferred from the array using reflection.
-     * @param allocator The allocator to use.
-     * @param data The data to store in a tensor.
-     * @return An OnnxTensor storing the data.
-     * @throws OrtException If the onnx runtime threw an error.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, Object data) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            TensorInfo info = TensorInfo.constructFromJavaArray(data);
-            if (info.type == OnnxJavaType.STRING) {
-                if (info.shape.length == 0) {
-                    return new OnnxTensor(createString(OnnxRuntime.ortApiHandle, allocator.handle,(String)data), allocator.handle, info);
-                } else {
-                    return new OnnxTensor(createStringTensor(OnnxRuntime.ortApiHandle, allocator.handle, OrtUtil.flattenString(data), info.shape), allocator.handle, info);
-                }
-            } else {
-                if (info.shape.length == 0) {
-                    data = convertBoxedPrimitiveToArray(data);
-                }
-                return new OnnxTensor(createTensor(OnnxRuntime.ortApiHandle, allocator.handle, data, info.shape, info.onnxType.value), allocator.handle, info);
-            }
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor with a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create a tensor from a flattened string array.
-     * <p>
-     * Requires the array to be flattened in row-major order. Uses the default allocator.
-     * @param data The tensor data
-     * @param shape the shape of the tensor
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(String[] data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create a tensor from a flattened string array.
-     * <p>
-     * Requires the array to be flattened in row-major order.
-     * @param allocator The allocator to use.
-     * @param data The tensor data
-     * @param shape the shape of the tensor
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, String[] data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            TensorInfo info = new TensorInfo(shape, OnnxJavaType.STRING, OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-            return new OnnxTensor(createStringTensor(OnnxRuntime.ortApiHandle, allocator.handle, data, shape), allocator.handle, info);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct FloatBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(FloatBuffer data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct FloatBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor.
-     * @param allocator The allocator to use.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, FloatBuffer data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.FLOAT;
-            int bufferSize = data.capacity()*type.size;
-            FloatBuffer tmp;
-            if (data.isDirect()) {
-                tmp = data;
-            } else {
-                ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-                tmp = buffer.asFloatBuffer();
-                tmp.put(data);
-            }
-            TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-            return new OnnxTensor(createTensorFromBuffer(OnnxRuntime.ortApiHandle, allocator.handle, tmp, bufferSize, shape, info.onnxType.value), allocator.handle, info, tmp);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct DoubleBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(DoubleBuffer data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct DoubleBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor.
-     * @param allocator The allocator to use.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, DoubleBuffer data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.DOUBLE;
-            int bufferSize = data.capacity()*type.size;
-            DoubleBuffer tmp;
-            if (data.isDirect()) {
-                tmp = data;
-            } else {
-                ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-                tmp = buffer.asDoubleBuffer();
-                tmp.put(data);
-            }
-            TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-            return new OnnxTensor(createTensorFromBuffer(OnnxRuntime.ortApiHandle, allocator.handle, tmp, bufferSize, shape, info.onnxType.value), allocator.handle, info, tmp);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(ByteBuffer data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct ByteBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor.
-     * @param allocator The allocator to use.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, ByteBuffer data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.INT8;
-            int bufferSize = data.capacity()*type.size;
-            ByteBuffer tmp;
-            if (data.isDirect()) {
-                tmp = data;
-            } else {
-                tmp = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-                tmp.put(data);
-            }
-            TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-            return new OnnxTensor(createTensorFromBuffer(OnnxRuntime.ortApiHandle, allocator.handle, tmp, bufferSize, shape, info.onnxType.value), allocator.handle, info, tmp);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(ShortBuffer data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct ShortBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor.
-     * @param allocator The allocator to use.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, ShortBuffer data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.INT16;
-            int bufferSize = data.capacity()*type.size;
-            ShortBuffer tmp;
-            if (data.isDirect()) {
-                tmp = data;
-            } else {
-                ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-                tmp = buffer.asShortBuffer();
-                tmp.put(data);
-            }
-            TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-            return new OnnxTensor(createTensorFromBuffer(OnnxRuntime.ortApiHandle, allocator.handle, tmp, bufferSize, shape, info.onnxType.value), allocator.handle, info, tmp);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct IntBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(IntBuffer data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct IntBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor.
-     * @param allocator The allocator to use.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, IntBuffer data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.INT32;
-            int bufferSize = data.capacity()*type.size;
-            IntBuffer tmp;
-            if (data.isDirect()) {
-                tmp = data;
-            } else {
-                ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-                tmp = buffer.asIntBuffer();
-                tmp.put(data);
-            }
-            TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-            return new OnnxTensor(createTensorFromBuffer(OnnxRuntime.ortApiHandle, allocator.handle, tmp, bufferSize, shape, info.onnxType.value), allocator.handle, info, tmp);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct LongBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the default allocator.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    public OnnxTensor createTensor(LongBuffer data, long[] shape) throws OrtException {
-        return createTensor(defaultAllocator,data,shape);
-    }
-
-    /**
-     * Create an OnnxTensor backed by a direct LongBuffer. The buffer should be in nativeOrder.
-     *
-     * If the supplied buffer is not a direct buffer, a direct copy is created tied to the lifetime
-     * of the tensor. Uses the supplied allocator.
-     * @param allocator The allocator to use.
-     * @param data The tensor data.
-     * @param shape The shape of tensor.
-     * @return An OnnxTensor of the required shape.
-     * @throws OrtException Thrown if there is an onnx error or if the data and shape don't match.
-     */
-    OnnxTensor createTensor(OrtAllocator allocator, LongBuffer data, long[] shape) throws OrtException {
-        if ((!closed) && (!allocator.isClosed())) {
-            OnnxJavaType type = OnnxJavaType.INT64;
-            int bufferSize = data.capacity()*type.size;
-            LongBuffer tmp;
-            if (data.isDirect()) {
-                tmp = data;
-            } else {
-                ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-                tmp = buffer.asLongBuffer();
-                tmp.put(data);
-            }
-            TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
-            return new OnnxTensor(createTensorFromBuffer(OnnxRuntime.ortApiHandle, allocator.handle, tmp, bufferSize, shape, info.onnxType.value), allocator.handle, info, tmp);
-        } else {
-            throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
-        }
     }
 
     /**
@@ -539,9 +209,17 @@ public class OrtEnvironment implements AutoCloseable {
         setTelemetry(OnnxRuntime.ortApiHandle,nativeHandle,sendTelemetry);
     }
 
+    /**
+     * Is this environment closed?
+     * @return True if the environment is closed.
+     */
+    public boolean isClosed() {
+        return closed;
+    }
+
     @Override
     public String toString() {
-        return "OrtEnvironment(name="+curName+",logLevel="+curLogLevel+")";
+        return "OrtEnvironment(name="+ curLoggingName +",logLevel="+curLogLevel+")";
     }
 
     /**
@@ -561,18 +239,6 @@ public class OrtEnvironment implements AutoCloseable {
                 INSTANCE = null;
             }
         }
-    }
-
-    /**
-     * Stores a boxed primitive in a single element array of the boxed type.
-     * Otherwise returns the input.
-     * @param data The boxed primitive.
-     * @return The boxed primitive in an array.
-     */
-    private static Object convertBoxedPrimitiveToArray(Object data) {
-        Object array = Array.newInstance(data.getClass(), 1);
-        Array.set(array, 0, data);
-        return array;
     }
 
     /**
@@ -609,11 +275,5 @@ public class OrtEnvironment implements AutoCloseable {
      * @throws OrtException If an error was caused when setting the telemetry status.
      */
     private static native void setTelemetry(long apiHandle, long nativeHandle, boolean sendTelemetry) throws OrtException;
-
-    private static native long createTensor(long apiHandle, long allocatorHandle, Object data, long[] shape, int onnxType) throws OrtException;
-    private static native long createTensorFromBuffer(long apiHandle, long allocatorHandle, Buffer data, long bufferSize, long[] shape, int onnxType) throws OrtException;
-
-    private static native long createString(long apiHandle, long allocatorHandle, String data) throws OrtException;
-    private static native long createStringTensor(long apiHandle, long allocatorHandle, Object[] data, long[] shape) throws OrtException;
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -10,7 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A container for a map returned by an onnx-runtime call.
+ * A container for a map returned by {@link OrtSession#run(Map)}.
  * <p>
  * Supported types are those mentioned in "onnxruntime_c_api.h",
  * keys: String and Long, values: String, Long, Float, Double.
@@ -26,7 +26,7 @@ public class OnnxMap implements OnnxValue {
     }
 
     /**
-     * An enum representing the type of the values stored in an {@link OnnxMap}.
+     * An enum representing the Java type of the values stored in an {@link OnnxMap}.
      */
     public enum OnnxMapValueType {
         INVALID(0), STRING(1), LONG(2), FLOAT(3), DOUBLE(4);
@@ -91,6 +91,15 @@ public class OnnxMap implements OnnxValue {
 
     private final OnnxMapValueType valueType;
 
+    /**
+     * Constructs an OnnxMap containing a reference to the native map
+     * along with the type information.
+     * <p>
+     * Called from native code.
+     * @param nativeHandle The reference to the native map object.
+     * @param allocatorHandle The reference to the allocator that created the map.
+     * @param info The type information.
+     */
     OnnxMap(long nativeHandle, long allocatorHandle, MapInfo info) {
         this.nativeHandle = nativeHandle;
         this.allocatorHandle = allocatorHandle;
@@ -129,9 +138,9 @@ public class OnnxMap implements OnnxValue {
     }
 
     /**
-     * Extracts the map keys, boxing the longs if necessary.
+     * Extracts the map keys, boxing the primitives as necessary.
      * @return The keys from the map as an array.
-     * @throws OrtException If the onnx runtime failed to read the keys.
+     * @throws OrtException If the onnxruntime failed to read the keys.
      */
     private Object[] getMapKeys() throws OrtException {
         if (stringKeys) {
@@ -142,9 +151,9 @@ public class OnnxMap implements OnnxValue {
     }
 
     /**
-     * Extracts the map values, boxing primitives if necessary.
+     * Extracts the map values, boxing primitives as necessary.
      * @return The values from the map as an array.
-     * @throws OrtException If the onnx runtime failed to read the values.
+     * @throws OrtException If the onnxruntime failed to read the values.
      */
     private Object[] getMapValues() throws OrtException {
         switch (valueType) {

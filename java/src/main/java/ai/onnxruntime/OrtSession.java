@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -18,8 +18,12 @@ import java.util.logging.Logger;
 
 /**
  * Wraps an ONNX model and allows inference calls.
- *
+ * <p>
+ * Allows the inspection of the model's input and output nodes.
  * Produced by an {@link OrtEnvironment}.
+ * <p>
+ * Most instance methods throw {@link IllegalStateException} if the
+ * session is closed and the methods are called.
  */
 public class OrtSession implements AutoCloseable {
 
@@ -45,6 +49,14 @@ public class OrtSession implements AutoCloseable {
 
     private boolean closed = false;
 
+    /**
+     * Create a session loading the model from disk.
+     * @param env The environment.
+     * @param modelPath The path to the model.
+     * @param allocator The allocator to use.
+     * @param options Session configuration options.
+     * @throws OrtException If the file could not be read, or the model was corrupted etc.
+     */
     OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options) throws OrtException {
         nativeHandle = createSession(OnnxRuntime.ortApiHandle,env.nativeHandle,modelPath,options.nativeHandle);
         this.allocator = allocator;
@@ -54,6 +66,14 @@ public class OrtSession implements AutoCloseable {
         outputNames = new LinkedHashSet<>(Arrays.asList(getOutputNames(OnnxRuntime.ortApiHandle,nativeHandle,allocator.handle)));
     }
 
+    /**
+     * Creates a session reading the model from the supplied byte array.
+     * @param env The environment.
+     * @param modelArray The model protobuf as a byte array.
+     * @param allocator The allocator to use.
+     * @param options Session configuration options.
+     * @throws OrtException If the mode was corrupted or some other error occurred in native code.
+     */
     OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options) throws OrtException {
         nativeHandle = createSession(OnnxRuntime.ortApiHandle,env.nativeHandle,modelArray,options.nativeHandle);
         this.allocator = allocator;
@@ -113,6 +133,7 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Returns the info objects for the inputs, including their names and types.
+     * The underlying collection is sorted based on the input id number.
      * @return The input information.
      * @throws OrtException If there was an error in native code.
      */
@@ -126,6 +147,7 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Returns the info objects for the outputs, including their names and types.
+     * The underlying collection is sorted based on the output id number.
      * @return The output information.
      * @throws OrtException If there was an error in native code.
      */
@@ -139,9 +161,11 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Scores an input feed dict, returning the map of all inferred outputs.
+     * <p>
+     * The outputs are sorted based on their id number.
      * @param inputs The inputs to score.
      * @return The inferred outputs.
-     * @throws OrtException If there was an error in native code, or if there are zero or too many inputs or outputs.
+     * @throws OrtException If there was an error in native code, the input names are invalid, or if there are zero or too many inputs.
      */
     public Result run(Map<String,OnnxTensor> inputs) throws OrtException {
         return run(inputs,outputNames);
@@ -149,10 +173,12 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Scores an input feed dict, returning the map of requested inferred outputs.
+     * <p>
+     * The outputs are sorted based on the supplied set traveral order.
      * @param inputs The inputs to score.
      * @param requestedOutputs The requested outputs.
      * @return The inferred outputs.
-     * @throws OrtException If there was an error in native code, or if there are zero or too many inputs or outputs.
+     * @throws OrtException If there was an error in native code, the input or output names are invalid, or if there are zero or too many inputs or outputs.
      */
     public Result run(Map<String,OnnxTensor> inputs, Set<String> requestedOutputs) throws OrtException {
         if (!closed) {
@@ -210,6 +236,11 @@ public class OrtSession implements AutoCloseable {
         }
     }
 
+    /**
+     * Converts a NodeInfo array into a map from node name to node info.
+     * @param infos The NodeInfo array to convert.
+     * @return A Map from String to NodeInfo.
+     */
     private static Map<String,NodeInfo> wrapInMap(NodeInfo[] infos) {
         Map<String,NodeInfo> output = new LinkedHashMap<>();
 
@@ -238,7 +269,7 @@ public class OrtSession implements AutoCloseable {
     /**
      * Represents the options used to construct this session.
      * <p>
-     * Used to set the number of threads, optimisation level, accelerator backend and other options.
+     * Used to set the number of threads, optimisation level, computation backend and other options.
      * <p>
      * Modifying this after the session has been constructed will have no effect.
      */
@@ -317,7 +348,7 @@ public class OrtSession implements AutoCloseable {
          * @throws OrtException If there was an error in native code.
          */
         public void setOptimizationLevel(OptLevel level) throws OrtException {
-            setOptimizationLevel(OnnxRuntime.ortApiHandle,nativeHandle, level.getID());
+            setOptimizationLevel(OnnxRuntime.ortApiHandle,nativeHandle,level.getID());
         }
 
         /**
@@ -340,6 +371,7 @@ public class OrtSession implements AutoCloseable {
 
         /**
          * Add CUDA as an execution backend, using device 0.
+         * @throws OrtException If there was an error in native code.
          */
         public void addCUDA() throws OrtException {
             addCUDA(0);
@@ -348,35 +380,76 @@ public class OrtSession implements AutoCloseable {
         /**
          * Add CUDA as an execution backend, using the specified CUDA device id.
          * @param deviceNum The CUDA device id.
+         * @throws OrtException If there was an error in native code.
          */
         public void addCUDA(int deviceNum) throws OrtException {
             addCUDA(OnnxRuntime.ortApiHandle,nativeHandle,deviceNum);
         }
 
+        /**
+         * Adds the CPU as an execution backend, using the arena allocator if desired.
+         * <p>
+         * By default this backend is used, but if other backends are requested,
+         * it should be requested last.
+         * @param useArena If true use the arena memory allocator.
+         * @throws OrtException If there was an error in native code.
+         */
         public void addCPU(boolean useArena) throws OrtException {
             addCPU(OnnxRuntime.ortApiHandle,nativeHandle,useArena?1:0);
         }
 
-        public void addMkldnn(boolean useArena) throws OrtException {
-            addMkldnn(OnnxRuntime.ortApiHandle,nativeHandle,useArena?1:0);
+        /**
+         * Adds Intel's Deep Neural Network Library as an execution backend.
+         * @param useArena If true use the arena memory allocator.
+         * @throws OrtException If there was an error in native code.
+         */
+        public void addDnnl(boolean useArena) throws OrtException {
+            addDnnl(OnnxRuntime.ortApiHandle,nativeHandle,useArena?1:0);
         }
 
+        /**
+         * Adds NGraph as an execution backend.
+         * <p>
+         * See the documentation for the supported backend types.
+         * @param ngBackendType The NGraph backend type.
+         * @throws OrtException If there was an error in native code.
+         */
         public void addNGraph(String ngBackendType) throws OrtException {
             addNGraph(OnnxRuntime.ortApiHandle,nativeHandle,ngBackendType);
         }
 
+        /**
+         * Adds OpenVINO as an execution backend.
+         * @param deviceId The id of the OpenVINO execution device.
+         * @throws OrtException If there was an error in native code.
+         */
         public void addOpenVINO(String deviceId) throws OrtException {
             addOpenVINO(OnnxRuntime.ortApiHandle,nativeHandle,deviceId);
         }
 
+        /**
+         * Adds Nvidia's TensorRT as an execution backend.
+         * @param deviceNum The id of the CUDA device.
+         * @throws OrtException If there was an error in native code.
+         */
         public void addTensorrt(int deviceNum) throws OrtException {
             addTensorrt(OnnxRuntime.ortApiHandle,nativeHandle,deviceNum);
         }
 
+        /**
+         * Adds Android's NNAPI as an execution backend.
+         * @throws OrtException If there was an error in native code.
+         */
         public void addNnapi() throws OrtException {
             addNnapi(OnnxRuntime.ortApiHandle,nativeHandle);
         }
 
+        /**
+         * Adds Nuphar as an execution backend.
+         * @param allowUnalignedBuffers Allow unaligned memory buffers.
+         * @param settings See the documentation for valid settings strings.
+         * @throws OrtException If there was an error in native code.
+         */
         public void addNuphar(boolean allowUnalignedBuffers, String settings) throws OrtException {
             addNuphar(OnnxRuntime.ortApiHandle,nativeHandle,allowUnalignedBuffers?1:0, settings);
         }
@@ -406,7 +479,7 @@ public class OrtSession implements AutoCloseable {
          */
         private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
         private native void addCUDA(long apiHandle, long nativeHandle, int deviceNum) throws OrtException;
-        private native void addMkldnn(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+        private native void addDnnl(long apiHandle, long nativeHandle, int useArena) throws OrtException;
         private native void addNGraph(long apiHandle, long nativeHandle, String ngBackendType) throws OrtException;
         private native void addOpenVINO(long apiHandle, long nativeHandle, String deviceId) throws OrtException;
         private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum) throws OrtException;
@@ -418,7 +491,7 @@ public class OrtSession implements AutoCloseable {
      * An {@link AutoCloseable} wrapper around a {@link Map} containing {@link OnnxValue}s.
      * <p>
      * When this is closed it closes all the {@link OnnxValue}s inside it. If you maintain a reference to a
-     * value after this object has been closed it will throw an exception upon access.
+     * value after this object has been closed it will throw an {@link IllegalStateException} upon access.
      */
     public static class Result implements AutoCloseable, Iterable<Map.Entry<String,OnnxValue>> {
 
@@ -430,6 +503,11 @@ public class OrtSession implements AutoCloseable {
 
         private boolean closed;
 
+        /**
+         * Creates a Result from the names and values produced by {@link OrtSession#run(Map)}.
+         * @param names The output names.
+         * @param values The output values.
+         */
         Result(String[] names, OnnxValue[] values) {
             map = new LinkedHashMap<>();
             list = new ArrayList<>();

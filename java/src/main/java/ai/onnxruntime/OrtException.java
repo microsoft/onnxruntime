@@ -1,11 +1,11 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 /**
- * An exception which contains any error messages out of the onnx-runtime.
+ * An exception which contains the error message and code produced by the native onnxruntime.
  */
 public class OrtException extends Exception {
     private static final long serialVersionUID = 1L;

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -42,18 +42,19 @@ public interface OnnxValue extends AutoCloseable {
     public OnnxValueType getType();
 
     /**
-     * Returns the value as a POJO copying it out of the native heap.
-     * This operation can be quite slow for high dimensional tensors.
-     *
-     * Overridden by the subclasses with a more specific type.
+     * Returns the value as a Java object copying it out of the native heap.
+     * This operation can be quite slow for high dimensional tensors, where
+     * you should prefer {@link OnnxTensor#getByteBuffer()} etc.
+     * <p>
+     * Overridden by the subclasses with a more specific type if available.
      * @return The value.
      * @throws OrtException If an error occurred reading the value.
      */
     public Object getValue() throws OrtException;
 
     /**
-     * Gets the info object associated with this OnnxValue.
-     * @return The info.
+     * Gets the type info object associated with this OnnxValue.
+     * @return The type information.
      */
     public ValueInfo getInfo();
 
@@ -74,8 +75,8 @@ public interface OnnxValue extends AutoCloseable {
     }
 
     /**
-     * Calls close on each element of the map.
-     * @param itr A map of closeable OnnxValues.
+     * Calls close on each {@link OnnxValue} in the map.
+     * @param map A map of {@link OnnxValue}s.
      */
     public static void close(Map<String,? extends OnnxValue> map) {
         for (OnnxValue t : map.values()) {
