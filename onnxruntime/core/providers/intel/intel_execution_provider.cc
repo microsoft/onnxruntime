@@ -451,6 +451,8 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
   //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
       return true;
     default:
+      if(intel_ep::IsDebugEnabled())
+        std::cout << "Type is not supported" << std::endl;
       return false;
   }
 }
@@ -462,7 +464,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   const auto& optype = node->OpType();
 
   if(intel_ep::IsDebugEnabled())
-    std::cout << "Node " << optype;
+    std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
 
   /*
@@ -486,12 +488,8 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
     if(intel_ep::IsDebugEnabled())
-      std::cout << " is not supported" << std::endl;
+      std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
-  }
-  else{
-    if(intel_ep::IsDebugEnabled())
-      std::cout << "\n";
   }
 
   //Check 2b
