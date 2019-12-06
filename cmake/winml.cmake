@@ -238,6 +238,9 @@ add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_image PRIVATE wil)
+if (onnxruntime_USE_DML)
+  target_link_libraries(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+endif(onnxruntime_USE_DML)
 
 
 ###########################
@@ -337,6 +340,9 @@ add_dependencies(winml_lib_api winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_api PRIVATE wil)
+if (onnxruntime_USE_DML)
+  target_link_libraries(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+endif(onnxruntime_USE_DML)
 
 
 ###########################
