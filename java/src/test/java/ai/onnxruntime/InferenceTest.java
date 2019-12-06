@@ -63,7 +63,7 @@ public class InferenceTest {
     }
 
     @Test
-    public void createSessionFromPath() {
+    public void createSessionFromPath() throws OrtException {
         String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("createSessionFromPath");
              OrtSession.SessionOptions options = new SessionOptions()) {
@@ -99,12 +99,10 @@ public class InferenceTest {
                     assertEquals(expectedOutputDimensions[i], outputInfo.shape[i]);
                 }
             }
-        } catch (OrtException e) {
-            fail("Exception thrown - " + e);
         }
     }
     @Test
-    public void createSessionFromByteArray() throws IOException {
+    public void createSessionFromByteArray() throws IOException, OrtException {
         Path modelPath = resourcePath.resolve("squeezenet.onnx");
         byte[] modelBytes = Files.readAllBytes(modelPath);
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("createSessionFromByteArray");
@@ -141,20 +139,18 @@ public class InferenceTest {
                     assertEquals(expectedOutputDimensions[i], outputInfo.shape[i]);
                 }
             }
-        } catch (OrtException e) {
-            fail("Exception thrown - " + e);
         }
     }
 
     @Test
-    public void inferenceTest() {
+    public void inferenceTest() throws OrtException {
         canRunInferenceOnAModel(OptLevel.NO_OPT,ExecutionMode.PARALLEL);
         canRunInferenceOnAModel(OptLevel.NO_OPT,ExecutionMode.SEQUENTIAL);
         canRunInferenceOnAModel(OptLevel.ALL_OPT,ExecutionMode.PARALLEL);
         canRunInferenceOnAModel(OptLevel.ALL_OPT,ExecutionMode.SEQUENTIAL);
     }
 
-    private void canRunInferenceOnAModel(OptLevel graphOptimizationLevel, ExecutionMode exectionMode) {
+    private void canRunInferenceOnAModel(OptLevel graphOptimizationLevel, ExecutionMode exectionMode) throws OrtException {
         String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
 
         // Set the graph optimization level for this session.
@@ -201,8 +197,6 @@ public class InferenceTest {
                     inputTensor.close();
                 }
             }
-        } catch (OrtException e) {
-            fail("Exception thrown - " + e);
         }
     }
 
