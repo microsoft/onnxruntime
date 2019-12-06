@@ -56,6 +56,26 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
 }
 }  // namespace
 
+TEST(ConvTransposeTest, ConvTranspose_1D) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3},        // kernel_shape
+      {},                        // output_padding
+      {},                        // output_shape
+      vector<int64_t>{0, 0},     // pads
+      vector<int64_t>{1},        // strides
+      vector<int64_t>{1},        // dilations
+      1                          // group
+  };
+  vector<float> X = {0.0f, 1.0f, 2.0f};
+  vector<int64_t> X_shape = {1, 1, 3};
+  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 2, 3};
+  vector<int64_t> Y_shape = {1, 2, 5};
+  auto expected_vals = {0.0f, 1.0f, 3.0f, 3.0f, 2.0f, 0.0f, 1.0f, 3.0f, 3.0f, 2.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D) {
   ConvTransposeOpAttributes attrs = {
       vector<int64_t>{3, 3},        // kernel_shape
