@@ -145,7 +145,7 @@ bool IsFloat16Supported(ID3D12Device* device) {
   if (FAILED(IsFloat16Blocked(*device, &isBlocked)) || isBlocked) {
     return false;
   }
-
+  
 #if USE_DML
   winrt::com_ptr<IDMLDevice> dmlDevice;
   winrt::check_hresult(DMLCreateDevice(
@@ -162,10 +162,10 @@ bool IsFloat16Supported(ID3D12Device* device) {
       &float16Query,
       sizeof(float16Data),
       &float16Data));
-#endif USE_DML
-
-
   return float16Data.IsSupported;
+#else
+  return true;
+#endif USE_DML
 }
 
 // uses Structured Exception Handling (SEH) to detect for delay load failures of target API.
