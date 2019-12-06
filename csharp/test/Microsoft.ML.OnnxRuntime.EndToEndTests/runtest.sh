@@ -2,7 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+echo "Start of script"
 echo "PACKAGENAME is set to $PACKAGENAME"
+echo "PackageName is set to $PackageName"
 
 LocalNuGetRepo=$1
 SourceRoot=$2
@@ -12,6 +14,11 @@ IsMacOS=${5:-false}
 PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
+
+echo "After init:"
+echo "PACKAGENAME is set to $PACKAGENAME"
+echo "PackageName is set to $PackageName"
+
 
 set -x
 
