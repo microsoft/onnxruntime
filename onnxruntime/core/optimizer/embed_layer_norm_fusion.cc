@@ -14,6 +14,10 @@ namespace onnxruntime {
 
 // Add a Cast to convert Input from int64 to int32.
 static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
+  auto data_type = input->TypeAsProto()->tensor_type().elem_type();
+  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    return input;
+  }
   const TensorShapeProto* input_shape = input->Shape();
   TypeProto input_int32;
   input_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
@@ -42,26 +46,22 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
   return &cast32;
 }
 
-static NodeArg* CheckInput(Graph& graph, NodeArg* input, ProviderType provider_type, const logging::Logger& logger) {
+static bool CheckInput(NodeArg* input, const logging::Logger& logger) {
   // Validate input shape (batch_size, sequence_length) and data type.
   // Note that batch_size and sequence_length could be symbolic.
   const TensorShapeProto* input_shape = input->Shape();
   if (input_shape == nullptr || input_shape->dim_size() != 2 || input->Type() == nullptr) {
-    DEBUG_LOG("Mask shape is unknown or not 2D, or data type unknown");
-    return nullptr;
+    DEBUG_LOG("Input shape is unknown or not 2D, or data type unknown");
+    return false;
   }
 
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
   if (data_type != ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
       data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     DEBUG_LOG("Input data type is not int32 or int64");
-    return nullptr;
+    return false;
   }
-
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    return CastToInt32(graph, input, provider_type);
-  }
-  return input;
+  return true;
 }
 
 /**
@@ -125,8 +125,11 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     // The first input of segment_gather_node must be 2d.
-    auto sg_shape = segment_gather_node.MutableInputDefs()[0]->Shape();
-    if (sg_shape != nullptr && sg_shape->dim_size() != 2) {
+    NodeArg* segment_embedding = segment_gather_node.MutableInputDefs()[0];
+    auto sg_shape = segment_embedding->Shape();
+    if (sg_shape == nullptr || sg_shape->dim_size() != 2 ||
+        !sg_shape->dim()[1].has_dim_value() ||
+        sg_shape->dim()[1].dim_value() <= 0) {
       continue;
     }
 
@@ -143,8 +146,11 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     // The first input of word_gather_node must be 2d.
-    auto wg_shape = word_gather_node.MutableInputDefs()[0]->Shape();
-    if (wg_shape != nullptr && wg_shape->dim_size() != 2) {
+    NodeArg* word_embedding = word_gather_node.MutableInputDefs()[0];
+    auto wg_shape = word_embedding->Shape();
+    if (wg_shape == nullptr || wg_shape->dim_size() != 2 ||
+        !wg_shape->dim()[1].has_dim_value() ||
+        wg_shape->dim()[1].dim_value() != sg_shape->dim()[1].dim_value()) {
       continue;
     }
 
@@ -161,8 +167,11 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
     // The first input of position_gather_node must be 2d.
-    auto pg_shape = position_gather_node.MutableInputDefs()[0]->Shape();
-    if (pg_shape != nullptr && pg_shape->dim_size() != 2) {
+    NodeArg* position_embedding = position_gather_node.MutableInputDefs()[0];
+    auto pg_shape = position_embedding->Shape();
+    if (pg_shape == nullptr || pg_shape->dim_size() != 2 ||
+        !pg_shape->dim()[1].has_dim_value() ||
+        pg_shape->dim()[1].dim_value() != sg_shape->dim()[1].dim_value()) {
       continue;
     }
 
@@ -176,7 +185,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       std::vector<int64_t> data;
       if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) ||
           data.size() < 1 ||
-          (data.size() == 1 && data[1] != 0)) {
+          (data.size() == 1 && data[0] != 0)) {
         continue;
       }
       for (size_t i = 1; i < data.size(); i++) {
@@ -217,15 +226,26 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       if (!graph_utils::FindPath(expand_node, true, pg_parent_path, pg_edges, logger)) {
         continue;
       }
-      for (size_t i = 0; i < edges.size(); i++) {
-        if (edges[i]->GetNode().GetOutputEdgesCount() != 1) {
+      for (size_t i = 0; i < pg_edges.size(); i++) {
+        if (pg_edges[i]->GetNode().GetOutputEdgesCount() != 1) {
           isValidEmbedSubNode = false;
           break;
         }
       }
+      // Check if the second input of the Gather node in the path has a constant input of 1
+      Node& gather_node = *graph.GetNode(pg_edges[pg_edges.size() - 2]->GetNode().Index());
+      if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node.InputDefs()[1]), int64_t(1), true)) {
+        DEBUG_LOG("Second input of Gather should be a constant with value 1. ");
+        
+        continue;
+      }
       // Check if the two paths of position gather lead to the same input. 
-      Node& shape_node_2 = *graph.GetNode(edges[edges.size() - 1]->GetNode().Index());
+      Node& shape_node_2 = *graph.GetNode(pg_edges[pg_edges.size() - 1]->GetNode().Index());
       if (shape_node_1.MutableInputDefs()[0] != shape_node_2.MutableInputDefs()[0]) {
+        continue;
+      }
+      // Check if the parent of "shape" is the parent of "word gather"
+      if (shape_node_1.MutableInputDefs()[0] != word_gather_node.MutableInputDefs()[1]) {
         continue;
       }
 
@@ -235,32 +255,66 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     // Get input "input_ids" from node.
-    NodeArg* input_ids = CheckInput(graph, word_gather_node.MutableInputDefs()[1], layer_norm_node.GetExecutionProviderType(), logger);
-    if (input_ids == nullptr) {
+    NodeArg* input_ids = word_gather_node.MutableInputDefs()[1];
+    if (!CheckInput(input_ids, logger)) {
       DEBUG_LOG("Input id is not valid. ");
       continue;
     }
 
     // Get input "segment_ids" from node.
-    NodeArg* segment_ids = CheckInput(graph, segment_gather_node.MutableInputDefs()[1], layer_norm_node.GetExecutionProviderType(), logger);
-    if (segment_ids == nullptr) {
+    NodeArg* segment_ids = segment_gather_node.MutableInputDefs()[1];
+    if (!CheckInput(segment_ids, logger)) {
       DEBUG_LOG("Segment id is not valid. ");
       continue;
     }
 
     // Get input "mask" from "ReduceSum" node.
-    NodeArg* mask = CheckInput(graph, reduce_sum_node.MutableInputDefs()[0], layer_norm_node.GetExecutionProviderType(), logger);
-    if (mask == nullptr) {
+    NodeArg* mask = reduce_sum_node.MutableInputDefs()[0];
+    if (!CheckInput(mask, logger)) {
       DEBUG_LOG("Mask is not valid. ");
       continue;
     }
 
+    if (!input_ids->Shape()->dim()[1].has_dim_value()) {
+      DEBUG_LOG("Input_ids should have value in dimension 1. ");
+      continue;
+    }
+    if (input_ids->Shape()->dim()[0].dim_value() != segment_ids->Shape()->dim()[0].dim_value() || 
+      input_ids->Shape()->dim()[1].dim_value() != segment_ids->Shape()->dim()[1].dim_value()) {
+      DEBUG_LOG("Input_ids and segment id should have the same shape. ");
+      continue;
+    }
+    if (input_ids->Shape()->dim()[0].dim_value() != mask->Shape()->dim()[0].dim_value() ||
+        input_ids->Shape()->dim()[1].dim_value() != mask->Shape()->dim()[1].dim_value()) {
+      DEBUG_LOG("Input_ids and mask should have the same shape. ");
+      continue;
+    }
+
+    NodeArg* gamma = layer_norm_node.MutableInputDefs()[1];
+    NodeArg* beta = layer_norm_node.MutableInputDefs()[2];
+    if (gamma->Shape() == nullptr 
+      || gamma->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
+      DEBUG_LOG("Gamma should be of shape (hidden_size). ");
+      continue;
+    }
+
+    if (beta->Shape() == nullptr 
+      || beta->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
+      DEBUG_LOG("Beta should be of shape (hidden_size). ");
+      continue;
+    }
+
+    // Cast input_ids, segment_ids, and mask to int32 if needed. 
+    input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
+    segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
+    mask = CastToInt32(graph, mask, layer_norm_node.GetExecutionProviderType());
+
     const std::vector<NodeArg*> embed_layer_norm_input_defs{
         input_ids,
         segment_ids,
-        word_gather_node.MutableInputDefs()[0],
-        position_gather_node.MutableInputDefs()[0],
-        segment_gather_node.MutableInputDefs()[0],
+        word_embedding,
+        position_embedding,
+        segment_embedding,
         layer_norm_node.MutableInputDefs()[1],
         layer_norm_node.MutableInputDefs()[2],
         mask};
