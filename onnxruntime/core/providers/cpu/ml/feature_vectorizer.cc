@@ -59,21 +59,20 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
     auto feature_size = input_dimensions_[index];
 
-    auto data_type = input_tensor.DataType();
     auto cur_out = out.begin() + feature_offset;
 
-    if (utils::IsPrimitiveDataType<float>(data_type)) {
+    if (input_tensor.IsDataType<float>()) {
       // straight copy for float to float
       VectorizeTensor<float>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (utils::IsPrimitiveDataType<int32_t>(data_type)) {
+    } else if (input_tensor.IsDataType<int32_t>()) {
       VectorizeTensor<int32_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (utils::IsPrimitiveDataType<int64_t>(data_type)) {
+    } else if (input_tensor.IsDataType<int64_t>()) {
       VectorizeTensor<int64_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (utils::IsPrimitiveDataType<double>(data_type)) {
+    } else if (input_tensor.IsDataType<double>()) {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed
-      ORT_THROW("Invalid input type:", data_type);
+      ORT_THROW("Invalid input type:", input_tensor.DataType());
     }
 
     // move to start of next feature

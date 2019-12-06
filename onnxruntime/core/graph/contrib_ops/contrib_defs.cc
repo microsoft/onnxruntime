@@ -241,12 +241,10 @@ will be calculated.)DOC";
         auto& input_ids_shape = getInputShape(ctx, 0);
         auto& input_ids_dims = input_ids_shape.dim();
 
+        // Note that both batch size and sequence length could be symbolic.
+        // So we only check dimension size here.
         if (input_ids_dims.size() != 2) {
           fail_shape_inference("Inputs 0 shall be 2 dimensions");
-        }
-
-        if (!input_ids_dims[1].has_dim_value()) {
-          fail_shape_inference("Inputs 0 shall have value in dimension 1");
         }
 
         // get hidden_size from the last dimension of embedding
@@ -258,8 +256,6 @@ will be calculated.)DOC";
           fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
         }
         int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
-
-
 
         // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
         ONNX_NAMESPACE::TensorShapeProto output_shape;

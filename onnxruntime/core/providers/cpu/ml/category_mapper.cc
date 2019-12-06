@@ -27,10 +27,8 @@ Status CategoryMapper::Compute(OpKernelContext* context) const {
   const TensorShape& shape = X.Shape();
   Tensor& Y = *context->Output(0, TensorShape(shape));
 
-  auto input_type = X.DataType();
-
-  if (utils::IsDataTypeString(input_type)) {
-    if (!utils::IsPrimitiveDataType<int64_t>(Y.DataType()))
+  if (X.IsDataTypeString()) {
+    if (!Y.IsDataType<int64_t>())
       return Status(ONNXRUNTIME, FAIL, "Input of string must have output of int64");
 
     auto input = gsl::make_span(X.template Data<std::string>(), shape.Size());
@@ -47,7 +45,7 @@ Status CategoryMapper::Compute(OpKernelContext* context) const {
                     ++out;
                   });
   } else {
-    if (!utils::IsDataTypeString(Y.DataType()))
+    if (!Y.IsDataTypeString())
       return Status(ONNXRUNTIME, FAIL, "Input of int64 must have output of string ");
 
     auto input = gsl::make_span(X.template Data<int64_t>(), shape.Size());

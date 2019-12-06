@@ -10,13 +10,18 @@
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
 
+namespace onnxruntime {
+class SparseTensor;
+class TensorSeq;
+}
+
 /**
    Represents both tensors and non-tensors.
 */
 struct OrtValue {
  public:
   OrtValue() : data_(nullptr) {}
-  virtual ~OrtValue() = default;
+  ~OrtValue() = default;
 
   OrtValue(void* pData, onnxruntime::MLDataType type, onnxruntime::DeleteFunc deleter) {
     Init(pData, type, deleter);
@@ -45,6 +50,14 @@ struct OrtValue {
 
   bool IsTensor() const noexcept {
     return (type_ != nullptr && type_->IsTensorType());
+  }
+
+  bool IsTensorSequence () const noexcept {
+    return (type_ != nullptr && type_->IsTensorSequenceType());
+  }
+
+  bool IsSparseTensor() const noexcept {
+    return (type_ != nullptr && type_->IsSparseTensorType());
   }
 
   onnxruntime::MLDataType Type() const {
@@ -81,6 +94,29 @@ inline onnxruntime::Tensor* OrtValue::GetMutable<onnxruntime::Tensor>() {
   return static_cast<onnxruntime::Tensor*> (data_.get());
 }
 
+template <>
+inline const onnxruntime::TensorSeq& OrtValue::Get<onnxruntime::TensorSeq>() const {
+  ORT_ENFORCE(IsTensorSequence(), "Trying to get a TensorSeq, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return *static_cast<onnxruntime::TensorSeq*>(data_.get());
+}
+
+template <>
+inline onnxruntime::TensorSeq* OrtValue::GetMutable<onnxruntime::TensorSeq>() {
+  ORT_ENFORCE(IsTensorSequence(), "Trying to get a TensorSeq, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return static_cast<onnxruntime::TensorSeq*>(data_.get());
+}
+
+template <>
+inline const onnxruntime::SparseTensor& OrtValue::Get<onnxruntime::SparseTensor>() const {
+  ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return *static_cast<onnxruntime::SparseTensor*>(data_.get());
+}
+
+template <>
+inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor>() {
+  ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
+  return static_cast<onnxruntime::SparseTensor*>(data_.get());
+}
 
 //TODO: remove the following line
 #define MLValue OrtValue
