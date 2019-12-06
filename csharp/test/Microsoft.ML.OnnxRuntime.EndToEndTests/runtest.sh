@@ -11,7 +11,7 @@ SourceRoot=$2
 BuildDir=$3
 export CurrentOnnxRuntimeVersion=$4
 IsMacOS=${5:-false}
-PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
+PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 
