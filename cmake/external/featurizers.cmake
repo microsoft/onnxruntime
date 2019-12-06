@@ -3,12 +3,53 @@
 # This source code should not depend on the onnxruntime and may be built independently
 
 
+#set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
+#set(featurizers_TAG "31c78493d7a6a91399aef5fbfd87d6d02fd19852")
+
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})
 
-file(GLOB automl_featurizers_srcs CONFIGURE_DEPENDS
-  "${featurizers_ROOT}/src/Featurizers/*.h"
-  "${featurizers_ROOT}/src/Featurizers/Components/*.h"
+# Need this to properly checkout crlf
+# if (MSVC)
+    # ExternalProject_Add(featurizers_lib_download
+            # PREFIX ${featurizers_pref}
+            # GIT_REPOSITORY ${featurizers_URL}
+            # GIT_TAG ${ngraph_TAG}
+            # GIT_CONFIG core.autocrlf=input
+            # SOURCE_DIR ${featurizers_ROOT}
+            # CONFIGURE_COMMAND ""
+            # BUILD_COMMAND ""
+            # UPDATE_COMMAND ""
+            # INSTALL_COMMAND ""
+        # )
+# else()
+    # ExternalProject_Add(featurizers_lib_download
+            # PREFIX ${featurizers_pref}
+            # GIT_REPOSITORY ${featurizers_URL}
+            # GIT_TAG ${featurizers_TAG}
+            # SOURCE_DIR ${featurizers_ROOT}
+            # CONFIGURE_COMMAND ""
+            # BUILD_COMMAND ""
+            # UPDATE_COMMAND ""
+            # INSTALL_COMMAND ""
+        # )
+# endif()
+
+
+set(automl_featurizers_srcs 
+  "${featurizers_ROOT}/src/Featurizers/CatImputerFeaturizer.h"
+  "${featurizers_ROOT}/src/Featurizers/DateTimeFeaturizer.h"
+  "${featurizers_ROOT}/src/Featurizers/SampleAddFeaturizer.h"
+  "${featurizers_ROOT}/src/Featurizers/StringFeaturizer.h"
+  "${featurizers_ROOT}/src/Featurizers/TimeSeriesImputerFeaturizer.h"
+
+  "${featurizers_ROOT}/src/Featurizers/Components/Components.h"
+  "${featurizers_ROOT}/src/Featurizers/Components/InferenceOnlyFeaturizerImpl.h"
+  "${featurizers_ROOT}/src/Featurizers/Components/PipelineExecutionEstimatorImpl.h"
+  "${featurizers_ROOT}/src/Featurizers/Components/TimeSeriesFrequencyEstimator.h"
+  "${featurizers_ROOT}/src/Featurizers/Components/TimeSeriesImputerTransformer.h"
+  "${featurizers_ROOT}/src/Featurizers/Components/TrainingOnlyEstimatorImpl.h"
+
   "${featurizers_ROOT}/src/Featurizers/DateTimeFeaturizer.cpp"
   "${featurizers_ROOT}/src/Featurizers/SampleAddFeaturizer.cpp"
   )
