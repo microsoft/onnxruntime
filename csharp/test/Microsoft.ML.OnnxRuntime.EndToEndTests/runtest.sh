@@ -2,6 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+echo "PACKAGENAME is set to $PACKAGENAME"
+
 LocalNuGetRepo=$1
 SourceRoot=$2
 BuildDir=$3
