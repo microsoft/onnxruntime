@@ -141,12 +141,14 @@ bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModel
 }
 
 bool IsFloat16Supported(ID3D12Device* device) {
+#ifndef USE_DML
+    WINML_THROW_HR_IF_TRUE_MSG(ERROR_NOT_SUPPORTED, true, "IsFloat16Supported is not implemented for WinML only build.");
+    return false;
+#else
   bool isBlocked;
   if (FAILED(IsFloat16Blocked(*device, &isBlocked)) || isBlocked) {
     return false;
   }
-  
-#if USE_DML
   winrt::com_ptr<IDMLDevice> dmlDevice;
   winrt::check_hresult(DMLCreateDevice(
       device,
@@ -163,8 +165,6 @@ bool IsFloat16Supported(ID3D12Device* device) {
       sizeof(float16Data),
       &float16Data));
   return float16Data.IsSupported;
-#else
-  return true;
 #endif USE_DML
 }
 
