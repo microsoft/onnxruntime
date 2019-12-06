@@ -109,7 +109,7 @@ void LearningModelSession::Initialize() {
     device_impl->GetDeviceQueue(),
     session_builder.put()));
 
-  Ort::SessionOptions options;
+  Ort::SessionOptions options(nullptr);
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(options.put()));
 
   // Make onnxruntime apply the batch size override, if any

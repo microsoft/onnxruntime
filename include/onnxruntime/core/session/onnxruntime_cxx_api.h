@@ -75,7 +75,9 @@ ORT_DEFINE_RELEASE(Value);
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
 struct Base {
-  Base() = default;
+  Base() {
+    p_ = nullptr;
+  }
   Base(T* p) : p_{p} {
     if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
   }
@@ -95,7 +97,7 @@ struct Base {
   }
 
   T** put() noexcept {
-    //ASSERT(p_ == nullptr);
+    assert(p_ == nullptr);
     return &p_;
   }
 

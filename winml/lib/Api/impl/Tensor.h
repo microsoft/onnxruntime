@@ -4,7 +4,6 @@
 #pragma once
 
 #include "TensorBuffer.h"
-#include "MLValueHelpers.h"
 
 // we further specialize these base types for a couple of extra tensor element types
 namespace Ort {
