@@ -156,9 +156,23 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "Selu",
     "Softplus",
     "GlobalLpPool",
+    "CumSum",
     "LogSoftmax",
     "MeanVarianceNormalization",
-    "LpNormalization"
+    "LpNormalization",
+    "Ceil", //cannot cast
+    "Reciprocal",
+    "Sqrt",
+    "Exp",
+    "Not",
+    "And",
+    "Or",
+    "Xor",
+    "Less",
+    "Greater",
+    "Equal",
+    "Asinh",
+    "Acosh",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
