@@ -425,7 +425,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-      {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
@@ -472,6 +471,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
   broken_tests.insert({"mask_rcnn_keras", "Results mismatch: 8 of 81000"});
   broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_DNNL
@@ -486,6 +486,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
   broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"}); 
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_OPENVINO
@@ -494,6 +495,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
   broken_tests.insert({"scan_sum", "disable temporarily"});
   broken_tests.insert({"scan9_sum", "disable temporarily"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
   broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
   broken_tests.insert({"div", "will be fixed in the next release"});
@@ -513,6 +515,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
   broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
   broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_TENSORRT
@@ -529,6 +532,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
   broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
   broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_CUDA
@@ -537,6 +541,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_DML
@@ -547,6 +552,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 
     // These tests are temporarily disabled pending a fix to the DML EP for handling of the output_padding attribute
     broken_tests.insert({"ConvTranspose2d", "Temporarily disabled due to EP bug"});
