@@ -184,15 +184,22 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (graph_utils::IsConstantInitializer(graph, position_gather_node.MutableInputDefs()[1]->Name())) {
       // Check if the second input of position gather is a tensor with values evenly spaced by 1 starting from 0. 
       std::vector<int64_t> data;
-      if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) ||
-          data.size() < 1 ||
-          (data.size() == 1 && data[0] != 0)) {
+      auto expected_shape = word_gather_node.MutableInputDefs()[1]->Shape();
+      if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) 
+        || !utils::HasDimValue(expected_shape->dim()[0]) 
+        || !utils::HasDimValue(expected_shape->dim()[1])
+        || static_cast<int>(data.size()) != expected_shape->dim()[0].dim_value() * expected_shape->dim()[1].dim_value()) {
         continue;
       }
-      for (size_t i = 1; i < data.size(); i++) {
-        if (data[i - 1] + 1 != data[i]) {
+      int64_t expected_value = 0;
+      for (size_t i = 0; i < data.size(); i++) {
+        if (data[i] != expected_value) {
           isValidEmbedSubNode = false;
           break;
+        }
+        expected_value++;
+        if (expected_value >= static_cast<int64_t>(expected_shape->dim()[1].dim_value())) {
+          expected_value = 0;
         }
       }
     } else {
