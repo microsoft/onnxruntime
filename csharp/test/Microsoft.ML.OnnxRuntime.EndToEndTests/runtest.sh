@@ -2,23 +2,16 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-echo "Start of script"
-echo "PACKAGENAME is set to $PACKAGENAME"
-echo "PackageName is set to $PackageName"
-
 LocalNuGetRepo=$1
 SourceRoot=$2
 BuildDir=$3
 export CurrentOnnxRuntimeVersion=$4
 IsMacOS=${5:-false}
+# NOTE: PackageName is not PACKAGENAME since this is being called by other scripts that have already switched to the CamelCase version
+#       It's unfortunate that we don't use the same environment variable '
 PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
-
-echo "After init:"
-echo "PACKAGENAME is set to $PACKAGENAME"
-echo "PackageName is set to $PackageName"
-
 
 set -x
 
