@@ -120,10 +120,29 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 # Add winml_adapter
 ###########################
 
-file(GLOB winml_adapter_files CONFIGURE_DEPENDS
-    "${winml_adapter_dir}/*.h"
-    "${winml_adapter_dir}/*.cpp"
+list(APPEND winml_adapter_files
+    ${winml_adapter_dir}/CpuOrtSessionBuilder.cpp
+    ${winml_adapter_dir}/CpuOrtSessionBuilder.h
+    ${winml_adapter_dir}/CustomRegistryHelper.h
+    ${winml_adapter_dir}/FeatureDescriptorFactory.cpp
+    ${winml_adapter_dir}/FeatureDescriptorFactory.h
+    ${winml_adapter_dir}/LotusEnvironment.cpp
+    ${winml_adapter_dir}/LotusEnvironment.h
+    ${winml_adapter_dir}/pch.h
+    ${winml_adapter_dir}/WinMLAdapter.cpp
+    ${winml_adapter_dir}/WinMLAdapter.h
+    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
+    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h    
     )
+
+if (onnxruntime_USE_DML)
+  list(APPEND winml_adapter_files
+      ${winml_adapter_dir}/AbiCustomRegistryImpl.cpp
+      ${winml_adapter_dir}/AbiCustomRegistryImpl.h
+      ${winml_adapter_dir}/DmlOrtSessionBuilder.cpp
+      ${winml_adapter_dir}/DmlOrtSessionBuilder.h
+      )
+endif(onnxruntime_USE_DML)
 
 add_library(winml_adapter ${winml_adapter_files})
 
