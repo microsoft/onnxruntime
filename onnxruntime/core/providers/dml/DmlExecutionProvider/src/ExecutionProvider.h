@@ -28,7 +28,7 @@ namespace Dml
     class ExecutionProvider;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
-                                  winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider>
+                                  Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider>
     {
     public:
         explicit ExecutionProviderImpl::ExecutionProviderImpl(
@@ -170,7 +170,7 @@ namespace Dml
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
         std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
-        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap> m_graphNodeFactoryMap;
+        std::shared_ptr<const Windows::AI::MachineLearning::Adapter::GraphNodeFactoryMap> m_graphNodeFactoryMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
 
         bool m_closed = false;

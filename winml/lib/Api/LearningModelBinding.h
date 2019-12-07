@@ -6,6 +6,7 @@
 #include "LearningModelBinding.g.h"
 
 #include "inc/ILotusValueProviderPrivate.h"
+#include "WinMLAdapter.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -35,12 +36,11 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second);
 
-  std::tuple<std::string, OrtValue, WinML::BindingType> CreateBinding(
+  std::tuple<std::string, OrtValue*, WinML::BindingType> CreateBinding(
       const std::string& name,
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
 
-  onnxruntime::IOBinding& BindingCollection();
   std::unordered_map<std::string, Windows::Foundation::IInspectable> UpdateProviders();
 
   const Windows::AI::MachineLearning::LearningModelSession& GetSession() { return m_session; }
@@ -51,16 +51,34 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       UINT32 cchName,
       IUnknown* value);
 
+  const std::vector<std::string>& LearningModelBinding::GetOutputNames() const;
+  std::vector<Ort::Value>& LearningModelBinding::GetOutputs();
+  const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
+  const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
+  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value);
+  void BindUnboundOutputs();
+
  private:
   void CacheProvider(std::string name, ProviderInfo& spProvider);
-  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, OrtValue& mlValue);
+  Windows::Foundation::IInspectable CreateUnboundOutput(const std::string& name, Ort::Value& ort_value);
+  ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
+      const Ort::Value& ort_value,
+      ILearningModelFeatureDescriptor& descriptor);
+  bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
+  bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
+  bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
+  HRESULT BindInput(const std::string& name, Ort::Value& ml_value);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
 
   std::unordered_map<std::string, ProviderInfo> m_providers;
 
-  std::unique_ptr<onnxruntime::IOBinding> m_lotusBinding;
+  com_ptr<winmla::IWinMLAdapter> adapter_;
+  std::vector<std::string> input_names_;
+  std::vector<Ort::Value> inputs_;
+  std::vector<std::string> output_names_;
+  std::vector<Ort::Value> outputs_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 

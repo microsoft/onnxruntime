@@ -20,10 +20,23 @@ class LearningModelSessionAPITests : public APITest
 {};
 
 class LearningModelSessionAPITestsGpu : public APITest
-{};  // TODO create a constructor that calls GTEST_SKIP when GPU tests are disabled
+{
+protected:
+    void SetUp() override
+    {
+        GPUTEST
+    }
+};
 
 class LearningModelSessionAPITestsSkipEdgeCore : public LearningModelSessionAPITestsGpu
-{};  // TODO create a constructor that calls GTEST_SKIP when on EdgeCore
+{
+protected:
+    void SetUp() override
+    {
+        LearningModelSessionAPITestsGpu::SetUp();
+        SKIP_EDGECORE
+    }
+};
 
 TEST_F(LearningModelSessionAPITests, CreateSessionDeviceDefault)
 {
@@ -60,7 +73,6 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithModelLoadedFromStream)
 
 TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
 {
-
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectX));
@@ -69,7 +81,6 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectX)
 
 TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformance)
 {
-
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance));
@@ -78,7 +89,6 @@ TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXHighPerformanc
 
 TEST_F(LearningModelSessionAPITestsGpu, CreateSessionDeviceDirectXMinimumPower)
 {
-
     EXPECT_NO_THROW(LoadModel(L"model.onnx"));
 
     EXPECT_NO_THROW(m_device = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower));

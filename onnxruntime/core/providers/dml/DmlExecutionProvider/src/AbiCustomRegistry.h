@@ -14,7 +14,7 @@ namespace WRL
         >;
 }
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 { 
 
 using namespace Microsoft::WRL;
@@ -108,4 +108,4 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
     mutable std::shared_ptr<GraphNodeFactoryMap> m_graphNodeFactoryMap;
 };
 
-}    // namespace winrt::Windows::AI::MachineLearning::implementation
+}    // namespace Windows::AI::MachineLearning::Adapter

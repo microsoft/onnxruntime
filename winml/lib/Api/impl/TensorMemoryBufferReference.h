@@ -5,29 +5,33 @@
 
 #include "Tensor.h"
 #include <type_traits>
-#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+
 #include <Memorybuffer.h>
+#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 struct DMLResource {
-  DMLResource(ID3D12Resource* pResource) {
+  DMLResource(ID3D12Resource* pResource, UINT64 resource_width) {
     DXResource.copy_from(pResource);
-    ExecutionProviderAllocatedResource = Dml::CreateGPUAllocationFromD3DResource(pResource);
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
+    ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
+    resource_width_ = resource_width;
   }
 
   ~DMLResource() {
-    Dml::FreeGPUAllocation(ExecutionProviderAllocatedResource);
+    adapter_->FreeGPUAllocation(ExecutionProviderAllocatedResource);
   }
 
   winrt::com_ptr<ID3D12Resource> DXResource;
+  UINT64 resource_width_;
   void* ExecutionProviderAllocatedResource = nullptr;
+  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 };
 
 template <typename T>
 struct TensorResources {
   // ITensorNative::GetBuffer
-  STDMETHOD(GetBuffer)
-  (
+  STDMETHOD(GetBuffer) (
       std::vector<int64_t> shape,
       BYTE** value, UINT32* capacity) {
     RETURN_HR_IF_NULL(E_POINTER, value);
@@ -43,7 +47,9 @@ struct TensorResources {
     try {
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
-        CpuResource = std::make_shared<WinML::Tensor<T>>(shape);
+        winrt::com_ptr<winmla::IWinMLAdapter> adapter;
+        WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+        CpuResource = std::make_shared<WinML::Tensor<T>>(adapter.get(), shape);
       }
 
       if constexpr (std::is_same_v<T, std::string>) {

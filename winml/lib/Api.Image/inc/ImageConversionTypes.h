@@ -28,6 +28,6 @@ enum ImageTensorChannelType {
 struct ImageTensorDescription {
   ImageTensorDataType dataType;
   ImageTensorChannelType channelType;
-  UINT sizes[kImageTensorDimensionCountMax];
+  int64_t sizes[kImageTensorDimensionCountMax];
 };
 }  // namespace Windows::AI::MachineLearning::Internal

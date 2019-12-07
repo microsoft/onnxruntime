@@ -4,8 +4,20 @@
 #pragma once
 
 #include "TensorBuffer.h"
-#include "MLValueHelpers.h"
 
+// we further specialize these base types for a couple of extra tensor element types
+namespace Ort {
+template <>
+struct TypeToTensorType<std::string> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; };
+template <>
+struct TypeToTensorType<onnxruntime::MLFloat16> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+}
+
+//
+// the Tensor class is the actual object for CPU memory buffers.
+// TensorBase contains one of these to represent the raw memory
+// GetCpuResource() returns it
+//
 namespace Windows::AI::MachineLearning {
 template <typename T>
 class Tensor {
@@ -14,14 +26,16 @@ class Tensor {
   using TensorBufferPtr = typename TensorBuffer::TensorBufferPtr;
 
   TensorBufferPtr m_buffer;
-  std::vector<int64_t> m_shape;
+  std::vector<int64_t> shape_;
+  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 
  public:
   Tensor() = delete;
 
   Tensor(
+      winmla::IWinMLAdapter* adapter,
       std::vector<int64_t> const& shape,
-      winrt::Windows::Storage::Streams::IBuffer buffer) : m_shape(shape),
+      winrt::Windows::Storage::Streams::IBuffer buffer) : shape_(shape),
                                                           m_buffer(
                                                               TensorBuffer::Create(
                                                                   static_cast<uint32_t>(
@@ -30,27 +44,37 @@ class Tensor {
                                                                           std::end(shape),
                                                                           static_cast<int64_t>(1),
                                                                           std::multiplies<int64_t>())),
-                                                                  buffer)) {}
+                                                                  buffer)) {
+    adapter_.copy_from(adapter);
+  }
 
-  Tensor(std::vector<int64_t> const& shape) : m_shape(shape),
-                                              m_buffer(
-                                                  TensorBuffer::Create(
-                                                      static_cast<uint32_t>(
-                                                          std::accumulate(
-                                                              std::begin(shape),
-                                                              std::end(shape),
-                                                              static_cast<int64_t>(1),
-                                                              std::multiplies<int64_t>())))) {}
+  Tensor(
+      winmla::IWinMLAdapter* adapter,
+      std::vector<int64_t> const& shape) : shape_(shape),
+                                           m_buffer(
+                                               TensorBuffer::Create(
+                                                   static_cast<uint32_t>(
+                                                       std::accumulate(
+                                                           std::begin(shape),
+                                                           std::end(shape),
+                                                           static_cast<int64_t>(1),
+                                                           std::multiplies<int64_t>())))) {
+    adapter_.copy_from(adapter);
+  }
 
-  Tensor(std::vector<int64_t> const&& shape) : m_shape(std::move(shape)),
-                                               m_buffer(
-                                                   TensorBuffer::Create(
-                                                       static_cast<uint32_t>(
-                                                           std::accumulate(
-                                                               std::begin(shape),
-                                                               std::end(shape),
-                                                               static_cast<int64_t>(1),
-                                                               std::multiplies<int64_t>())))) {}
+  Tensor(
+      winmla::IWinMLAdapter* adapter,
+      std::vector<int64_t> const&& shape) : shape_(std::move(shape)),
+                                            m_buffer(
+                                                TensorBuffer::Create(
+                                                    static_cast<uint32_t>(
+                                                        std::accumulate(
+                                                            std::begin(shape),
+                                                            std::end(shape),
+                                                            static_cast<int64_t>(1),
+                                                            std::multiplies<int64_t>())))) {
+    adapter_.copy_from(adapter);
+  }
 
   auto size() const {
     return m_buffer->Size();
@@ -60,13 +84,20 @@ class Tensor {
     return m_buffer->Buffer();
   }
 
-  OrtValue MLValue() {
-    // Get the shape
-    onnxruntime::TensorShape shape(m_shape);
-    // Get the data type
-    auto type = onnxruntime::DataTypeImpl::GetType<T>();
+  Ort::Value GetValue() {
+    // this is cpu memory
+    // TODO:  what is the difference between the device allocator and the arena allocator?
+    Ort::MemoryInfo cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 
-    return MLValueHelpers::CreateMLValue(shape, type, buffer().second);
+    // create the OrtValue as a tensor letting ort know that we own the data buffer
+    auto value = Ort::Value::CreateTensor<T>(
+        cpu_memory,
+        buffer().second,
+        m_buffer->SizeInBytes(),
+        shape_.data(),
+        shape_.size());
+//        Ort::TypeToTensorType<T>::type);
+    return value;
   }
 
   void set(uint32_t size, const T* pData) {
@@ -78,7 +109,7 @@ class Tensor {
   }
 
   const std::vector<int64_t>& shape() const {
-    return m_shape;
+    return shape_;
   }
 };
 }  // namespace Windows::AI::MachineLearning

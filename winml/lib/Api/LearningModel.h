@@ -4,11 +4,7 @@
 #pragma once
 
 #include "LearningModel.g.h"
-
-namespace Windows::AI::MachineLearning {
-class LotusEnvironment;
-class ModelInfo;
-}  // namespace Windows::AI::MachineLearning
+#include "WinMLAdapter.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -95,38 +91,22 @@ struct LearningModel : LearningModelT<LearningModel> {
 
  public:
   /* Non-ABI methods */
-  bool
-  IsDisposed();
-
-  IMLOperatorRegistry*
-  GetOperatorRegistry();
-
-  std::unique_ptr<onnx::ModelProto>
-  DetachModelProto();
-
-  std::unique_ptr<onnx::ModelProto>
-  CopyModelProto();
+  bool IsDisposed();
+  IMLOperatorRegistry* GetOperatorRegistry();
+  winmla::IModelProto* DetachModelProto();
+  winmla::IModelProto* CopyModelProto();
 
  private:
-  void
-  Initialize();
-
-  void
-  LogCreationEvent(
-      bool fromStream = false);
-
-  void
-  ModelUseFP16(
+  void Initialize();
+  void LogCreationEvent(bool fromStream = false);
+  void ModelUseFP16(
       winml::ILearningModelFeatureDescriptor descriptor,
       bool& use_fp16);
 
-  void
-  OverrideShapeInferenceMethods();
-
  private:
-  std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
-  std::unique_ptr<onnx::ModelProto> model_proto_;
-  std::unique_ptr<WinML::ModelInfo> model_info_;
+  com_ptr<winmla::IWinMLAdapter> adapter_;
+  com_ptr<winmla::IModelProto> model_proto_;
+  com_ptr<winmla::IModelInfo> model_info_;
   ILearningModelOperatorProvider operator_provider_;
 };
 

@@ -13,17 +13,23 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   TensorFeatureDescriptor(
       const char* name,
       const char* description,
+      bool is_required,
       winml::TensorKind tensor_kind,
       const std::vector<int64_t>& shape,
-      bool is_required,
       bool has_unsuppored_image_metadata);
 
-  // ITensorDescriptor
-  winml::TensorKind
-  TensorKind();
+  TensorFeatureDescriptor(
+      hstring const& Name,
+      hstring const& Description,
+      bool IsRequired,
+      TensorKind const& TensorKind,
+      array_view<int64_t const> Shape,
+      bool HasUnsupportedImageMetadata);
 
-  wfc::IVectorView<int64_t>
-  Shape();
+  // ITensorDescriptor
+  winml::TensorKind TensorKind();
+  wfc::IVectorView<int64_t> Shape();
+  bool HasUnsupportedImageMetadata();
 
   // IFeatureDescriptor
   winrt::hstring
@@ -60,3 +66,9 @@ struct TensorFeatureDescriptor : TensorFeatureDescriptorT<
   bool has_unsupported_image_metadata_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
+
+namespace winrt::Windows::AI::MachineLearning::factory_implementation {
+    struct TensorFeatureDescriptor : TensorFeatureDescriptorT<TensorFeatureDescriptor, implementation::TensorFeatureDescriptor> {
+
+    };
+}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation

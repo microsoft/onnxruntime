@@ -75,11 +75,17 @@ ORT_DEFINE_RELEASE(Value);
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
 struct Base {
-  Base() = default;
+  Base() {
+    p_ = nullptr;
+  }
   Base(T* p) : p_{p} {
     if (!p) throw Ort::Exception("Allocation failure", ORT_FAIL);
   }
-  ~Base() { OrtRelease(p_); }
+  ~Base() {
+    if (p_ != nullptr) {
+      OrtRelease(p_);
+    }
+  }
 
   operator T*() { return p_; }
   operator const T*() const { return p_; }
@@ -90,12 +96,19 @@ struct Base {
     return p;
   }
 
+  T** put() noexcept {
+    assert(p_ == nullptr);
+    return &p_;
+  }
+
  protected:
   Base(const Base&) = delete;
   Base& operator=(const Base&) = delete;
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
-    OrtRelease(p_);
+    if (p_ != nullptr) {
+      OrtRelease(p_);
+    }
     p_ = v.p_;
     v.p_ = nullptr;
   }
@@ -262,6 +275,7 @@ struct Value : Base<OrtValue> {
 
   size_t GetStringTensorDataLength() const;
   void GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const;
+  std::vector<std::string> GetStrings();
 
   template <typename T>
   T* GetTensorMutableData();
@@ -292,6 +306,9 @@ struct MemoryInfo : Base<OrtMemoryInfo> {
   MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
   explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}
+
+  const char* Name() const;
+  OrtMemType MemType() const;
 };
 
 //

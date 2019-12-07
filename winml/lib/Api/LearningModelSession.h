@@ -7,6 +7,7 @@
 
 #include "LearningModelBinding.h"
 #include "WinML_Lock.h"
+#include "WinMLAdapter.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -67,17 +68,20 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   onnxruntime::IExecutionProvider*
   GetExecutionProvider();
 
-  std::unique_ptr<onnxruntime::IOBinding>
-  CreateSessionBinding();
+  winmla::IInferenceSession*
+  GetIInferenceSession();
+
+  void
+  CheckClosed();
 
  private:
   void
   Initialize();
 
-  std::unique_ptr<onnx::ModelProto>
+  winmla::IModelProto*
   GetOptimizedModel();
 
-  std::unique_ptr<onnx::ModelProto>
+  winmla::IModelProto*
   GetOptimizedModel(bool should_close_model);
 
   uint64_t
@@ -96,14 +100,11 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   void
   ToggleProfiler();
 
-  void
-  CheckClosed();
-
  private:
-  std::unique_ptr<onnxruntime::InferenceSession> inference_session_;
+  com_ptr<winmla::IInferenceSession> inference_session_;
 
   // reference to the active execution provider. weak
-  onnxruntime::IExecutionProvider* p_cached_execution_provider = nullptr;
+  onnxruntime::IExecutionProvider* cached_execution_provider_ = nullptr;
 
   winml::LearningModel model_;
   winml::LearningModelDevice device_;

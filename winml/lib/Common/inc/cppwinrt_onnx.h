@@ -3,5 +3,5 @@
 
 #pragma once
 
-#include "cppwinrt.h"
+#include "winrt_headers.h"
 #include "onnx.h"

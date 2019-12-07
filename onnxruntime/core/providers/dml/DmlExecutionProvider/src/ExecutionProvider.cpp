@@ -29,7 +29,7 @@
 
 #define ENABLE_GRAPH_COMPILATION
 
-using namespace winrt::Windows::AI::MachineLearning::implementation;
+using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
 {

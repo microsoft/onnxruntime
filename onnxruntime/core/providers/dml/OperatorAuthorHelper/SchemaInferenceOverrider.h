@@ -29,7 +29,7 @@ namespace SchemaInferenceOverrider
         schema->TypeAndShapeInferenceFunction([=](onnx::InferenceContext& ctx) {
             onnxruntime::OpNodeProtoHelper<onnx::InferenceContext> nodeInfo(&ctx);
 
-            if (winrt::Windows::AI::MachineLearning::implementation::InputTensorShapesDefinedOnNode(nodeInfo))
+            if (Windows::AI::MachineLearning::Adapter::InputTensorShapesDefinedOnNode(nodeInfo))
             {
                 // Check that required constant CPU inputs exist
                 for (uint32_t inputIndex : constantCpuInputsCapture)
@@ -41,7 +41,7 @@ namespace SchemaInferenceOverrider
                 }
 
                 auto abiContext =
-                    wil::MakeOrThrow<winrt::Windows::AI::MachineLearning::implementation::MLSchemaInferenceContext>(
+                    wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::MLSchemaInferenceContext>(
                         &nodeInfo, &ctx, constantCpuInputsCapture);
 
                 THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));

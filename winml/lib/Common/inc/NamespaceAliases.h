@@ -30,6 +30,9 @@ namespace winml = ::winrt::Windows::AI::MachineLearning;
 namespace winrt::Windows::AI::MachineLearning::implementation {}
 namespace winmlp = ::winrt::Windows::AI::MachineLearning::implementation;
 
+namespace Windows::AI::MachineLearning::Adapter {}
+namespace winmla = ::Windows::AI::MachineLearning::Adapter;
+
 namespace Windows::AI::MachineLearning {}
 namespace WinML = ::Windows::AI::MachineLearning;
 

@@ -6,6 +6,7 @@
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
+#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 
@@ -28,9 +29,23 @@ struct SequenceBase : public winrt::implements<
   template <typename T>
   struct ValidLotusType { using Type = T; };
   template <>
-  struct ValidLotusType<AbiMapStringToFloat> { using Type = std::map<std::string, float>; };
+  struct ValidLotusType<AbiMapStringToFloat> {
+    //using Type = std::map<std::string, float>;
+    using TKey = std::string;
+    using TValue = float;
+    using Type = std::pair<std::vector<TKey>, std::vector<TValue>>;
+    using ABIKey = winrt::hstring;
+    using ABIValue = TValue;
+  };
   template <>
-  struct ValidLotusType<AbiMapInt64BitToFloat> { using Type = std::map<int64_t, float>; };
+  struct ValidLotusType<AbiMapInt64BitToFloat> {
+    //using Type = std::map<int64_t, float>;
+    using TKey = int64_t;
+    using TValue = float;
+    using Type = std::pair<std::vector<TKey>, std::vector<TValue>>;
+    using ABIKey = TKey;
+    using ABIValue = TValue;
+  };
 
   template <typename TElement>
   void
@@ -127,12 +142,14 @@ struct SequenceBase : public winrt::implements<
       typename ValidLotusType<AbiMapStringToFloat>::Type
       ConvertToValidLotusType(
           AbiMapStringToFloat raw) {
-    std::map<std::string, float> lotus_map;
+    std::vector<ValidLotusType<AbiMapStringToFloat>::TKey> keys;
+    std::vector<ValidLotusType<AbiMapStringToFloat>::TValue> values;
     for (auto pair : raw) {
       auto key = WinML::Strings::UTF8FromHString(pair.Key());
-      lotus_map[key] = pair.Value();
+      keys.push_back(key);
+      values.push_back(pair.Value());
     }
-    return lotus_map;
+    return std::make_pair(keys, values);
   }
 
   template <>
@@ -140,14 +157,16 @@ struct SequenceBase : public winrt::implements<
       typename ValidLotusType<AbiMapInt64BitToFloat>::Type
       ConvertToValidLotusType(
           AbiMapInt64BitToFloat raw) {
-    std::map<int64_t, float> lotus_map;
+    std::vector<ValidLotusType<AbiMapInt64BitToFloat>::TKey> keys;
+    std::vector<ValidLotusType<AbiMapInt64BitToFloat>::TValue> values;
     for (const auto& pair : raw) {
-      lotus_map[pair.Key()] = pair.Value();
+      keys.push_back(pair.Key());
+      values.push_back(pair.Value());
     }
-    return lotus_map;
+    return std::make_pair(keys, values);
   }
 
-  static LotusSequence
+  void
   ConvertToLotusSequence(
       const ABISequence& sequence) {
     LotusSequence lotus_sequence;
@@ -160,29 +179,54 @@ struct SequenceBase : public winrt::implements<
           return ConvertToValidLotusType(value);
         });
 
-    return lotus_sequence;
+    lotus_data_ = std::make_unique<LotusSequence>(lotus_sequence);
   }
 
-  STDMETHOD(GetOrtValue)
-  (
+  template <typename TLotusKey, typename TLotusValue>
+  static Ort::Value CreateOrtMap(TLotusKey* keys, TLotusValue* values, size_t len) {
+    // now create OrtValue wrappers over the buffers
+    auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    std::vector<int64_t> shape = {static_cast<int64_t>(len)};
+    auto keys_ort_value = Ort::Value::CreateTensor<TLotusKey>(cpu_memory, keys, len, shape.data(), shape.size());
+    auto values_ort_value = Ort::Value::CreateTensor<TLotusValue>(cpu_memory, values, len, shape.data(), shape.size());
+    // make the map
+    return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
+  }
+
+  STDMETHOD(GetOrtValue)(
       WinML::BindingContext& context,
-      OrtValue* ml_value) {
+      OrtValue** ort_value) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
-    // Create a copy of the sequence
-    auto sequence = context.type == WinML::BindingType::kInput
-                        ? std::make_unique<LotusSequence>(ConvertToLotusSequence(data_))
-                        : std::make_unique<LotusSequence>();
+    // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
+    if (context.type == WinML::BindingType::kOutput) {
+      *ort_value = nullptr;
+      return S_OK;
+    }
 
-    OrtValue value;
-    value.Init(
-        sequence.release(),
-        onnxruntime::DataTypeImpl::GetType<LotusSequence>(),
-        onnxruntime::DataTypeImpl::GetType<LotusSequence>()->GetDeleteFunc());
+    // handle inputs, create and store a copy of the sequence
+    ConvertToLotusSequence(data_);
 
-    *ml_value = value;
-
+    // now create OrtValue wrappers over the buffers
+    std::vector<Ort::Value> sequence_values;
+    for (auto it = lotus_data_->begin(); it != lotus_data_->end(); ++it) {
+      // make a ort value for this map
+      auto map = *it;
+      sequence_values.emplace_back(CreateOrtMap(map.first.data(), map.second.data(), map.first.size()));
+    }
+    *ort_value = Ort::Value::CreateSequence(sequence_values).release();
     return S_OK;
+
+    /*    winrt::com_ptr<winmla::IWinMLAdapter> adapter;
+    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+    auto lotus_type = adapter->GetVectorMapType(
+        TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
+        TensorKindFrom<ValidLotusType<T>::TValue>::Type);
+
+    winrt::com_ptr<winmla::IOrtValue> ml_value_out;
+    adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
+
+    *ml_value = ml_value_out.detach();*/
   }
 
   STDMETHOD(IsPlaceholder)
@@ -194,66 +238,72 @@ struct SequenceBase : public winrt::implements<
   }
 
   template <typename TRawType>
-  static TRawType
-  ConvertToABIType(
-      typename ValidLotusType<TRawType>::Type lotus_value) {
-    return lotus_value;
-  }
-
-  template <>
-  static winrt::hstring
-  ConvertToABIType(
-      typename ValidLotusType<winrt::hstring>::Type lotus_value) {
-    return WinML::Strings::HStringFromUTF8(lotus_value);
-  }
-
-  template <>
-  static AbiMapStringToFloat
-  ConvertToABIType(
-      typename ValidLotusType<AbiMapStringToFloat>::Type lotus_value) {
-    std::map<winrt::hstring, float> copy;
-    for (const auto& pair : lotus_value) {
-      auto key = WinML::Strings::HStringFromUTF8(pair.first);
-      copy[key] = pair.second;
+  static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
+    // make sure this is an array of these types
+    auto shape = ort_value.GetTensorTypeAndShapeInfo().GetShape();
+    // there needs to be only one dimension
+    THROW_HR_IF(E_INVALIDARG, shape.size() != 1);
+    auto lotus_value = ort_value.GetTensorMutableData<typename ValidLotusType<TRawType>::Type>();
+    // now go through all the entries
+    std::vector<TRawType> out;
+    for (auto i = 0; i < shape[0]; i++) {
+      out.push_back(lotus_value[i]);
     }
-    return winrt::single_threaded_map<winrt::hstring, float>(
-        std::move(copy));
+    // return the vector
+    return out;
   }
 
   template <>
-  static AbiMapInt64BitToFloat
-  ConvertToABIType(
-      typename ValidLotusType<AbiMapInt64BitToFloat>::Type lotus_value) {
-    return winrt::single_threaded_map<int64_t, float>(
-        std::move(lotus_value));
+  static std::vector<winrt::hstring> ConvertToABIType<winrt::hstring>(Ort::Value& ort_value) {
+    auto strings = ort_value.GetStrings();
+    std::vector<winrt::hstring> out;
+    for (auto i = 0; i < strings.size(); ++i) {
+      out.push_back(WinML::Strings::HStringFromUTF8(strings[i].c_str()));
+    }
+    return out;
   }
 
-  STDMETHOD(UpdateSourceResourceData)
-  (
+  STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
-      OrtValue& ml_value) {
+      OrtValue* ort_value) {
+    ORT_UNUSED_PARAMETER(context);
     auto writable_vector = data_.as<wfc::IVector<T>>();
-
     writable_vector.Clear();
 
-    const auto& sequence = ml_value.Get<LotusSequence>();
+    Ort::AllocatorWithDefaultOptions allocator;
+    size_t len;
+    Ort::ThrowOnError(Ort::GetApi().GetValueCount(ort_value, &len));
+    for (auto i = 0; i < len; ++i) {
+      OrtValue* out = nullptr;
+      Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, i, allocator, &out));
+      Ort::Value map{out};
+      auto keys = map.GetValue(0, allocator);
+      auto values = map.GetValue(1, allocator);
 
-    for (const auto& element : sequence) {
-      writable_vector.Append(ConvertToABIType<T>(element));
+      auto keys_vector = ConvertToABIType<typename ValidLotusType<T>::ABIKey>(keys);
+      auto values_vector = ConvertToABIType<typename ValidLotusType<T>::ABIValue>(values);
+
+      std::map<typename ValidLotusType<T>::ABIKey, typename ValidLotusType<T>::ABIValue> std_map;
+      for (auto j = 0; j < keys_vector.size(); ++j) {
+        std_map[keys_vector[j]] = values_vector[j];
+      }
+      auto abi_map = winrt::single_threaded_map<typename ValidLotusType<T>::ABIKey, typename ValidLotusType<T>::ABIValue>(
+        std::move(std_map));
+    
+      writable_vector.Append(abi_map);
     }
-
     return S_OK;
   }
 
-  STDMETHOD(AbiRepresentation)
-  (
-      wf::IInspectable& abi_representation) {
+  STDMETHOD(AbiRepresentation)(
+    wf::IInspectable& abi_representation) {
     data_.as(abi_representation);
     return S_OK;
   }
 
  private:
   ABISequence data_;
+  std::unique_ptr<LotusSequence> lotus_data_;
 };
 
 }  // namespace Windows::AI::MachineLearning
