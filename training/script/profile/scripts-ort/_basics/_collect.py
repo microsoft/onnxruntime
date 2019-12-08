@@ -33,7 +33,6 @@ with open(fileName) as f:
     else:
       raise Exception("warning: the line is not parsed correctly ", line)
 
-
 print("('fptype_gpu_phase_batch', throughput , collected_run_cnt)")
 for k in sorted(sums):
   print(k, sums[k], freqs[k])
