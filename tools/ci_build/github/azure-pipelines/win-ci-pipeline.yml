@@ -32,7 +32,15 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_automl --use_dnnl --use_openmp --build_shared_lib --enable_onnx_tests'
       workingDirectory: '$(Build.BinariesDirectory)'
-     
+
+  - task: BatchScript@1
+    displayName: 'Add PATH to build directory'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\set_path_to_build_dir.bat'
+      arguments: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
   - task: VSBuild@1
     displayName: 'Build'
     inputs:
