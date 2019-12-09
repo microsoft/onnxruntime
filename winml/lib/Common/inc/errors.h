@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/common/common.h"
 
 #define WINML_THROW_IF_NOT_OK(status)                                                                      \
   do {                                                                                                     \
