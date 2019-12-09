@@ -4,21 +4,21 @@
 #pragma warning(disable : 4505)  //Unreferenced local function has been removed
 #endif
 
-#include "mkldnn_func_kernel.h"
+#include "dnnl_func_kernel.h"
 #include "core/common/exceptions.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/mkldnn/mkldnn_common.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_conv.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_batchnorm.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_conv_batchnorm.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_activations.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_pool.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_sum.h"
-#include "core/providers/mkldnn/subgraph/mkldnn_lrn.h"
+#include "core/providers/dnnl/dnnl_common.h"
+#include "core/providers/dnnl/subgraph/dnnl_conv.h"
+#include "core/providers/dnnl/subgraph/dnnl_batchnorm.h"
+#include "core/providers/dnnl/subgraph/dnnl_conv_batchnorm.h"
+#include "core/providers/dnnl/subgraph/dnnl_activations.h"
+#include "core/providers/dnnl/subgraph/dnnl_pool.h"
+#include "core/providers/dnnl/subgraph/dnnl_sum.h"
+#include "core/providers/dnnl/subgraph/dnnl_lrn.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 
 namespace {
 template <typename T>
@@ -28,7 +28,7 @@ class SubgraphPrimitive : public PrimitiveBase {
                     OrtKernelContext* context,
                     const SubgraphParams& params)
       : cpu_engine_(GetEngine()) {
-    context_.stream = onnxruntime::make_unique<mkldnn::stream>(mkldnn::stream(cpu_engine_));
+    context_.stream = onnxruntime::make_unique<dnnl::stream>(dnnl::stream(cpu_engine_));
 
     if (context_.net.size() == 0) {
       CreateKernels(params);
@@ -59,124 +59,124 @@ class SubgraphPrimitive : public PrimitiveBase {
 
  private:
   void CreateKernels(const SubgraphParams& params) {
-    for (const auto& mkldnn_node : params.subgraph->mkldnn_nodes) {
-      if (mkldnn_node.name == "Conv") {
+    for (const auto& dnnl_node : params.subgraph->dnnl_nodes) {
+      if (dnnl_node.name == "Conv") {
         std::ostringstream os;
-        os << "Conv-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnConv<T>> kernel;
-        kernel = std::make_shared<MklDnnConv<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "Conv-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlConv<T>> kernel;
+        kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "Conv-Relu") {
+      } else if (dnnl_node.name == "Conv-Relu") {
         std::ostringstream os;
-        os << "Conv-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnConv<T>> kernel;
-        kernel = std::make_shared<MklDnnConv<T>>(mkldnn_node, params.provider, params.attributes, os.str());
+        os << "Conv-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlConv<T>> kernel;
+        kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, params.attributes, os.str());
         kernel->fuse_relu_ = true;
-        for (auto index : mkldnn_node.parent_nodes) {
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "Relu") {
+      } else if (dnnl_node.name == "Relu") {
         std::ostringstream os;
-        os << "Relu-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnRelu<T>> kernel;
-        kernel = std::make_shared<MklDnnRelu<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "Relu-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlRelu<T>> kernel;
+        kernel = std::make_shared<DnnlRelu<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "BatchNormalization") {
+      } else if (dnnl_node.name == "BatchNormalization") {
         std::ostringstream os;
-        os << "BatchNormalization-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnBatchNorm<T>> kernel;
-        kernel = std::make_shared<MklDnnBatchNorm<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "BatchNormalization-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlBatchNorm<T>> kernel;
+        kernel = std::make_shared<DnnlBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "BatchNormalization-Relu") {
+      } else if (dnnl_node.name == "BatchNormalization-Relu") {
         std::ostringstream os;
-        os << "BatchNormalization-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnBatchNorm<T>> kernel;
-        kernel = std::make_shared<MklDnnBatchNorm<T>>(mkldnn_node, params.provider, params.attributes, os.str());
+        os << "BatchNormalization-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlBatchNorm<T>> kernel;
+        kernel = std::make_shared<DnnlBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
         kernel->fuse_relu_ = true;
-        for (auto index : mkldnn_node.parent_nodes) {
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "Conv-BatchNormalization") {
+      } else if (dnnl_node.name == "Conv-BatchNormalization") {
         std::ostringstream os;
-        os << "Conv-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnConvBatchNorm<T>> kernel;
-        kernel = std::make_shared<MklDnnConvBatchNorm<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "Conv-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlConvBatchNorm<T>> kernel;
+        kernel = std::make_shared<DnnlConvBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "Conv-BatchNormalization-Relu") {
+      } else if (dnnl_node.name == "Conv-BatchNormalization-Relu") {
         std::ostringstream os;
-        os << "Conv-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnConvBatchNorm<T>> kernel;
-        kernel = std::make_shared<MklDnnConvBatchNorm<T>>(mkldnn_node, params.provider, params.attributes, os.str());
+        os << "Conv-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlConvBatchNorm<T>> kernel;
+        kernel = std::make_shared<DnnlConvBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
         kernel->fuse_relu_ = true;
-        for (auto index : mkldnn_node.parent_nodes) {
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "MaxPool") {
+      } else if (dnnl_node.name == "MaxPool") {
         std::ostringstream os;
-        os << "MaxPool-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnPool<T>> kernel;
-        kernel = std::make_shared<MklDnnPool<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "MaxPool-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlPool<T>> kernel;
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "GlobalMaxPool") {
+      } else if (dnnl_node.name == "GlobalMaxPool") {
         std::ostringstream os;
-        os << "GlobalMaxPool-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnPool<T>> kernel;
-        kernel = std::make_shared<MklDnnPool<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "GlobalMaxPool-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlPool<T>> kernel;
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "AveragePool") {
+      } else if (dnnl_node.name == "AveragePool") {
         std::ostringstream os;
-        os << "AveragePool-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnPool<T>> kernel;
-        kernel = std::make_shared<MklDnnPool<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "AveragePool-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlPool<T>> kernel;
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "GlobalAveragePool") {
+      } else if (dnnl_node.name == "GlobalAveragePool") {
         std::ostringstream os;
-        os << "GlobalAveragePool-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnPool<T>> kernel;
-        kernel = std::make_shared<MklDnnPool<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "GlobalAveragePool-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlPool<T>> kernel;
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "LRN") {
+      } else if (dnnl_node.name == "LRN") {
         std::ostringstream os;
-        os << "LRN-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnLrn<T>> kernel;
-        kernel = std::make_shared<MklDnnLrn<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "LRN-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlLrn<T>> kernel;
+        kernel = std::make_shared<DnnlLrn<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
-      } else if (mkldnn_node.name == "Sum") {
+      } else if (dnnl_node.name == "Sum") {
         std::ostringstream os;
-        os << "Sum-" << mkldnn_node.node_index << "-";
-        std::shared_ptr<MklDnnSum<T>> kernel;
-        kernel = std::make_shared<MklDnnSum<T>>(mkldnn_node, params.provider, params.attributes, os.str());
-        for (auto index : mkldnn_node.parent_nodes) {
+        os << "Sum-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlSum<T>> kernel;
+        kernel = std::make_shared<DnnlSum<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
@@ -185,16 +185,16 @@ class SubgraphPrimitive : public PrimitiveBase {
   }
 
   struct SubgraphContext {
-    std::unique_ptr<mkldnn::stream> stream;
-    std::vector<mkldnn::primitive> net;
-    std::vector<std::unordered_map<int, mkldnn::memory>> net_args;
-    std::vector<std::shared_ptr<MklDnnKernel>> kernels;
+    std::unique_ptr<dnnl::stream> stream;
+    std::vector<dnnl::primitive> net;
+    std::vector<std::unordered_map<int, dnnl::memory>> net_args;
+    std::vector<std::shared_ptr<DnnlKernel>> kernels;
 
     SubgraphContext() : stream(nullptr) {}
   };
 
   void Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) {
-    // Propagate mkldnn block format
+    // Propagate Dnnl block format
     // dst format of current node to src format of next node
     for (auto& kernel : context_.kernels) {
       kernel->CreatePrimitives(api, context, cpu_engine_, context_.net, context_.net_args);
@@ -205,10 +205,10 @@ class SubgraphPrimitive : public PrimitiveBase {
   }
 
   SubgraphContext context_;
-  mkldnn::engine& cpu_engine_;
+  dnnl::engine& cpu_engine_;
 };
 
-// Pool which allows for reuse of MKLDNN Conv primitives which are expensive to instantiate.
+// Pool which allows for reuse of DNNL Conv primitives which are expensive to instantiate.
 // To address thread safety, the primitives are stored in a map on thread local storage.
 template <typename T>
 class SubgraphPrimitivePool : public PrimitivePool<T> {
@@ -218,7 +218,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
                                    const SubgraphParams& params) {
     Ort::CustomOpApi ort{*api};
     std::string dims_str;
-    for (auto i = 0; i < params.subgraph->mkldnn_nodes[0].num_inputs; i++) {
+    for (auto i = 0; i < params.subgraph->dnnl_nodes[0].num_inputs; i++) {
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
@@ -227,7 +227,7 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
       auto dim = tensor_shape.size();
 
       TensorShape x_shape(shape, dim);
-      mkldnn::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+      dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
       AddDimsToKey(dims_str, src_dims);
     }
 
@@ -254,20 +254,20 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
 }  // namespace
 
 template <typename T>
-Status MkldnnFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
+Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Status status;
   try {
     SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
-  } catch (const mkldnn::error& e) {
+  } catch (const dnnl::error& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
                            ", message: ", e.what());
   }
   return status;
 }
 
-template class MkldnnFuncKernel<float>;
+template class DnnlFuncKernel<float>;
 
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime

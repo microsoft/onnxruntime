@@ -251,7 +251,6 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
 }
 
 static inline void ComputeSoftmax(std::vector<float>& values) {
-  std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (float value : values) {
@@ -259,19 +258,16 @@ static inline void ComputeSoftmax(std::vector<float>& values) {
       v_max = value;
   }
   float this_sum = 0.f;
-  for (float value : values) {
-    float val2 = std::exp(value - v_max);
-    this_sum += val2;
-    newscores.push_back(val2);
+  for (float& value : values) {
+    value = std::exp(value - v_max);
+    this_sum += value;
   }
-  for (int64_t k = 0; k < static_cast<int64_t>(values.size()); k++) {
-    values[k] = newscores[k] / this_sum;
-  }
+  for (float& value : values)
+    value /= this_sum;
 }
 
 //this function skips zero values (since exp(0) is non zero)
 static inline void ComputeSoftmaxZero(std::vector<float>& values) {
-  std::vector<float> newscores;
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (float value : values) {
@@ -280,18 +276,16 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
   }
   float exp_neg_v_max = std::exp(-v_max);
   float this_sum = 0.f;
-  for (float value : values) {
+  for (float& value : values) {
     if (value > 0.0000001f || value < -0.0000001f) {
-      float val2 = std::exp(value - v_max);
-      this_sum += val2;
-      newscores.push_back(val2);
+      value = std::exp(value - v_max);
+      this_sum += value;
     } else {
-      newscores.push_back(value * exp_neg_v_max);
+      value *= exp_neg_v_max;
     }
   }
-  for (int64_t k = 0; k < static_cast<int64_t>(values.size()); k++) {
-    values[k] = newscores[k] / this_sum;
-  }
+  for (float& value : values)
+    value /= this_sum;
 }
 
 template <typename T>
