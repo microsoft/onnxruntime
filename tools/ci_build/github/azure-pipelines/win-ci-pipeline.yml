@@ -33,13 +33,13 @@ jobs:
       arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_automl --use_dnnl --use_openmp --build_shared_lib --enable_onnx_tests --build_java'
       workingDirectory: '$(Build.BinariesDirectory)'
 
-  - task: BatchScript@1
-    displayName: 'Add PATH to build directory'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\set_path_to_build_dir.bat'
-      arguments: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
+  # - task: BatchScript@1
+  #   displayName: 'Add PATH to build directory'
+  #   inputs:
+  #     filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\set_path_to_build_dir.bat'
+  #     arguments: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+  #     modifyEnvironment: true
+  #     workingFolder: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
     displayName: 'Build'
@@ -79,6 +79,7 @@ jobs:
     displayName: 'setup env'
     inputs:
       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+#      arguments: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
@@ -120,6 +121,7 @@ jobs:
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+     set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --use_dnnl --build_wheel --enable_onnx_tests
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
