@@ -3,6 +3,7 @@
  * Licensed under the MIT License.
  */
 #include <jni.h>
+#include <string.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
@@ -75,9 +76,19 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setOpt
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jstring pathString) {
     (void) jobj; // Required JNI parameter not needed by function which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
+#ifdef _WIN32
+    const jchar* path = (*jniEnv)->GetStringChars(jniEnv, pathString, NULL);
+    size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, pathString);
+    wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+    wcsncpy_s(newString, stringLength+1, (const wchar_t*) path, stringLength);
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->SetOptimizedModelFilePath((OrtSessionOptions*) handle, (const wchar_t*) newString));
+    free(newString);
+    (*jniEnv)->ReleaseStringChars(jniEnv,pathString,path);
+#else
     const char* path = (*jniEnv)->GetStringUTFChars(jniEnv, pathString, NULL);
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,api->SetOptimizedModelFilePath((OrtSessionOptions*) handle, path));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,pathString,path);
+#endif
 }
 
 /*

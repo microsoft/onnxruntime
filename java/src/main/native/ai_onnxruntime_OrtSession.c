@@ -3,6 +3,7 @@
  * Licensed under the MIT License.
  */
 #include <jni.h>
+#include <string.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession.h"
@@ -19,9 +20,19 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtSession_createSession__JJLjava_la
     OrtSession* session;
 
     jboolean copy;
+#ifdef _WIN32
+    const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, modelPath, &copy);
+    size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, modelPath);
+    wchar_t* newString = (wchar_t*)calloc(stringLength+1,sizeof(jchar));
+    wcsncpy_s(newString, stringLength+1, (const wchar_t*) cPath, stringLength);
+    checkOrtStatus(jniEnv,api,api->CreateSession((OrtEnv*)envHandle, (const wchar_t*)newString, (OrtSessionOptions*)optsHandle, &session));
+    free(newString);
+    (*jniEnv)->ReleaseStringChars(jniEnv,modelPath,cPath);
+#else
     const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, modelPath, &copy);
     checkOrtStatus(jniEnv,api,api->CreateSession((OrtEnv*)envHandle, cPath, (OrtSessionOptions*)optsHandle, &session));
     (*jniEnv)->ReleaseStringUTFChars(jniEnv,modelPath,cPath);
+#endif
 
     return (jlong) session;
 }
