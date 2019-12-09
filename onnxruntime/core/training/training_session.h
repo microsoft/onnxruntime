@@ -3,10 +3,11 @@
 
 #pragma once
 #include <memory>
-#include "core/session/inference_session.h"
 #include "core/graph/training/loss_func/loss_func_common.h"
 #include "core/graph/training/loss_function_registry.h"
 #include "core/graph/training/training_optimizer.h"
+#include "core/platform/path_string.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 namespace training {
@@ -93,11 +94,11 @@ class TrainingSession : public InferenceSession {
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
   @param use_fp16_initializer specify whether fp16 initialier is created.
-  @param fp16_weights_map the map between weights and FP16 weights.
+  @param fp32_weight_name_to_fp16_node_arg the map between weights and FP16 weights.
   */
   common::Status EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                       bool use_fp16_initializer,
-                                      std::unordered_map<std::string, NodeArg*>& fp16_weights_map);
+                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
   common::Status OverrideGraphOutputs(const std::vector<std::string>& outputs);
 
@@ -117,7 +118,23 @@ class TrainingSession : public InferenceSession {
   @param model_uri the path for the new model.
   @param opt see SaveOption.
   */
-  common::Status Save(const std::string& model_uri, SaveOption opt);
+  common::Status Save(const PathString& model_uri, SaveOption opt);
+
+  /** Saves a model checkpoint.
+  @param checkpoint_path The path to the model checkpoint.
+  @param properties The checkpoint properties to save.
+  */
+  common::Status SaveCheckpoint(
+      const PathString& checkpoint_path,
+      const std::unordered_map<std::string, std::string>& properties);
+
+  /** Loads a model checkpoint.
+  @param checkpoint_path The path to the model checkpoint.
+  @param properties[out] The loaded checkpoint properties.
+  */
+  common::Status LoadCheckpointAndUpdateInitializedTensors(
+      const PathString& checkpoint_path,
+      std::unordered_map<std::string, std::string>& properties);
 
   // TODO: remove or refine below temp interfaces.
   NameMLValMap GetWeights() const;
@@ -147,6 +164,9 @@ class TrainingSession : public InferenceSession {
 
  private:
   std::unordered_set<std::string> weights_to_train_;
+  // names of additional initializers to be included in checkpoints
+  std::unordered_set<std::string> opt_state_initializer_names_;
+  std::unordered_set<std::string> fp16_weight_initializer_names_;
 
   std::unique_ptr<ILossFunction> loss_graph_builder_;
   LossFunctionInfo loss_func_info_;

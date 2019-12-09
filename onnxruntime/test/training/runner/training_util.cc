@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "test/training/runner/training_util.h"
+
+#include <sstream>
+
 #include "constant.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
-#include "test/training/runner/training_util.h"
 
 using namespace std;
 
@@ -176,6 +179,18 @@ void TrainingUtil::PrintTensor(const string& name, const Tensor& tensor, ostream
     os << "Unsupported data type.";
   }
   os << "\n\n";
+}
+
+std::string LossScaler::SaveToString() const {
+  std::ostringstream s{};
+  s << loss_scale_ << " " << stable_steps_;
+  return s.str();
+}
+
+Status LossScaler::LoadFromString(const std::string& input) {
+  std::istringstream s{input};
+  ORT_RETURN_IF_NOT((s >> loss_scale_ >> stable_steps_) && s.eof());
+  return Status::OK();
 }
 
 std::unique_ptr<LearningRateScheduler> LearningRateScheduler::Create(LearningRateParameters& lr_params, size_t training_step_count) {

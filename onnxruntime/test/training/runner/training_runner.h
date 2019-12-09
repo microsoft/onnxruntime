@@ -7,8 +7,10 @@
 #include <vector>
 
 #include "core/framework/ml_value.h"
-#include "core/training/optimizer_config.h"
+#include "core/platform/path_string.h"
+#include "core/training/checkpoint_registry.h"
 #include "core/training/mpi_setup.h"
+#include "core/training/optimizer_config.h"
 #include "core/training/training_session.h"
 #include "test/training/runner/data_loader.h"
 
@@ -26,17 +28,15 @@ class TrainingRunner {
 
   struct Parameters {
     std::string model_name;
-    std::string model_path;
-    std::string model_with_loss_func_path;        // To save the model after adding loss func.
-    std::string model_with_training_graph_path;   // To save the model after adding loss func and backward graph.
-    std::string model_actual_running_graph_path;  // To save the model with the actual running graph after transformations.
-    std::string model_gist_encode;                // To save the model with gist encoding.
+    PathString model_path;
+    PathString model_with_loss_func_path;        // To save the model after adding loss func.
+    PathString model_with_training_graph_path;   // To save the model after adding loss func and backward graph.
+    PathString model_actual_running_graph_path;  // To save the model with the actual running graph after transformations.
+    PathString model_gist_encode_path;           // To save the model with gist encoding.
 
-    PATH_STRING_TYPE train_data_dir;
-    PATH_STRING_TYPE test_data_dir;
-
-    // TODO output_dir (and all other path values) should be PATH_STRING_TYPE
-    std::string output_dir;  // Output of training, including intermediate checkpoints and trained model files.
+    PathString train_data_dir;
+    PathString test_data_dir;
+    PathString output_dir;  // Output of training, e.g., trained model files.
 
     bool is_perf_test;
     size_t perf_warm_up_iters;
@@ -110,7 +110,7 @@ class TrainingRunner {
     bool allreduce_in_fp16 = false;
 
     // Tensorboard configuration.
-    PATH_STRING_TYPE log_dir;  // Path to write Tensorboard events to.
+    PathString log_dir;  // Path to write Tensorboard events to.
     std::string summary_name = "summary";
     VectorString scalar_names;
     VectorString histogram_names;
@@ -119,31 +119,54 @@ class TrainingRunner {
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
     }
+
+    // checkpoint configuration
+
+    // directory used for saving/loading checkpoint files
+    // empty means no checkpoints are saved
+    PathString checkpoints_dir;
+    // path to checkpoint to load
+    // if empty and checkpoints_dir contains any checkpoints, load the latest checkpoint there
+    // otherwise, no checkpoint is loaded
+    PathString checkpoint_to_load_path;
+    // interval in weight-update steps at which to save checkpoints
+    // 0 means no checkpoints are saved
+    size_t checkpoint_period = 0;
+    // upper limit on number of checkpoint files to keep
+    size_t max_num_checkpoints = 1;
   };
 
   TrainingRunner(Parameters params);
 
   common::Status Initialize();
 
-  common::Status Run(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader);
+  common::Status Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader);
 
-  common::Status EndTraining(std::shared_ptr<IDataLoader> data_loader, bool do_load_and_evaluate);
+  common::Status EndTraining(IDataLoader* data_loader, bool do_load_and_evaluate);
 
   common::Status UpdateParams(Parameters params);
 
+  common::Status ResetLossScaler();
+
+  size_t GetRound() const { return round_; }
+
  private:
-  Status TrainingLoop(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader);
-  Status Evaluate(InferenceSession& session, std::shared_ptr<IDataLoader> data_loader);
-  Status LoadAndEvaluate(const std::string& model_path, std::shared_ptr<IDataLoader> data_loader);
+  Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
+  Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
+  Status LoadAndEvaluate(const PathString& model_path, IDataLoader& data_loader);
   Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
                               const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
                               const std::string& loss_scale_input_name,
                               OptimizerGraphConfig& opt_graph_config,
                               std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
 
+  Status SaveCheckpointProperties(std::unordered_map<std::string, std::string>& properties) const;
+  Status LoadCheckpointProperties(const std::unordered_map<std::string, std::string>& properties);
+
   size_t step_;
   size_t round_;
   size_t weight_update_step_count_;
+  size_t training_data_set_index_;
   std::unordered_map<std::string, std::string> opt_graph_outputs_;
 
   std::unique_ptr<LossScaler> loss_scaler_ = nullptr;
@@ -151,6 +174,8 @@ class TrainingRunner {
   Parameters params_;
   TrainingSession session_;
   AllocatorPtr pinned_allocator_;
+
+  std::unique_ptr<CheckpointRegistry> checkpoint_registry_;
 };
 
 }  // namespace training

@@ -19,15 +19,15 @@ using namespace google::protobuf::util;
 namespace onnxruntime {
 namespace test {
 
-constexpr auto ORIGINAL_MODEL_PATH = "testdata/test_training_model.onnx";
-constexpr auto BACKWARD_MODEL_PATH = "testdata/temp_backward_model.onnx";
-constexpr auto GIST_MODEL_PATH = "testdata/temp_backward_model_with_gist.onnx";
+constexpr auto ORIGINAL_MODEL_PATH = ORT_TSTR("testdata/test_training_model.onnx");
+constexpr auto BACKWARD_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model.onnx");
+constexpr auto GIST_MODEL_PATH = ORT_TSTR("testdata/temp_backward_model_with_gist.onnx");
 
 constexpr auto TAB = "\t";
 
-static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) {
-  const std::string forward_model_file = params.model_path;
-  const std::string backward_model_file = params.model_with_training_graph_path;
+static PathString BuildBackPropGraph(const TrainingRunner::Parameters& params) {
+  const PathString forward_model_file = params.model_path;
+  const PathString backward_model_file = params.model_with_training_graph_path;
 
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
@@ -35,7 +35,7 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   SessionOptions so{};
   TrainingSession training_session{so};
 
-  std::cout << "Loading source model file = " << forward_model_file << std::endl;
+  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
 
   EXPECT_TRUE(training_session.Load(forward_model_file).IsOK());
 
@@ -65,8 +65,8 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
   if (params.use_gist) {
     EXPECT_TRUE(training_session.AddGistEncoding().IsOK());
 
-    if (!params.model_gist_encode.empty()) {
-      EXPECT_TRUE(training_session.Save(params.model_gist_encode, TrainingSession::SaveOption::NO_RELOAD).IsOK());
+    if (!params.model_gist_encode_path.empty()) {
+      EXPECT_TRUE(training_session.Save(params.model_gist_encode_path, TrainingSession::SaveOption::NO_RELOAD).IsOK());
     }
   }
 
@@ -84,7 +84,7 @@ static std::string BuildBackPropGraph(const TrainingRunner::Parameters& params) 
  * @return TrainingSession for this run.
  */
 static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
-    const SessionOptions& so, const std::string& backprop_model_file) {
+    const SessionOptions& so, const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
@@ -141,7 +141,7 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
   params.training_optimizer_name = "SGDOptimizer";
 
-  const std::string& backprop_model_file = BuildBackPropGraph(params);
+  const PathString& backprop_model_file = BuildBackPropGraph(params);
 
   std::shared_ptr<Model> pModel;
   EXPECT_TRUE(Model::Load(backprop_model_file, pModel).IsOK());
@@ -184,27 +184,27 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
 
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
-  const std::string& backprop_model_file = BuildBackPropGraph(params);
+  const PathString& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so{};
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
-  const std::string gist_model_file = GIST_MODEL_PATH;
+  const PathString gist_model_file = GIST_MODEL_PATH;
 
   TrainingRunner::Parameters params;
   params.model_path = ORIGINAL_MODEL_PATH;
   params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
-  params.model_gist_encode = gist_model_file;
+  params.model_gist_encode_path = gist_model_file;
   params.use_gist = true;
 
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
   params.training_optimizer_name = "SGDOptimizer";
 
-  const std::string& backprop_model_file = BuildBackPropGraph(params);
+  const PathString& backprop_model_file = BuildBackPropGraph(params);
 
-  std::cout << "Loading gist model file = " << gist_model_file << std::endl;
+  std::cout << "Loading gist model file = " << ToMBString(gist_model_file) << "\n";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(onnxruntime::Model::Load(gist_model_file, p_model).IsOK());
 
@@ -243,7 +243,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   params.model_with_training_graph_path = BACKWARD_MODEL_PATH;
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
   params.training_optimizer_name = "SGDOptimizer";
-  const std::string& backprop_model_file = BuildBackPropGraph(params);
+  const PathString& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
   so.session_logid = "training_session_with_logging";
@@ -270,7 +270,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
   params.training_optimizer_name = "SGDOptimizer";
 
-  const std::string& backprop_model_file = BuildBackPropGraph(params);
+  const PathString& backprop_model_file = BuildBackPropGraph(params);
 
   SessionOptions so;
   so.enable_profiling = true;
@@ -328,7 +328,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithProfiler) {
 #ifdef USE_CUDA
 static void RunBertTrainingWithChecks(
     const SessionOptions& so,
-    const std::string& backprop_model_file) {
+    const PathString& backprop_model_file) {
   std::unique_ptr<Environment> env;
   EXPECT_TRUE(Environment::Create(env).IsOK());
 
@@ -497,8 +497,8 @@ static void RunBertTrainingWithChecks(
 #endif
 TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   TrainingRunner::Parameters params;
-  params.model_path = "testdata/bert_toy_optimized.onnx";
-  params.model_with_training_graph_path = "testdata/bert_toy_optimized_bw.onnx";
+  params.model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
+  params.model_with_training_graph_path = ORT_TSTR("testdata/bert_toy_optimized_bw.onnx");
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
                                            "total_loss",
                                            {/*prediction_masked_lm*/ "prediction_scores",

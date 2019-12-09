@@ -365,11 +365,10 @@ static NodeArg* CreateFP16NodeArgAndUpdateConsumers(Graph& graph,
   return &new_arg;
 }
 
-// fp16_weights_map stores the map from the name of the original FP32 weight to the coresponding fp16 NodeArg.
 Status TransformGraphForMixedPrecision(Graph& graph,
                                        const std::unordered_set<std::string>& weights_to_train,
                                        bool use_fp16_initializer,
-                                       std::unordered_map<std::string, NodeArg*>& fp16_weights_map) {
+                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
   // Stag 1: Convert whole graph including forward and backward to FP16
   // Insert Cast node to convert inputs from FP32 to FP16
   for (const NodeArg* input : graph.GetInputs()) {
@@ -381,6 +380,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   // Convert initializers including trainable weights from FP32 to FP16
   const auto& initialized_tensors = graph.GetAllInitializedTensors();
+  std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg_result{};
   std::vector<std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>> fp16_initializers;
   for (const auto& kv : initialized_tensors) {
     NodeArg* input = graph.GetNodeArg(kv.first);
@@ -391,7 +391,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
           fp16_initializers.emplace_back(fp16_weight_arg->Name(), kv.second);
           const auto it = weights_to_train.find(kv.first);
           if (it != weights_to_train.cend()) {
-            fp16_weights_map[kv.first] = fp16_weight_arg;
+            fp32_weight_name_to_fp16_node_arg_result[kv.first] = fp16_weight_arg;
           }
         }
       } else {
@@ -425,6 +425,9 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   TransformStage2(graph);
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
+
+  fp32_weight_name_to_fp16_node_arg = std::move(fp32_weight_name_to_fp16_node_arg_result);
+
   return Status::OK();
 }
 

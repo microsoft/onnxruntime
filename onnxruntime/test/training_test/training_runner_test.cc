@@ -5,6 +5,8 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/path_lib.h"
+#include "core/platform/path_string.h"
 #include "test/training/runner/data_loader.h"
 #include "test/training/runner/training_util.h"
 
@@ -12,10 +14,12 @@ namespace onnxruntime {
 namespace training {
 namespace test {
 
-constexpr auto k_original_model_path = "./testdata/test_training_model.onnx";
-constexpr auto k_backward_model_path = "./testdata/temp_backward_model.onnx";
+const PathString k_original_model_path =
+    ConcatPathComponent<PathChar>(ORT_TSTR("testdata"), ORT_TSTR("test_training_model.onnx"));
+const PathString k_backward_model_path =
+    ConcatPathComponent<PathChar>(ORT_TSTR("testdata"), ORT_TSTR("temp_backward_model.onnx"));
 
-constexpr auto k_output_directory = "./training_runner_test_output";
+const PathString k_output_directory = ORT_TSTR("training_runner_test_output");
 
 TEST(TrainingRunnerTest, Basic) {
   TrainingRunner::Parameters params{};
@@ -41,15 +45,15 @@ TEST(TrainingRunnerTest, Basic) {
       {1, 784}, {1, 10}};
   std::vector<ONNX_NAMESPACE::TensorProto_DataType> tensor_types{
       ONNX_NAMESPACE::TensorProto_DataType_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_FLOAT};
-  
+
   auto data_set = std::make_shared<RandomDataSet>(1, tensor_names, tensor_shapes, tensor_types);
   auto data_loader = std::make_shared<SingleDataLoader>(data_set, tensor_names);
 
-  status = runner.Run(data_loader, data_loader);
+  status = runner.Run(data_loader.get(), data_loader.get());
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   // TODO currently skipping load and evaluation of saved model, ideally that would be enabled
-  status = runner.EndTraining(data_loader, false);
+  status = runner.EndTraining(data_loader.get(), false);
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 

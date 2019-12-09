@@ -6,6 +6,7 @@
 #include <math.h>
 #include "constant.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/callback.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/framework_common.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -175,6 +176,10 @@ class LossScaler {
     loss_scale_ = initial_loss_scale_;
     stable_steps_ = 0;
   }
+
+  // for checkpointing
+  std::string SaveToString() const;
+  Status LoadFromString(const std::string& input);
 
  private:
   const std::string loss_scale_input_name_;

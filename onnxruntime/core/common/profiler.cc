@@ -41,7 +41,7 @@ template void Profiler::StartProfiling<wchar_t>(const std::basic_string<wchar_t>
 
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
-                                     TimePoint& start_time,
+                                     const TimePoint& start_time,
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
                                      bool /*sync_gpu*/) {
   long long dur = TimeDiffMicroSeconds(start_time);

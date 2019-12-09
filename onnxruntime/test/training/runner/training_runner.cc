@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <sstream>
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
@@ -42,9 +43,10 @@ TrainingRunner::TrainingRunner(Parameters params)
     : step_(0),
       round_(0),
       weight_update_step_count_(0),
+      training_data_set_index_(0),
       params_(params),
       session_(SESSION_OPTION),
-      pinned_allocator_(nullptr){
+      pinned_allocator_(nullptr) {
   ORT_ENFORCE(!params_.model_path.empty());
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
@@ -53,6 +55,7 @@ TrainingRunner::TrainingRunner(Parameters params)
 
 Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
+
   ORT_RETURN_IF_ERROR(session_.ApplyTransformationsToMainGraph());
 
   std::string loss_scale_input_name{};
@@ -118,8 +121,8 @@ Status TrainingRunner::Initialize() {
       params_.scalar_names.push_back(opt_graph_outputs_[kGlobalGradientNormOutputKey]);
     }
     ORT_RETURN_IF_ERROR(session_.AddTensorboard(
-      params_.summary_name, params_.scalar_names, params_.histogram_names,
-      params_.norm_names, params_.dump_convergence_metrics));
+        params_.summary_name, params_.scalar_names, params_.histogram_names,
+        params_.norm_names, params_.dump_convergence_metrics));
   }
 
   // Expose all fetches as graph outputs
@@ -135,8 +138,8 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_gist) {
     ORT_RETURN_IF_ERROR(session_.AddGistEncoding());
-    if (!params_.model_gist_encode.empty()) {
-      session_.Save(params_.model_gist_encode, TrainingSession::SaveOption::NO_RELOAD);
+    if (!params_.model_gist_encode_path.empty()) {
+      session_.Save(params_.model_gist_encode_path, TrainingSession::SaveOption::NO_RELOAD);
     }
   }
 
@@ -149,6 +152,24 @@ Status TrainingRunner::Initialize() {
   }
 #endif
   ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
+
+  // Checkpointing initialization
+  if (!params_.checkpoints_dir.empty()) {
+    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.checkpoints_dir));
+
+    checkpoint_registry_ = std::make_unique<CheckpointRegistry>(
+        params_.checkpoints_dir, params_.max_num_checkpoints);
+
+    // Load checkpoint, if any
+    PathString checkpoint_to_load_path = params_.checkpoint_to_load_path;
+    if (!checkpoint_to_load_path.empty() ||
+        checkpoint_registry_->TryGetLatestCheckpoint(checkpoint_to_load_path)) {
+      std::unordered_map<std::string, std::string> checkpoint_properties{};
+      ORT_RETURN_IF_ERROR(session_.LoadCheckpointAndUpdateInitializedTensors(
+          checkpoint_to_load_path, checkpoint_properties));
+      ORT_RETURN_IF_ERROR(LoadCheckpointProperties(checkpoint_properties));
+    }
+  }
 
   // Create output directory if needed.
   if (!params_.output_dir.empty()) {
@@ -168,22 +189,33 @@ Status TrainingRunner::Initialize() {
   return session_.Initialize();
 }
 
-Status TrainingRunner::Run(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader) {
+Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
 
   }
 
-  // Add one for each call of Run(..).
-  ORT_RETURN_IF_ERROR(TrainingLoop(training_data_loader, test_data_loader));
+  // maybe in the future we can support an evaluation-only run
+  if (!training_data_loader) {
+    LOGS_DEFAULT(WARNING) << "training data loader not provided, nothing to do";
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(TrainingLoop(*training_data_loader, test_data_loader));
+
+  // after successful Run(), update counters
   round_++;
+  step_ = 0;
 
   return Status::OK();
 }
 
-Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader) {
-  step_ = 0;
-  VectorString feed_names = training_data_loader->DataSetTensorNames();
+Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader) {
+  const bool enable_checkpoint_saving =
+      params_.mpi_context.world_rank == 0 &&
+      checkpoint_registry_ && params_.checkpoint_period > 0;
+
+  VectorString feed_names = training_data_loader.DataSetTensorNames();
   if (loss_scaler_) {
     feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
@@ -206,8 +238,14 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
     fetch_grad_accumulator_output.push_back(it->second);
   }
 
+  // initialize data loaders
+  ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));
+  if (test_data_loader) {
+    ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
+  }
+
   if (params_.is_perf_test && params_.perf_warm_up_iters > 0) {
-    auto training_data = training_data_loader->CurrentDataSet();
+    auto training_data = training_data_loader.CurrentDataSet();
     auto num_batches = training_data->TotalBatch(params_.batch_size);
     ORT_RETURN_IF(params_.perf_warm_up_iters > num_batches,
                   "perf_warm_up_iters is bigger than number of available batches.");
@@ -232,19 +270,23 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
     }
   }
 
-  const size_t num_shards_to_visit = training_data_loader->NumShards();
+  const size_t num_shards_to_visit = training_data_loader.NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
 
   double total_time{0};
-  size_t epoch = 0;
+  size_t epoch = 0;  // Note: epoch is not set properly when loaded from a checkpoint, but it's only for display.
   size_t gradient_accumulation_step_count = 0;
+  const auto step_start = step_;
+  const auto weight_update_step_count_start = weight_update_step_count_;
 
   while (step_ < params_.num_train_steps) {
     for (size_t shard_it = 0; shard_it < num_shards_to_visit; ++shard_it) {
-      auto training_data = training_data_loader->CurrentDataSet();
+      auto training_data = training_data_loader.CurrentDataSet();
+      training_data_set_index_ = training_data_loader.CurrentDataSetIndex();
       if (training_data == nullptr) {
-        printf("Skip shard %d which is failed to load.\n", static_cast<int>(shard_it));
-        training_data_loader->MoveToNextDataSet();
+        printf("Skipping shard at index %d, which failed to load.\n",
+               static_cast<int>(training_data_loader.CurrentDataSetIndex()));
+        training_data_loader.MoveToNextDataSet();
         continue;
       }
 
@@ -272,9 +314,10 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
 
         vector<MLValue> fetches;
 
+        const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
 
-        if ((step_ + 1) % params_.gradient_accumulation_steps == 0) {
+        if (is_weight_update_step) {
           ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
                                            feed_names,
                                            feeds,
@@ -327,18 +370,41 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
                static_cast<int>(shard_it + 1),
                static_cast<int>(num_shards_to_visit),
                duration_seconds.count() * 1000,
-               params_.batch_size * step_ / total_time);
+               params_.batch_size * (step_ - step_start) / total_time);
         printf("Training data range: [%d - %d)\n",
                static_cast<int>(batch * params_.batch_size),
                static_cast<int>((batch + 1) * params_.batch_size - 1));
 
-        if (params_.do_eval && step_ % params_.evaluation_period == 0) {
-          ORT_RETURN_IF_ERROR(Evaluate(session_, test_data_loader));
+        if (test_data_loader &&
+            params_.do_eval && step_ % params_.evaluation_period == 0) {
+          ORT_RETURN_IF_ERROR(Evaluate(session_, *test_data_loader));
+        }
+
+        if (enable_checkpoint_saving && is_weight_update_step &&
+            weight_update_step_count_ % params_.checkpoint_period == 0) {
+          PathString new_checkpoint_path, old_checkpoint_path;
+          bool should_remove_old_checkpoint;
+
+          ORT_RETURN_IF_ERROR(checkpoint_registry_->AddCheckpoint(
+              weight_update_step_count_, new_checkpoint_path,
+              should_remove_old_checkpoint, old_checkpoint_path));
+
+          if (should_remove_old_checkpoint) {
+            const auto status = Env::Default().DeleteFolder(old_checkpoint_path);
+            LOGS_DEFAULT_IF(!status.IsOK(), WARNING)
+                << "Failed to delete old checkpoint. "
+                << "Path: " << ToMBString(old_checkpoint_path)
+                << ", error: " << status.ErrorMessage();
+          }
+
+          std::unordered_map<std::string, std::string> checkpoint_properties{};
+          ORT_RETURN_IF_ERROR(SaveCheckpointProperties(checkpoint_properties));
+          ORT_RETURN_IF_ERROR(session_.SaveCheckpoint(new_checkpoint_path, checkpoint_properties));
         }
       }  // end of one file/shard
 
       if (step_ < params_.num_train_steps) {
-        training_data_loader->MoveToNextDataSet();
+        training_data_loader.MoveToNextDataSet();
       }
     }  // end of one epoch
 
@@ -347,23 +413,16 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
 
   std::cout << "Round: " << round_ << "\n"
             << "Batch size: " << params_.batch_size << "\n"
-            << "Number of Batches: " << step_ << "\n"
+            << "Number of Batches: " << (step_ - step_start) << "\n"
             << "Gradient Accumulation Steps: " << gradient_accumulation_step_count << "\n"
-            << "Weight Update Steps: " << weight_update_step_count_ << "\n"
+            << "Weight Update Steps: " << (weight_update_step_count_ - weight_update_step_count_start) << "\n"
             << "Total Running Time: " << total_time << " Seconds \n"
-            << "Average Running Time Per Batch: " << total_time / step_ * 1000 << " ms\n"
-            << "Throughput: " << params_.batch_size * step_ / total_time << " Examples / Second\n";
+            << "Average Running Time Per Batch: " << total_time / (step_ - step_start) * 1000 << " ms\n"
+            << "Throughput: " << params_.batch_size * (step_ - step_start) / total_time << " Examples / Second\n";
   return Status::OK();
 }
 
-// this should be similar to path_lib.h:GetLastComponent(), except that this uses std::string and GetLastComponent() uses std::basic_string<ORTCHAR_T>
-static std::string BaseName(const std::string& path) {
-  const auto last_slash_pos = path.find_last_of("\\/");
-  return last_slash_pos != std::string::npos ? path.substr(last_slash_pos + 1) : path;
-}
-
-Status TrainingRunner::EndTraining(
-    std::shared_ptr<IDataLoader> data_loader, bool do_load_and_evaluate) {
+Status TrainingRunner::EndTraining(IDataLoader* data_loader, bool do_load_and_evaluate) {
   if (params_.use_profiler) {
     // Write profiler data to disk.
     // We do this first in case there are any problems saving the trained model.
@@ -376,9 +435,11 @@ Status TrainingRunner::EndTraining(
     return Status::OK();
   }
 
-  // Test the in-memory model before saving.
-  printf("\nEvaluating the final model on the test set.\n");
-  ORT_RETURN_IF_ERROR(Evaluate(session_, data_loader));
+  if (data_loader) {
+    // Test the in-memory model before saving.
+    printf("\nEvaluating the final model on the test set.\n");
+    ORT_RETURN_IF_ERROR(Evaluate(session_, *data_loader));
+  }
 
   if (params_.output_dir.empty()) {
     printf("No output directory specified, skipping save of trained model.\n");
@@ -386,28 +447,28 @@ Status TrainingRunner::EndTraining(
   }
 
   printf("\nSaving the trained model.\n");
-  const std::string model_base_name = BaseName(params_.model_path);
+  const PathString model_base_name = GetLastComponent(params_.model_path);
 
-  const std::string trained_model_path =
-      MakeString(params_.output_dir, GetPathSep<char>(), model_base_name, "_trained.onnx");
+  const PathString trained_model_path =
+      params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_trained.onnx");
   ORT_RETURN_IF_ERROR(session_.Save(
       trained_model_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS));
 
-  const std::string trained_model_with_loss_func_path =
-      MakeString(params_.output_dir, GetPathSep<char>(), model_base_name, "_with_cost_trained.onnx");
+  const PathString trained_model_with_loss_func_path =
+      params_.output_dir + GetPathSep<PathChar>() + model_base_name + ORT_TSTR("_with_cost_trained.onnx");
   ORT_RETURN_IF_ERROR(session_.Save(
       trained_model_with_loss_func_path, TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC));
 
   // Load and test the trained model.
-  if (do_load_and_evaluate) {
-    printf("\nTesting the saved model: %s\n", trained_model_with_loss_func_path.c_str());
-    ORT_RETURN_IF_ERROR(LoadAndEvaluate(trained_model_with_loss_func_path, data_loader));
+  if (data_loader && do_load_and_evaluate) {
+    printf("\nTesting the saved model: %s\n", ToMBString(trained_model_with_loss_func_path).c_str());
+    ORT_RETURN_IF_ERROR(LoadAndEvaluate(trained_model_with_loss_func_path, *data_loader));
   }
 
   return Status::OK();
 }
 
-Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IDataLoader> data_loader) {
+Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loader) {
   if (params_.skip_evaluation) {
     printf("Skipping evaluation...\n");
     return Status::OK();
@@ -420,12 +481,12 @@ Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IData
 
   // A static batch index representing current test batch
   static size_t current_batch = 0;
-  vector<string> feed_names = data_loader->DataSetTensorNames();
+  vector<string> feed_names = data_loader.DataSetTensorNames();
   if (loss_scaler_) {
     feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
   feed_names.push_back(params_.lr_params.feed_name);
-  auto test_data = data_loader->CurrentDataSet();
+  auto test_data = data_loader.CurrentDataSet();
   if (params_.shuffle_data && current_batch == 0) {
     printf("Randomly shuffle test data.\n");
     test_data->RandomShuffle();
@@ -475,7 +536,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IData
     // Set to next batch
     if (++current_batch >= test_data->TotalBatch(params_.batch_size)) {
       // Move to next shard
-      test_data = data_loader->MoveToNextDataSet();
+      test_data = data_loader.MoveToNextDataSet();
       current_batch = 0;
     }
   }
@@ -488,7 +549,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, std::shared_ptr<IData
   return Status::OK();
 }
 
-Status TrainingRunner::LoadAndEvaluate(const std::string& model_path, std::shared_ptr<IDataLoader> data_loader) {
+Status TrainingRunner::LoadAndEvaluate(const PathString& model_path, IDataLoader& data_loader) {
   InferenceSession s{SessionOptions()};
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo xp_info{params_.mpi_context.world_rank};
@@ -541,12 +602,76 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   return Status::OK();
 }
 
+namespace {
+namespace property_names {
+constexpr const char* k_step = "step";
+constexpr const char* k_round = "round";
+constexpr const char* k_weight_update_step = "weight_update_step";
+constexpr const char* k_training_data_set_index = "training_data_set_index";
+constexpr const char* k_loss_scaler_state = "loss_scaler_state";
+}  // namespace property_names
+
+template <typename T>
+Status FromString(const std::string& s, T& t) {
+  std::istringstream i{s};
+  ORT_RETURN_IF_NOT(i >> t && i.eof());
+  return Status::OK();
+}
+}  // namespace
+
+Status TrainingRunner::SaveCheckpointProperties(
+    std::unordered_map<std::string, std::string>& properties) const {
+  auto save_property = [&properties](const char* name, auto val) {
+    properties[name] = std::to_string(val);
+  };
+
+  save_property(property_names::k_step, step_);
+  save_property(property_names::k_round, round_);
+  save_property(property_names::k_weight_update_step, weight_update_step_count_);
+  save_property(property_names::k_training_data_set_index, training_data_set_index_);
+
+  if (loss_scaler_) {
+    properties[property_names::k_loss_scaler_state] = loss_scaler_->SaveToString();
+  }
+
+  return Status::OK();
+}
+
+Status TrainingRunner::LoadCheckpointProperties(
+    const std::unordered_map<std::string, std::string>& properties) {
+  auto load_property = [&properties](const char* name, auto& val) {
+    auto prop_it = properties.find(name);
+    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_ERROR(FromString(prop_it->second, val));
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(load_property(property_names::k_step, step_));
+  ORT_RETURN_IF_ERROR(load_property(property_names::k_round, round_));
+  ORT_RETURN_IF_ERROR(load_property(
+      property_names::k_weight_update_step, weight_update_step_count_));
+  ORT_RETURN_IF_ERROR(load_property(
+      property_names::k_training_data_set_index, training_data_set_index_));
+
+  if (loss_scaler_) {
+    auto prop_it = properties.find(property_names::k_loss_scaler_state);
+    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_ERROR(loss_scaler_->LoadFromString(prop_it->second));
+  }
+
+  return Status::OK();
+}
+
 Status TrainingRunner::UpdateParams(Parameters params) {
   params_.lr_params.initial_lr = params.lr_params.initial_lr;
   params_.lr_params.warmup_ratio = params.lr_params.warmup_ratio;
   params_.num_train_steps = params.num_train_steps;
   params_.batch_size = params.batch_size;
   params_.gradient_accumulation_steps = params.gradient_accumulation_steps;
+  return Status::OK();
+}
+
+Status TrainingRunner::ResetLossScaler() {
   if (loss_scaler_) {
     loss_scaler_->Reset();
   }

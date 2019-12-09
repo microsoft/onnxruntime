@@ -1,8 +1,18 @@
-#include "test_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <string>
 
 #include "gtest/gtest.h"
-#include "core/framework/path_lib.h"
-#include <string>
+
+#include "core/platform/env.h"
+#include "test/framework/test_utils.h"
+#include "core/framework/path_lib.h"  // TODO fix include order dependency, path_lib.h should be first
+#include "test/util/include/gtest_utils.h"
+#include "test/util/include/temp_dir.h"
+
+namespace onnxruntime {
+namespace test {
 
 #define PATH_EXPECT(X, Y)                                            \
   {                                                                  \
@@ -61,3 +71,32 @@ TEST(PathTest, dot_dot) {
   PATH_EXPECT(".", "..");
 }
 
+#undef PATH_EXPECT
+
+namespace {
+
+void CheckGetRelativePath(
+    const PathString& src, const PathString& dst, const PathString& expected) {
+  PathString result;
+  ASSERT_STATUS_OK(GetRelativePath(NormalizePathSeparators(src), NormalizePathSeparators(dst), result));
+  ASSERT_EQ(result, NormalizePathSeparators(expected));
+}
+
+}  // namespace
+
+TEST(PathTest, GetRelativePathBasic) {
+  TemporaryDirectory tmp_dir{ORT_TSTR("path_test")};
+  auto get_tmp_dir_path = [&tmp_dir](const PathString& relative_path) {
+    return ConcatPathComponent<PathChar>(tmp_dir.Path(), NormalizePathSeparators(relative_path));
+  };
+  ASSERT_STATUS_OK(Env::Default().CreateFolder(get_tmp_dir_path(ORT_TSTR("a/b/c"))));
+  ASSERT_STATUS_OK(Env::Default().CreateFolder(get_tmp_dir_path(ORT_TSTR("a/d/e/f"))));
+  CheckGetRelativePath(
+      get_tmp_dir_path(ORT_TSTR("a/b/c")), get_tmp_dir_path(ORT_TSTR("a/d/e/f")),
+      ORT_TSTR("../../d/e/f"));
+  CheckGetRelativePath(
+      get_tmp_dir_path(ORT_TSTR("a/d/e/f")), get_tmp_dir_path(ORT_TSTR("a/b")),
+      ORT_TSTR("../../../b"));
+}
+}  // namespace test
+}  // namespace onnxruntime

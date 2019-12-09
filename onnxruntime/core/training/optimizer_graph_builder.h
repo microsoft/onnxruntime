@@ -4,6 +4,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "core/common/common.h"
@@ -54,10 +55,15 @@ class OptimizerGraphBuilder {
   /**
    * Builds the optimizer components on top of the graph.
    * @param graph The graph to build upon.
+   * @param[out] optimizer_state_initializer_names The names of the
+   *             initializers representing the optimizer state.
    * @param[out] optimizer_graph_outputs The outputs introduced in optimizer graph
    * @return The status of the graph modification.
    */
-  Status Build(Graph& graph, std::unordered_map<std::string, std::string>& optimizer_graph_outputs);
+  Status Build(
+      Graph& graph,
+      std::unordered_set<std::string>& optimizer_state_initializer_names,
+      std::unordered_map<std::string, std::string>& optimizer_graph_outputs);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerGraphBuilder);

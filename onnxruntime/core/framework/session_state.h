@@ -108,6 +108,19 @@ class SessionState {
 
   /**
   Get some initialized tensors (weights).
+  @param interested_weights The names of the weights to retrieve.
+  @param allow_missing_weights Whether to allow names in interested_weights
+         with no corresponding weight.
+  @param[out] retrieved_weights The retrieved weights.
+  @return The status of the operation.
+  */
+  Status GetInitializedTensors(
+      const std::unordered_set<std::string>& interested_weights,
+      bool allow_missing_weights, NameMLValMap& retrieved_weights) const;
+
+  /**
+  Get some initialized tensors (weights).
+  Any names in interested_weights with no corresponding weight are ignored.
   */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 

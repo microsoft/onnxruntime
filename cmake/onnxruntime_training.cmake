@@ -3,6 +3,8 @@
 
 set (CXXOPTS ${PROJECT_SOURCE_DIR}/external/cxxopts/include)
 
+set (re2_INCLUDE_DIRS ${REPO_ROOT}/cmake/external/re2)
+
 # training lib
 file(GLOB_RECURSE onnxruntime_training_srcs
     "${ONNXRUNTIME_ROOT}/core/training/*.h"
@@ -15,7 +17,7 @@ add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common gsl onnx onnx_proto tensorboard protobuf::libprotobuf)
 
-target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
+target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${re2_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()

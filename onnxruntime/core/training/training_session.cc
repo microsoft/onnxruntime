@@ -1,12 +1,15 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/training/training_session.h"
+
 #include "core/graph/model.h"
 #include "core/graph/training/loss_function_builder.h"
 #include "core/graph/training/training_optimizer.h"
+#include "core/training/checkpointing.h"
+#include "core/training/data_transfer_utils.h"
 #include "core/training/gradient_graph_builder.h"
 #include "core/training/optimizer_graph_builder.h"
-#include "core/training/training_session.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/insert_output_rewriter.h"
@@ -67,11 +70,13 @@ static Status BuildGradientGraphInternal(Graph& graph,
 static Status BuildOptimizerInternal(Graph& graph,
                                      const OptimizerGraphConfig& opt_graph_config,
                                      const unordered_map<string, OptimizerNodeConfig>& opt_configs,
+                                     std::unordered_set<std::string>& opt_state_initializer_names,
                                      std::unordered_map<std::string, std::string>& opt_graph_outputs) {
   OptimizerGraphBuilder optimizer_graph_builder{
       OptimizerBuilderRegistry::GetInstance(), opt_graph_config, opt_configs};
 
-  ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(graph, opt_graph_outputs));
+  ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(
+      graph, opt_state_initializer_names, opt_graph_outputs));
 
   return Status::OK();
 }
@@ -148,8 +153,8 @@ Status TrainingSession::AddTensorboard(const std::string& summary_name,
                                        const std::vector<std::string>& norm_nodes,
                                        const bool dump_convergence_metrics) {
   ORT_RETURN_IF_ERROR(
-    TransformGraphForTensorboard(
-      model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes, norm_nodes, dump_convergence_metrics));
+      TransformGraphForTensorboard(
+          model_->MainGraph(), summary_name, scalar_nodes, histogram_nodes, norm_nodes, dump_convergence_metrics));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -176,8 +181,18 @@ Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info
 
 common::Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                                      bool use_fp16_initializer,
-                                                     std::unordered_map<std::string, NodeArg*>& fp16_weights_map) {
-  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp16_weights_map));
+                                                     std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
+  ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg));
+
+  std::unordered_set<std::string> fp16_weight_initializer_names{};
+  std::transform(
+      fp32_weight_name_to_fp16_node_arg.cbegin(), fp32_weight_name_to_fp16_node_arg.cend(),
+      std::inserter(fp16_weight_initializer_names, fp16_weight_initializer_names.begin()),
+      [](const std::pair<std::string, NodeArg*>& p) {
+        return p.second->Name();
+      });
+  fp16_weight_initializer_names_ = std::move(fp16_weight_initializer_names);
+
   return Status::OK();
 }
 
@@ -228,6 +243,7 @@ Status TrainingSession::BuildOptimizer(
   ORT_RETURN_IF_ERROR(BuildOptimizerInternal(model_->MainGraph(),
                                              opt_graph_config_,
                                              opt_configs_,
+                                             opt_state_initializer_names_,
                                              opt_graph_outputs));
 
   return DoPostLoadProcessing(*model_);
@@ -248,42 +264,31 @@ Status TrainingSession::UpdateWeightsInSessionState(const NameMLValMap& new_weig
   return Status::OK();
 }
 
-static Status UpdateWeightsBeforeSaving(Graph& graph, const NameMLValMap& weights) {
+static Status UpdateWeightsBeforeSaving(
+    Graph& graph, const NameMLValMap& weights, const DataTransferManager& data_transfer_manager) {
   // Store MLValue (either in CPU or CUDA) into TensorProto
   // TODO: support more types than float
 
+  static const OrtAllocatorInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
   for (const auto& name_and_ml_value : weights) {
-    // Set src_data pointer
     const auto& src_tensor = name_and_ml_value.second.Get<Tensor>();
-    const void* src_data = src_tensor.DataRaw(src_tensor.DataType());
 
-    // Set dst_data pointer
     const ONNX_NAMESPACE::TensorProto* old_tensor_proto = nullptr;
     if (!graph.GetInitializedTensor(name_and_ml_value.first, old_tensor_proto)) {
       continue;
     }
     ONNX_NAMESPACE::TensorProto new_tensor_proto = *old_tensor_proto;
-    void* dst_data = nullptr;
     if (new_tensor_proto.has_raw_data()) {
-      dst_data = const_cast<char*>(new_tensor_proto.mutable_raw_data()->data());
+      auto* const raw_data = new_tensor_proto.mutable_raw_data();
+      auto dst_span = gsl::make_span(&(*raw_data)[0], raw_data->size());
+      ORT_RETURN_IF_ERROR(CopyTensorDataToByteSpan(
+          data_transfer_manager, src_tensor, cpu_alloc_info, dst_span));
     } else {
       ORT_ENFORCE(new_tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT);
-      dst_data = new_tensor_proto.mutable_float_data()->mutable_data();
-    }
-
-    // Copy from src_data to dst_data.
-    auto data_size = src_tensor.SizeInBytes();
-    if (strcmp(src_tensor.Location().name, CPU) == 0) {
-      memcpy(dst_data, src_data, data_size);
-    }
-#ifdef USE_CUDA
-    else if (strcmp(src_tensor.Location().name, CUDA) == 0) {
-      ORT_RETURN_IF_NOT(cudaSuccess == cudaMemcpy(dst_data, src_data, data_size, cudaMemcpyDeviceToHost),
-                        "cudaMemcpy returns error");
-    }
-#endif
-    else {
-      ORT_THROW("Device is not supported:", src_tensor.Location().name);
+      auto* const float_data = new_tensor_proto.mutable_float_data();
+      auto dst_span = gsl::make_span(float_data->mutable_data(), float_data->size());
+      ORT_RETURN_IF_ERROR(CopyTensorDataToSpan(
+          data_transfer_manager, src_tensor, cpu_alloc_info, dst_span));
     }
 
     // Replace the TensorProto in the model.
@@ -292,9 +297,9 @@ static Status UpdateWeightsBeforeSaving(Graph& graph, const NameMLValMap& weight
   return Status::OK();
 }
 
-Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOption opt) {
+Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
   // Delete the old file before saving.
-  std::remove(model_uri.c_str());
+  std::remove(ToMBString(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
 
   if (opt == TrainingSession::SaveOption::NO_RELOAD) {
     return Model::Save(*model_, model_uri);
@@ -304,7 +309,8 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
   // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
   shared_ptr<Model> new_model;
   ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model));
-  ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(new_model->MainGraph(), GetWeights()));
+  ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(
+      new_model->MainGraph(), GetWeights(), session_state_.GetDataTransferMgr()));
 
   std::string actual_loss_name{};
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
@@ -323,19 +329,75 @@ Status TrainingSession::Save(const string& model_uri, TrainingSession::SaveOptio
                                                    false));
 
     std::unordered_map<std::string, std::string> opt_graph_outputs;
+    std::unordered_set<std::string> opt_state_initializer_names;
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
                                                opt_graph_config_,
                                                opt_configs_,
+                                               opt_state_initializer_names,
                                                opt_graph_outputs));
   }
 
   auto status = Model::Save(*new_model, model_uri);
 
   if (!status.IsOK()) {
-    LOGS(*session_logger_, WARNING) << "Error when saving model " << model_uri << " : " << status.ErrorMessage();
+    LOGS(*session_logger_, WARNING) << "Error when saving model " << ToMBString(model_uri) << " : " << status.ErrorMessage();
   }
 
   return status;
+}
+
+Status TrainingSession::SaveCheckpoint(
+    const PathString& checkpoint_path,
+    const std::unordered_map<std::string, std::string>& properties) {
+  const bool is_profiler_enabled = session_state_.Profiler().IsEnabled();
+  const TimePoint start_time = is_profiler_enabled ? session_state_.Profiler().StartTime() : TimePoint{};
+
+  std::unordered_set<std::string> checkpointed_tensor_names{};
+  checkpointed_tensor_names.insert(
+      weights_to_train_.begin(), weights_to_train_.end());
+  checkpointed_tensor_names.insert(
+      opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
+  checkpointed_tensor_names.insert(
+      fp16_weight_initializer_names_.begin(), fp16_weight_initializer_names_.end());
+
+  NameMLValMap checkpointed_initialized_tensors{};
+  ORT_RETURN_IF_ERROR(session_state_.GetInitializedTensors(
+      checkpointed_tensor_names, false, checkpointed_initialized_tensors));
+
+  ORT_RETURN_IF_ERROR(SaveModelCheckpoint(
+      checkpoint_path, session_state_.GetDataTransferMgr(),
+      checkpointed_initialized_tensors, properties));
+
+  if (is_profiler_enabled) {
+    session_state_.Profiler().EndTimeAndRecordEvent(
+        profiling::EventCategory::SESSION_EVENT, "checkpoint_save", start_time);
+  }
+
+  return Status::OK();
+}
+
+Status TrainingSession::LoadCheckpointAndUpdateInitializedTensors(
+    const PathString& checkpoint_path,
+    std::unordered_map<std::string, std::string>& properties) {
+  const bool is_profiler_enabled = session_state_.Profiler().IsEnabled();
+  const TimePoint start_time = is_profiler_enabled ? session_state_.Profiler().StartTime() : TimePoint{};
+
+  std::vector<ONNX_NAMESPACE::TensorProto> loaded_tensor_protos{};
+  ORT_RETURN_IF_ERROR(LoadModelCheckpoint(
+      checkpoint_path, model_location_, loaded_tensor_protos, properties));
+
+  // overwrite graph initializers
+  Graph& graph = model_->MainGraph();
+  for (const auto& tensor_proto : loaded_tensor_protos) {
+    ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto));
+  }
+
+  if (is_profiler_enabled) {
+    session_state_.Profiler().EndTimeAndRecordEvent(
+        profiling::EventCategory::SESSION_EVENT, "checkpoint_load", start_time);
+  }
+
+  return Status::OK();
 }
 
 std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {

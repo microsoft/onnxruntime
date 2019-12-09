@@ -135,15 +135,29 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
-NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const {
+Status SessionState::GetInitializedTensors(
+    const std::unordered_set<std::string>& interested_weights,
+    bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
   NameMLValMap result;
-  for (const auto& name : interested_weights) {
+  for (const auto& weight_name : interested_weights) {
     int idx;
-    if (!GetOrtValueNameIdxMap().GetIdx(name, idx).IsOK()) {
+    const auto status = GetOrtValueNameIdxMap().GetIdx(weight_name, idx);
+    if (!status.IsOK()) {
+      ORT_RETURN_IF_NOT(
+          allow_missing_weights,
+          "Failed to get OrtValue index from name: ", status.ErrorMessage());
       continue;
     }
-    result[name] = initialized_tensors_.at(idx);
+    result.emplace(weight_name, initialized_tensors_.at(idx));
   }
+  retrieved_weights = std::move(result);
+  return Status::OK();
+}
+
+NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const {
+  NameMLValMap result;
+  const auto status = GetInitializedTensors(interested_weights, true, result);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return result;
 }
 

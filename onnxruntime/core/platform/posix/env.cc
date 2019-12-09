@@ -23,6 +23,7 @@ limitations under the License.
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <ftw.h>
 #include <string.h>
 #include <thread>
 #include <vector>
@@ -59,6 +60,18 @@ static void UnmapFile(void* param) noexcept {
   }
   (void)close(p->fd);
   delete p;
+}
+
+static int nftw_remove(
+    const char* fpath, const struct stat* /*sb*/,
+    int /*typeflag*/, struct FTW* /*ftwbuf*/) {
+  const auto result = remove(fpath);
+  if (result != 0) {
+    const int err = errno;
+    LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err
+                          << ", path: " << fpath;
+  }
+  return result;
 }
 
 class PosixEnv : public Env {
@@ -157,7 +170,7 @@ class PosixEnv : public Env {
     } else {
       long page_size = sysconf(_SC_PAGESIZE);
       off_t offset_to_page = offset % static_cast<off_t>(page_size);
-      p = mmap(nullptr, len + offset_to_page, PROT_READ, MAP_SHARED, fd, offset - offset_to_page);
+      p = mmap(nullptr, len + offset_to_page, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, offset - offset_to_page);
       if (p == MAP_FAILED) {
         auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
         (void)close(fd);
@@ -215,6 +228,14 @@ class PosixEnv : public Env {
         return common::Status(common::SYSTEM, errno);
       }
     } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
+  common::Status DeleteFolder(const std::string& path) const override {
+    const auto result = nftw(
+        path.c_str(), &nftw_remove, 32, FTW_DEPTH | FTW_PHYS);
+    ORT_RETURN_IF_NOT(
+        result == 0, "DeleteFolder(): nftw() failed with error: ", result);
     return Status::OK();
   }
 

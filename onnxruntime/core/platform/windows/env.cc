@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <Shlwapi.h>
 #include <Windows.h>
+#include <shellapi.h>
 
 #include <string>
 #include <thread>
@@ -182,6 +183,46 @@ class WindowsEnv : public Env {
         return common::Status(common::SYSTEM, errno);
       }
     } while (pos != std::string::npos);
+    return Status::OK();
+  }
+
+  common::Status DeleteFolder(const std::wstring& path) const override {
+    // SHFileOperation() will also delete files, so check for directory first
+    ORT_RETURN_IF_NOT(FolderExists(path), "Directory does not exist: ", ToMBString(path));
+
+    const std::wstring path_ending_with_double_null = path + L'\0';
+    SHFILEOPSTRUCTW sh_file_op{};
+    sh_file_op.wFunc = FO_DELETE;
+    sh_file_op.pFrom = path_ending_with_double_null.c_str();
+    sh_file_op.fFlags = FOF_NO_UI;
+
+    const auto result = ::SHFileOperationW(&sh_file_op);
+    ORT_RETURN_IF_NOT(result == 0, "SHFileOperation() failed with error: ", result);
+
+    ORT_RETURN_IF_NOT(
+        !sh_file_op.fAnyOperationsAborted,
+        "SHFileOperation() indicated that an operation was aborted.");
+
+    return Status::OK();
+  }
+
+  common::Status DeleteFolder(const std::string& path) const override {
+    // SHFileOperation() will also delete files, so check for directory first
+    ORT_RETURN_IF_NOT(FolderExists(path), "Directory does not exist: ", path);
+
+    const std::string path_ending_with_double_null = path + '\0';
+    SHFILEOPSTRUCTA sh_file_op{};
+    sh_file_op.wFunc = FO_DELETE;
+    sh_file_op.pFrom = path_ending_with_double_null.c_str();
+    sh_file_op.fFlags = FOF_NO_UI;
+
+    const auto result = ::SHFileOperationA(&sh_file_op);
+    ORT_RETURN_IF_NOT(result == 0, "SHFileOperation() failed with error: ", result);
+
+    ORT_RETURN_IF_NOT(
+        !sh_file_op.fAnyOperationsAborted,
+        "SHFileOperation() indicated that an operation was aborted.");
+
     return Status::OK();
   }
 

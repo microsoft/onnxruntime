@@ -86,14 +86,14 @@ int true_count = 0;
 float total_loss = 0.0f;
 
 void setup_training_params(TrainingRunner::Parameters& params) {
-  params.model_path = params.model_name + ".onnx";
-  params.model_with_loss_func_path = params.model_name + "_with_cost.onnx";
-  params.model_with_training_graph_path = params.model_name + "_bw.onnx";
-  params.model_actual_running_graph_path = params.model_name + "_bw_running.onnx";
-  params.output_dir = ".";
+  params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
+  params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
+  params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
+  params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  params.output_dir = ORT_TSTR(".");
 
   //Gist encode
-  params.model_gist_encode = params.model_name + "_encode_gist.onnx";
+  params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
   params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy"),
                                            "loss",
                                            {"predictions", "labels"});
@@ -210,8 +210,8 @@ int main(int argc, char* args[]) {
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
   auto runner = std::make_unique<TrainingRunner>(params);
   RETURN_IF_FAIL(runner->Initialize());
-  RETURN_IF_FAIL(runner->Run(training_data_loader, test_data_loader));
-  RETURN_IF_FAIL(runner->EndTraining(test_data_loader, true));
+  RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
+  RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get(), true));
 
 #ifdef USE_HOROVOD
   shutdown_horovod();

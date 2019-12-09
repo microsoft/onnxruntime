@@ -306,7 +306,8 @@ Status AddDirectWeightUpdate(
     const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& updated_weight_argdefs,
-    GraphAugmenter::GraphDefs& graph_defs) {
+    GraphAugmenter::GraphDefs& graph_defs,
+    std::unordered_set<std::string>& optimizer_state_initializer_names) {
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
 
@@ -332,7 +333,16 @@ Status AddDirectWeightUpdate(
       inputs_including_initializers, new_initializers, output_weight_argdefs));
 
   graph_defs.AddInitializers(new_initializers);
+
   updated_weight_argdefs = std::move(output_weight_argdefs);
+
+  std::unordered_set<std::string> all_new_initializer_names{};
+  std::transform(
+      new_initializers.begin(), new_initializers.end(),
+      std::inserter(all_new_initializer_names, all_new_initializer_names.end()),
+      [](const TensorProto& initializer) { return initializer.name(); });
+  optimizer_state_initializer_names = std::move(all_new_initializer_names);
+
   return Status::OK();
 }
 
@@ -342,7 +352,7 @@ Status AddGradientNorm(
   GraphAugmenter::GraphDefs& graph_defs,
   ArgDef& grad_norm_argdef) {
 
-  ONNX_NAMESPACE::TensorProto_DataType grad_type = 
+  ONNX_NAMESPACE::TensorProto_DataType grad_type =
     static_cast<ONNX_NAMESPACE::TensorProto_DataType>(grad_argdefs[0].type_proto->tensor_type().elem_type());
   if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
     grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
@@ -351,7 +361,7 @@ Status AddGradientNorm(
   }
 
   for (const auto argdef: grad_argdefs) {
-    ONNX_NAMESPACE::TensorProto_DataType elem_type = 
+    ONNX_NAMESPACE::TensorProto_DataType elem_type =
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
     if (elem_type != grad_type) {
       return Status(common::ONNXRUNTIME, common::FAIL,
@@ -415,7 +425,8 @@ Status AddConditionalWeightUpdate(
     const std::vector<ArgDef>& gradient_argdefs,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     ArgDef& conditional_node_output,
-    GraphAugmenter::GraphDefs& graph_defs) {
+    GraphAugmenter::GraphDefs& graph_defs,
+    std::unordered_set<std::string>& optimizer_state_initializer_names) {
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
 
@@ -426,10 +437,13 @@ Status AddConditionalWeightUpdate(
       nodearg_name_generator("conditional_output"),
       graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL)};
 
+  std::unordered_set<std::string> all_new_optimizer_external_initializer_names{};
+
   // condition == true
   ORT_RETURN_IF_ERROR(MakeGraphProto(
       [&opt_builder_registry, &weight_argdefs, &gradient_argdefs,
-       &opt_configs, &graph_defs, &conditional_output_argdef](Graph& then_subgraph) {
+       &opt_configs, &graph_defs, &conditional_output_argdef,
+       &all_new_optimizer_external_initializer_names](Graph& then_subgraph) {
         /* subgraph structure:
          * the idea is to minimize any copying incurred by subgraph outputs
          *
@@ -471,6 +485,13 @@ Status AddConditionalWeightUpdate(
 
         graph_defs.AddInitializers(new_external_initializers);
 
+        std::transform(
+            new_external_initializers.begin(), new_external_initializers.end(),
+            std::inserter(
+                all_new_optimizer_external_initializer_names,
+                all_new_optimizer_external_initializer_names.end()),
+            [](const TensorProto& initializer) { return initializer.name(); });
+
         then_subgraph_defs.AddNodeDefs({NodeDef{"Group", group_input_argdefs, {conditional_output_argdef}}});
 
         then_subgraph_defs.AddGraphOutputs({conditional_output_argdef.name});
@@ -511,6 +532,8 @@ Status AddConditionalWeightUpdate(
 
   conditional_node_output = conditional_output_argdef;
 
+  optimizer_state_initializer_names = std::move(all_new_optimizer_external_initializer_names);
+
   return Status::OK();
 }
 
@@ -549,7 +572,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
         return name_and_info.first;
       });
 
-  // deterministic ordering for debugging
+  // deterministic ordering for consistent generated nodearg names
   std::sort(weight_names_.begin(), weight_names_.end());
 
   opt_configs_.reserve(weight_names_.size());
@@ -560,8 +583,10 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
       });
 }
 
-Status OptimizerGraphBuilder::Build(Graph& graph,
-                                    std::unordered_map<std::string, std::string>& optimizer_graph_outputs) {
+Status OptimizerGraphBuilder::Build(
+    Graph& graph,
+    std::unordered_set<std::string>& optimizer_state_initializer_names,
+    std::unordered_map<std::string, std::string>& optimizer_graph_outputs) {
   if (weight_names_.empty()) {
     // nothing to do
     return Status::OK();
@@ -641,13 +666,15 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   // add weight update
   std::vector<ArgDef> zero_gradients_control_signals;
 
+  std::unordered_set<std::string> optimizer_state_initializer_names_result{};
+
   // TODO: enable conditional weight update for mixed precision when If op data copy issue is resolved
   if (false) {
     ArgDef conditional_weight_update_output{};
     ORT_RETURN_IF_ERROR(AddConditionalWeightUpdate(
         nodearg_name_generator, global_grad_norm_argdef, opt_builder_registry_,
         weight_argdefs, gradient_argdefs, opt_configs_,
-        conditional_weight_update_output, graph_defs));
+        conditional_weight_update_output, graph_defs, optimizer_state_initializer_names_result));
     // TODO not ideal to pass N copies of the same argdef as control signals
     //      maybe update AddZeroGradientNodes() to accept 1 or N of them
     zero_gradients_control_signals.assign(weight_argdefs.size(), conditional_weight_update_output);
@@ -656,7 +683,8 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
         opt_builder_registry_, weight_argdefs, gradient_argdefs,
         &global_grad_norm_argdef,
         &global_grad_norm_finite_argdef,
-        opt_configs_, zero_gradients_control_signals, graph_defs));
+        opt_configs_, zero_gradients_control_signals, graph_defs,
+        optimizer_state_initializer_names_result));
   }
 
   // add zero gradient
@@ -669,6 +697,8 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   ORT_RETURN_IF_ERROR(AddLearningRateGraphInputs(graph, opt_configs_));
 
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, graph_defs));
+
+  optimizer_state_initializer_names = std::move(optimizer_state_initializer_names_result);
 
   return Status::OK();
 }
