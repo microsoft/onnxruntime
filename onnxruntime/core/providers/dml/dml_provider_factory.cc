@@ -77,7 +77,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
 #if _DEBUG
   ComPtr<ID3D12DebugDevice> debug_device;
-  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device)); // ignore failureg
+  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device)); // ignore failure
   const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
 
   if (is_d3d12_debug_layer_enabled) {

@@ -32,7 +32,7 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 
 OrtMutex WindowsTelemetry::mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
-bool WindowsTelemetry::enabled_ = true;
+bool WindowsTelemetry::enabled_ = false;
 
 
 WindowsTelemetry::WindowsTelemetry() {
