@@ -16,6 +16,7 @@ namespace training {
 
 constexpr const char* kGradientAccumulationOutputKey = "GRADIENT_ACCUMULATION_OUTPUT";
 constexpr const char* kGradientAllIsFiniteOutputKey = "GRADIENT_ALL_IS_FINITE";
+constexpr const char* kGlobalGradientNormOutputKey = "Global_GRADIENT_NORM";
 
 // given a base name, return a name suitable for a graph NodeArg
 using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;

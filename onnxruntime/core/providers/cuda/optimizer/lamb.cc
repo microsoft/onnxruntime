@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
@@ -12,7 +13,7 @@ namespace cuda {
 
 std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
   // Starting index of extra inputs.
-  constexpr int input_index_bias = 3;
+  constexpr int input_index_bias = 4;
   // Starting index of extra outputs.
   constexpr int output_index_bias = 0;
   // Count of extra I/O groups. One group corresponds to a weight update.
@@ -40,29 +41,32 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
 }
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4)                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      LambOptimizer,                                                          \
-      kOnnxDomain,                                                            \
-      9,                                                                      \
-      T1##_##T2##_##T3##_##T4,                                                \
-      kCudaExecutionProvider,                                                 \
-      KernelDefBuilder()                                                      \
-          .Alias(GenerateLambExtraAliasMapping())                             \
-          .InputMemoryType<OrtMemTypeCPUInput>(1) /* Keep do_update in CPU */ \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())            \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())            \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())            \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())            \
-          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>()) \
-          .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),          \
-      LambOptimizer<T1, T2, T3, T4>);
+#define REGISTER_LAMB_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD_NORM)                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
+      LambOptimizer,                                                                  \
+      kOnnxDomain,                                                                    \
+      9,                                                                              \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM,                                          \
+      kCudaExecutionProvider,                                                         \
+      KernelDefBuilder()                                                              \
+          .Alias(GenerateLambExtraAliasMapping())                                     \
+          .InputMemoryType<OrtMemTypeCPUInput>(0)  /* Keep do_update in CPU */        \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                    \
+          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>())         \
+          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()), \
+      LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>);
 
-REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float)
-REGISTER_LAMB_KERNEL_TYPED(float, float, float, float)
-REGISTER_LAMB_KERNEL_TYPED(double, double, double, double)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16)
-REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float)
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(float, float, MLFloat16, float, float)
+REGISTER_LAMB_KERNEL_TYPED(float, float, float, float, float)
+REGISTER_LAMB_KERNEL_TYPED(double, double, double, double, double)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, MLFloat16, float)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, MLFloat16)
+REGISTER_LAMB_KERNEL_TYPED(MLFloat16, float, MLFloat16, float, float)
 
 void check_inputs_and_outputs(
     const Tensor* w,
@@ -134,10 +138,11 @@ Status copy_inputs_to_outputs(
   return Status::OK();
 }
 
-template <typename CudaT2, typename CudaT3, typename CudaT4>
+template <typename CudaT2, typename CudaT3, typename CudaT4, typename CudaT_GRAD_NORM>
 Status launch_lamb_compute_direction(
     const int group_count,
     const CudaT2* p_loss_scale,
+    const CudaT_GRAD_NORM* p_g_norm,
     std::vector<int>& tensor_sizes,
     std::vector<const CudaT2*>& p_ws,
     std::vector<const CudaT3*>& p_gs,
@@ -179,6 +184,7 @@ Status launch_lamb_compute_direction(
           p_m1s[i],
           p_m2s[i],
           p_loss_scale,
+          p_g_norm,
           CudaT4(alphas[i]),
           CudaT4(betas[i]),
           CudaT2(lambdas[i]),
@@ -207,15 +213,15 @@ Status launch_lamb_compute_direction(
     float alpha = 0.f, beta = 0.f, lambda = 0.f, epsilon = 0.f;
     std::tie(alpha, beta, lambda, epsilon) = key;
 
-    typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4> LambStage1;
+    typedef LambMultiTensorComputeDirectionFunctor<CudaT2, CudaT3, CudaT4, CudaT_GRAD_NORM> LambStage1;
     LambStage1 lamb_stage1;
 
-    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const CudaT2*, float, float, float, float>(
+    launch_multi_tensor_functor<tensor_count_per_group, LambStage1, const CudaT2*, const CudaT_GRAD_NORM*, float, float, float, float>(
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, lambda, alpha, beta, epsilon);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon);
   }
 
   return Status::OK();
@@ -364,16 +370,17 @@ Status launch_lamb_update(
   return Status::OK();
 }
 
-template <typename T1, typename T2, typename T3, typename T4>
-Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM>
+Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelContext* ctx) const {
   // CudaT* are types used to invoke CUDA-based functions. It, for example, maps
   // MLFloat16 in ONNXRuntime to half in CUDA.
   typedef typename ToCudaType<T1>::MappedType CudaT1;
   typedef typename ToCudaType<T2>::MappedType CudaT2;
   typedef typename ToCudaType<T3>::MappedType CudaT3;
   typedef typename ToCudaType<T4>::MappedType CudaT4;
+  typedef typename ToCudaType<T_GRAD_NORM>::MappedType CudaT_GRAD_NORM;
 
-  constexpr int non_grouped_input_count = 3;
+  constexpr int non_grouped_input_count = 4;
   constexpr int input_group_size = 5;
   constexpr int output_group_size = 4;
   constexpr int minimal_input_count = non_grouped_input_count + 1 * input_group_size - 1;
@@ -417,10 +424,10 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   ORT_ENFORCE(epsilon_.size() >= static_cast<size_t>(group_count));
   ORT_ENFORCE(threshold_.size() >= static_cast<size_t>(group_count));
 
-  // If update signal exists, we check its value and copy inputs to outputs when its value is false.
-  if (ctx->Input<Tensor>(1)) {
-    const Tensor& update_signal_tensor = *ctx->Input<Tensor>(1);
-    const bool update_signal = *update_signal_tensor.template Data<bool>();
+  // If gradient norm is not finite, we copy inputs to outputs directly.
+  if (ctx->Input<Tensor>(0)) {
+    auto update_signal_tensor = ctx->Input<Tensor>(0);
+    auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
       return copy_inputs_to_outputs<T2, T4>(
           ctx,
@@ -432,12 +439,18 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   }
 
   const CudaT2* loss_scale_data = nullptr;
-  if (ctx->Input<Tensor>(0)) {
-    const Tensor& loss_scale_tensor = *ctx->Input<Tensor>(0);
+  if (ctx->Input<Tensor>(1)) {
+    const Tensor& loss_scale_tensor = *ctx->Input<Tensor>(1);
     loss_scale_data = reinterpret_cast<const CudaT2*>(loss_scale_tensor.template Data<T2>());
   }
 
-  const Tensor& eta = *ctx->Input<Tensor>(2);
+  const CudaT_GRAD_NORM* g_norm_data = nullptr;
+  if (ctx->Input<Tensor>(2)) {
+    const Tensor& g_norm_tensor = *ctx->Input<Tensor>(2);
+    g_norm_data = reinterpret_cast<const CudaT_GRAD_NORM*>(g_norm_tensor.template Data<T_GRAD_NORM>());
+  }
+
+  const Tensor& eta = *ctx->Input<Tensor>(3);
   const CudaT1* eta_data = reinterpret_cast<const CudaT1*>(eta.template Data<T1>());
 
   // Allocate buffer for reduction computation of update directions.
@@ -543,6 +556,7 @@ Status LambOptimizer<T1, T2, T3, T4>::ComputeInternal(OpKernelContext* ctx) cons
   launch_lamb_compute_direction(
       group_count,
       loss_scale_data,
+      g_norm_data,
       tensor_sizes,
       p_ws, p_gs, p_m1s, p_m2s,
       p_ds,

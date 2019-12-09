@@ -9,7 +9,7 @@ namespace cuda {
 
 constexpr int ACTUAL_TENSOR_GROUP_SIZE[7] = {1, 1, 2, 3, 4, 5, 6};
 constexpr int MAX_BLOCK_COUNTS[7] = {256, 320, 320, 320, 320, 288, 288};
-constexpr int MAX_TENSOR_GROUP_COUNTS[7] = {1, 96, 256, 256, 32, 32, 32};
+constexpr int MAX_TENSOR_GROUP_COUNTS[7] = {1, 96, 64, 32, 32, 32, 32};
 constexpr int MAX_BLOCK_THREAD_COUNTS[7] = {256, 512, 512, 512, 512, 512, 512};
 
 // TensorGroupSize is the number of parallel tensors. For element-wise

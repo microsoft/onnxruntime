@@ -77,8 +77,9 @@ class OptimizerBuilder {
    * @param weight_argdef The ArgDef of the weight to optimize.
    * @param gradient_argdef The ArgDef of the gradient of the weight to
             optimize.
-   * @param do_update_argdef (Optional) The ArgDef for whether to perform the
-            weight update.
+   * @param gradient_norm_argdef (Optional) The ArgDef of gradient norm.
+   * @param gradient_norm_finite_argdef (Optional) The ArgDef indicates whether
+            the passed-in gradient norm is finite.
    * @param opt_config The optimizer configuration.
    * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
    *             a subgraph) that the component is to be added to.
@@ -97,7 +98,8 @@ class OptimizerBuilder {
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,
       const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* do_update_argdef,
+      const ArgDef* gradient_norm_argdef,
+      const ArgDef* gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
@@ -136,7 +138,8 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,
       const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* do_update_argdef,
+      const ArgDef* gradient_norm_argdef,
+      const ArgDef* gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
@@ -152,7 +155,8 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,
       const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* do_update_argdef,
+      const ArgDef* gradient_norm_argdef,
+      const ArgDef* gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
@@ -168,7 +172,8 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,
       const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* do_update_argdef,
+      const ArgDef* gradient_norm_argdef,
+      const ArgDef* gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,

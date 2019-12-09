@@ -13,7 +13,8 @@ namespace training {
 Status SGDOptimizerBuilder::Build(
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* /* do_update_argdef */,
+    const ArgDef* /* gradient_norm_argdef */,
+    const ArgDef* /* gradient_norm_finite_argdef */,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
@@ -50,7 +51,8 @@ Status SGDOptimizerBuilder::Build(
 Status AdamOptimizerBuilder::Build(
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* do_update_argdef,
+    const ArgDef* gradient_norm_argdef,
+    const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
@@ -77,10 +79,11 @@ Status AdamOptimizerBuilder::Build(
       num_outputs += 1;
     }
 
-    if (do_update_argdef) {
+    if (gradient_norm_finite_argdef) {
+      num_inputs += 4;
+    } else if (gradient_norm_argdef) {
       num_inputs += 3;
-    } else if (!opt_configs[i].loss_scale_input_name.empty())
-    {
+    } else if (!opt_configs[i].loss_scale_input_name.empty()) {
       num_inputs += 2;
     } else if (opt_configs[i].fp16_weight_arg != nullptr) {
       num_inputs += 1;
@@ -142,8 +145,12 @@ Status AdamOptimizerBuilder::Build(
       input_args[7] = ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
     }
 
-    if (do_update_argdef) {
-      input_args[8] = *do_update_argdef;
+    if (gradient_norm_argdef) {
+      input_args[8] = *gradient_norm_argdef;
+    }
+
+    if (gradient_norm_finite_argdef) {
+      input_args[9] = *gradient_norm_finite_argdef;
     }
 
     graph_defs.AddNodeDefs({NodeDef(OpType(),
@@ -170,7 +177,8 @@ Status AdamOptimizerBuilder::Build(
 Status LambOptimizerBuilder::Build(
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* do_update_argdef,
+    const ArgDef* gradient_norm_argdef,
+    const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
@@ -188,6 +196,13 @@ Status LambOptimizerBuilder::Build(
   std::vector<ArgDef> input_argdefs;
   std::vector<ArgDef> output_argdefs;
 
+  // Indicator of finite gradient norm ArgDef.
+  if (gradient_norm_finite_argdef) {
+    input_argdefs.push_back(*gradient_norm_finite_argdef);
+  } else {
+    input_argdefs.emplace_back(ArgDef());
+  }
+
   // Loss scale ArgDef.
   if (!opt_configs[0].loss_scale_input_name.empty()) {
     input_argdefs.emplace_back(ArgDef(opt_configs[0].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
@@ -195,9 +210,9 @@ Status LambOptimizerBuilder::Build(
     input_argdefs.emplace_back(ArgDef());
   }
 
-  // Update signal ArgDef.
-  if (do_update_argdef) {
-    input_argdefs.push_back(*do_update_argdef);
+  // Global gradient norm ArgDef.
+  if (gradient_norm_argdef) {
+    input_argdefs.push_back(*gradient_norm_argdef);
   } else {
     input_argdefs.emplace_back(ArgDef());
   }

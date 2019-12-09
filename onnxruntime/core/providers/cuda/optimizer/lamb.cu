@@ -4,14 +4,27 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
+#include "core/providers/cuda/math/isfinite.cuh"
 #include "lamb.h"
 
 namespace onnxruntime {
 namespace cuda {
 
+template<typename TLossScale, typename TGradNorm, typename TFinalScale>
+__device__ __forceinline__ TFinalScale _ComputeGradScale(
+  const TLossScale* loss_scale,
+  const TGradNorm* g_norm) {
+  TFinalScale scale = loss_scale != nullptr ? TFinalScale(*loss_scale) : TFinalScale(1.f);
+  if (g_norm != nullptr && TFinalScale(*g_norm) > scale) {
+    const TFinalScale actual_g_norm = TFinalScale(*g_norm) / scale;
+    scale *= actual_g_norm;
+  }
+  return scale;
+}
+
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambComputeDirectionRule(
-    const T1& loss_scale,
+    const T1& g_scale,
     const T1& w,
     const T2& g,
     const T3& m1,
@@ -23,27 +36,41 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
     T2& d,
     T3& m1_new,
     T3& m2_new) {
+  // Actual gradient. The scale is a product of loss' scale and
+  // global gradient norm (if the norm > 1).
+  const T3 g_scaled = T3(T1(g) / g_scale);
   // A constant in Lamb's equation.
-  const T3 g_scaled = T3(g) / T3(loss_scale);
   const T3 one = T3(1.0f);
 
   // Update exponentially-averaged historical gradient
-  m1_new = alpha * m1 + (one - alpha) * g_scaled;
+  const T3 m1_new_tmp = alpha * m1 + (one - alpha) * g_scaled;
 
   // Update exponentially-averaged historical squared gradient
-  m2_new = beta * m2 + (one - beta) * g_scaled * g_scaled;
+  const T3 m2_new_tmp = beta * m2 + (one - beta) * g_scaled * g_scaled;
 
   // Save regularized update direction to output.
-  d = lambda * w + T1(m1_new / (_Sqrt(m2_new) + epsilon));
+  const T2 d_tmp = lambda * w + T1(m1_new_tmp / (_Sqrt(m2_new_tmp) + epsilon));
+
+  // Things are updated only if the direction is finite.
+  if (_IsFiniteScalar(d_tmp)) {
+    d = d_tmp;
+    m1_new = m1_new_tmp;
+    m2_new = m2_new_tmp;
+  } else {
+    d = T2(0);
+    m1_new = m1;
+    m2_new = m2;
+  }
 }
 
-template <typename T1, typename T2, typename T3, bool has_loss_scale>
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM, bool has_loss_scale>
 __global__ void _LambComputeDirectionImpl(
     const T1* weights,
     const T2* grads,
     const T3* moment_1,
     const T3* moment_2,
     const T1* loss_scale,
+    const T_GRAD_NORM* g_norm,
     T3 alpha,
     T3 beta,
     T1 lambda,
@@ -53,7 +80,8 @@ __global__ void _LambComputeDirectionImpl(
     T3* moment_2_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  const T1 scale = has_loss_scale ? *loss_scale : T1(1.0);
+
+  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
 
   _LambComputeDirectionRule(
       scale,
@@ -70,13 +98,14 @@ __global__ void _LambComputeDirectionImpl(
       moment_2_out[id]);
 }
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 void LambComputeDirection(
     const T1* weights,
     const T2* grads,
     const T3* moment_1,
     const T3* moment_2,
     const T1* loss_scale,
+    const T_GRAD_NORM* grad_norm,
     T3 alpha,
     T3 beta,
     T1 lambda,
@@ -89,12 +118,13 @@ void LambComputeDirection(
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (loss_scale == nullptr) {
-    _LambComputeDirectionImpl<T1, T2, T3, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         weights,
         grads,
         moment_1,
         moment_2,
         loss_scale,
+        grad_norm,
         alpha,
         beta,
         lambda,
@@ -104,12 +134,13 @@ void LambComputeDirection(
         moment_2_out,
         N);
   } else {
-    _LambComputeDirectionImpl<T1, T2, T3, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+    _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
         weights,
         grads,
         moment_1,
         moment_2,
         loss_scale,
+        grad_norm,
         alpha,
         beta,
         lambda,
@@ -121,13 +152,14 @@ void LambComputeDirection(
   }
 }
 
-#define SPECIALIZED_IMPL_LambComputeDirection(T1, T2, T3) \
+#define SPECIALIZED_LAMB_COMPUTE_DIRECTION(T1, T2, T3, T_GRAD_NORM) \
   template void LambComputeDirection(                     \
       const T1* weights,                                  \
       const T2* grads,                                    \
       const T3* moment_1,                                 \
       const T3* moment_2,                                 \
       const T1* loss_scale,                               \
+      const T_GRAD_NORM* grad_norm,                       \
       T3 alpha,                                           \
       T3 beta,                                            \
       T1 lambda,                                          \
@@ -137,10 +169,12 @@ void LambComputeDirection(
       T3* moment_2_out,                                   \
       size_t count);
 
-SPECIALIZED_IMPL_LambComputeDirection(float, float, float)
-SPECIALIZED_IMPL_LambComputeDirection(double, double, double)
-SPECIALIZED_IMPL_LambComputeDirection(float, half, half)
-SPECIALIZED_IMPL_LambComputeDirection(float, half, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, float, float, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(double, double, double, double)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __device__ __forceinline__ void _LambUpdateRule(
@@ -161,7 +195,13 @@ __device__ __forceinline__ void _LambUpdateRule(
   //   0, that tensor will never be updated.
   const auto ratio = w_norm != T2(0.0f) ? _Min(_Sqrt(w_norm / r_norm), threshold) : T2(1.0f);
   // Compute new weight using the saved update direction.
-  w_new = w - ratio * T2((eta)*T1(d));
+  const T2 w_new_tmp = w - ratio * T2(eta * T1(d));
+  // Only update weight if its new value is finite.
+  if (_IsFiniteScalar(w_new_tmp)) {
+    w_new = w_new_tmp;
+  } else {
+    w_new = w;
+  }
 }
 
 template <typename T1, typename T2, typename T3, bool update_fp16_weight>
@@ -230,7 +270,7 @@ void LambUpdate(
   }
 }
 
-#define SPECIALIZED_IMPL_LambUpdate(T1, T2, T3) \
+#define INSTANTIATE_LAMB_UPDATE(T1, T2, T3) \
   template void LambUpdate(                     \
       const T1* eta,                            \
       const T2* r_norm,                         \
@@ -242,15 +282,16 @@ void LambUpdate(
       half* fp16_weights_out,                   \
       size_t count);
 
-SPECIALIZED_IMPL_LambUpdate(float, float, float)
-SPECIALIZED_IMPL_LambUpdate(double, double, double)
-SPECIALIZED_IMPL_LambUpdate(half, float, half)
-SPECIALIZED_IMPL_LambUpdate(float, float, half)
+INSTANTIATE_LAMB_UPDATE(float, float, float)
+INSTANTIATE_LAMB_UPDATE(double, double, double)
+INSTANTIATE_LAMB_UPDATE(half, float, half)
+INSTANTIATE_LAMB_UPDATE(float, float, half)
 
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
     ChunkGroup<6> chunk_group,
     const T1* loss_scale,
+    const T_GRAD_NORM* g_norm,
     const T1 lambda,
     const T3 alpha,
     const T3 beta,
@@ -265,7 +306,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
   const T3* m2 = reinterpret_cast<const T3*>(chunk_group.tensor_ptrs[3][group_index]) + chunk_start;
   T3* m1_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[4][group_index]) + chunk_start;
   T3* m2_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start;
-  const T1 scale = loss_scale ? *loss_scale : T1(1.f);
+  const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
 
 #pragma unroll
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
@@ -285,10 +326,11 @@ __global__ void LambMultiTensorComputeDirectionImpl(
   }
 }
 
-template <typename T1, typename T2, typename T3>
-void LambMultiTensorComputeDirectionFunctor<T1, T2, T3>::operator()(
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
+void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()(
     ChunkGroup<6> chunk_group,
     const T1* loss_scale,
+    const T_GRAD_NORM* g_norm,
     const T1 lambda,
     const T3 alpha,
     const T3 beta,
@@ -299,25 +341,29 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3>::operator()(
   LambMultiTensorComputeDirectionImpl<T1, T2, T3><<<block_count, thread_count, 0>>>(
       chunk_group,
       loss_scale,
+      g_norm,
       lambda,
       alpha,
       beta,
       epsilon);
 }
 
-#define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3)                \
-  template void LambMultiTensorComputeDirectionFunctor<T1, T2, T3>::operator()( \
+#define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3, T_GRAD_NORM)   \
+  template void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()( \
       ChunkGroup<6> chunk_group,                                                \
       const T1* loss_scale,                                                     \
+      const T_GRAD_NORM* g_norm,                                                \
       const T1 lambda,                                                          \
       const T3 alpha,                                                           \
       const T3 beta,                                                            \
       const T3 epsilon);
 
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(double, double, double)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(double, double, double, double)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(

@@ -4,6 +4,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/atomic/common.cuh"
 #include "reduction_functions.h"
+#include "reduction_utils.cuh"
 
 #define MAX_BLOCK_COUNT 256
 #define ONE_THREAD_LOAD_COUNT 4
@@ -24,53 +25,6 @@ int compute_block_number(int size) {
 int compute_reduction_buffer_size(int element_size, int size) {
   const int block_count = compute_block_number(size);
   return static_cast<int>(block_count * element_size + sizeof(int));
-}
-
-template<typename TAccumulated, typename TValue>
-struct Cast {
-  __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
-    return TAccumulated(value);
-  }
-};
-
-template<typename TAccumulated, typename TValue>
-struct Square {
-  __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
-    return TAccumulated(value) * TAccumulated(value);
-  }
-};
-
-template<typename TAccumulated, typename TValue>
-struct Abs {
-  __forceinline__ __device__ TAccumulated operator()(const TValue& value) {
-    TAccumulated value_ = TAccumulated(value);
-    return value_ > TAccumulated(0) ? value_ : -value_;
-  }
-};
-
-template<typename T> 
-struct Sqrt {
-  __forceinline__ __device__ T operator()(const T& value) {
-    return _Sqrt(value);
-  }
-};
-
-template<typename T>
-struct Identity {
-  __forceinline__ __device__ T operator()(const T& value) {
-    return value;
-  }
-};
-
-__forceinline__ __host__ __device__ int least_pow2_bound(int value) {
-  unsigned int value_ = static_cast<unsigned int>(value);
-  --value_;
-  value_ |= value_ >> 1;
-  value_ |= value_ >> 2;
-  value_ |= value_ >> 4;
-  value_ |= value_ >> 8;
-  value_ |= value_ >> 16;
-  return static_cast<unsigned int>(++value_);
 }
 
 template<typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>

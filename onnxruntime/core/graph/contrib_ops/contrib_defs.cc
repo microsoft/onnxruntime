@@ -2525,6 +2525,22 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Multi-tensor version of ReduceL2.")
+      .Input(0, "X", "inputs", "TIn", OpSchema::Variadic)
+      .Output(0, "Y", "output", "TOut")
+      .TypeConstraint(
+          "TIn",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "TOut",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain scale types to float tensors.");
+
 #ifdef MICROSOFT_INTERNAL
   // register internal ops
   RegisterInternalSchemas();

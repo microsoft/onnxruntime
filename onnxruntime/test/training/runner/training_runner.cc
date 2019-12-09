@@ -111,8 +111,11 @@ Status TrainingRunner::Initialize() {
 
   // Add tensorboard
   if (params_.EnableTensorboard()) {
-    if (opt_graph_outputs_.count(kGradientAllIsFiniteOutputKey) > 0){
+    if (opt_graph_outputs_.count(kGradientAllIsFiniteOutputKey) > 0) {
       params_.scalar_names.push_back(opt_graph_outputs_[kGradientAllIsFiniteOutputKey]);
+    }
+    if (opt_graph_outputs_.count(kGlobalGradientNormOutputKey) > 0) {
+      params_.scalar_names.push_back(opt_graph_outputs_[kGlobalGradientNormOutputKey]);
     }
     ORT_RETURN_IF_ERROR(session_.AddTensorboard(
       params_.summary_name, params_.scalar_names, params_.histogram_names,
@@ -168,6 +171,7 @@ Status TrainingRunner::Initialize() {
 Status TrainingRunner::Run(std::shared_ptr<IDataLoader> training_data_loader, std::shared_ptr<IDataLoader> test_data_loader) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
+
   }
 
   // Add one for each call of Run(..).
@@ -191,7 +195,7 @@ Status TrainingRunner::TrainingLoop(std::shared_ptr<IDataLoader> training_data_l
   VectorString fetch_names = params_.fetch_names;
   if (params_.use_mixed_precision) {
     auto it = opt_graph_outputs_.find(kGradientAllIsFiniteOutputKey);
-    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient AllIsFinite output is missing in the optimizer output");
+    ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
     fetch_names.push_back(it->second);
   }
 

@@ -122,55 +122,65 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           {"tensor(float16)"},
           "Constrain input types to float16 tensors.")
       .TypeConstraint(
-          "B",
+          "T_GRAD_NORM",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T_BOOL",
           {"tensor(bool)"},
-          "Constrain input types to bool tensors.");
+          "Constrain types to boolean tensors.");
 
   op_schema
       .Input(
           0,
-          "loss_scale",
-          "loss scale for mixed precision training",
-          "T2",
+          "update_signal",
+          "This signal indicates if weight tensors should be updated.",
+          "T_BOOL",
           OpSchema::Optional)
       .Input(
           1,
-          "do_update",
-          "If this flag is set to false, optimizer will skip weight update.",
-          "B",
+          "loss_scale",
+          "Loss scale for mixed precision training.",
+          "T2",
           OpSchema::Optional)
       .Input(
           2,
+          "gradient_norm",
+          "Norm of global gradient.",
+          "T_GRAD_NORM",
+          OpSchema::Optional)
+      .Input(
+          3,
           "R",
           "The initial learning rate.",
           "T1",
           OpSchema::Optional)
       .Input(
-          3,
+          4,
           "weights",
           "weights to optimize.",
           "T2",
           OpSchema::Optional)
       .Input(
-          4,
+          5,
           "gradients",
           "gradients computed in this iteration.",
           "T3",
           OpSchema::Optional)
       .Input(
-          5,
+          6,
           "moment_1",
           "exponentially averaged historical gradients.",
           "T4",
           OpSchema::Optional)
       .Input(
-          6,
+          7,
           "moment_2",
           "exponentially averaged historical squared gradients.",
           "T4",
           OpSchema::Optional)
       .Input(
-          7,
+          8,
           "fp16_weights",
           "FP16 weights to optimize.",
           "T_FP16",
@@ -178,7 +188,7 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
 
   AddRepeatedInputs(
       op_schema,
-      8,
+      9,
       1023,
       {"extra_weights", "extra_gradients", "extra_moment1", "extra_moment2", "fp16_weights"},
       {"extra_weights", "extra_gradients", "extra_moment1", "extra_moment2", "fp16_weights"},
@@ -370,9 +380,15 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Input(
           8,
-          "do_update",
-          "If this flag is set to false, optimizer will skip weight update.",
-          "B",
+          "global_gradient_norm",
+          "Global gradient norm.",
+          "T_GRAD_NORM",
+          OpSchema::Optional)
+      .Input(
+          9,
+          "update_signal",
+          "This signal indicates if weight tensors should be updated.",
+          "T_BOOL",
           OpSchema::Optional)
       .Output(
           0,
@@ -448,9 +464,14 @@ void RegisterGradientSchemas() {
           {"tensor(float16)"},
           "Constrain input types to float16 tensors.")
       .TypeConstraint(
-          "B",
+          "T_GRAD_NORM",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T_BOOL",
           {"tensor(bool)"},
-          "Constrain input types to bool tensors.");
+          "Constrain types to boolean tensors.");
+
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 

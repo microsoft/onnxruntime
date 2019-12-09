@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, typename T3, typename T4>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD_NORM>
 class LambOptimizer final : public CudaKernel {
  public:
   LambOptimizer(const OpKernelInfo& info) : CudaKernel(info) {
@@ -35,13 +35,14 @@ class LambOptimizer final : public CudaKernel {
 // T1's precision should be higher than T2. It's used for 
 // large tensors. Small tensors should use multi-tensor version
 // of this.
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 void LambComputeDirection(
     const T1* weights,
     const T2* grads,
     const T3* moment_1,
     const T3* moment_2,
     const T1* loss_scale,
+    const T_GRAD_NORM* grad_norm,
     T3 alpha,
     T3 beta,
     T1 lambda,
@@ -85,11 +86,12 @@ void LambUpdate(
 //  m2: chunk_group.tensor_ptrs[3][i]
 //  m1_new: chunk_group.tensor_ptrs[4][i]
 //  m2_new: chunk_group.tensor_ptrs[5][i]
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 struct LambMultiTensorComputeDirectionFunctor {
   void operator()(
       ChunkGroup<6> chunk_group,
       const T1* loss_scale,
+      const T_GRAD_NORM* grad_norm,
       const T1 lambda,
       const T3 alpha,
       const T3 beta,

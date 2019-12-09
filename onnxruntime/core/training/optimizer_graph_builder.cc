@@ -127,8 +127,12 @@ ArgDef BuildHorovodAllReduceNode(const ArgDef& /*gradient*/, GraphAugmenter::Gra
 #endif
 
 #ifdef USE_NCCL
-Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, ArgDef& fused_gradient_argdef, GraphAugmenter::GraphDefs& graph_defs) {
-  ArgDef fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
+Status AddNcclAllReduceForGradients(
+  std::vector<ArgDef>& gradient_argdefs,
+  ArgDef& fused_gradient_argdef,
+  GraphAugmenter::GraphDefs& graph_defs,
+  ArgDef& fused_allreduce_output) {
+  fused_allreduce_output = ArgDef(fused_gradient_argdef.name + "AllReduce_Out", fused_gradient_argdef.type_proto);
 
   // Add NCCL Allreduce node.
   graph_defs.AddNodeDefs({NodeDef("NcclAllReduce",
@@ -170,7 +174,11 @@ Status AddNcclAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs, ArgDe
   return Status::OK();
 }
 #else
-Status AddNcclAllReduceForGradients(std::vector<ArgDef>& /*gradient_argdefs*/, ArgDef& /*fused_gradient_argdef*/, GraphAugmenter::GraphDefs& /*graph_defs*/) {
+Status AddNcclAllReduceForGradients(
+  std::vector<ArgDef>& /*gradient_argdefs*/,
+  ArgDef& /*fused_gradient_argdef*/,
+  GraphAugmenter::GraphDefs& /*graph_defs*/,
+  ArgDef& /*fused_allreduce_output*/) {
   ORT_NOT_IMPLEMENTED("Distributed training with NCCL is not supported, as NCCL is not enabled in this build.");
 }
 #endif
@@ -294,7 +302,8 @@ Status AddDirectWeightUpdate(
     const OptimizerBuilderRegistry& opt_builder_registry,
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* all_gradients_finite_argdef,
+    const ArgDef* global_gradient_norm_argdef,
+    const ArgDef* global_gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     std::vector<ArgDef>& updated_weight_argdefs,
     GraphAugmenter::GraphDefs& graph_defs) {
@@ -317,73 +326,70 @@ Status AddDirectWeightUpdate(
       opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
 
   ORT_RETURN_IF_ERROR(opt_builder->Build(
-      weight_argdefs, gradient_argdefs, all_gradients_finite_argdef, opt_configs,
-      graph_defs, inputs_including_initializers, new_initializers, output_weight_argdefs));
+      weight_argdefs, gradient_argdefs,
+      global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
+      opt_configs, graph_defs,
+      inputs_including_initializers, new_initializers, output_weight_argdefs));
 
   graph_defs.AddInitializers(new_initializers);
   updated_weight_argdefs = std::move(output_weight_argdefs);
   return Status::OK();
 }
 
-Status AddFiniteGradientChecks(
-    const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const std::vector<ArgDef>& gradient_argdefs,
-    GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& all_gradients_finite_argdef) {
-  std::vector<ArgDef> fp32_gradient_argdefs, fp16_gradient_argdefs;
-  for (auto it = gradient_argdefs.begin(); it != gradient_argdefs.end(); ++it) {
-    auto type = it->type_proto->tensor_type().elem_type();
-    switch (type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        fp32_gradient_argdefs.push_back(*it);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-        fp16_gradient_argdefs.push_back(*it);
-        break;
-      default:
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "Unsupport gradient type: it has to be either float or MLFloat16.");
+Status AddGradientNorm(
+  const NodeArgNameGeneratorFn& nodearg_name_generator,
+  const std::vector<ArgDef>& grad_argdefs,
+  GraphAugmenter::GraphDefs& graph_defs,
+  ArgDef& grad_norm_argdef) {
+
+  ONNX_NAMESPACE::TensorProto_DataType grad_type = 
+    static_cast<ONNX_NAMESPACE::TensorProto_DataType>(grad_argdefs[0].type_proto->tensor_type().elem_type());
+  if (grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+    grad_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return Status(common::ONNXRUNTIME, common::FAIL,
+                  "Unsupport gradient type: it has to be either float or MLFloat16.");
+  }
+
+  for (const auto argdef: grad_argdefs) {
+    ONNX_NAMESPACE::TensorProto_DataType elem_type = 
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
+    if (elem_type != grad_type) {
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "All gradient tensors' types must be the same.");
     }
   }
 
-  const bool has_fp32_grad = !fp32_gradient_argdefs.empty();
-  const bool has_fp16_grad = !fp16_gradient_argdefs.empty();
+  const TypeProto* const grad_norm_type = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  grad_norm_argdef = ArgDef{nodearg_name_generator("global_gradient_norm"), grad_norm_type};
 
-  const TypeProto* const is_all_finite_output_type = graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
-  ArgDef all_fp32_gradients_finite_argdef;
-  if (has_fp32_grad) {
-    all_fp32_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_fp32_gradients_finite"), is_all_finite_output_type};
-    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
-                                    fp32_gradient_argdefs,
-                                    {all_fp32_gradients_finite_argdef},
-                                    NodeAttributes(),
-                                    all_fp32_gradients_finite_argdef.name}});
-  }
+  graph_defs.AddNodeDefs({NodeDef{"ReduceAllL2",
+                                  grad_argdefs,
+                                  {grad_norm_argdef},
+                                  NodeAttributes(),
+                                  grad_norm_argdef.name}});
 
-  ArgDef all_fp16_gradients_finite_argdef;
-  if (has_fp16_grad) {
-    all_fp16_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_fp16_gradients_finite"), is_all_finite_output_type};
-    graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
-                                    fp16_gradient_argdefs,
-                                    {all_fp16_gradients_finite_argdef},
-                                    NodeAttributes(),
-                                    all_fp16_gradients_finite_argdef.name}});
-  }
+  graph_defs.AddGraphOutputs({grad_norm_argdef.name});
 
-  if (has_fp32_grad && !has_fp16_grad) {
-    all_gradients_finite_argdef = all_fp32_gradients_finite_argdef;
-  } else if (!has_fp32_grad && has_fp16_grad) {
-    all_gradients_finite_argdef = all_fp16_gradients_finite_argdef;
-  } else if (has_fp32_grad && has_fp16_grad) {
-    all_gradients_finite_argdef = ArgDef{nodearg_name_generator("all_gradients_finite"), is_all_finite_output_type};
-    graph_defs.AddNodeDefs({NodeDef{"And",
-                                    {all_fp32_gradients_finite_argdef, all_fp16_gradients_finite_argdef},
-                                    {all_gradients_finite_argdef},
-                                    NodeAttributes(),
-                                    all_gradients_finite_argdef.name}});
-  }
+  return Status::OK();
+}
 
-  graph_defs.AddGraphOutputs({all_gradients_finite_argdef.name});
+Status AddFiniteGradientCheck(
+    const NodeArgNameGeneratorFn& nodearg_name_generator,
+    const ArgDef& grad_norm_argdef,
+    GraphAugmenter::GraphDefs& graph_defs,
+    ArgDef& grad_norm_finite_argdef) {
+  const TypeProto* const grad_norm_finite_type =
+    graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  grad_norm_finite_argdef =
+    ArgDef{nodearg_name_generator("all_gradients_finite"), grad_norm_finite_type};
+
+  graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
+                                  {grad_norm_argdef},
+                                  {grad_norm_finite_argdef},
+                                  NodeAttributes(),
+                                  grad_norm_finite_argdef.name}});
+
+  graph_defs.AddGraphOutputs({grad_norm_finite_argdef.name});
 
   return Status::OK();
 }
@@ -451,7 +457,7 @@ Status AddConditionalWeightUpdate(
         std::vector<ArgDef> output_weight_argdefs{};
 
         ORT_RETURN_IF_ERROR(opt_builder->Build(
-            weight_argdefs, gradient_argdefs, /*do_update_argdef*/ nullptr, opt_configs,
+            weight_argdefs, gradient_argdefs, /*do_update_argdef*/ nullptr, /* global_gradient_norm */ nullptr, opt_configs,
             then_subgraph_defs, external_inputs_including_initializers,
             new_external_initializers, output_weight_argdefs));
 
@@ -604,20 +610,32 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   }
 
   // add all-reduce
+  ArgDef reduced_fused_gradient_argdef{};
   if (is_all_reduce_enabled) {
     if (overlap_compute_allreduce) {
       ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs));
     } else {
-      ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs));
+      ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
     }
   }
 
   // check if all gradients are finite
-  ArgDef all_grads_finite_argdef{};
+  ArgDef global_grad_norm_argdef{};
+  ArgDef global_grad_norm_finite_argdef{};
   if (opt_graph_config_.use_mixed_precision) {
-    ORT_RETURN_IF_ERROR(AddFiniteGradientChecks(
-        nodearg_name_generator, gradient_argdefs, graph_defs, all_grads_finite_argdef));
-    optimizer_graph_outputs[kGradientAllIsFiniteOutputKey] = all_grads_finite_argdef.name;
+    std::vector<ArgDef> is_finite_inputs{};
+    if (!fused_gradient_argdef.name.empty()) {
+      is_finite_inputs.emplace_back(reduced_fused_gradient_argdef);
+    } else {
+      is_finite_inputs = gradient_argdefs;
+    }
+    ORT_RETURN_IF_ERROR(AddGradientNorm(
+        nodearg_name_generator, is_finite_inputs, graph_defs, global_grad_norm_argdef));
+    optimizer_graph_outputs[kGlobalGradientNormOutputKey] = global_grad_norm_argdef.name;
+
+    ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
+        nodearg_name_generator, global_grad_norm_argdef, graph_defs, global_grad_norm_finite_argdef));
+    optimizer_graph_outputs[kGradientAllIsFiniteOutputKey] = global_grad_norm_finite_argdef.name;
   }
 
   // add weight update
@@ -627,18 +645,17 @@ Status OptimizerGraphBuilder::Build(Graph& graph,
   if (false) {
     ArgDef conditional_weight_update_output{};
     ORT_RETURN_IF_ERROR(AddConditionalWeightUpdate(
-        nodearg_name_generator, all_grads_finite_argdef, opt_builder_registry_,
+        nodearg_name_generator, global_grad_norm_argdef, opt_builder_registry_,
         weight_argdefs, gradient_argdefs, opt_configs_,
         conditional_weight_update_output, graph_defs));
     // TODO not ideal to pass N copies of the same argdef as control signals
     //      maybe update AddZeroGradientNodes() to accept 1 or N of them
     zero_gradients_control_signals.assign(weight_argdefs.size(), conditional_weight_update_output);
   } else {
-    ArgDef* is_all_finite_argdef = (opt_graph_config_.use_mixed_precision && !opt_graph_config_.always_do_update)
-                                       ? &all_grads_finite_argdef
-                                       : nullptr;
     ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-        opt_builder_registry_, weight_argdefs, gradient_argdefs, is_all_finite_argdef,
+        opt_builder_registry_, weight_argdefs, gradient_argdefs,
+        &global_grad_norm_argdef,
+        &global_grad_norm_finite_argdef,
         opt_configs_, zero_gradients_control_signals, graph_defs));
   }
 

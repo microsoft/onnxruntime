@@ -1470,8 +1470,9 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
   test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
   test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
-  test.AddInput<float>("loss_scale", {1}, {1.0});
-  test.AddInput<bool>("DoUpdate", {}, {false});
+  test.AddInput<float>("loss_scale", {1}, {1.0f});
+  test.AddMissingOptionalInput<MLFloat16>();
+  test.AddInput<bool>("DoUpdate", {1}, {false});
 
   // Verify AdamOptimizer outputs
   test.AddOutput<float>("W_Out", {3}, data.w);
@@ -1512,6 +1513,8 @@ void compute_lamb(
     /* momentum */ const std::vector<float>& m,
     /* 2nd-order momentum */ const std::vector<float>& v,
     const float eta,
+    const float loss_scale,
+    const float g_norm,
     const float lambda,
     const float alpha,
     const float beta,
@@ -1525,10 +1528,16 @@ void compute_lamb(
   // Buffer to store update direction.
   std::vector<float> r(size, 0.0f);
 
+  float g_scale = loss_scale;
+  if (g_norm > loss_scale) {
+    g_scale *= g_norm / loss_scale;
+  }
+
   // Compute new 1st-, 2nd-order momentums, and the update direction.
   for (int i = 0; i < size; ++i) {
-    m_new[i] = alpha * m[i] + (1.0f - alpha) * g[i];
-    v_new[i] = beta * v[i] + (1.0f - beta) * g[i] * g[i];
+    const float g_scaled = g[i] / g_scale;
+    m_new[i] = alpha * m[i] + (1.0f - alpha) * g_scaled;
+    v_new[i] = beta * v[i] + (1.0f - beta) * g_scaled * g_scaled;
     r[i] = m_new[i] / (std::sqrt(v_new[i]) + epsilon) + lambda * w[i];
   }
 
@@ -1569,8 +1578,9 @@ void run_lamb_test_with_baseline(
     bool do_update = true) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
-  test.AddInput<T2>("", {1}, {0});
   test.AddInput<bool>("update_signal", {1}, {do_update});
+  test.AddMissingOptionalInput<T2>();
+  test.AddMissingOptionalInput<T2>();
   test.AddInput<T1>("ETA", {1}, eta);
   test.AddInput<T2>("W", shape, w);
   test.AddInput<T3>("G", shape, g);
@@ -1606,6 +1616,8 @@ template <typename T1, typename T2, typename T3, typename T4>
 void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<std::vector<int64_t>>& shapes,
     const T1 eta,
+    const T1 loss_scale,
+    const T1 g_norm,
     const std::vector<std::vector<T2>>& ws,
     const std::vector<std::vector<T3>>& gs,
     const std::vector<std::vector<T4>>& ms,
@@ -1642,9 +1654,10 @@ void run_multi_tensor_lamb_test_with_baseline(
 
   const int group_count = static_cast<int>(ws.size());
 
-  test.AddMissingOptionalInput<T2>();
-  test.AddInput<bool>("update_signal", {1}, {do_update});
-  test.AddInput<T1>("ETA", {1}, {eta});
+  test.AddInput<bool>("update_signal", {}, {do_update});
+  test.AddInput<T1>("loss_scale", {}, {loss_scale});
+  test.AddInput<T1>("gradient_norm", {}, {g_norm});
+  test.AddInput<T1>("ETA", {}, {eta});
   for (int i = 0; i < group_count; ++i) {
     std::string w_name = "W_" + std::to_string(i);
     std::string g_name = "G_" + std::to_string(i);
@@ -1693,6 +1706,8 @@ void run_multi_tensor_lamb_test_with_baseline(
 void run_multi_tensor_lamb_test(
   const std::vector<std::vector<int64_t>> shapes,
   const float eta,
+  const float loss_scale,
+  const float g_norm,
   const std::vector<std::vector<float>> ws,
   const std::vector<std::vector<float>> gs,
   const std::vector<std::vector<float>> ms,
@@ -1726,13 +1741,15 @@ void run_multi_tensor_lamb_test(
     // Invoke LAMB's reference implementation to compute baseline output.
     compute_lamb(
       shapes[i], ws[i], gs[i], ms[i], vs[i],
-      eta, lambdas[i], alphas[i], betas[i], epsilons[i],
+      eta, loss_scale, g_norm,
+      lambdas[i], alphas[i], betas[i], epsilons[i],
       w_news[i], m_news[i], v_news[i]);
   }
 
   // Create test to make sure the output is correct.
   run_multi_tensor_lamb_test_with_baseline(
-    shapes, eta, ws, gs, ms, vs,
+    shapes, eta, loss_scale, g_norm,
+    ws, gs, ms, vs,
     alphas, betas, lambdas, epsilons,
     w_news, m_news, v_news);
 }
@@ -1755,7 +1772,7 @@ void run_lamb_mix_precision_test(
   // Invoke LAMB's reference implementation to compute output.
   compute_lamb(
       shape, w, g, m, v,
-      eta[0], lambda, alpha, beta, epsilon,
+      eta[0], 1.f, 1.f, lambda, alpha, beta, epsilon,
       w_new, m_new, v_new);
 
   std::vector<MLFloat16> eta_half(eta.size());
@@ -1826,6 +1843,8 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
   run_multi_tensor_lamb_test(
     {shape},
     eta,
+    1.f,
+    1.f,
     {w},
     {g},
     {m},
@@ -1853,6 +1872,8 @@ TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   run_multi_tensor_lamb_test(
     {shape},
     eta,
+    1.f,
+    1.f,
     {w},
     {g},
     {m},
@@ -1880,6 +1901,8 @@ TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   run_multi_tensor_lamb_test(
     {shape},
     eta,
+    1.f,
+    1.f,
     {w},
     {g},
     {m},
@@ -1912,6 +1935,41 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
   run_multi_tensor_lamb_test(
     {shape},
     eta,
+    1.f,
+    1.f,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon});
+}
+
+TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {(int64_t)1};
+  const float eta = 0.5f;
+  const std::vector<float> w = {1.0f};
+  const std::vector<float> g = {3.0f};
+  const std::vector<float> m = {-10.0f};
+  const std::vector<float> v = {1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+
+  // Intermediate and output buffers of the optimizer.
+  std::vector<float> m_new = {0.0f};
+  std::vector<float> v_new = {0.0f};
+  std::vector<float> w_new = {0.0f};
+
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    8.f,
+    4.f,
     {w},
     {g},
     {m},
@@ -2094,6 +2152,8 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
     run_multi_tensor_lamb_test(
         {shape},
         eta,
+        1.f,
+        1.f,
         {w},
         {g},
         {m},
@@ -2150,7 +2210,7 @@ TEST(OptimizerTest, LambOptimizerMultiTensor6) {
   }
 
   run_multi_tensor_lamb_test(
-    shapes, eta,
+    shapes, eta, 1.f, 1.f,
     ws, gs, ms, vs,
     lambdas, alphas, betas, epsilons);
 }
