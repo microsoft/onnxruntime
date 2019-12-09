@@ -6,7 +6,7 @@
 FROM ubuntu:16.04 as build
 
 ARG PYTHON_VERSION=3.5
-ARG ONNXRUNTIME_REPO=https://github.com/zhijxu-MS/onnxruntime
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_SERVER_BRANCH=master
 
 ENV DEBIAN_FRONTEND noninteractive

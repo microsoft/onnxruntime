@@ -225,6 +225,17 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           }
         }
       }
+      // reject when pooling on symbolic dims, since shape computation does not support it yet
+      it = attrs.find("kernel_shape");
+      ORT_ENFORCE(it != attrs.end());
+      int kernel_rank = it->second.ints_size();
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      int output_rank = output_shape->dim_size();
+      for (int d = output_rank - kernel_rank; d < output_rank; ++d) {
+        if (output_shape->dim(d).has_dim_param()) {
+          return false;
+        }
+      }
     }
 
     if (node.OpType() == "Slice") {
