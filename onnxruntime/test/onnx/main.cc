@@ -36,8 +36,8 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
-      "'openvino', 'nuphar', 'intel' or 'acl'."
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
+      "'openvino', 'nuphar', 'intel' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -92,7 +92,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int repeat_count = 1;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
-  bool enable_mkl = false;
+  bool enable_dnnl = false;
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
@@ -152,8 +152,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
-            enable_mkl = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
+            enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -316,11 +316,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_mkl) {
-#ifdef USE_MKLDNN
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
+    if (enable_dnnl) {
+#ifdef USE_DNNL
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
-      fprintf(stderr, "MKL-DNN is not supported in this build");
+      fprintf(stderr, "DNNL is not supported in this build");
       return -1;
 #endif
     }
@@ -368,13 +368,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     static const char* cuda_flaky_tests[] = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
     static const char* dml_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn"};
-
+    static const char* dnnl_disabled_tests[] = {"test_densenet121", "test_resnet18v2", "test_resnet34v2", "test_resnet50v2", "test_resnet101v2",
+                                                "test_resnet101v2", "test_vgg19", "tf_inception_resnet_v2", "tf_inception_v1", "tf_inception_v3", "tf_inception_v4", "tf_mobilenet_v1_1.0_224",
+                                                "tf_mobilenet_v2_1.0_224", "tf_mobilenet_v2_1.4_224", "tf_nasnet_large", "tf_pnasnet_large", "tf_resnet_v1_50", "tf_resnet_v1_101", "tf_resnet_v1_101",
+                                                "tf_resnet_v2_101", "tf_resnet_v2_152"};
+	
     std::unordered_set<std::string> all_disabled_tests;
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
     if (enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
+    }
+    if (enable_dnnl) {
+      // these models run but disabled tests to keep memory utilization low
+      // This will be removed after LRU implementation
+      all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
 #if defined(__amd64__) || defined(_M_AMD64)
 #else
@@ -428,7 +437,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
       {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-      {"convtranspose_1d", "1d convtranspose not supported yet"},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
@@ -475,16 +483,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
   broken_tests.insert({"mask_rcnn_keras", "Results mismatch: 8 of 81000"});
   broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
   broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
   broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
   broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
   broken_tests.insert({"candy", "result mismatch"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
+  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
+  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
+  broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
+  broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
+  broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"}); 
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_OPENVINO
@@ -493,6 +507,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
   broken_tests.insert({"scan_sum", "disable temporarily"});
   broken_tests.insert({"scan9_sum", "disable temporarily"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
   broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
   broken_tests.insert({"div", "will be fixed in the next release"});
@@ -512,6 +527,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
   broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
   broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_TENSORRT
@@ -528,6 +544,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
   broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
   broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_CUDA
@@ -536,6 +553,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
+  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
 #ifdef USE_DML
@@ -546,6 +564,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 
     // These tests are temporarily disabled pending a fix to the DML EP for handling of the output_padding attribute
     broken_tests.insert({"ConvTranspose2d", "Temporarily disabled due to EP bug"});

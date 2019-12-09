@@ -53,8 +53,8 @@ option(onnxruntime_USE_INTEL "Build with Intel support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
-option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
-option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
 option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
@@ -74,7 +74,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
-option(onnxruntime_ENABLE_LTO "Enable link time optimization" ON)
+option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
@@ -85,6 +85,7 @@ option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output 
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
+option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -122,17 +123,19 @@ if(onnxruntime_USE_OPENMP)
 endif()
 if(onnxruntime_ENABLE_LTO)
   #TODO: figure out why nsync doesn't work
-  if(onnxruntime_USE_NSYNC)
-    message(WARNING "IPO is not supported when nsync is in use")
-    set(onnxruntime_ENABLE_LTO OFF)
-  else()
+
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
     if(NOT ipo_enabled)
       message(WARNING "IPO is not supported by this compiler")
       set(onnxruntime_ENABLE_LTO OFF)
     endif()
-  endif()
+    if(UNIX)
+      set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
+      set (CMAKE_LDFLAGS "${CMAKE_CXX_FLAGS} -flto")
+      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    endif()
 endif()
 
 
@@ -326,7 +329,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNEN
 
 include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
-# mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+# dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf re2)
 
@@ -345,8 +348,8 @@ if (onnxruntime_USE_ACL)
 endif()
 
 # MKLML
-if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
-  include(mkldnn)
+if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
+  include(dnnl)
 endif()
 
 # TVM
@@ -536,10 +539,10 @@ if (onnxruntime_USE_MKLML)
   link_directories(${MKLML_LIB_DIR})
 endif()
 
-if (onnxruntime_USE_MKLDNN)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
-  link_directories(${MKLDNN_LIB_DIR})
+if (onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dnnl)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_dnnl)
+  link_directories(${DNNL_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_NGRAPH)

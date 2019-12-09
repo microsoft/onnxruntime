@@ -37,8 +37,16 @@ jobs:
   - ${{ if eq(parameters['TestGPU'], 'false') }}:
     - script: |
        set -e -x
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber) true
+      displayName: 'Run Package Test (x64) on CentOS7'
+      env:
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+
+  - ${{ if eq(parameters['TestGPU'], 'false') }}:
+    - script: |
+       set -e -x
        $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber)
-      displayName: 'Run Package Test (x64)'
+      displayName: 'Run Package Test (x64) on Ubuntu'
       env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
 

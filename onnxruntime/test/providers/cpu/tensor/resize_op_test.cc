@@ -441,7 +441,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
   test.Run();
 }
 
-TEST(ResizeOpTest, ResizeOpLineartDownSampleTest_exclude_outside) {
+TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
   OpTester test("Resize", 11);
   std::vector<float> roi{};
   std::vector<float> scales{0.8f, 0.8f};

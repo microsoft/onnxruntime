@@ -70,7 +70,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
-  bool is_string_type = utils::IsDataTypeString(data_input->DataType());
+  const bool is_string_type = data_input->IsDataTypeString();
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy
@@ -223,12 +223,11 @@ Status Scatter::Compute(OpKernelContext* context) const {
 
   auto* data_output = context->Output(0, input_data_shape);
 
-  MLDataType Tind_type = indices_input->DataType();
   MLDataType Tdata_type = data_input->DataType();
   Status status;
-  if (utils::IsPrimitiveDataType<int32_t>(Tind_type)) {
+  if (indices_input->IsDataType<int32_t>()) {
     DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt32Index, data_input, indices_input, updates_input, axis, data_output);
-  } else if (utils::IsPrimitiveDataType<int64_t>(Tind_type)) {
+  } else if (indices_input->IsDataType<int64_t>()) {
     DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt64Index, data_input, indices_input, updates_input, axis, data_output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");

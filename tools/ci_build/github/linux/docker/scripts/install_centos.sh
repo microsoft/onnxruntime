@@ -21,6 +21,14 @@ elif [ "$os_major_version" == "6" ] && [ ! -d "/opt/python/cp35-cp35m" ]; then
   /usr/bin/python3.6 -m pip install --upgrade pip
 else
   yum install -y redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
+
+  if [ "$os_major_version" == "7" ]; then
+    # install dotnet core dependencies
+    yum install -y lttng-ust openssl-libs krb5-libs libicu libuuid
+    # install dotnet runtimes
+    yum install -y https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
+    yum install -y dotnet-sdk-2.2
+  fi
 fi
 
 

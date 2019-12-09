@@ -27,7 +27,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /
 RUN mkdir -p /onnxruntime/build
-RUN python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_mkldnn --use_mklml \
+RUN python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_dnnl --use_mklml \
     --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
 
 
@@ -36,7 +36,7 @@ WORKDIR /onnxruntime/server/
 RUN apt-get update && apt-get install -y libgomp1
 COPY --from=build /onnxruntime/build/Release/onnxruntime_server /onnxruntime/server/
 COPY --from=build /onnxruntime/build/Release/libonnxruntime.so.* /lib/
-COPY --from=build /onnxruntime/build/Release/mkl-dnn/install/lib/libmkldnn.so* /lib/
+COPY --from=build /onnxruntime/build/Release/dnnl/install/lib/libdnnl.so* /lib/
 COPY --from=build /onnxruntime/build/Release/mklml/src/project_mklml/lib/*.so* /lib/
 ENTRYPOINT ["/onnxruntime/server/onnxruntime_server"]
 
