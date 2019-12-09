@@ -90,6 +90,8 @@ Use the individual flags to only run the specified stages.
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
 
+    # Java bindings
+    parser.add_argument("--build_java", action='store_true', help="Build Java bindings.")
 
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
@@ -674,13 +676,17 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           opset10_model_dir = os.path.join(model_dir, 'opset10')
           opset10_cmd = cmd_base + [opset10_model_dir]
           run_subprocess([exe] + opset7_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
           run_subprocess([exe] + opset8_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
           run_subprocess([exe] + opset9_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
           run_subprocess([exe] + opset10_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
+
+          # temporarily disable -x invocations on Windows as they
+          # are causing instability in CI
+          if not is_windows():
+            run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
+            run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
+            run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+            run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
 
 
 # nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
