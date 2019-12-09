@@ -104,7 +104,9 @@ struct TensorBase : TBase {
     auto session_impl = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto provider = session_impl->GetExecutionProvider();
     WINML_THROW_IF_FAILED(adapter_->GetProviderMemoryInfo(provider, dml_memory.put()));
-
+    WINML_THROW_HR_IF_TRUE_MSG(WINML_ERR_INVALID_BINDING,
+                               "DmlExecutionProvider" != adapter_->GetProviderType(provider),
+                               "Cannot create GPU tensor on CPU device");
     // create the OrtValue as a tensor letting ort know that we own the data buffer
     auto value = Ort::Value::CreateTensor(
         dml_memory,

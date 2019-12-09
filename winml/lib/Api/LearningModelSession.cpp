@@ -138,7 +138,7 @@ void LearningModelSession::Initialize() {
   model_proto = nullptr;
 
   // Initialize the session
-  session_builder->Initialize(session.get(), cached_execution_provider_);
+  WINML_THROW_IF_FAILED(session_builder->Initialize(session.get(), cached_execution_provider_));
 
   // Cache the constructed session
   inference_session_ = session;

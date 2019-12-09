@@ -600,6 +600,11 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   }
   WINML_CATCH_ALL_COM
 
+  const char* STDMETHODCALLTYPE GetProviderType(
+      onnxruntime::IExecutionProvider* provider) noexcept override {
+    return provider->Type().c_str();
+  }
+
   HRESULT STDMETHODCALLTYPE GetValueMemoryInfo(const OrtValue* ort_value, OrtMemoryInfo** memory_info) override try {
     const auto& tensor = ort_value->Get<onnxruntime::Tensor>();
     auto info = tensor.Location();
