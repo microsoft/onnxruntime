@@ -94,7 +94,7 @@ class NupharKernelState {
   NUPHAR_OP(Elu, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                                \
   NUPHAR_VERSIONED_OP(Equal, 7, 10, DataTypeImpl::AllFixedSizeTensorTypes())                \
   NUPHAR_OP(Equal, 11, DataTypeImpl::AllFixedSizeTensorTypes())                             \
-  NUPHAR_OP(Erf, 9, DataTypeImpl::GetTensorType<float>())                                   \
+  DISABLE_MACRO(NUPHAR_OP(Erf, 9, DataTypeImpl::GetTensorType<float>()))                    \
   NUPHAR_OP(Exp, 6, DataTypeImpl::AllIEEEFloatTensorTypes())                                \
   NUPHAR_OP(Expand, 8, DataTypeImpl::AllFixedSizeTensorTypes())                             \
   NUPHAR_VERSIONED_OP(Flatten, 1, 8, DataTypeImpl::AllIEEEFloatTensorTypes())               \
@@ -140,8 +140,8 @@ class NupharKernelState {
   NUPHAR_OP(ReduceLogSumExp, 11, DataTypeImpl::AllIEEEFloatTensorTypes())                   \
   NUPHAR_VERSIONED_OP(ReduceMax, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())            \
   NUPHAR_OP(ReduceMax, 11, DataTypeImpl::AllFixedSizeTensorTypes())                         \
-  NUPHAR_VERSIONED_OP(ReduceMean, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())           \
-  NUPHAR_OP(ReduceMean, 11, DataTypeImpl::AllFixedSizeTensorTypes())                        \
+  DISABLE_MACRO(NUPHAR_VERSIONED_OP(ReduceMean, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())) \
+  DISABLE_MACRO(NUPHAR_OP(ReduceMean, 11, DataTypeImpl::AllFixedSizeTensorTypes()))         \
   NUPHAR_VERSIONED_OP(ReduceMin, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())            \
   NUPHAR_OP(ReduceMin, 11, DataTypeImpl::AllFixedSizeTensorTypes())                         \
   NUPHAR_VERSIONED_OP(ReduceProd, 1, 10, DataTypeImpl::AllFixedSizeTensorTypes())           \

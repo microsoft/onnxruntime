@@ -58,10 +58,12 @@ bool InsertRootScheduleAndClosure(
   return true;
 }
 
+static bool disable_vectorization = true;
 // Check precondition for vectorize schedule
 bool ShouldTryVectorization(
     const tvm::Tensor& tensor,
     ScheduleContext& ctx) {
+  if (disable_vectorization) return false;
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
     if (it->second > ScheduleType::ScheduleInline) {
@@ -125,9 +127,11 @@ bool TryVectorization(
 // If it is not scheduled, try to add compute_inline on it.
 // Note TryInlineSchedule cannot be used with compute_root.
 // Therefore, there is a safty check of tensor's schedule.
+static bool disable_inline = true;
 bool TryInlineSchedule(
     const tvm::Tensor& tensor,
     ScheduleContext& ctx) {
+  if (disable_inline) return false;
   auto it = ctx.scheduled_tensors.find(tensor->op.get());
   if (it != ctx.scheduled_tensors.end()) {
     if ((int)it->second < (int)ScheduleType::ScheduleInline) {

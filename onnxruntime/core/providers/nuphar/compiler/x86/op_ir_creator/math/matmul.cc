@@ -107,6 +107,9 @@ static bool MatMulF32ExternCPU(
       cumulated_permute[i] = gsl::narrow<int32_t>(i);
       default_node_perm[i] = rank - i - 1;
     }
+    static bool disable_transpose_fusion = true;
+    if (disable_transpose_fusion)
+      return out;
     for (const Node* root_node = ctx_nuphar->FindNode(out);
          root_node != nullptr && root_node->OpType() == "Transpose";
          root_node = ctx_nuphar->FindNode(out)) {

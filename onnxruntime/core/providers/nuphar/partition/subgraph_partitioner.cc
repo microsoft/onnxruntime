@@ -107,8 +107,10 @@ bool SubgraphPartitioner::ForcePartition(
     const std::vector<NodeIndex>& immedidate_rejected_partitions) {
   const NodeIndex node_idx = node.Index();
 
+  static bool force_single_node = true;
   if (IsRecurrentNode(node) ||
-      node.OpType() == "Concat") {
+      node.OpType() == "Concat" ||
+      force_single_node) {
     // a new partition
     CreateNewPartition(node, immedidate_rejected_partitions);
     PartitionMeta& part_meta = partitions_[node_idx];
