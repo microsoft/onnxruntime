@@ -120,6 +120,18 @@ template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
 template <typename T>
+__device__ __inline__ T _Round(T a);
+
+template <>
+__device__ __inline__ float _Round(float a) { return rintf(a); }
+
+template <>
+__device__ __inline__ double _Round(double a) { return rint(a); }
+
+template <>
+__device__ __inline__ half _Round(half a) { return half(rintf((float)a)); }
+
+template <typename T>
 __device__ __inline__ T _Exp(T a);
 
 template <>
