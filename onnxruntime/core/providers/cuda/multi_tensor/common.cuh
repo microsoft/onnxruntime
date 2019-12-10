@@ -7,10 +7,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr int ACTUAL_TENSOR_GROUP_SIZE[7] = {1, 1, 2, 3, 4, 5, 6};
-constexpr int MAX_BLOCK_COUNTS[7] = {256, 320, 320, 320, 320, 288, 288};
-constexpr int MAX_TENSOR_GROUP_COUNTS[7] = {1, 96, 64, 32, 32, 32, 32};
-constexpr int MAX_BLOCK_THREAD_COUNTS[7] = {256, 512, 512, 512, 512, 512, 512};
+constexpr int ACTUAL_TENSOR_GROUP_SIZE[8] = {1, 1, 2, 3, 4, 5, 6, 7};
+constexpr int MAX_BLOCK_COUNTS[8] = {256, 320, 320, 320, 320, 288, 288, 256};
+constexpr int MAX_TENSOR_GROUP_COUNTS[8] = {1, 96, 64, 32, 32, 32, 32, 32};
+constexpr int MAX_BLOCK_THREAD_COUNTS[8] = {256, 512, 512, 512, 512, 512, 512, 512};
 
 // TensorGroupSize is the number of parallel tensors. For element-wise
 // operators such as Relu, it should be 1. For two-operand operators such as

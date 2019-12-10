@@ -102,7 +102,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
-common::Status TrainingSession::ApplyTransformationsToMainGraph() {
+Status TrainingSession::ApplyTransformationsToMainGraph() {
   try {
     Graph& graph = model_->MainGraph();
 
@@ -179,7 +179,7 @@ Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info
   return DoPostLoadProcessing(*model_);
 }
 
-common::Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
+Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
                                                      bool use_fp16_initializer,
                                                      std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
   ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg));
@@ -210,7 +210,7 @@ Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_
   return DoPostLoadProcessing(*model_);
 }
 
-common::Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train) {
+Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train) {
   std::vector<std::string> gradient_names{};
   gradient_names.reserve(weights_to_train.size());
   std::transform(
@@ -485,7 +485,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   return trainable_initializers;
 }
 
-common::Status TrainingSession::UpdateTrainableWeightsInfoInGraph() {
+Status TrainingSession::UpdateTrainableWeightsInfoInGraph() {
   Graph& graph = model_->MainGraph();
   const auto& graph_inputs = graph.GetInputsIncludingInitializers();
   std::unordered_set<const NodeArg*> inputs_to_add{};

@@ -19,14 +19,15 @@ namespace cuda {
       T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM,                             \
       kCudaExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
-          .Alias(1, 3)                             /* Update step count in-place */   \
-          .Alias(2, 0)                             /* Update weights in-place */      \
+          .Alias(1, 0)                             /* Update step count in-place */   \
+          .Alias(2, 3)                             /* Update weights in-place */      \
+          .Alias(3, 4)                             /* Update gradients in-place */    \
           .Alias(4, 1)                             /* Update moment-1 in-place */     \
           .Alias(5, 2)                             /* Update moment-2 in-place */     \
-          .Alias(6, 4)                             /* Update FP16 weights in-place */ \
+          .Alias(6, 5)                             /* Update FP16 weights in-place */ \
           .InputMemoryType<OrtMemTypeCPUInput>(1)  /* Keep step count in CPU */       \
           .InputMemoryType<OrtMemTypeCPUInput>(9)  /* Keep do_update in CPU */        \
-          .OutputMemoryType<OrtMemTypeCPUInput>(3) /* Keep step count in CPU */       \
+          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */      \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
@@ -60,47 +61,54 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
   const Tensor& G = *ctx->Input<Tensor>(3);
   const Tensor& M1 = *ctx->Input<Tensor>(4);
   const Tensor& M2 = *ctx->Input<Tensor>(5);
+  const Tensor* W_FP16 = ctx->Input<Tensor>(6);
+  const Tensor* loss_scale_tensor = ctx->Input<Tensor>(7);
+  const Tensor* gradient_norm_tensor = ctx->Input<Tensor>(8);
+  const Tensor* do_update_tensor = ctx->Input<Tensor>(9);
 
-  Tensor& NW = *ctx->Output(0, W.Shape());
+  Tensor& NS = *ctx->Output(0, S.Shape());
   Tensor& NM1 = *ctx->Output(1, M1.Shape());
   Tensor& NM2 = *ctx->Output(2, M2.Shape());
-  Tensor& NS = *ctx->Output(3, S.Shape());
+  Tensor* NW = ctx->Output(3, W.Shape());
+  Tensor* NG = ctx->Output(4, G.Shape());
+  Tensor* NW_FP16 = W_FP16 != nullptr ? ctx->Output(5, W_FP16->Shape()) : nullptr;
 
   half* fp16_weights_out = nullptr;
-  if (ctx->InputCount() >= 7 && ctx->OutputCount() >= 5) {
-    const Tensor& W_FP16 = *ctx->Input<Tensor>(6);
-    Tensor& NW_FP16 = *ctx->Output(4, W_FP16.Shape());
-    fp16_weights_out = reinterpret_cast<half*>(NW_FP16.template MutableData<MLFloat16>());
+  if (NW_FP16 != nullptr) {
+    fp16_weights_out = reinterpret_cast<half*>(NW_FP16->template MutableData<MLFloat16>());
   }
 
   const CudaT3* loss_scale = nullptr;
-  if (ctx->InputCount() >= 8 && ctx->Input<Tensor>(7)) {
-    const Tensor& loss_scale_tensor = *ctx->Input<Tensor>(7);
-    loss_scale = reinterpret_cast<const CudaT3*>(loss_scale_tensor.template Data<T3>());
+  if (loss_scale_tensor != nullptr) {
+    loss_scale = reinterpret_cast<const CudaT3*>(loss_scale_tensor->template Data<T3>());
   }
 
   const T2* S_in = S.template Data<T2>();
+  T2* S_out = NS.template MutableData<T2>();
 
   const CudaT_GRAD_NORM* G_norm = nullptr;
-  if (ctx->InputCount() >= 9 && ctx->Input<Tensor>(8)) {
-    const Tensor& gradient_norm_tensor = *ctx->Input<Tensor>(8);
-    G_norm = reinterpret_cast<const CudaT_GRAD_NORM*>(gradient_norm_tensor.template Data<T_GRAD_NORM>());
+  if (gradient_norm_tensor != nullptr) {
+    G_norm = reinterpret_cast<const CudaT_GRAD_NORM*>(gradient_norm_tensor->template Data<T_GRAD_NORM>());
   }
 
-  if (ctx->InputCount() >= 10 && ctx->Input<Tensor>(9)) {
-    const Tensor& do_update_tensor = *ctx->Input<Tensor>(9);
-    const bool do_update = *(do_update_tensor.template Data<bool>());
+  if (do_update_tensor != nullptr) {
+    const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, NW));
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M1, NM1));
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M2, NM2));
-      if (S_in != NS.template MutableData<T2>()) {
-        *(NS.template MutableData<T2>()) = *(S_in);
+      if (S_in != S_out) {
+        *(S_out) = *(S_in);
       }
-      if (fp16_weights_out) {
-        const Tensor& W_FP16 = *ctx->Input<Tensor>(6);
-        Tensor& NW_FP16 = *ctx->Output(4, W_FP16.Shape());
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(W_FP16, NW_FP16));
+
+      if (NW != nullptr) {
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, *NW));
+      }
+      if (NG != nullptr) {
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(G, *NG));
+      }
+
+      if (W_FP16 != nullptr && NW_FP16 != nullptr) {
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*W_FP16, *NW_FP16));
       }
       return Status::OK();
     }
@@ -119,13 +127,14 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
       ToCudaType<T4>::FromFloat(beta_),
       ToCudaType<T4>::FromFloat(lambda_),
       ToCudaType<T4>::FromFloat(epsilon_),
-      reinterpret_cast<CudaT3*>(NW.template MutableData<T3>()),
       reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),
       reinterpret_cast<CudaT4*>(NM2.template MutableData<T4>()),
+      NW != nullptr ? reinterpret_cast<CudaT3*>(NW->template MutableData<T3>()) : nullptr,
+      NG != nullptr ? reinterpret_cast<CudaT_GRAD*>(NG->template MutableData<T_GRAD>()) : nullptr,
       fp16_weights_out,
       W.Shape().Size());
 
-  *(NS.template MutableData<T2>()) = *(S_in) + 1;
+  *(S_out) = *(S_in) + 1;
 
   return Status::OK();
 }

@@ -16,6 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(1, 0)  // Update weights in-place
+        .Alias(2, 1)  // Update gradients in-place
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SGDOptimizer);
 
@@ -23,7 +24,8 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& ETA = *ctx->Input<Tensor>(0);
   const Tensor& W = *ctx->Input<Tensor>(1);
   const Tensor& G = *ctx->Input<Tensor>(2);
-  Tensor& NW = *ctx->Output(0, W.Shape());
+  Tensor* NW = ctx->Output(0, W.Shape());
+  Tensor* NG = ctx->Output(1, G.Shape());
 
   ORT_ENFORCE(W.Shape() == G.Shape());
 
@@ -31,7 +33,8 @@ Status SGDOptimizer::ComputeInternal(OpKernelContext* ctx) const {
       ETA.template Data<float>(),
       W.template Data<float>(),
       G.template Data<float>(),
-      NW.template MutableData<float>(),
+      NW != nullptr ? NW->template MutableData<float>() : nullptr,
+      NG != nullptr ? NG->template MutableData<float>() : nullptr,
       W.Shape().Size());
 
   return Status::OK();

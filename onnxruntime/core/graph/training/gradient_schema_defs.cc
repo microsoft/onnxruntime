@@ -154,80 +154,60 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "R",
           "The initial learning rate.",
           "T1",
-          OpSchema::Optional)
-      .Input(
-          4,
-          "weights",
-          "weights to optimize.",
-          "T2",
-          OpSchema::Optional)
-      .Input(
-          5,
-          "gradients",
-          "gradients computed in this iteration.",
-          "T3",
-          OpSchema::Optional)
-      .Input(
-          6,
-          "moment_1",
-          "exponentially averaged historical gradients.",
-          "T4",
-          OpSchema::Optional)
-      .Input(
-          7,
-          "moment_2",
-          "exponentially averaged historical squared gradients.",
-          "T4",
-          OpSchema::Optional)
-      .Input(
-          8,
-          "fp16_weights",
-          "FP16 weights to optimize.",
-          "T_FP16",
           OpSchema::Optional);
 
   AddRepeatedInputs(
       op_schema,
-      9,
-      1023,
-      {"extra_weights", "extra_gradients", "extra_moment1", "extra_moment2", "fp16_weights"},
-      {"extra_weights", "extra_gradients", "extra_moment1", "extra_moment2", "fp16_weights"},
-      {"T2", "T3", "T4", "T4", "T_FP16"},
+      4,
+      1024,
+      {
+        "weights",
+        "gradients",
+        "moment1",
+        "moment2",
+        "fp16_weights"
+      },
+      {
+        "weights to optimize.",
+        "gradients computed in this iteration.",
+        "exponentially averaged historical gradients.",
+        "exponentially averaged historical squared gradients.",
+        "FP16 weights to optimize."
+      },
+      {
+        "T2",
+        "T3",
+        "T4",
+        "T4",
+        "T_FP16"
+      },
       OpSchema::Optional);
-
-  op_schema
-      .Output(
-          0,
-          "new_weights",
-          "New weights",
-          "T2",
-          OpSchema::Optional)
-      .Output(
-          1,
-          "output_moment_1",
-          "New averaged Gradients",
-          "T4",
-          OpSchema::Optional)
-      .Output(
-          2,
-          "output_moment_2",
-          "New averaged squared gradients",
-          "T4",
-          OpSchema::Optional)
-      .Output(
-          3,
-          "new_fp16_weights",
-          "New FP16 weights",
-          "T_FP16",
-          OpSchema::Optional);
 
   AddRepeatedOutputs(
       op_schema,
-      4,
-      1023,
-      {"extra_new_weights", "output_moment_1", "output_moment_2", "new_fp16_weights"},
-      {"extra_new_weights", "output_moment_1", "output_moment_2", "new_fp16_weights"},
-      {"T2", "T4", "T4", "T_FP16"},
+      0,
+      1024,
+      {
+        "new_weights",
+        "new_gradients",
+        "new_moment_1",
+        "new_moment_2",
+        "new_fp16_weights"
+      },
+      {
+        "New weights",
+        "New gradients",
+        "New averaged gradients",
+        "New averaged squared gradients",
+        "New FP16 weights"
+      },
+      {
+        "T2",
+        "T3",
+        "T4",
+        "T4",
+        "T_FP16"
+      },
       OpSchema::Optional);
 
   return op_schema;
@@ -330,7 +310,8 @@ void RegisterGradientSchemas() {
       .Input(0, "ETA", "Learning Rate", "L")
       .Input(1, "W", "Original weight(s)", "T")
       .Input(2, "G", "Gradient of Weight(s)", "T")
-      .Output(0, "NW", "Updated weight(s)", "T")
+      .Output(0, "NW", "Updated weight(s)", "T", OpSchema::Optional)
+      .Output(1, "NG", "Updated gradients(s)", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -392,26 +373,33 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Output(
           0,
-          "new_weights",
-          "New weights.",
-          "T3")
+          "new_T",
+          "New update count.",
+          "T2")
       .Output(
           1,
-          "output_moment_1",
+          "new_moment_1",
           "New averaged gradients.",
           "T4")
       .Output(
           2,
-          "output_moment_2",
+          "new_moment_2",
           "New averaged squared gradients.",
           "T4")
       .Output(
           3,
-          "output_T",
-          "New update count.",
-          "T2")
+          "new_weights",
+          "New weights.",
+          "T3",
+          OpSchema::Optional)
       .Output(
           4,
+          "new_gradients",
+          "New gradients.",
+          "T_GRAD",
+          OpSchema::Optional)
+      .Output(
+          5,
           "new_fp16_weights",
           "New FP16 weights",
           "T_FP16",

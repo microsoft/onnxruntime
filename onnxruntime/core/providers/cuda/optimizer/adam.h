@@ -23,9 +23,10 @@ void AdamOptimizerImpl(
     T4 beta,
     T4 lambda,
     T4 epsilon,
-    T3* weight_out,
     T4* moment_1_out,
     T4* moment_2_out,
+    T3* weights_out,
+    T_GRAD* grads_out,
     half* fp16_weights_out,
     size_t count);
 

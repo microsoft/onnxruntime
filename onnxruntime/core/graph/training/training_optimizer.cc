@@ -19,19 +19,34 @@ Status SGDOptimizerBuilder::Build(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
     std::vector<TensorProto>& /* new_external_initializers */,
-    std::vector<ArgDef>& output_weight_argdefs) const {
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs) const {
   
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
+    const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
+    const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
 
-    std::vector<ArgDef> input_args(num_inputs_);
-    input_args[0] = ArgDef(opt_configs[i].lr_feed_name);
-    input_args[1] = weight_argdefs[i];
-    input_args[2] = gradient_argdefs[i];
+    std::vector<ArgDef> input_args;
+    input_args.push_back(ArgDef(opt_configs[i].lr_feed_name));
+    input_args.push_back(weight_argdefs[i]);
+    input_args.push_back(gradient_argdefs[i]);
 
-    std::vector<ArgDef> output_args(num_outputs_);
-    output_args[0] = ArgDef(weight_name + "_SGD_out", weight_type_proto);  // output 0 new weights
+    std::vector<ArgDef> output_args;
+    if (opt_configs[i].update_weight) {
+      ArgDef weight_new_argdef(weight_name + "_SGD_out", weight_type_proto);
+      output_args.push_back(weight_new_argdef);  // w_new
+      output_args.push_back(ArgDef());  // g_new
+      output_weight_argdefs.push_back(weight_new_argdef);
+      output_gradient_argdefs.push_back(gradient_argdefs[i]);
+    } else {
+      ArgDef gradient_new_argdef(gradient_name + "_SGD_out", gradient_type_proto);
+      output_args.push_back(ArgDef());  // w_new
+      output_args.push_back(gradient_new_argdef);  // g_new
+      output_weight_argdefs.push_back(weight_argdefs[i]);
+      output_gradient_argdefs.push_back(gradient_new_argdef);
+    }
 
     graph_defs.AddNodeDefs({NodeDef(OpType(),
                                     input_args,
@@ -42,7 +57,6 @@ Status SGDOptimizerBuilder::Build(
     for (auto &arg: input_args) {
       external_inputs_including_initializers.emplace_back(arg);
     }
-    output_weight_argdefs[i] = output_args[0];
   }
 
   return Status::OK();
@@ -57,50 +71,30 @@ Status AdamOptimizerBuilder::Build(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
     std::vector<TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs) const {
-  std::vector<TensorProto> new_initializers{};
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs) const {
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
+    const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
 
     // The type proto initializer for Update Count
     const std::string update_count_string = "Update_Count_" + weight_name;  // per weight optimizer requires a per weight update count
     TensorProto uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);
     // Add uc tensorproto as initializers
-    new_initializers.emplace_back(uc_tensor_proto);
+    new_external_initializers.emplace_back(uc_tensor_proto);
 
-    int num_inputs = num_inputs_;
-    int num_outputs = num_outputs_;
+    std::vector<ArgDef> input_args;
+    input_args.push_back(ArgDef(opt_configs[i].lr_feed_name));
+    input_args.push_back(ArgDef(update_count_string));
+    input_args.push_back(weight_argdefs[i]);
+    input_args.push_back(gradient_argdefs[i]);
 
-    // When mixed precision is enabled by using FP16 initializer, optimizer consumes fp32 weight tensor and its fp16 copy.
-    // Thus, each optimizer will get one extra input and one extra output.
-    if (opt_configs[i].fp16_weight_arg != nullptr) {
-      num_outputs += 1;
-    }
+    std::vector<ArgDef> output_args;
 
-    if (gradient_norm_finite_argdef) {
-      num_inputs += 4;
-    } else if (gradient_norm_argdef) {
-      num_inputs += 3;
-    } else if (!opt_configs[i].loss_scale_input_name.empty()) {
-      num_inputs += 2;
-    } else if (opt_configs[i].fp16_weight_arg != nullptr) {
-      num_inputs += 1;
-    }
-
-    std::vector<ArgDef> input_args(num_inputs);
-    input_args[0] = ArgDef(opt_configs[i].lr_feed_name);
-    input_args[1] = ArgDef(update_count_string);
-    input_args[2] = weight_argdefs[i];
-    input_args[3] = gradient_argdefs[i];
-
-    std::vector<ArgDef> output_args(num_outputs);
-    output_args[0] = ArgDef(weight_name + "_Adam_out", weight_type_proto);
-
-    // Create the tensor proto for first and second moments of grad.
-    int input_idx = 4;
-    int output_idx = 1;
+    TypeProto* step_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    output_args.push_back(ArgDef(gradient_name + "_Step_Out", step_type_proto));
 
     // Get shape of weight tensor.
     std::vector<int64_t> weight_dims;
@@ -126,31 +120,52 @@ Status AdamOptimizerBuilder::Build(
         moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
       }
 
-      new_initializers.emplace_back(moment_tensor_proto);
+      new_external_initializers.emplace_back(moment_tensor_proto);
 
-      input_args[input_idx++] = ArgDef(gradient_moment_name, moment_type_proto);
-      output_args[output_idx++] = ArgDef(gradient_moment_name + "_Out", moment_type_proto);
+      input_args.push_back(ArgDef(gradient_moment_name, moment_type_proto));
+      output_args.push_back(ArgDef(gradient_moment_name + "_Out", moment_type_proto));
     }
 
-    TypeProto* step_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    output_args[3] = ArgDef(gradient_name + "_Step_Out", step_type_proto);
+    // Output either w_new or g_new based on config.
+    if (opt_configs[i].update_weight) {
+      ArgDef weight_new_argdef(weight_name + "_Adam_out", weight_type_proto);
+      output_args.push_back(weight_new_argdef);  // w_new
+      output_args.push_back(ArgDef());  // g_new
+      output_weight_argdefs.push_back(weight_new_argdef);
+      output_gradient_argdefs.push_back(gradient_argdefs[i]);
+    } else {
+      ArgDef gradient_new_argdef(gradient_name + "_Adam_out", gradient_type_proto);
+      output_args.push_back(ArgDef());  // w_new
+      output_args.push_back(gradient_new_argdef);  // g_new
+      output_weight_argdefs.push_back(weight_argdefs[i]);
+      output_gradient_argdefs.push_back(gradient_new_argdef);
+    }
 
-    if (opt_configs[i].fp16_weight_arg != nullptr) {
-      input_args[6] = ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto());
+    if (opt_configs[i].update_weight && opt_configs[i].fp16_weight_arg != nullptr) {
+      input_args.push_back(ArgDef(opt_configs[i].fp16_weight_arg->Name(), opt_configs[i].fp16_weight_arg->TypeAsProto()));
       std::string output_name = opt_configs[i].fp16_weight_arg->Name() + "_Adam_out";
-      output_args[4] = ArgDef(output_name, opt_configs[i].fp16_weight_arg->TypeAsProto());
+      output_args.push_back(ArgDef(output_name, opt_configs[i].fp16_weight_arg->TypeAsProto()));
+    } else {
+      input_args.push_back(ArgDef());
+      output_args.push_back(ArgDef());
     }
 
     if (!opt_configs[i].loss_scale_input_name.empty()) {
-      input_args[7] = ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      input_args.push_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+    } else {
+      input_args.push_back(ArgDef());
     }
 
     if (gradient_norm_argdef) {
-      input_args[8] = *gradient_norm_argdef;
+      input_args.push_back(*gradient_norm_argdef);
+    } else {
+      input_args.push_back(ArgDef());
     }
 
     if (gradient_norm_finite_argdef) {
-      input_args[9] = *gradient_norm_finite_argdef;
+      input_args.push_back(*gradient_norm_finite_argdef);
+    } else {
+      input_args.push_back(ArgDef());
     }
 
     graph_defs.AddNodeDefs({NodeDef(OpType(),
@@ -162,9 +177,8 @@ Status AdamOptimizerBuilder::Build(
     for (auto& arg : input_args) {
       external_inputs_including_initializers.emplace_back(arg);
     }
-    output_weight_argdefs[i] = output_args[0];
   }
-  new_external_initializers = std::move(new_initializers);
+
   return Status::OK();
 }
 
@@ -183,14 +197,12 @@ Status LambOptimizerBuilder::Build(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<ArgDef>& external_inputs_including_initializers,
     std::vector<TensorProto>& new_external_initializers,
-    std::vector<ArgDef>& output_weight_argdefs) const {
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs) const {
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
     "The current LambOptimizer can only update up to 1024 weight tensors, but",
     "the actual number of weight tensors is ", weight_argdefs.size());
-  // The variable stores optimizer's states such as momentums. Those
-  // state don't appear in the inference graph, so
-  // we add them as initializers.
-  std::vector<TensorProto> new_initializers{};
+  // We add optimizer's states such as momentums as initializers.
 
   // Lamb optimizer node's inputs and outputs.
   std::vector<ArgDef> input_argdefs;
@@ -229,11 +241,12 @@ Status LambOptimizerBuilder::Build(
 
   // Each iteration handles the associated inputs and outputs of a weight tensor.
   // Associated inputs: [w, g, m1, m2, w_fp16].
-  // Associated outputs: [w_new, m1_new, m2_new, w_fp16_new].
+  // Associated outputs: [w_new, g_new, m1_new, m2_new, w_fp16_new].
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& weight_new_name = weight_argdefs[i].name + "_Lamb_out";
     const std::string& gradient_name = GradientBuilderBase::GradientName(weight_name);
+    const std::string& gradient_new_name = gradient_name + "_Lamb_out";
 
     const auto& attrs = opt_configs[i].attributes;
 
@@ -279,6 +292,7 @@ Status LambOptimizerBuilder::Build(
 
     // Extract weight's type and shape information.
     const TypeProto* const weight_type_proto = weight_argdefs[i].type_proto;
+    const TypeProto* const gradient_type_proto = gradient_argdefs[i].type_proto;
     std::vector<int64_t> weight_dims;
     ORT_RETURN_IF_NOT(
         weight_argdefs[i].type_proto &&
@@ -288,10 +302,24 @@ Status LambOptimizerBuilder::Build(
       weight_dims.push_back(dim.dim_value());
     }
 
-    // w & g & w_new
+    // w & g
     input_argdefs.push_back(weight_argdefs[i]);
     input_argdefs.push_back(gradient_argdefs[i]);
-    output_argdefs.emplace_back(ArgDef(weight_new_name, weight_type_proto));
+
+    // Output either w_new or g_new based on config.
+    if (opt_configs[i].update_weight) {
+      ArgDef weight_new_argdef(weight_new_name, weight_type_proto);
+      output_argdefs.push_back(weight_new_argdef);  // w_new
+      output_argdefs.push_back(ArgDef());  // g_new
+      output_weight_argdefs.push_back(weight_new_argdef);
+      output_gradient_argdefs.push_back(gradient_argdefs[i]);
+    } else {
+      ArgDef gradient_new_argdef(gradient_new_name, gradient_type_proto);
+      output_argdefs.push_back(ArgDef());  // w_new
+      output_argdefs.push_back(gradient_new_argdef);  // g_new
+      output_weight_argdefs.push_back(weight_argdefs[i]);
+      output_gradient_argdefs.push_back(gradient_new_argdef);
+    }
 
     // m1 & m2 & m1_new & m2_new
     const std::vector<std::string> moments_prefixes({"Moment_1_", "Moment_2_"});
@@ -317,7 +345,7 @@ Status LambOptimizerBuilder::Build(
     }
 
     // w_fp16 & w_fp16_new
-    if (opt_configs[i].fp16_weight_arg != nullptr) {
+    if (opt_configs[i].update_weight && opt_configs[i].fp16_weight_arg != nullptr) {
       input_argdefs.emplace_back(ArgDef(
         opt_configs[i].fp16_weight_arg->Name(),
         opt_configs[i].fp16_weight_arg->TypeAsProto()));
@@ -332,8 +360,6 @@ Status LambOptimizerBuilder::Build(
     for (auto& arg : input_argdefs) {
       external_inputs_including_initializers.push_back(arg);
     }
-
-    output_weight_argdefs[i] = ArgDef(weight_new_name, weight_type_proto);
   }
 
   std::vector<AttributeProto> attribute_protos;

@@ -19,13 +19,6 @@ namespace training {
 
 class TrainingRunner {
  public:
-  struct AdamOptimizerParams {
-    float alpha;
-    float beta;
-    float lambda;
-    float epsilon;
-  };
-
   struct Parameters {
     std::string model_name;
     PathString model_path;

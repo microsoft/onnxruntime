@@ -65,6 +65,7 @@ void LambUpdate(
     const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
+    T3* gradients_out,
     half* fp16_weights_out,
     size_t count);
 
@@ -116,15 +117,16 @@ struct LambMultiTensorReductionFunctor {
   void operator()(ChunkGroup<4> chunk_group);
 };
 
-// Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, w_fp16_new] where
+// Lamb's stage 2 maps [w_norm, w_norm, w, d] to [w_new, g_new, w_fp16_new] where
 //  w_norm: norm of w
 //  d_norm: norm of d
 //  w: weight tensor
 //  d: update direction
 //  w_new: updated weight tensor
+//  g_new: updated gradient tensor
 //  w_fp16_new: updated weight tensor in half-precision
-// There are 6 distinct tensors in total and therefore the
-// type of chunk_group is ChunkGroup<6>.
+// There are 7 distinct tensors in total and therefore the
+// type of chunk_group is ChunkGroup<7>.
 //
 // Tensor pointers associated with the i-th tensor in this chunk:
 //  w_norm: chunk_group.tensor_ptrs[0][i]
@@ -132,11 +134,12 @@ struct LambMultiTensorReductionFunctor {
 //  w: chunk_group.tensor_ptrs[2][i]
 //  d: chunk_group.tensor_ptrs[3][i]
 //  w_new: chunk_group.tensor_ptrs[4][i]
-//  w_fp16_new: chunk_group.tensor_ptrs[5][i]
+//  g_new: chunk_group.tensor_ptrs[5][i]
+//  w_fp16_new: chunk_group.tensor_ptrs[6][i]
 template <typename T1, typename T2, typename T3>
 struct LambMultiTensorUpdateFunctor {
   void operator()(
-      ChunkGroup<6> chunk_group,
+      ChunkGroup<7> chunk_group,
       const T1* eta,
       const T2 threshold);
 };

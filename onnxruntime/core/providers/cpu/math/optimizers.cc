@@ -14,11 +14,19 @@ Status SGDOptimizer<T>::Compute(OpKernelContext* ctx) const {
   const Tensor& ETA = *ctx->Input<Tensor>(0);
   const Tensor& W = *ctx->Input<Tensor>(1);
   const Tensor& G = *ctx->Input<Tensor>(2);
-  Tensor& NW = *ctx->Output(0, W.Shape());
+  Tensor* NW = ctx->Output(0, W.Shape());
+  Tensor* NG = ctx->Output(1, G.Shape());
 
   // NW = W - eta * G
   float eta = *ETA.template Data<float>();
-  MakeEigenArrayMap<T>(NW) = MakeEigenArrayMap<T>(W) - eta * MakeEigenArrayMap<T>(G);
+  const auto& delta = -eta * MakeEigenArrayMap<T>(G);
+
+  if (NG != nullptr) {
+    MakeEigenArrayMap<T>(*NG) = delta;
+  }
+  if (NW != nullptr) {
+    MakeEigenArrayMap<T>(*NW) = MakeEigenArrayMap<T>(W) + delta;
+  }
 
   return Status::OK();
 }
@@ -28,6 +36,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     9,
     KernelDefBuilder()
         .Alias(1, 0)  // Update weights in-place
+        .Alias(2, 1)  // Update gradients in-place
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SGDOptimizer<float>);
 
@@ -40,10 +49,11 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   const Tensor& M1 = *ctx->Input<Tensor>(4);
   const Tensor& M2 = *ctx->Input<Tensor>(5);
 
-  Tensor& NW = *ctx->Output(0, W.Shape());
+  Tensor& NS = *ctx->Output(0, S.Shape());
   Tensor& NM1 = *ctx->Output(1, M1.Shape());
   Tensor& NM2 = *ctx->Output(2, M2.Shape());
-  Tensor& NS = *ctx->Output(3, S.Shape());
+  Tensor* NW = ctx->Output(3, W.Shape());
+  Tensor* NG = ctx->Output(4, G.Shape());
 
   const float eta = *ETA.template Data<float>();
   const int64_t step = *S.template Data<int64_t>();
@@ -62,8 +72,15 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   const float denom = 1 - std::pow(alpha_, static_cast<float>(step));
   const float eta_new = eta * numerator / denom;
 
-  // Weight and step update.
-  MakeEigenArrayMap<T>(NW) = MakeEigenArrayMap<T>(W) - ((eta_new * MakeEigenArrayMap<T>(NM1)) / (MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_));
+  const auto& delta = -((eta_new * MakeEigenArrayMap<T>(NM1)) / (MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_));
+
+  // Weight, gradient, and step update.
+  if (NG != nullptr) {
+    MakeEigenArrayMap<T>(*NG) = delta;
+  }
+  if (NW != nullptr) {
+    MakeEigenArrayMap<T>(*NW) = MakeEigenArrayMap<T>(W) + delta;
+  }
   *NS.template MutableData<int64_t>() = step + 1;
 
   return Status::OK();
@@ -73,10 +90,12 @@ ONNX_CPU_OPERATOR_KERNEL(
     AdamOptimizer,
     9,
     KernelDefBuilder()
-        .Alias(1, 3)  // Update step count in-place
-        .Alias(2, 0)  // Update weights in-place
+        .Alias(1, 0)  // Update step count in-place
+        .Alias(2, 3)  // Update weights in-place
+        .Alias(3, 4)  // Update gradients in-place
         .Alias(4, 1)  // Update moment-1 in-place
         .Alias(5, 2)  // Update moment-2 in-place
+        .Alias(6, 5)  // Update fp16 weights in-place
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<float>())

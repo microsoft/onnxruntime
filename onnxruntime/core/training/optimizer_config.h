@@ -16,8 +16,9 @@ struct OptimizerNodeConfig {
   const NodeArg* fp16_weight_arg{};
   std::string lr_feed_name{};
   std::unordered_map<std::string, float> attributes{};
-  bool use_fp16_moments{false};
   std::string loss_scale_input_name{};
+  bool use_fp16_moments{false};
+  bool update_weight{true};  // Indicates whether Optimizer should do weight update, or output new gradient
 };
 
 // configuration for optimizer portion of graph

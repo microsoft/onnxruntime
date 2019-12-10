@@ -282,8 +282,8 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
         nullptr,
         lr_params_feed_name,
         optimizer_attributes,
-        use_fp16_moments,
-        loss_scale_input_name};
+        loss_scale_input_name,
+        use_fp16_moments};
 
     const auto it = fp16_weights_map.find(weight_name);
     if (it != fp16_weights_map.cend()) {

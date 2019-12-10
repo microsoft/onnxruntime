@@ -15,6 +15,7 @@ void SGDOptimizerImpl(
     const T* weights,
     const T* gradients,
     T* weight_out,
+    T* gradients_out,
     size_t count);
 
 class SGDOptimizer final : public CudaKernel {

@@ -1027,6 +1027,16 @@ TEST(OptimizerTest, SGDOptimizerTest) {
   test.Run();
 }
 
+TEST(OptimizerTest, SGDOptimizerTest_Gradient) {
+  OpTester test("SGDOptimizer", 9, onnxruntime::kOnnxDomain);
+  test.AddInput<float>("ETA", {}, {0.5f});
+  test.AddInput<float>("W", {3}, {1, 2, 3});
+  test.AddInput<float>("G", {3}, {4, 5, 6});
+  test.AddMissingOptionalOutput<float>();
+  test.AddOutput<float>("G_New", {3}, {-2.f, -2.5f, -3.f});
+  test.Run();
+}
+
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -1113,9 +1123,11 @@ struct AdamOptimizerInputOutput {
     m1_new_half.resize(m1_new.size());
     m2_new_half.resize(m2_new.size());
     w_new_half.resize(w_new.size());
+    g_new_half.resize(g_new.size());
     ConvertFloatToMLFloat16(m1_new.data(), m1_new_half.data(), int(m1_new.size()));
     ConvertFloatToMLFloat16(m2_new.data(), m2_new_half.data(), int(m2_new.size()));
     ConvertFloatToMLFloat16(w_new.data(), w_new_half.data(), int(w_new.size()));
+    ConvertFloatToMLFloat16(g_new.data(), g_new_half.data(), int(g_new.size()));
   }
 
   // Fp32 Inputs
@@ -1133,14 +1145,16 @@ struct AdamOptimizerInputOutput {
   std::vector<MLFloat16> m2_half;
 
   // FP32 Outptus
-  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
   std::vector<float> m1_new = {0.49f, 0.68f, 0.87f};
   std::vector<float> m2_new = {0.4156f, 0.5245f, 0.6354f};
+  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
+  std::vector<float> g_new = {-0.0767716f, -0.0948371f, -0.1102397f};
 
   // FP16 Outptus
-  std::vector<MLFloat16> w_new_half;
   std::vector<MLFloat16> m1_new_half;
   std::vector<MLFloat16> m2_new_half;
+  std::vector<MLFloat16> w_new_half;
+  std::vector<MLFloat16> g_new_half;
 };
 
 TEST(OptimizerTest, AdamOptimizerTest) {
@@ -1155,10 +1169,31 @@ TEST(OptimizerTest, AdamOptimizerTest) {
   test.AddInput<float>("Moment_2", {3}, data.m2);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
   test.AddOutput<float>("Moment_1_Out", {3}, data.m1_new);
   test.AddOutput<float>("Moment_2_Out", {3}, data.m2_new);
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<float>("ETA", {}, data.eta);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<float>("G", {3}, data.g);
+  test.AddInput<float>("Moment_1", {3}, data.m1);
+  test.AddInput<float>("Moment_2", {3}, data.m2);
+
+  // Verify AdamOptimizer outputs
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<float>("Moment_1_Out", {3}, data.m1_new);
+  test.AddOutput<float>("Moment_2_Out", {3}, data.m2_new);
+  test.AddMissingOptionalOutput<float>();
+  test.AddOutput<float>("G_Out", {3}, data.g_new);
 
   test.Run();
 }
@@ -1429,10 +1464,10 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest) {
   test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
-  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
 
   test.Run();
 }
@@ -1450,10 +1485,11 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
   test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
-  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddMissingOptionalOutput<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
 
   test.Run();
@@ -1475,10 +1511,11 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddInput<bool>("DoUpdate", {1}, {false});
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, data.w);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {3});
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_half);
-  test.AddOutput<int64_t>("Update_Count_Out", {}, {3});
+  test.AddOutput<float>("W_Out", {3}, data.w);
+  test.AddMissingOptionalOutput<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_half);
 
   test.Run();
@@ -1496,10 +1533,31 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTestFloatEta) {
   test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
 
   // Verify AdamOptimizer outputs
-  test.AddOutput<float>("W_Out", {3}, data.w_new);
+  test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
+  test.AddOutput<float>("W_Out", {3}, data.w_new);
+
+  test.Run();
+}
+
+TEST(OptimizerTest, AdamOptimizerMixPrecisionTest_Gradient) {
+  OpTester test("AdamOptimizer", 9, onnxruntime::kOnnxDomain);
+  AdamOptimizerInputOutput data;
+
+  test.AddInput<float>("ETA", {}, data.eta);
+  test.AddInput<int64_t>("Update_Count", {}, {3});
+  test.AddInput<float>("W", {3}, data.w);
+  test.AddInput<MLFloat16>("G", {3}, data.g_half);
+  test.AddInput<MLFloat16>("Moment_1", {3}, data.m1_half);
+  test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
+
+  // Verify AdamOptimizer outputs
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
+  test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
+  test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
+  test.AddMissingOptionalOutput<float>();
+  test.AddOutput<MLFloat16>("G_Out", {3}, data.g_new_half);
 
   test.Run();
 }
@@ -1520,6 +1578,7 @@ void compute_lamb(
     const float beta,
     const float epsilon,
     /* updated weights */ std::vector<float>& w_new,
+    /* updated gradients */ std::vector<float>& g_new,
     /* updated momentum */ std::vector<float>& m_new,
     /* updated 2nd-order momentum */ std::vector<float>& v_new) {
   // Element counts of all vector-typed arguments.
@@ -1554,8 +1613,10 @@ void compute_lamb(
   w_norm = std::sqrt(w_norm);
 
   // Compute the new weight.
-  for (int64_t i = 0; i < size; ++i)
-    w_new[i] = w[i] - eta * w_norm / r_norm * r[i];
+  for (int64_t i = 0; i < size; ++i) {
+    g_new[i] = -eta * w_norm / r_norm * r[i];
+    w_new[i] = w[i] + g_new[i];
+  }
 }
 
 template <typename T1, typename T2, typename T3, typename T4>
@@ -1571,6 +1632,7 @@ void run_lamb_test_with_baseline(
     const float lambda,
     const float epsilon,
     const std::vector<T2>& w_new,
+    const std::vector<T3>& g_new,
     const std::vector<T4>& m_new,
     const std::vector<T4>& v_new,
     const std::vector<MLFloat16>& w_half = {},
@@ -1600,7 +1662,16 @@ void run_lamb_test_with_baseline(
   // so we assign a big value here.
   test.AddAttribute("threshold", std::vector<float>(1, 10000.0f));
 
-  test.AddOutput<T2>("W_Out", shape, w_new);
+  if (!w_new.empty()) {
+    test.AddOutput<T2>("W_Out", shape, w_new);
+  } else {
+    test.AddMissingOptionalOutput<T2>();
+  }
+  if (!g_new.empty()) {
+    test.AddOutput<T3>("G_Out", shape, g_new);
+  } else {
+    test.AddMissingOptionalOutput<T3>();
+  }
   test.AddOutput<T4>("Moment_1_Out", shape, m_new);
   test.AddOutput<T4>("Moment_2_Out", shape, v_new);
   if (!w_new_half.empty()) {
@@ -1627,6 +1698,7 @@ void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<float>& lambdas,
     const std::vector<float>& epsilons,
     const std::vector<std::vector<T2>>& w_news,
+    const std::vector<std::vector<T3>>& g_news,
     const std::vector<std::vector<T4>>& m_news,
     const std::vector<std::vector<T4>>& v_news,
     const std::vector<std::vector<MLFloat16>>& w_halfs = {},
@@ -1642,7 +1714,12 @@ void run_multi_tensor_lamb_test_with_baseline(
   ORT_ENFORCE(shapes.size() == betas.size());
   ORT_ENFORCE(shapes.size() == lambdas.size());
   ORT_ENFORCE(shapes.size() == epsilons.size());
-  ORT_ENFORCE(shapes.size() == w_news.size());
+  if (!w_news.empty()) {
+    ORT_ENFORCE(shapes.size() == w_news.size());
+  }
+  if (!g_news.empty()) {
+    ORT_ENFORCE(shapes.size() == g_news.size());
+  }
   ORT_ENFORCE(shapes.size() == m_news.size());
   ORT_ENFORCE(shapes.size() == v_news.size());
   if (!w_halfs.empty()) {
@@ -1665,6 +1742,7 @@ void run_multi_tensor_lamb_test_with_baseline(
     std::string m2_name = "Moment_2_" + std::to_string(i);
     std::string w_fp16_name = "FP16_W_" + std::to_string(i);
     std::string w_new_name = "W_Out_" + std::to_string(i);
+    std::string g_new_name = "G_Out_" + std::to_string(i);
     std::string m1_new_name = "Moment_1_Out_" + std::to_string(i);
     std::string m2_new_name = "Moment_2_Out_" + std::to_string(i);
     std::string w_fp16_new_name = "FP16_W_Out_" + std::to_string(i);
@@ -1679,7 +1757,16 @@ void run_multi_tensor_lamb_test_with_baseline(
       test.AddMissingOptionalInput<MLFloat16>();
     }
 
-    test.AddOutput<T2>(w_new_name.c_str(), shapes[i], w_news[i]);
+    if (!w_news.empty() && !w_news[i].empty()) {
+      test.AddOutput<T2>(w_new_name.c_str(), shapes[i], w_news[i]);
+    } else {
+      test.AddMissingOptionalOutput<T2>();
+    }
+    if (!g_news.empty() && !g_news[i].empty()) {
+      test.AddOutput<T3>(g_new_name.c_str(), shapes[i], g_news[i]);
+    } else {
+      test.AddMissingOptionalOutput<T3>();
+    }
     test.AddOutput<T4>(m1_new_name.c_str(), shapes[i], m_news[i]);
     test.AddOutput<T4>(m2_new_name.c_str(), shapes[i], v_news[i]);
     if (!w_new_halfs.empty() && !w_new_halfs[i].empty()) {
@@ -1730,11 +1817,13 @@ void run_multi_tensor_lamb_test(
 
   // Output buffers of the optimizer.
   std::vector<std::vector<float>> w_news(group_count);
+  std::vector<std::vector<float>> g_news(group_count);
   std::vector<std::vector<float>> m_news(group_count);
   std::vector<std::vector<float>> v_news(group_count);
 
   for (int i = 0; i < group_count; ++i) {
     w_news[i] = std::vector<float>(ws[i].size(), 0.f);
+    g_news[i] = std::vector<float>(gs[i].size(), 0.f);
     m_news[i] = std::vector<float>(ms[i].size(), 0.f);
     v_news[i] = std::vector<float>(vs[i].size(), 0.f);
 
@@ -1743,15 +1832,24 @@ void run_multi_tensor_lamb_test(
       shapes[i], ws[i], gs[i], ms[i], vs[i],
       eta, loss_scale, g_norm,
       lambdas[i], alphas[i], betas[i], epsilons[i],
-      w_news[i], m_news[i], v_news[i]);
+      w_news[i], g_news[i], m_news[i], v_news[i]);
   }
 
-  // Create test to make sure the output is correct.
+  // Create tests to make sure the output is correct.
+
+  // Output new weights.
   run_multi_tensor_lamb_test_with_baseline(
     shapes, eta, loss_scale, g_norm,
     ws, gs, ms, vs,
     alphas, betas, lambdas, epsilons,
-    w_news, m_news, v_news);
+    w_news, {}, m_news, v_news);
+
+  // Output new gradients.
+  run_multi_tensor_lamb_test_with_baseline(
+    shapes, eta, loss_scale, g_norm,
+    ws, gs, ms, vs,
+    alphas, betas, lambdas, epsilons,
+    {}, g_news, m_news, v_news);
 }
 
 void run_lamb_mix_precision_test(
@@ -1766,14 +1864,15 @@ void run_lamb_mix_precision_test(
     const float beta,
     const float epsilon) {
   std::vector<float> w_new(w.size(), 0);
-  std::vector<float> m_new(w.size(), 0);
+  std::vector<float> g_new(g.size(), 0);
+  std::vector<float> m_new(m.size(), 0);
   std::vector<float> v_new(v.size(), 0);
 
   // Invoke LAMB's reference implementation to compute output.
   compute_lamb(
       shape, w, g, m, v,
       eta[0], 1.f, 1.f, lambda, alpha, beta, epsilon,
-      w_new, m_new, v_new);
+      w_new, g_new, m_new, v_new);
 
   std::vector<MLFloat16> eta_half(eta.size());
   std::vector<MLFloat16> g_half(w.size());
@@ -1786,44 +1885,58 @@ void run_lamb_mix_precision_test(
   ConvertFloatToMLFloat16(v.data(), v_half.data(), int(v.size()));
   ConvertFloatToMLFloat16(w.data(), w_half.data(), int(w.size()));
 
-  std::vector<MLFloat16> m_new_half(w.size());
-  std::vector<MLFloat16> v_new_half(w.size());
-  std::vector<MLFloat16> w_new_half(w.size());
+  std::vector<MLFloat16> m_new_half(m_new.size());
+  std::vector<MLFloat16> v_new_half(v_new.size());
+  std::vector<MLFloat16> w_new_half(w_new.size());
+  std::vector<MLFloat16> g_new_half(g_new.size());
   ConvertFloatToMLFloat16(m_new.data(), m_new_half.data(), int(m_new.size()));
   ConvertFloatToMLFloat16(v_new.data(), v_new_half.data(), int(v_new.size()));
   ConvertFloatToMLFloat16(w_new.data(), w_new_half.data(), int(w_new.size()));
+  ConvertFloatToMLFloat16(g_new.data(), g_new_half.data(), int(g_new.size()));
 
   // Half momentums, without fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, m_new_half, v_new_half);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half);
 
   // Float momentums, without fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
 
   // Half momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, m_new_half, v_new_half, w_half, w_new_half);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half, w_half, w_new_half);
 
   // Float momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new, w_half, w_new_half);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half);
 
-  // Half momentums, with fp16 weight, skip weight udpate
+  // Half momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, m_half, v_half, w_half, w_half, false);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, {}, m_half, v_half, w_half, w_half, false);
 
-  // Float momentums, with fp16 weight, skip weight udpate
+  // Float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, m, v, w_half, w_half, false);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false);
 
-  // float eta, float momentums, with fp16 weight
+  // Float eta, float momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new, w_half, w_new_half);
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half);
 
-  // Float momentums, with fp16 weight, skip weight udpate
+  // Float eta, float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w, m, v, w_half, w_half, false);
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false);
+
+  // Float momentums, without fp16 weight, output gradients only
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new);
+
+  // Float momentums, with fp16 weight, output gradients only
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new, w_half, {});
+
+  // Float momentums, with fp16 weight, output gradients only, skip weight update
+  run_lamb_test_with_baseline(
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_half, m, v, w_half, {}, false);
 }
 
 // A optimizer test with an 2-element vector.
@@ -2005,6 +2118,9 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
   std::vector<float> w_new = {
       0.02979828f, 0.13677707f, -0.22708717f, -0.20361158f, -0.15338624f, 0.1081504f,
       -0.03804127f, 0.28198114f, 0.00430069f, 0.05319814f};
+  std::vector<float> g_new = {
+      0.01600802f, -0.01630484f, 0.01647800f, 0.01437007f, -0.01568577f, 0.01120441f,
+      -0.01580611f, 0.01555834f, 0.01608062f, -0.01512874f};
   std::vector<float> m_new = {
       -6.0344763f, 10.479931f, -9.15947f, -0.57894087f, 5.824918f, -0.2165685f,
       3.5303047f, -5.9299808f, -9.281795f, 1.1496004f};
@@ -2012,8 +2128,13 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
       3.6645618e+01f, 1.1174072e+02f, 8.4853485e+01f, 3.3100498e-01f, 3.4628010e+01f,
       4.4757873e-02f, 1.2550836e+01f, 3.5532223e+01f, 8.7362823e+01f, 1.3257366e+00f};
 
+  // Output new weights
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
+
+  // Output new gradients
+  run_lamb_test_with_baseline(
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, {}, g_new, m_new, v_new);
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
@@ -2041,6 +2162,9 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
   std::vector<double> w_new = {
       0.02979828, 0.13677707, -0.22708717, -0.20361158, -0.15338624, 0.1081504,
       -0.03804127, 0.28198114, 0.00430069, 0.05319814};
+  std::vector<double> g_new = {
+      0.01600802, -0.01630484, 0.016478, 0.01437007, -0.01568577, 0.01120441,
+      -0.01580611, 0.01555834, 0.01608062, -0.01512874};
   std::vector<double> m_new = {
       -6.0344763, 10.479931, -9.15947, -0.57894087, 5.824918, -0.2165685,
       3.5303047, -5.9299808, -9.281795, 1.1496004};
@@ -2048,8 +2172,13 @@ TEST(OptimizerTest, LambOptimizerTestExternalBaselineDouble) {
       3.6645618e+01, 1.1174072e+02, 8.4853485e+01, 3.3100498e-01, 3.4628010e+01,
       4.4757873e-02, 1.2550836e+01, 3.5532223e+01, 8.7362823e+01, 1.3257366e+00};
 
+  // Output new weights
   run_lamb_test_with_baseline(
-      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, m_new, v_new);
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
+
+  // Output new gradients
+  run_lamb_test_with_baseline(
+      shape, eta, w, g, m, v, alpha, beta, lambda, epsilon, {}, g_new, m_new, v_new);
 }
 
 TEST(OptimizerTest, LambOptimizerTest5DTensorMixPrecision32_16) {

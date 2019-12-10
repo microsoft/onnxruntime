@@ -20,8 +20,8 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
   constexpr int group_count = 1024;
   // length of [w, g, m1, m2, w_fp16].
   constexpr int input_stride = 5;
-  // length of [w_new, m1_new, m2_new, w_fp16_new].
-  constexpr int output_stride = 4;
+  // length of [w_new, g_new, m1_new, m2_new, w_fp16_new].
+  constexpr int output_stride = 5;
 
   std::vector<std::pair<int, int>> alias_pairs{};
   for (int i = 0; i < group_count; ++i) {
@@ -29,12 +29,14 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
     const int output = output_index_bias + i * output_stride;
     // w --> w_new
     alias_pairs.emplace_back(std::make_pair(input, output));
+    // g --> g_new
+    alias_pairs.emplace_back(std::make_pair(input + 1, output + 1));
     // m1 --> m1_new
-    alias_pairs.emplace_back(std::make_pair(input + 2, output + 1));
+    alias_pairs.emplace_back(std::make_pair(input + 2, output + 2));
     // m2 --> m2_new
-    alias_pairs.emplace_back(std::make_pair(input + 3, output + 2));
+    alias_pairs.emplace_back(std::make_pair(input + 3, output + 3));
     // w_fp16 --> w_fp16_new
-    alias_pairs.emplace_back(std::make_pair(input + 4, output + 3));
+    alias_pairs.emplace_back(std::make_pair(input + 4, output + 4));
   }
 
   return alias_pairs;
@@ -75,6 +77,7 @@ void check_inputs_and_outputs(
     const Tensor* m2,
     const Tensor* w_fp16,
     const Tensor* w_new,
+    const Tensor* g_new,
     const Tensor* m1_new,
     const Tensor* m2_new,
     const Tensor* w_fp16_new) {
@@ -83,25 +86,20 @@ void check_inputs_and_outputs(
   ORT_ENFORCE(g, "gradient tensor should not be null.");
   ORT_ENFORCE(m1, "First-order momentum tensor should not be null.");
   ORT_ENFORCE(m2, "Second-order momentum tensor should not be null.");
-  ORT_ENFORCE(w_new, "New weight tensor should not be null.");
   ORT_ENFORCE(m1_new, "New first-order momentum tensor should not be null.");
   ORT_ENFORCE(m2_new, "New second-order momentum tensor should not be null.");
   // Check if all shapes are good.
-  ORT_ENFORCE(w->Shape() == m1->Shape());
-  ORT_ENFORCE(w->Shape() == g->Shape());
-  ORT_ENFORCE(w->Shape() == m2->Shape());
-  ORT_ENFORCE(w->Shape() == w_new->Shape());
-  ORT_ENFORCE(w->Shape() == m1_new->Shape());
-  ORT_ENFORCE(w->Shape() == m2_new->Shape());
-  // Optionally check optional input's shape.
-  if (w_fp16)
-    ORT_ENFORCE(w->Shape() == w_fp16->Shape());
-  // Optionally check optional output's shape.
-  if (w_fp16_new)
-    ORT_ENFORCE(w->Shape() == w_fp16_new->Shape());
+  ORT_ENFORCE(m1->Shape() == m1_new->Shape());
+  ORT_ENFORCE(m2->Shape() == m2_new->Shape());
+  if (w_new)
+    ORT_ENFORCE(w->Shape() == w_new->Shape());
+  if (g_new)
+    ORT_ENFORCE(g->Shape() == g_new->Shape());
+  if (w_fp16 && w_fp16_new)
+    ORT_ENFORCE(w_fp16->Shape() == w_fp16_new->Shape());
 }
 
-template <typename TWeight, typename TMomentum>
+template <typename TWeight, typename TGradient, typename TMomentum>
 Status copy_inputs_to_outputs(
     OpKernelContext* ctx,
     const int non_grouped_input_count,
@@ -111,30 +109,33 @@ Status copy_inputs_to_outputs(
   for (int group_index = 0; group_index < group_count; ++group_index) {
     const int input_start_index = non_grouped_input_count + group_index * input_group_size;
     const Tensor& w = *ctx->Input<Tensor>(input_start_index);
+    const Tensor& g = *ctx->Input<Tensor>(input_start_index + 1);
     const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
     const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
     const int output_start_index = group_index * output_group_size;
-    Tensor& w_new = *ctx->Output(output_start_index, w.Shape());
-    Tensor& m1_new = *ctx->Output(output_start_index + 1, w.Shape());
-    Tensor& m2_new = *ctx->Output(output_start_index + 2, w.Shape());
+    Tensor* w_new = ctx->Output(output_start_index, w.Shape());
+    Tensor* g_new = ctx->Output(output_start_index + 1, g.Shape());
+    Tensor& m1_new = *ctx->Output(output_start_index + 2, m1.Shape());
+    Tensor& m2_new = *ctx->Output(output_start_index + 3, m2.Shape());
 
-    ORT_ENFORCE(w.Shape() == m1.Shape());
-    ORT_ENFORCE(w.Shape() == m2.Shape());
-    ORT_ENFORCE(w.Shape() == m1_new.Shape());
-    ORT_ENFORCE(w.Shape() == m2_new.Shape());
-
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, w_new));
+    if (w_new) {
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, *w_new));
+    }
+    if (g_new) {
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(g, *g_new));
+    }
     ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
     ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
 
     const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
-    Tensor* w_fp16_new = ctx->Output(output_start_index + 3, w.Shape());
-    if (w_fp16 && w_fp16_new) {
-      ORT_ENFORCE(w.Shape() == w_fp16->Shape());
-      ORT_ENFORCE(w.Shape() == w_fp16_new->Shape());
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
+    if (w_fp16) {
+      Tensor* w_fp16_new = ctx->Output(output_start_index + 4, w_fp16->Shape());
+      if (w_fp16_new) {
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
+      }
     }
   }
+
   return Status::OK();
 }
 
@@ -265,7 +266,6 @@ Status launch_lamb_reduction(
           reduction_buffer);
     } else {
       std::vector<void*> ptrs(tensor_count_per_group);
-      ;
       ptrs[0] = const_cast<CudaTIn1*>(p_ws[i]);  // weight tensor
       ptrs[1] = const_cast<CudaTIn2*>(p_ds[i]);  // update direction
       ptrs[2] = p_w_norms[i];                    // weight tensor's norm
@@ -308,6 +308,7 @@ Status launch_lamb_update(
     std::vector<CudaT3*>& p_ds,
     const std::vector<float>& thresholds,
     /* output */ std::vector<CudaT2*>& p_w_news,
+    /* output */ std::vector<CudaT3*>& p_g_news,
     /* output */ std::vector<half*>& p_w_fp16_news) {
   ORT_ENFORCE(group_count == static_cast<int>(tensor_sizes.size()));
 
@@ -316,9 +317,10 @@ Status launch_lamb_update(
   ORT_ENFORCE(group_count == static_cast<int>(p_ws.size()));
   ORT_ENFORCE(group_count == static_cast<int>(p_ds.size()));
   ORT_ENFORCE(group_count == static_cast<int>(p_w_news.size()));
+  ORT_ENFORCE(group_count == static_cast<int>(p_g_news.size()));
   ORT_ENFORCE(group_count == static_cast<int>(p_w_fp16_news.size()));
 
-  constexpr int tensor_count_per_group = 6;
+  constexpr int tensor_count_per_group = 7;
 
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
@@ -335,6 +337,7 @@ Status launch_lamb_update(
           CudaT2(thresholds[i]),
           p_ds[i],
           p_w_news[i],
+          p_g_news[i],
           p_w_fp16_news[i],
           tensor_sizes[i]);
     } else {
@@ -344,7 +347,8 @@ Status launch_lamb_update(
       ptrs[2] = const_cast<CudaT2*>(p_ws[i]);  // weight tensor
       ptrs[3] = p_ds[i];                       // direction
       ptrs[4] = p_w_news[i];                   // new weight tensor
-      ptrs[5] = p_w_fp16_news[i];              // new half-precision weight tensor
+      ptrs[5] = p_g_news[i];                   // new gradient tensor
+      ptrs[6] = p_w_fp16_news[i];              // new half-precision weight tensor
       auto key = thresholds[i];
       buckets[key].push_back(ptrs);
       tensor_sizes_in_bucket[key].push_back(tensor_sizes[i]);
@@ -382,7 +386,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
 
   constexpr int non_grouped_input_count = 4;
   constexpr int input_group_size = 5;
-  constexpr int output_group_size = 4;
+  constexpr int output_group_size = 5;
   constexpr int minimal_input_count = non_grouped_input_count + 1 * input_group_size - 1;
   constexpr int minimal_output_count = 1 * output_group_size - 1;
   const int grouped_input_tensor_count = ctx->InputCount() - non_grouped_input_count;
@@ -403,13 +407,13 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   ORT_ENFORCE(
       grouped_input_tensor_count % input_group_size == 0,
       "Input count must be ", non_grouped_input_count, " + ", input_group_size,
-      " x (numer of weights to optimize).");
-  // Outputs are repeated sequence of [w_new, m1_new, m2_new, w_fp16_new].
+      " x (number of weights to optimize).");
+  // Outputs are repeated sequence of [w_new, g_new, m1_new, m2_new, w_fp16_new].
   ORT_ENFORCE(
       grouped_output_tensor_count % output_group_size == 0,
       "Output count must be ", output_group_size,
-      " x (numer of weights to optimize).");
-  // Number of repeated [w, g, m1, m2, w_fp16]'s should match number of repeated [w_new, m1_new, m2_new, w_fp16_new].
+      " x (number of weights to optimize).");
+  // Number of repeated [w, g, m1, m2, w_fp16]'s should match number of repeated [w_new, g_new, m1_new, m2_new, w_fp16_new].
   ORT_ENFORCE(
       grouped_input_tensor_count / input_group_size == grouped_output_tensor_count / output_group_size,
       "Input and output tensor counts are not aligned. Please check LambOptimizer's input and output lists.");
@@ -429,7 +433,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     auto update_signal_tensor = ctx->Input<Tensor>(0);
     auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
-      return copy_inputs_to_outputs<T2, T4>(
+      return copy_inputs_to_outputs<T2, T3, T4>(
           ctx,
           non_grouped_input_count,
           group_count,
@@ -500,6 +504,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
   std::vector<CudaT2*> p_d_norms(group_count);
   // Output tensors' pointers.
   std::vector<CudaT2*> p_w_news(group_count);
+  std::vector<CudaT3*> p_g_news(group_count);
   std::vector<CudaT4*> p_m1_news(group_count);
   std::vector<CudaT4*> p_m2_news(group_count);
   std::vector<half*> p_w_fp16_news(group_count);
@@ -519,11 +524,12 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     // Prepare used outputs tensors for this group.
     const int output_start_index = group_index * output_group_size;
     Tensor* w_new = ctx->Output(output_start_index, w->Shape());
-    Tensor* m1_new = ctx->Output(output_start_index + 1, w->Shape());
-    Tensor* m2_new = ctx->Output(output_start_index + 2, w->Shape());
-    Tensor* w_fp16_new = ctx->Output(output_start_index + 3, w->Shape());
+    Tensor* g_new = ctx->Output(output_start_index + 1, g->Shape());
+    Tensor* m1_new = ctx->Output(output_start_index + 2, m1->Shape());
+    Tensor* m2_new = ctx->Output(output_start_index + 3, m2->Shape());
+    Tensor* w_fp16_new = ctx->Output(output_start_index + 4, w->Shape());
 
-    check_inputs_and_outputs(w, g, m1, m2, w_fp16, w_new, m1_new, m2_new, w_fp16_new);
+    check_inputs_and_outputs(w, g, m1, m2, w_fp16, w_new, g_new, m1_new, m2_new, w_fp16_new);
 
     // We should throw for preventing overflow in reduction APIs.
     // The index in CUDA system is 32-bit integer.
@@ -547,7 +553,8 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     p_d_norms[group_index] = d_norm_data + group_index;
 
     // Output tensors' pointers.
-    p_w_news[group_index] = reinterpret_cast<CudaT2*>(w_new->template MutableData<T2>());
+    p_w_news[group_index] = w_new != nullptr ? reinterpret_cast<CudaT2*>(w_new->template MutableData<T2>()) : nullptr;
+    p_g_news[group_index] = g_new != nullptr ? reinterpret_cast<CudaT3*>(g_new->template MutableData<T3>()) : nullptr;
     p_m1_news[group_index] = reinterpret_cast<CudaT4*>(m1_new->template MutableData<T4>());
     p_m2_news[group_index] = reinterpret_cast<CudaT4*>(m2_new->template MutableData<T4>());
     p_w_fp16_news[group_index] = w_fp16_new != nullptr ? reinterpret_cast<half*>(w_fp16_new->template MutableData<MLFloat16>()) : nullptr;
@@ -582,6 +589,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
       p_ds,
       threshold_,
       p_w_news,
+      p_g_news,
       p_w_fp16_news);
 
   return Status::OK();

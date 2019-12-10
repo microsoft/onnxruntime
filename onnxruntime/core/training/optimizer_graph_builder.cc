@@ -311,10 +311,10 @@ Status AddDirectWeightUpdate(
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
 
-  const size_t num_weights = weight_argdefs.size();
-  std::vector<ArgDef> output_weight_argdefs(num_weights);
-  std::vector<ArgDef> inputs_including_initializers{};
-  std::vector<TensorProto> new_initializers{};
+  std::vector<ArgDef> inputs_including_initializers;
+  std::vector<TensorProto> new_initializers;
+  std::vector<ArgDef> output_weight_argdefs;
+  std::vector<ArgDef> output_gradient_argdefs;
 
   for (size_t i = 0; i < opt_configs.size(); ++i) {
     ORT_RETURN_IF_NOT(
@@ -322,6 +322,7 @@ Status AddDirectWeightUpdate(
         "All optimizers must be the same type, but the graph contains ",
         opt_configs[0].name, " and ", opt_configs[i].name);
   }
+
   auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[0].name);
   ORT_RETURN_IF_NOT(
       opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
@@ -330,7 +331,8 @@ Status AddDirectWeightUpdate(
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
       opt_configs, graph_defs,
-      inputs_including_initializers, new_initializers, output_weight_argdefs));
+      inputs_including_initializers, new_initializers,
+      output_weight_argdefs, output_gradient_argdefs));
 
   graph_defs.AddInitializers(new_initializers);
 
@@ -466,14 +468,17 @@ Status AddConditionalWeightUpdate(
               "One graph can only contains one optimizer but ", opt_configs[0].name, " and ", opt_configs[i].name, " are found.");
         }
 
-        std::vector<ArgDef> external_inputs_including_initializers{};
-        std::vector<TensorProto> new_external_initializers{};
-        std::vector<ArgDef> output_weight_argdefs{};
+        std::vector<ArgDef> external_inputs_including_initializers;
+        std::vector<TensorProto> new_external_initializers;
+        std::vector<ArgDef> output_weight_argdefs;
+        std::vector<ArgDef> output_gradient_argdefs;
 
         ORT_RETURN_IF_ERROR(opt_builder->Build(
-            weight_argdefs, gradient_argdefs, /*do_update_argdef*/ nullptr, /* global_gradient_norm */ nullptr, opt_configs,
-            then_subgraph_defs, external_inputs_including_initializers,
-            new_external_initializers, output_weight_argdefs));
+            weight_argdefs, gradient_argdefs,
+            /*do_update_argdef*/ nullptr, /* global_gradient_norm */ nullptr,
+            opt_configs, then_subgraph_defs,
+            external_inputs_including_initializers, new_external_initializers,
+            output_weight_argdefs, output_gradient_argdefs));
 
         for (auto& arg : output_weight_argdefs) {
           group_input_argdefs.emplace_back(arg);

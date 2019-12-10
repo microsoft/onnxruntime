@@ -15,9 +15,18 @@ __global__ void _SGDOptimizer(
     const T* weights,
     const T* gradients,
     T* weights_out,
+    T* gradients_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  weights_out[id] = weights[id] - ((*eta) * gradients[id]);
+
+  const T delta = -(*eta) * gradients[id];
+
+  if (gradients_out) {
+    gradients_out[id] = delta;
+  }
+  if (weights_out) {
+    weights_out[id] = weights[id] + delta;
+  }
 }
 
 template <typename T>
@@ -26,6 +35,7 @@ void SGDOptimizerImpl(
     const T* weights,
     const T* gradients,
     T* weights_out,
+    T* gradients_out,
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
@@ -34,6 +44,7 @@ void SGDOptimizerImpl(
       weights,
       gradients,
       weights_out,
+      gradients_out,
       N);
 }
 
@@ -43,6 +54,7 @@ void SGDOptimizerImpl(
       const T* weights,                       \
       const T* gradients,                     \
       T* weights_out,                         \
+      T* gradients_out,                       \
       size_t count);
 
 SPECIALIZED_IMPL__SGDOptimizerImpl(float)

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, bool update_fp16_weight, bool has_loss_scale>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 __global__ void _AdamOptimizer(
     const T1* eta,
     const T2 update_count,
@@ -23,13 +23,14 @@ __global__ void _AdamOptimizer(
     T4 beta,
     T4 lambda,
     T4 epsilon,
-    T3* weights_out,
     T4* moment_1_out,
     T4* moment_2_out,
+    T3* weights_out,
+    T_GRAD* grads_out,
     half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  T_GRAD_NORM g_scale = has_loss_scale ? T_GRAD_NORM(*loss_scale) : T_GRAD_NORM(1.f);
+  T_GRAD_NORM g_scale = loss_scale ? T_GRAD_NORM(*loss_scale) : T_GRAD_NORM(1.f);
   if (grad_norm != nullptr && *grad_norm > g_scale) {
     const T_GRAD_NORM actual_g_norm = *grad_norm / g_scale;
     g_scale *= actual_g_norm;
@@ -56,12 +57,20 @@ __global__ void _AdamOptimizer(
   const T4 denom = one - _Pow(alpha, count);
   const T4 eta_new = T4(*eta) * numerator / denom;
 
-  // Compute the new weight.
-  weights_out[id] = weights[id] -
-                    T3(eta_new * m1o / (_Sqrt(m2o) + epsilon));
+  const T4 delta = -eta_new * m1o / (_Sqrt(m2o) + epsilon);
 
-  if (update_fp16_weight) {
-    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
+  // Compute the new gradient.
+  if (grads_out) {
+    grads_out[id] = T_GRAD(delta);
+  }
+
+  // Compute the new weight.
+  if (weights_out) {
+    weights_out[id] = weights[id] + T3(delta);
+
+    if (fp16_weights_out) {
+      fp16_weights_out[id] = static_cast<half>(weights_out[id]);
+    }
   }
 
   moment_1_out[id] = m1o;
@@ -82,91 +91,34 @@ void AdamOptimizerImpl(
     T4 beta,
     T4 lambda,
     T4 epsilon,
-    T3* weights_out,
     T4* moment_1_out,
     T4* moment_2_out,
+    T3* weights_out,
+    T_GRAD* grads_out,
     half* fp16_weights_out,
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  if (fp16_weights_out != nullptr && loss_scale != nullptr) {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        update_count,
-        weights,
-        grads,
-        moment_1,
-        moment_2,
-        loss_scale,
-        grad_norm,
-        alpha,
-        beta,
-        lambda,
-        epsilon,
-        weights_out,
-        moment_1_out,
-        moment_2_out,
-        fp16_weights_out,
-        N);
-  } else if (fp16_weights_out != nullptr && loss_scale == nullptr) {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        update_count,
-        weights,
-        grads,
-        moment_1,
-        moment_2,
-        loss_scale,
-        grad_norm,
-        alpha,
-        beta,
-        lambda,
-        epsilon,
-        weights_out,
-        moment_1_out,
-        moment_2_out,
-        fp16_weights_out,
-        N);
-  } else if (fp16_weights_out == nullptr && loss_scale != nullptr) {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        update_count,
-        weights,
-        grads,
-        moment_1,
-        moment_2,
-        loss_scale,
-        grad_norm,
-        alpha,
-        beta,
-        lambda,
-        epsilon,
-        weights_out,
-        moment_1_out,
-        moment_2_out,
-        fp16_weights_out,
-        N);
-  } else {
-    _AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, false, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        update_count,
-        weights,
-        grads,
-        moment_1,
-        moment_2,
-        loss_scale,
-        grad_norm,
-        alpha,
-        beta,
-        lambda,
-        epsilon,
-        weights_out,
-        moment_1_out,
-        moment_2_out,
-        nullptr,
-        N);
-  }
+  _AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      update_count,
+      weights,
+      grads,
+      moment_1,
+      moment_2,
+      loss_scale,
+      grad_norm,
+      alpha,
+      beta,
+      lambda,
+      epsilon,
+      moment_1_out,
+      moment_2_out,
+      weights_out,
+      grads_out,
+      fp16_weights_out,
+      N);
 }
 
 #define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM) \
@@ -183,9 +135,10 @@ void AdamOptimizerImpl(
       T4 beta,                                                             \
       T4 lambda,                                                           \
       T4 epsilon,                                                          \
-      T3* weights_out,                                                     \
       T4* moment_1_out,                                                    \
       T4* moment_2_out,                                                    \
+      T3* weights_out,                                                     \
+      T_GRAD* grads_out,                                                   \
       half* fp16_weights_out,                                              \
       size_t count);
 

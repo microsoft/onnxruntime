@@ -63,7 +63,7 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   }
 }
 
-template <typename T1, typename T2, typename T3, typename T_GRAD_NORM, bool has_loss_scale>
+template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void _LambComputeDirectionImpl(
     const T1* weights,
     const T2* grads,
@@ -117,39 +117,21 @@ void LambComputeDirection(
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  if (loss_scale == nullptr) {
-    _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        weights,
-        grads,
-        moment_1,
-        moment_2,
-        loss_scale,
-        grad_norm,
-        alpha,
-        beta,
-        lambda,
-        epsilon,
-        update_direction,
-        moment_1_out,
-        moment_2_out,
-        N);
-  } else {
-    _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        weights,
-        grads,
-        moment_1,
-        moment_2,
-        loss_scale,
-        grad_norm,
-        alpha,
-        beta,
-        lambda,
-        epsilon,
-        update_direction,
-        moment_1_out,
-        moment_2_out,
-        N);
-  }
+  _LambComputeDirectionImpl<T1, T2, T3, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      weights,
+      grads,
+      moment_1,
+      moment_2,
+      loss_scale,
+      grad_norm,
+      alpha,
+      beta,
+      lambda,
+      epsilon,
+      update_direction,
+      moment_1_out,
+      moment_2_out,
+      N);
 }
 
 #define SPECIALIZED_LAMB_COMPUTE_DIRECTION(T1, T2, T3, T_GRAD_NORM) \
@@ -184,7 +166,9 @@ __device__ __forceinline__ void _LambUpdateRule(
     const T2& w,
     const T2& threshold,
     const T3& d,
-    T2& w_new) {
+    T2* w_new,
+    T3* g_new,
+    half* w_fp16_new) {
   // The reason to have _Min(...):
   //   The confidence level should not exceed 1 for numerical stability.
   //   The threshold will be used even if r_norm and w_norm are 0 because
@@ -193,18 +177,36 @@ __device__ __forceinline__ void _LambUpdateRule(
   //   If a tensor is zero-initialized, its w_norm will be 0 and therefore its
   //   ratio is always 0 without the _Max(...). If a tensor's ratio is always
   //   0, that tensor will never be updated.
-  const auto ratio = w_norm != T2(0.0f) ? _Min(_Sqrt(w_norm / r_norm), threshold) : T2(1.0f);
-  // Compute new weight using the saved update direction.
-  const T2 w_new_tmp = w - ratio * T2(eta * T1(d));
-  // Only update weight if its new value is finite.
+  const T2 ratio = w_norm != T2(0.0f) ? _Min(_Sqrt(w_norm / r_norm), threshold) : T2(1.0f);
+
+  // Compute delta using the saved update direction.
+  const T2 delta = -ratio * T2((eta)*T1(d));
+  const T2 w_new_tmp = w + delta;
+
   if (_IsFiniteScalar(w_new_tmp)) {
-    w_new = w_new_tmp;
+    if (g_new) {
+      *g_new = T3(delta);
+    }
+    if (w_new) {
+      *w_new = w_new_tmp;
+      if (w_fp16_new) {
+        *w_fp16_new = half(w_new_tmp);
+      }
+    }
   } else {
-    w_new = w;
+    if (g_new) {
+      *g_new = T3(0);
+    }
+    if (w_new) {
+      *w_new = w;
+      if (w_fp16_new) {
+        *w_fp16_new = half(w);
+      }
+    }
   }
 }
 
-template <typename T1, typename T2, typename T3, bool update_fp16_weight>
+template <typename T1, typename T2, typename T3>
 __global__ void _LambUpdateImpl(
     const T1* eta,
     const T2* r_norm,
@@ -213,6 +215,7 @@ __global__ void _LambUpdateImpl(
     const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
+    T3* gradients_out,
     half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
@@ -224,11 +227,9 @@ __global__ void _LambUpdateImpl(
       weights[id],
       threshold,
       update_direction[id],
-      weights_out[id]);
-
-  if (update_fp16_weight) {
-    fp16_weights_out[id] = static_cast<half>(weights_out[id]);
-  }
+      weights_out != nullptr ? weights_out + id : nullptr,
+      gradients_out != nullptr ? gradients_out + id : nullptr,
+      fp16_weights_out != nullptr ? fp16_weights_out + id : nullptr);
 }
 
 template <typename T1, typename T2, typename T3>
@@ -240,34 +241,23 @@ void LambUpdate(
     const T2 threshold,
     const T3* update_direction,
     T2* weights_out,
+    T3* gradients_out,
     half* fp16_weights_out,
     size_t count) {
   int blocksPerGrid =
       (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  if (fp16_weights_out != nullptr) {
-    _LambUpdateImpl<T1, T2, T3, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        r_norm,
-        w_norm,
-        weights,
-        threshold,
-        update_direction,
-        weights_out,
-        fp16_weights_out,
-        N);
-  } else {
-    _LambUpdateImpl<T1, T2, T3, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-        eta,
-        r_norm,
-        w_norm,
-        weights,
-        threshold,
-        update_direction,
-        weights_out,
-        nullptr,
-        N);
-  }
+  _LambUpdateImpl<T1, T2, T3><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      eta,
+      r_norm,
+      w_norm,
+      weights,
+      threshold,
+      update_direction,
+      weights_out,
+      gradients_out,
+      fp16_weights_out,
+      N);
 }
 
 #define INSTANTIATE_LAMB_UPDATE(T1, T2, T3) \
@@ -279,6 +269,7 @@ void LambUpdate(
       const T2 threshold,                       \
       const T3* update_direction,               \
       T2* weights_out,                          \
+      T3* gradients_out,                        \
       half* fp16_weights_out,                   \
       size_t count);
 
@@ -308,7 +299,7 @@ __global__ void LambMultiTensorComputeDirectionImpl(
   T3* m2_new = reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start;
   const T1 scale = _ComputeGradScale<T1, T_GRAD_NORM, T1>(loss_scale, g_norm);
 
-#pragma unroll
+  #pragma unroll
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
     _LambComputeDirectionRule(
         scale,
@@ -367,7 +358,7 @@ INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
 
 template <typename T1, typename T2, typename T3>
 __global__ void LambMultiTensorUpdateImpl(
-    ChunkGroup<6> chunk_group,
+    ChunkGroup<7> chunk_group,
     const T1* eta,
     const T2 threshold) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
@@ -379,8 +370,9 @@ __global__ void LambMultiTensorUpdateImpl(
   const T2* r_norm = reinterpret_cast<const T2*>(chunk_group.tensor_ptrs[1][group_index]);
   const T2* w = reinterpret_cast<const T2*>(chunk_group.tensor_ptrs[2][group_index]) + chunk_start;
   const T3* d = reinterpret_cast<const T3*>(chunk_group.tensor_ptrs[3][group_index]) + chunk_start;
-  T2* w_new = reinterpret_cast<T2*>(chunk_group.tensor_ptrs[4][group_index]) + chunk_start;
-  half* w_fp16_new = chunk_group.tensor_ptrs[5][group_index] != nullptr ? reinterpret_cast<half*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start : nullptr;
+  T2* w_new = chunk_group.tensor_ptrs[4][group_index] != nullptr ? reinterpret_cast<T2*>(chunk_group.tensor_ptrs[4][group_index]) + chunk_start : nullptr;
+  T3* g_new = chunk_group.tensor_ptrs[5][group_index] != nullptr ? reinterpret_cast<T3*>(chunk_group.tensor_ptrs[5][group_index]) + chunk_start : nullptr;
+  half* w_fp16_new = chunk_group.tensor_ptrs[6][group_index] != nullptr ? reinterpret_cast<half*>(chunk_group.tensor_ptrs[6][group_index]) + chunk_start : nullptr;
 
   for (int i = threadIdx.x; i < chunk_size && i + chunk_start < tensor_size; i += blockDim.x) {
     _LambUpdateRule(
@@ -390,19 +382,18 @@ __global__ void LambMultiTensorUpdateImpl(
         w[i],
         threshold,
         d[i],
-        w_new[i]);
-    if (w_fp16_new != nullptr) {
-      w_fp16_new[i] = static_cast<half>(w_new[i]);
-    }
+        w_new != nullptr ? w_new + i : nullptr,
+        g_new != nullptr ? g_new + i : nullptr,
+        w_fp16_new != nullptr ? w_fp16_new + i : nullptr);
   }
 }
 
 template <typename T1, typename T2, typename T3>
 void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
-    ChunkGroup<6> chunk_group,
+    ChunkGroup<7> chunk_group,
     const T1* eta,
     const T2 threshold) {
-  const int thread_count = ChunkGroup<6>::thread_count_per_block;
+  const int thread_count = ChunkGroup<7>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
   LambMultiTensorUpdateImpl<T1, T2, T3><<<block_count, thread_count, 0>>>(
@@ -413,7 +404,7 @@ void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()(
 
 #define INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(T1, T2, T3)      \
   template void LambMultiTensorUpdateFunctor<T1, T2, T3>::operator()( \
-      ChunkGroup<6> chunk_group,                                      \
+      ChunkGroup<7> chunk_group,                                      \
       const T1* eta,                                                  \
       const T2 threshold);
 

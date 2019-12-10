@@ -60,11 +60,8 @@ TensorProto CreateTensorProto(
 
 class OptimizerBuilder {
  public:
-  OptimizerBuilder(const std::string& name, int num_inputs, int num_outputs,
-                   const std::vector<std::string>& attribute_names = {})
-      : num_inputs_(num_inputs),
-        num_outputs_(num_outputs),
-        name_(name),
+  OptimizerBuilder(const std::string& name, const std::vector<std::string>& attribute_names = {})
+      : name_(name),
         attr_names_(attribute_names) {}
 
   virtual ~OptimizerBuilder() {}
@@ -90,7 +87,9 @@ class OptimizerBuilder {
    *             placed in the parent graph, if there is one.
    *             Other initializers are treated as local to the current
    *             (sub)graph.
-   * @param[out] output_weight_argdef The output weight ArgDef. All optimizers
+   * @param[out] output_weight_argdefs The output weight ArgDef. All optimizers
+                 should have this output.
+   * @param[out] output_gradient_argdefs The output gradient ArgDef. All optimizers
                  should have this output.
    *
    * @return The status of the optimizer node addition.
@@ -104,14 +103,12 @@ class OptimizerBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs) const = 0;
+      std::vector<ArgDef>& output_weight_argdefs,
+      std::vector<ArgDef>& output_gradient_argdefs) const = 0;
 
   const std::string& OpType() const { return name_; }
 
  protected:
-  int num_inputs_;
-  int num_outputs_;
-
   const std::string OptimizerNodeName(const std::string& weight_name) const {
     return name_ + "_" + weight_name;
   }
@@ -133,7 +130,7 @@ class OptimizerBuilder {
 
 class SGDOptimizerBuilder final : public OptimizerBuilder {
  public:
-  SGDOptimizerBuilder() : OptimizerBuilder("SGDOptimizer", 3, 1) {}
+  SGDOptimizerBuilder() : OptimizerBuilder("SGDOptimizer") {}
 
   virtual Status Build(
       const std::vector<ArgDef>& weight_argdefs,
@@ -144,12 +141,13 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs) const override;
+      std::vector<ArgDef>& output_weight_argdefs,
+      std::vector<ArgDef>& output_gradient_argdefs) const override;
 };
 
 class AdamOptimizerBuilder final : public OptimizerBuilder {
  public:
-  AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer", 6, 4,
+  AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer",
                                             {"alpha", "beta", "lambda", "epsilon"}) {}
 
   virtual Status Build(
@@ -161,12 +159,13 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs) const override;
+      std::vector<ArgDef>& output_weight_argdefs,
+      std::vector<ArgDef>& output_gradient_argdefs) const override;
 };
 
 class LambOptimizerBuilder final : public OptimizerBuilder {
  public:
-  LambOptimizerBuilder() : OptimizerBuilder("LambOptimizer", 5, 3,
+  LambOptimizerBuilder() : OptimizerBuilder("LambOptimizer",
                                             {"alpha", "beta", "lambda", "epsilon"}) {}
 
   virtual Status Build(
@@ -178,7 +177,8 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs) const override;
+      std::vector<ArgDef>& output_weight_argdefs,
+      std::vector<ArgDef>& output_gradient_argdefs) const override;
 };
 
 class OptimizerBuilderRegistry : public GenericRegistry<OptimizerBuilder> {

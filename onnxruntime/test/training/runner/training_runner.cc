@@ -574,8 +574,8 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
         nullptr,
         params_.lr_params.feed_name,
         params_.optimizer_attributes(weight_name),
-        params_.use_fp16_moments,
-        loss_scale_input_name};
+        loss_scale_input_name,
+        params_.use_fp16_moments};
 
     const auto it = fp16_weights_map.find(weight_name);
     if (it != fp16_weights_map.cend()) {
