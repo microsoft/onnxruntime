@@ -65,65 +65,147 @@ static bool CheckInput(NodeArg* input, const logging::Logger& logger) {
   return true;
 }
 
+/** Match subgraph like the following:
+            (input_ids)
+          /             \
+     Shape               Shape
+       |                    |
+  ^Gather (indice=0)^    Gather (indice=1)--+
+      ^|^                  ^|^              |
+ ^Unsqueeze^           ^Unsqueeze^      Unsqueeze
+        ^\^            ^/^                  |
+         ^\^          ^/^             ConstantOfShape
+          ^\^        ^/^                    |
+            ^Concat^                     NonZero
+               |                            |
+               |                        Transpose  
+               |                            |
+               |                         Squeeze
+               |                            |
+               |                          Cast
+               |                            |
+               |                        Unsqueeze
+            +--|----------------------------+
+            |  |
+           Expand
+              |
+            Gather
+
+ Note that position gather node is the node in the bottom of above sub-graph.
+ Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found. 
+*/
 static bool MatchPositionEmbeddingSubgraph1(
     Graph& graph,
     Node& position_gather_node,
     NodeArg* input_ids,
     const logging::Logger& logger,
     std::vector<const Node::EdgeEnd*>& matched_edges) {
-  // Match two paths.
-  // Match Shape --> Expand path if needed.
-  std::vector<NodeIndex> position_parent_nodes;
-  std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_symbolic{
-      {0, 1, "Expand", {8}, kOnnxDomain},
-      {0, 1, "Shape", {1}, kOnnxDomain}};
-  std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(position_gather_node, true, position_embedding_path_symbolic, edges, logger)) {
-    return false;
-  }
-  if (edges[0]->GetNode().GetOutputEdgesCount() != 1 && edges[1]->GetNode().GetOutputEdgesCount() != 1) {
-    return false;
-  }
 
-  // Match Shape --> Gather --> Unsqueeze --> ConstantOfShape --> NonZero --> Transpose --> Squeeze --> Cast --> Unsqueeze --> Expand
-  Node& expand_node = *graph.GetNode(edges[0]->GetNode().Index());
-  Node& shape_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
-  std::vector<graph_utils::EdgeEndToMatch> pg_parent_path{
-      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Cast", {9}, kOnnxDomain},
-      {0, 0, "Squeeze", {1}, kOnnxDomain},
-      {0, 0, "Transpose", {1}, kOnnxDomain},
-      {0, 0, "NonZero", {9}, kOnnxDomain},
-      {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-      {0, 0, "Gather", {1, 11}, kOnnxDomain},
-      {0, 0, "Shape", {1}, kOnnxDomain},
-  };
-  matched_edges = edges;
-
-  if (!graph_utils::FindPath(expand_node, true, pg_parent_path, edges, logger)) {
+  if (position_gather_node.OpType() != "Gather") {
     return false;
   }
-  for (size_t i = 0; i < edges.size(); i++) {
-    if (edges[i]->GetNode().GetOutputEdgesCount() != 1) {
+  std::vector<const Node::EdgeEnd*> pg_edges;
+  // Find the "Expand" node
+  if (!graph_utils::FindPath(position_gather_node, true, {{0, 1, "Expand", {8}, kOnnxDomain}}, pg_edges, logger)) {
+    return false;
+  }
+  Node& expand_node = *graph.GetNode(pg_edges[0]->GetNode().Index());
+  const Node::EdgeEnd* expand_edge = pg_edges[0];
+  // Look for Path 1:
+  // Shape --> Gather --> Unsqueeze --> ConstantOfShape --> NonZero --> Transpose --> Squeeze --> Cast --> Unsqueeze --> Expand
+  if (!graph_utils::FindPath(expand_node, true,
+                             {{0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+                              {0, 0, "Cast", {9}, kOnnxDomain},
+                              {0, 0, "Squeeze", {1}, kOnnxDomain},
+                              {0, 0, "Transpose", {1}, kOnnxDomain},
+                              {0, 0, "NonZero", {9}, kOnnxDomain},
+                              {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
+                              {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+                              {0, 0, "Gather", {1, 11}, kOnnxDomain},
+                              {0, 0, "Shape", {1}, kOnnxDomain}},
+                             pg_edges, logger)) {
+    return false;
+  }
+  // All nodes in Path 1 except the "Gather" node must have only 1 output edge.
+  for (size_t i = 0; i < pg_edges.size() - 2; i++) {
+    if (pg_edges[i]->GetNode().GetOutputEdgesCount() != 1) {
       return false;
     }
   }
+  if (pg_edges[8]->GetNode().GetOutputEdgesCount() != 1) {
+    return false;
+  }
   // Check if the second input of the Gather node in the path has a constant input of 1
-  Node& gather_node = *graph.GetNode(edges[edges.size() - 2]->GetNode().Index());
+  Node& gather_node = *graph.GetNode(pg_edges[pg_edges.size() - 2]->GetNode().Index());
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node.InputDefs()[1]), int64_t(1), true)) {
     DEBUG_LOG("Second input of Gather should be a constant with value 1. ");
     return false;
   }
 
-  // Check if the parent of "shape" is the input_ids
-  Node& shape_node_2 = *graph.GetNode(edges[edges.size() - 1]->GetNode().Index());
-  if (shape_node_1.MutableInputDefs()[0] != input_ids ||
-      shape_node_2.MutableInputDefs()[0] != input_ids) {
+  // Match Shape --> Expand path if needed.
+  std::vector<const Node::EdgeEnd*> pg_edges_2;
+  Node* p_shape_node_2 = nullptr;
+  const Node::EdgeEnd* unsqueeze_edge = nullptr;
+  if (graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1}, kOnnxDomain}}, pg_edges_2, logger)) {
+    p_shape_node_2 = graph.GetNode(pg_edges_2[0]->GetNode().Index());
+    // In this case, the "Gather" node in "Path 1" must have 1 output edge.
+    if (pg_edges[7]->GetNode().GetOutputEdgesCount() != 1) {
+      return false;
+    }
+  } else if (graph_utils::FindPath(expand_node, true,
+                                   {{0, 1, "Concat", {4}, kOnnxDomain},
+                                    {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+                                    {0, 0, "Gather", {1, 11}, kOnnxDomain},
+                                    {0, 0, "Shape", {1}, kOnnxDomain}},
+                                   pg_edges_2, logger)) {
+    p_shape_node_2 = graph.GetNode(pg_edges_2[3]->GetNode().Index());
+    // In this case, the "Gather" node in "Path 1" must have 2 output edges.
+    if (pg_edges[7]->GetNode().GetOutputEdgesCount() != 2) {
+      return false;
+    }
+    // Check for Unsqueeze --> Concat
+    Node& concat_node = *graph.GetNode(pg_edges_2[0]->GetNode().Index());
+    std::vector<const Node::EdgeEnd*> pg_edges_3;
+    if (!graph_utils::FindPath(concat_node, true,
+                               {{0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
+                                {0, 0, "Gather", {1, 11}, kOnnxDomain}},
+                               pg_edges_3, logger)) {
+      return false;
+    }
+    unsqueeze_edge = pg_edges_3[0];
+    if (pg_edges_3[0]->GetNode().GetOutputEdgesCount() != 1 || pg_edges_3[1]->GetNode().GetOutputEdgesCount() != 2) {
+      return false;
+    }
+    // The gather node must be the same gather node in path 1.
+    if (graph.GetNode(pg_edges_3[1]->GetNode().Index()) != graph.GetNode(pg_edges[7]->GetNode().Index())) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  for (size_t i = 0; i < pg_edges_2.size(); i++) {
+    if (pg_edges_2[i]->GetNode().GetOutputEdgesCount() != 1) {
+      return false;
+    }
+  }
+  // Check if the two paths of position gather lead to the same input.
+  Node& shape_node_1 = *graph.GetNode(pg_edges[pg_edges.size() - 1]->GetNode().Index());
+  Node& shape_node_2 = *graph.GetNode(p_shape_node_2->Index());
+  if (shape_node_1.MutableInputDefs()[0] != shape_node_2.MutableInputDefs()[0]) {
+    return false;
+  }
+  // Check if the parent of "shape" is the parent of "word gather"
+  if (shape_node_1.MutableInputDefs()[0] != input_ids) {
     return false;
   }
 
-  matched_edges.insert(matched_edges.end(), edges.begin(), edges.end());
+  // Add all the valid nodes to result.
+  matched_edges = pg_edges;
+  matched_edges.push_back(expand_edge);
+  matched_edges.insert(matched_edges.end(), pg_edges_2.begin(), pg_edges_2.end());
+  if (unsqueeze_edge != nullptr) {
+    matched_edges.push_back(unsqueeze_edge);
+  }
   return true;
 }
 
@@ -251,7 +333,6 @@ static bool MatchPositionEmbeddingSubgraph2(
   matched_edges.push_back(edges[0]);
   return true;
 }
-
 /**
 Embed Layer Normalization will fuse embeddings and mask processing into one node : 
 The embeddings before conversion:
