@@ -84,8 +84,7 @@ static bool MatchPositionEmbeddingSubgraph1(
   if (edges[0]->GetNode().GetOutputEdgesCount() != 1 && edges[1]->GetNode().GetOutputEdgesCount() != 1) {
     return false;
   }
-  auto p_expand_node = graph.GetNode(edges[0]->GetNode().Index());
-  auto p_shape_node = graph.GetNode(edges[1]->GetNode().Index());
+
   // Match Shape --> Gather --> Unsqueeze --> ConstantOfShape --> NonZero --> Transpose --> Squeeze --> Cast --> Unsqueeze --> Expand
   Node& expand_node = *graph.GetNode(edges[0]->GetNode().Index());
   Node& shape_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
@@ -120,7 +119,7 @@ static bool MatchPositionEmbeddingSubgraph1(
   // Check if the parent of "shape" is the input_ids
   Node& shape_node_2 = *graph.GetNode(edges[edges.size() - 1]->GetNode().Index());
   if (shape_node_1.MutableInputDefs()[0] != input_ids ||
-      shape_node_1.MutableInputDefs()[0] != input_ids) {
+      shape_node_2.MutableInputDefs()[0] != input_ids) {
     return false;
   }
 
@@ -244,7 +243,7 @@ static bool MatchPositionEmbeddingSubgraph2(
   // Check if the two paths of position gather lead to the same input.
   if (shape_node_0.MutableInputDefs()[0] != input_ids ||
       shape_node_1.MutableInputDefs()[0] != input_ids) {
-    DEBUG_LOG("Two shape nodes are expected to be input_ids.");
+    DEBUG_LOG("The parent of two shape nodes are expected to be input_ids.");
     return false;
   }
 
