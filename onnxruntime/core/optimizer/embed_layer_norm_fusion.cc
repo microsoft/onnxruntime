@@ -65,6 +65,194 @@ static bool CheckInput(NodeArg* input, const logging::Logger& logger) {
   return true;
 }
 
+static bool MatchPositionEmbeddingSubgraph1(
+    Graph& graph,
+    Node& position_gather_node,
+    NodeArg* input_ids,
+    const logging::Logger& logger,
+    std::vector<const Node::EdgeEnd*>& matched_edges) {
+  // Match two paths.
+  // Match Shape --> Expand path if needed.
+  std::vector<NodeIndex> position_parent_nodes;
+  std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_symbolic{
+      {0, 1, "Expand", {8}, kOnnxDomain},
+      {0, 1, "Shape", {1}, kOnnxDomain}};
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(position_gather_node, true, position_embedding_path_symbolic, edges, logger)) {
+    return false;
+  }
+  if (edges[0]->GetNode().GetOutputEdgesCount() != 1 && edges[1]->GetNode().GetOutputEdgesCount() != 1) {
+    return false;
+  }
+  auto p_expand_node = graph.GetNode(edges[0]->GetNode().Index());
+  auto p_shape_node = graph.GetNode(edges[1]->GetNode().Index());
+  // Match Shape --> Gather --> Unsqueeze --> ConstantOfShape --> NonZero --> Transpose --> Squeeze --> Cast --> Unsqueeze --> Expand
+  Node& expand_node = *graph.GetNode(edges[0]->GetNode().Index());
+  Node& shape_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
+  std::vector<graph_utils::EdgeEndToMatch> pg_parent_path{
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Cast", {9}, kOnnxDomain},
+      {0, 0, "Squeeze", {1}, kOnnxDomain},
+      {0, 0, "Transpose", {1}, kOnnxDomain},
+      {0, 0, "NonZero", {9}, kOnnxDomain},
+      {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain},
+  };
+  matched_edges = edges;
+
+  if (!graph_utils::FindPath(expand_node, true, pg_parent_path, edges, logger)) {
+    return false;
+  }
+  for (size_t i = 0; i < edges.size(); i++) {
+    if (edges[i]->GetNode().GetOutputEdgesCount() != 1) {
+      return false;
+    }
+  }
+  // Check if the second input of the Gather node in the path has a constant input of 1
+  Node& gather_node = *graph.GetNode(edges[edges.size() - 2]->GetNode().Index());
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node.InputDefs()[1]), int64_t(1), true)) {
+    DEBUG_LOG("Second input of Gather should be a constant with value 1. ");
+    return false;
+  }
+
+  // Check if the parent of "shape" is the input_ids
+  Node& shape_node_2 = *graph.GetNode(edges[edges.size() - 1]->GetNode().Index());
+  if (shape_node_1.MutableInputDefs()[0] != input_ids ||
+      shape_node_1.MutableInputDefs()[0] != input_ids) {
+    return false;
+  }
+
+  matched_edges.insert(matched_edges.end(), edges.begin(), edges.end());
+  return true;
+}
+
+/** Match subgraph like the following:
+            (input_ids)
+          /             \
+     Shape               Shape
+       |                    |
+    Gather (indice=0)    Gather (indice=1)--+
+       |                    |               |
+    Unsqueeze            Unsqueeze         Cast
+         \             /                    |
+          \           /                Range(start=0, delta=1)
+           \         /                      |
+             Concat                       Unsqueeze
+               |                            |
+            +--|----------------------------+
+            |  |
+           Expand
+              |
+            Gather
+
+ Note that position gather node is the node in the bottom of above sub-graph.
+*/
+
+static bool MatchPositionEmbeddingSubgraph2(
+    Graph& graph,
+    Node& position_gather_node,
+    NodeArg* input_ids,
+    const logging::Logger& logger,
+    std::vector<const Node::EdgeEnd*>& matched_edges) {
+
+  // Match Gather <-- Expand <-- Unsqueeze <-- Range <-- Cast <-- Gather <-- Shape
+  std::vector<NodeIndex> position_parent_nodes;
+  std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_symbolic{
+      {0, 1, "Expand", {8}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Range", {11}, kOnnxDomain},
+      {0, 1, "Cast", {9}, kOnnxDomain},
+      {0, 0, "Gather", {11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain},
+  };
+  std::vector<const Node::EdgeEnd*> edges;
+  if (!graph_utils::FindPath(position_gather_node, true, position_embedding_path_symbolic, edges, logger)) {
+    DEBUG_LOG("Failed to find path 1.");
+    return false;
+  }
+  for (size_t i = 0; i < edges.size(); i++) {
+    if (edges[i]->GetNode().GetOutputEdgesCount() != (i == 4 ? 2 : 1)) {
+      DEBUG_LOG("Output edge count not expected for nodes in path 1.");
+      return false;
+    }
+  }
+  matched_edges = edges;
+
+  Node& expand_node = *graph.GetNode(edges[0]->GetNode().Index());
+  Node& range_node = *graph.GetNode(edges[2]->GetNode().Index());
+  Node& gather_node_1 = *graph.GetNode(edges[4]->GetNode().Index());
+  Node& shape_node_1 = *graph.GetNode(edges[5]->GetNode().Index());
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(range_node.InputDefs()[0]), int64_t(0), true)) {
+    DEBUG_LOG("The first input of Range should be a constant with value 0.");
+    return false;
+  }
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(range_node.InputDefs()[2]), int64_t(1), true)) {
+    DEBUG_LOG("The third input of Range should be a constant with value 1.");
+    return false;
+  }
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node_1.InputDefs()[1]), int64_t(1), true)) {
+    DEBUG_LOG("The second input of Gather in path1 should be a constant with value 1.");
+    return false;
+  }
+
+  std::vector<graph_utils::EdgeEndToMatch> expand_parent_path1{
+      {0, 1, "Concat", {11}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
+      {0, 0, "Shape", {1}, kOnnxDomain},
+  };
+  if (!graph_utils::FindPath(expand_node, true, expand_parent_path1, edges, logger)) {
+    DEBUG_LOG("Failed to find path 2.");
+    return false;
+  }
+  for (size_t i = 0; i < edges.size(); i++) {
+    if (edges[i]->GetNode().GetOutputEdgesCount() != 1) {
+      DEBUG_LOG("Output edge count not expected for nodes in path 2.");
+      return false;
+    }
+  }
+
+  Node& concat_node = *graph.GetNode(edges[0]->GetNode().Index());
+  Node& gather_node_0 = *graph.GetNode(edges[2]->GetNode().Index());
+  Node& shape_node_0 = *graph.GetNode(edges[3]->GetNode().Index());
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node_0.InputDefs()[1]), int64_t(0), true)) {
+    DEBUG_LOG("Second input of Gather in path2 should be a constant with value 0.");
+    return false;
+  }
+  matched_edges.insert(matched_edges.end(), edges.begin(), edges.end());
+
+  std::vector<graph_utils::EdgeEndToMatch> concat_parent_path{
+      {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain}
+  };
+  if (!graph_utils::FindPath(concat_node, true, concat_parent_path, edges, logger)) {
+    DEBUG_LOG("Failed to find path 3.");
+    return false;
+  }
+  // Two paths share the gather node (with second input indices==1)
+  if (edges[1]->GetNode().Index() != gather_node_1.Index()) {
+    DEBUG_LOG(" Gather nodes in path 1 and 3 expected to be same node.");
+    return false;
+  }
+  if (edges[0]->GetNode().GetOutputEdgesCount() != 1) {
+    DEBUG_LOG("Output edge count not expected for nodes in path 3.");
+    return false;
+  }
+
+  // Check if the two paths of position gather lead to the same input.
+  if (shape_node_0.MutableInputDefs()[0] != input_ids ||
+      shape_node_1.MutableInputDefs()[0] != input_ids) {
+    DEBUG_LOG("Two shape nodes are expected to be input_ids.");
+    return false;
+  }
+
+  // Do not add the gather node since it has been added in another path.
+  matched_edges.push_back(edges[0]);
+  return true;
+}
+
 /**
 Embed Layer Normalization will fuse embeddings and mask processing into one node : 
 The embeddings before conversion:
@@ -176,22 +364,19 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
+    NodeArg* input_ids = word_gather_node.MutableInputDefs()[1];
+
     // Check the second input of position gather. If it's not initializer, check for two paths.
-    Node* p_expand_node = nullptr;
-    Node* p_shape_node = nullptr;
     std::vector<const Node::EdgeEnd*> pg_edges;
-    bool isValidEmbedSubNode = true;
     if (graph_utils::IsConstantInitializer(graph, position_gather_node.MutableInputDefs()[1]->Name())) {
-      // Check if the second input of position gather is a tensor with values evenly spaced by 1 starting from 0. 
+      // Check if the second input of position gather is a tensor with values evenly spaced by 1 starting from 0.
       std::vector<int64_t> data;
       auto expected_shape = word_gather_node.MutableInputDefs()[1]->Shape();
-      if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) 
-        || !utils::HasDimValue(expected_shape->dim()[0]) 
-        || !utils::HasDimValue(expected_shape->dim()[1])
-        || static_cast<int>(data.size()) != expected_shape->dim()[0].dim_value() * expected_shape->dim()[1].dim_value()) {
+      if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) || !utils::HasDimValue(expected_shape->dim()[0]) || !utils::HasDimValue(expected_shape->dim()[1]) || static_cast<int>(data.size()) != expected_shape->dim()[0].dim_value() * expected_shape->dim()[1].dim_value()) {
         continue;
       }
       int64_t expected_value = 0;
+      bool isValidEmbedSubNode = true;
       for (size_t i = 0; i < data.size(); i++) {
         if (data[i] != expected_value) {
           isValidEmbedSubNode = false;
@@ -202,68 +387,19 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
           expected_value = 0;
         }
       }
+      if (!isValidEmbedSubNode) {
+        continue;
+      }
     } else {
-      // Match two paths. 
-      // Match Shape --> Expand path if needed.
-      std::vector<NodeIndex> position_parent_nodes;
-      std::vector<graph_utils::EdgeEndToMatch> position_embedding_path_symbolic{
-          {0, 1, "Expand", {8}, kOnnxDomain},
-          {0, 1, "Shape", {1}, kOnnxDomain}};
-      if (!graph_utils::FindPath(position_gather_node, true, position_embedding_path_symbolic, edges, logger)) {
-        continue;
-      }
-      if (edges[0]->GetNode().GetOutputEdgesCount() != 1 && edges[1]->GetNode().GetOutputEdgesCount() != 1) {
-        continue;    
-      }
-      p_expand_node = graph.GetNode(edges[0]->GetNode().Index());
-      p_shape_node = graph.GetNode(edges[1]->GetNode().Index());
-      // Match Shape --> Gather --> Unsqueeze --> ConstantOfShape --> NonZero --> Transpose --> Squeeze --> Cast --> Unsqueeze --> Expand
-      Node& expand_node = *graph.GetNode(edges[0]->GetNode().Index());
-      Node& shape_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
-      std::vector<graph_utils::EdgeEndToMatch> pg_parent_path{
-          {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-          {0, 0, "Cast", {9}, kOnnxDomain},
-          {0, 0, "Squeeze", {1}, kOnnxDomain},
-          {0, 0, "Transpose", {1}, kOnnxDomain},
-          {0, 0, "NonZero", {9}, kOnnxDomain},
-          {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
-          {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
-          {0, 0, "Gather", {1, 11}, kOnnxDomain},
-          {0, 0, "Shape", {1}, kOnnxDomain},
-      };
-      if (!graph_utils::FindPath(expand_node, true, pg_parent_path, pg_edges, logger)) {
-        continue;
-      }
-      for (size_t i = 0; i < pg_edges.size(); i++) {
-        if (pg_edges[i]->GetNode().GetOutputEdgesCount() != 1) {
-          isValidEmbedSubNode = false;
-          break;
+      if (!MatchPositionEmbeddingSubgraph1(graph, position_gather_node, input_ids, logger, pg_edges)) {
+        pg_edges.clear();
+        if (!MatchPositionEmbeddingSubgraph2(graph, position_gather_node, input_ids, logger, pg_edges)) {
+          continue;
         }
       }
-      // Check if the second input of the Gather node in the path has a constant input of 1
-      Node& gather_node = *graph.GetNode(pg_edges[pg_edges.size() - 2]->GetNode().Index());
-      if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node.InputDefs()[1]), int64_t(1), true)) {
-        DEBUG_LOG("Second input of Gather should be a constant with value 1. ");
-        
-        continue;
-      }
-      // Check if the two paths of position gather lead to the same input. 
-      Node& shape_node_2 = *graph.GetNode(pg_edges[pg_edges.size() - 1]->GetNode().Index());
-      if (shape_node_1.MutableInputDefs()[0] != shape_node_2.MutableInputDefs()[0]) {
-        continue;
-      }
-      // Check if the parent of "shape" is the parent of "word gather"
-      if (shape_node_1.MutableInputDefs()[0] != word_gather_node.MutableInputDefs()[1]) {
-        continue;
-      }
-
-    }
-    if (!isValidEmbedSubNode) {
-      continue;
     }
 
     // Get input "input_ids" from node.
-    NodeArg* input_ids = word_gather_node.MutableInputDefs()[1];
     if (!CheckInput(input_ids, logger)) {
       DEBUG_LOG("Input id is not valid. ");
       continue;
@@ -283,32 +419,30 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) != 
-      utils::GetTensorShapeFromTensorShapeProto(*(segment_ids->Shape()))) {
+    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
+        utils::GetTensorShapeFromTensorShapeProto(*(segment_ids->Shape()))) {
       DEBUG_LOG("Input_ids and segment id should have the same shape. ");
       continue;
     }
-    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) != 
-      utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape()))) {
+    if (utils::GetTensorShapeFromTensorShapeProto(*(input_ids->Shape())) !=
+        utils::GetTensorShapeFromTensorShapeProto(*(mask->Shape()))) {
       DEBUG_LOG("Input_ids and mask should have the same shape. ");
       continue;
     }
 
     NodeArg* gamma = layer_norm_node.MutableInputDefs()[1];
     NodeArg* beta = layer_norm_node.MutableInputDefs()[2];
-    if (gamma->Shape() == nullptr 
-      || gamma->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
+    if (gamma->Shape() == nullptr || gamma->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
       DEBUG_LOG("Gamma should be of shape (hidden_size). ");
       continue;
     }
 
-    if (beta->Shape() == nullptr 
-      || beta->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
+    if (beta->Shape() == nullptr || beta->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
       DEBUG_LOG("Beta should be of shape (hidden_size). ");
       continue;
     }
 
-    // Cast input_ids, segment_ids, and mask to int32 if needed. 
+    // Cast input_ids, segment_ids, and mask to int32 if needed.
     input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
     segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
     mask = CastToInt32(graph, mask, layer_norm_node.GetExecutionProviderType());
@@ -338,10 +472,6 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     std::vector<NodeIndex> nodes_to_remove;
     for (size_t i = 0; i < pg_edges.size(); i++) {
       nodes_to_remove.push_back(pg_edges[i]->GetNode().Index());
-    }
-    if (p_shape_node != nullptr && p_expand_node != nullptr) {
-      nodes_to_remove.push_back(p_shape_node->Index());
-      nodes_to_remove.push_back(p_expand_node->Index());
     }
     nodes_to_remove.push_back(word_gather_node.Index());
     nodes_to_remove.push_back(position_gather_node.Index());
