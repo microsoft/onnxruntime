@@ -132,7 +132,7 @@ void RegisterAutoMLSchemas() {
             ctx.getOutputType(19)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
             ctx.getOutputType(20)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
 
-            for (int i = 0; i < ctx.getNumOutputs(); ++i) {
+            for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
               *ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
             }
           });
