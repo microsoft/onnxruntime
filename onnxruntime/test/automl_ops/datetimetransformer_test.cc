@@ -234,8 +234,6 @@ TEST(DateTimeTransformer, Future_2025_June_30) {
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Date", {1}, {date});
 
-  SysClock::time_point stp = SysClock::from_time_t(date);
-
   dft::DateTimeTransformer dt("", "");
   dft::TimePoint tp = dt.execute(date);
   ASSERT_EQ(tp.year, 2025);
