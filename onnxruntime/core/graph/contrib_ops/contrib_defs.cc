@@ -1407,6 +1407,369 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
           AttributeProto::INT);
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAdd)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(Performs element-wise binary quantized addition (with Numpy-style broadcasting support).
+This operator supports **multidirectional (i.e., Numpy-style) broadcasting**.
+```
+C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point
+```
+)DOC")
+      .Input(0, "A", "First operand.", "T")
+      .Input(
+          1,
+          "A_scale",
+          "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          2,
+          "A_zero_point",
+          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Input(3, "B", "Second operand.", "T")
+      .Input(
+          4,
+          "B_scale",
+          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          5,
+          "B_zero_point",
+          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "C_scale",
+          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          7,
+          "C_zero_point",
+          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Output(0, "C", "Result, has same element type as two inputs", "T")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to 8 bit signed and unsigned tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearReduceMean)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(
+Computes the mean of the low-precision input tensor's element along the provided axes.
+The resulting tensor has the same rank as the input if keepdims equal 1. If keepdims equal 0,
+then the resulting tensor have the reduced dimension pruned. The above behavior is similar to numpy,
+with the exception that numpy default keepdims to False instead of True.
+Input and Output scales and zero points are used to requantize the output in a new range. 
+This helps to improve accuracy as after ReduceMean operation the range of the output is expected to decrease.
+
+```
+reduced_intermediate  = onnx.ReduceMean(data, axis=axes, keepdims=keepdims == 1)
+reduced = ((data_scale/reduced_scale) * (reduced_intermediate - data_zero_point)) + reduced_zero_point
+
+```
+)DOC")
+      .Input(0, "data", "An input tensor.", "T")
+      .Input(
+          1,
+          "data_scale",
+          "Input scale. Default value is 1 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          2,
+          "data_zero_point",
+          "Input zero point. Default value is 0 if it's not specified.  It's a scalar, which means a per-tensor/layer quantization.",          
+          "T",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "reduced_scale",
+          "Output scale. Default value is 1 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",          
+          "tensor(float)")
+      .Input(
+          4,
+          "reduced_zero_point",
+          "Output zero point. Default value is 0 if it's not specified.  It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Output(0, "reduced", "Reduced output tensor.", "T")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
+      .Attr(
+          "axes",
+          "A list of integers, along which to reduce. The default is to reduce over all the dimensions of the input tensor.",
+          AttributeProto::INTS)
+      .Attr(
+          "keepdims",
+          "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
+          AttributeProto::INT);
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MulInteger)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
+"This operator supports **multidirectional (i.e., Numpy-style) broadcasting**"
+output is FP32 when When input and output scales are provided. By defualt output is the int32 accumulated result of the mul operation
+
+```
+When scales are not provided, zero points are optional
+C (int32) = (A - A_zero_point) * (B - B_zero_point)
+
+When scales are provided (zero points are optional)
+output_intermediate (int32) = (A - A_zero_point) * (B - B_zero_point)
+C (float) = output_intermediate * (A_scale * B_scale)
+```
+
+)DOC")
+      .Input(0, "A", "First operand.", "T")
+      .Input(
+          1,
+          "A_scale",
+          "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Input(
+          2,
+          "A_zero_point",
+          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Input(3, "B", "Second operand.", "T")
+      .Input(
+          4,
+          "B_scale",
+          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)",
+          OpSchema::Optional)
+      .Input(
+          5,
+          "B_zero_point",
+          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Output(0, "C", "Constrain output to 32 bit tensor", "T1")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint("T1", {"tensor(int32)", "tensor(float32)"}, "Constrain output types to 32 bit tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
+"This operator supports **multidirectional (i.e., Numpy-style) broadcasting**
+```
+When scales are provided (zero points are optional)
+output_intermediate (int32) = (A - A_zero_point) * (B - B_zero_point)
+C (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point
+```
+)DOC")
+      .Input(0, "A", "First operand.", "T")
+      .Input(
+          1,
+          "A_scale",
+          "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          2,
+          "A_zero_point",
+          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Input(3, "B", "Second operand.", "T")
+      .Input(
+          4,
+          "B_scale",
+          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          5,
+          "B_zero_point",
+          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Input(
+          6,
+          "C_scale",
+          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          7,
+          "C_zero_point",
+          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Output(0, "C", "Constrain output to 8 bit tensor", "T1")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint("T1", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.");
+
+    const char* auto_pad_doc =
+      "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
+      "default value is NOTSET, which means explicit padding is used. "
+      "SAME_UPPER or SAME_LOWER mean pad the input so that the output size match the input."
+      "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
+      "beginning for SAME_LOWER. VALID mean no padding.";
+
+    ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConvInteger)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(R"DOC(	
+The convolution operator consumes a quantized input tensor, its scale and zero point,	
+a quantized filter, its scale and zero point, and computes the output. 
+This operator fuses ConvInteger + int32->float step
+Bias can be float or int32. When bias is float it adds the bias to the convolution result after converting the result to float.
+Bias is quantized using scale as x_scale * w_scale and zero point as '0'
+Each scale and zero point pair must have same shape. It means they must be either scalars (per tensor) or 1-D tensors (per channel).	
+The production MUST never overflow. The accumulation may overflow in 32 bits	
+if the input is 8 bits.)DOC")
+      .Input(
+          0,
+          "x",
+          "Input data tensor from previous layer; "
+          "has size (N x C x H x W), where N is the batch size, "
+          "C is the number of channels, and H and W are the "
+          "height and width. Note that this is for the 2D image. "
+          "Otherwise the size is (N x C x D1 x D2 ... x Dn). "
+          "Optionally, if dimension denotation is "
+          "in effect, the operation expects input data tensor "
+          "to arrive with the dimension denotation of [DATA_BATCH, "
+          "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
+          "T1")
+      .Input(
+          1,
+          "w",
+          "The weight tensor that will be used in the "
+          "convolutions; has size (M x C/group x kH x kW), where C "
+          "is the number of channels, and kH and kW are the "
+          "height and width of the kernel, and M is the number "
+          "of feature maps. For more than 2 dimensions, the "
+          "kernel shape will be (M x C/group x k1 x k2 x ... x kn), "
+          "where (k1 x k2 x ... kn) is the dimension of the kernel. "
+          "Optionally, if dimension denotation is in effect, "
+          "the operation expects the weight tensor to arrive "
+          "with the dimension denotation of [FILTER_OUT_CHANNEL, "
+          "FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. "
+          "X.shape[1] == (W.shape[1] * group) == C "
+          "(assuming zero based indices for the shape array). "
+          "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
+          "T2")
+      .Input(
+          2,
+          "x_zero_point",
+          "Zero point tensor for input 'x'. It's optional and default value is 0. It's a scalar, which means a per-tensor/layer quantization.",
+          "T1",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "w_zero_point",
+          "Scale tensor for input 'w'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number "
+          "of elements should be equal to the number of output channels (M)",
+          "T2",
+          OpSchema::Optional)
+      .Input(
+          4,
+          "x_scale",
+          "Scale tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          5,
+          "w_scale",
+          "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, "
+          "which means a per-tensor/layer or per output channel quantization. "
+          "If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
+          "tensor(float)")
+      .Input(
+          6,
+          "B",
+          "Optional 1D bias to be added to the convolution, has size of M."
+          "Bias can be quantized or in fp32 format.",
+          "T4",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "y",
+          "Output data tensor that contains the result of the "
+          "convolution. The output dimensions are functions "
+          "of the kernel size, stride size, and pad lengths.",
+          "tensor(float)")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input x and its zero point data type to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int8)", "tensor(uint8)"},
+          "Constrain input w and its zero point data type to 8-bit integer tensor.")
+      .TypeConstraint(
+          "T4",
+          {"tensor(float)", "tensor(int32)"},
+          "Constrain output y data type to float or 8-bit integer tensor.")
+      .Attr(
+          "auto_pad",
+          auto_pad_doc,
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr(
+          "kernel_shape",
+          "The shape of the convolution kernel. If not present, should be inferred from input 'w'.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "dilations",
+          "dilation value along each spatial axis of the filter. If not present, the dilation defaults to 1 along each axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "strides",
+          "Stride along each spatial axis. If not present, the stride defaults to 1 along each axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "pads",
+          "Padding for the beginning and ending along each spatial axis, it can take any value greater than or equal to 0."
+          "The value represent the number of pixels added to the beginning and end part of the corresponding axis."
+          "`pads` format should be as follow [x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of"
+          "pixels added at the beginning of axis `i` and xi_end, the number of pixels added at the end of axis `i`."
+          "This attribute cannot be used simultaneously with auto_pad attribute. If not present, the padding defaults"
+          "to 0 along start and end of each spatial axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "group",
+          "number of groups input channels and output channels are divided into. default is 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto x_type = ctx.getInputType(0);
+        auto w_type = ctx.getInputType(1);
+        auto y_type = ctx.getOutputType(0);
+        if (nullptr == x_type || nullptr == w_type ||
+            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+            w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
+        }
+
+        auto x_zero_point_type = ctx.getInputType(2);
+        if (nullptr == x_zero_point_type ||
+            x_zero_point_type->tensor_type().elem_type() !=
+                x_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "input and zero_point pair is expected to have be same type.");
+        }
+
+        auto w_zero_point_type = ctx.getInputType(3);
+        if (nullptr == w_zero_point_type ||
+            w_zero_point_type->tensor_type().elem_type() !=
+                w_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "weight and zero_point pair is expected to have same type.");
+        }
+
+        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+
+        convPoolShapeInference(ctx, true, false, 0, 1);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1885,7 +2248,7 @@ Example 4:
 
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
-    RegisterNchwcSchemas();
+        RegisterNchwcSchemas();
   }
 
   static const char* Gelu_ver1_doc =
@@ -1933,4 +2296,4 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 #endif
 }
 }  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace contrib
