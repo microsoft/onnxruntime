@@ -11,6 +11,8 @@
 #include "arm_compute/runtime/TensorAllocator.h"
 #include "arm_compute/runtime/MemoryManagerOnDemand.h"
 
+#define ACL_1902
+
 namespace onnxruntime {
 namespace acl {
 

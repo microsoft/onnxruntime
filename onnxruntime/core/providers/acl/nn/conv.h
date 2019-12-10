@@ -18,6 +18,7 @@
 // NEON
 #include "arm_compute/runtime/NEON/functions/NEConvolutionLayer.h"
 #include "arm_compute/runtime/NEON/functions/NEDepthwiseConvolutionLayer.h"
+#include "arm_compute/runtime/NEON/functions/NEDirectConvolutionLayer.h"
 
 namespace onnxruntime {
 namespace acl {
@@ -30,7 +31,7 @@ typedef struct
   std::shared_ptr<arm_compute::Tensor> k;
   std::shared_ptr<arm_compute::Tensor> b;
   std::shared_ptr<arm_compute::Tensor> out;
-  bool isDeptwise;
+  bool isDepthwiseCPU;
 } ACLNEConv;
 
 typedef std::map<OpKernel*, ACLNEConv>::iterator ConvLayersIterator;
@@ -54,7 +55,7 @@ class Conv final : public onnxruntime::Conv<T> {
   ConvAttributes conv_attrs_;
   ACLExecutionProvider* provider_;
 
-  arm_compute::TensorShape ACLReshapeWeightsDepthwise(arm_compute::Tensor* kernel);
+  arm_compute::TensorShape ACLReshapeWeightsDepthwise(arm_compute::Tensor* kernel) const;
 };
 }  // namespace mkl_dnn
 }  // namespace onnxruntime
