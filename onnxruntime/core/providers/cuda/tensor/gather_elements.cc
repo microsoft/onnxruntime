@@ -67,7 +67,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     GatherElementsImpl<int32_t>(
         input_rank,
         input_tensor->DataRaw(),
-        input_size,
         input_dims[axis],
         gpu_input_strides.GpuPtr(),
         indices_data,
@@ -82,7 +81,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     GatherElementsImpl<int64_t>(
         input_rank,
         input_tensor->DataRaw(),
-        input_size,
         input_dims[axis],
         gpu_input_strides.GpuPtr(),
         indices_data,
