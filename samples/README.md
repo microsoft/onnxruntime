@@ -6,6 +6,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [Python](#Python)
 * [C#](#C)
 * [C/C++](#CC)
+* [Java](#Java)
 ***
  
 ## Python
@@ -51,3 +52,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 * [C++ - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
 * [C++ - Inferencing (MNIST)](../samples/c_cxx/MNIST)
+
+## Java
+* [Inference Tutorial](../docs/Java_API.md#getting-started)
+* [MNIST inference](../java/sample/ScoreMNIST.java)
