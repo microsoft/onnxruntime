@@ -3,7 +3,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/tensor/pad.h"
 
 namespace onnxruntime {
 
