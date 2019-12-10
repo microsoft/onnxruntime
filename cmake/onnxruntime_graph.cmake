@@ -15,10 +15,13 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
 endif()
 
 if(NOT onnxruntime_USE_AUTOML)
-  list(REMOVE_ITEM onnxruntime_graph_src
+  file(GLOB_RECURSE automl_to_remove_graph_src
     "${ONNXRUNTIME_ROOT}/core/graph/automl_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/automl_ops/*.cc"
     )
+  foreach(I in ${automl_to_remove_graph_src})
+    list(REMOVE_ITEM onnxruntime_graph_src ${I})
+  endforeach()
 endif()
 
 if(NOT onnxruntime_USE_DML)
