@@ -263,7 +263,13 @@ class SymbolicShapeInference:
             else:
                 new_dim = self._merge_symbols([dim1, dim2])
                 if not new_dim:
-                    print('unsupported broadcast between ' + str(dim1) + ' ' + str(dim2))
+                    # warning about unsupported broadcast when not auto merge
+                    # note that auto merge has the risk of incorrectly merge symbols while one of them being 1
+                    # for example, 'a' = 1, 'b' = 5 at runtime is valid broadcasting, but with auto merge 'a' == 'b'
+                    if self.auto_merge_:
+                        self._add_suggested_merge([dim1, dim2], apply=True)
+                    else:
+                        print('unsupported broadcast between ' + str(dim1) + ' ' + str(dim2))
             new_shape = [new_dim] + new_shape
         return new_shape
 
@@ -625,9 +631,9 @@ class SymbolicShapeInference:
         sympy_shape = self._get_int_values(node)[0]
         vi = self.known_vi_[node.output[0]]
         if sympy_shape is not None:
-            self._update_computed_dims(sympy_shape)
             if type(sympy_shape) != list:
                 sympy_shape = [sympy_shape]
+            self._update_computed_dims(sympy_shape)
         else:
             # create new dynamic shape
             sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node,0), node)
