@@ -2,65 +2,49 @@
 # Licensed under the MIT License.
 # This source code should not depend on the onnxruntime and may be built independently
 
+set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
+set(featurizers_TAG "acd58fe63baa529e9b318d156ea70d7bf4dc3dad")
 
-#set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
-#set(featurizers_TAG "31c78493d7a6a91399aef5fbfd87d6d02fd19852")
 
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})
+set(featurizers_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref})
 
-# Need this to properly checkout crlf
-# if (MSVC)
-    # ExternalProject_Add(featurizers_lib_download
-            # PREFIX ${featurizers_pref}
-            # GIT_REPOSITORY ${featurizers_URL}
-            # GIT_TAG ${ngraph_TAG}
-            # GIT_CONFIG core.autocrlf=input
-            # SOURCE_DIR ${featurizers_ROOT}
-            # CONFIGURE_COMMAND ""
-            # BUILD_COMMAND ""
-            # UPDATE_COMMAND ""
-            # INSTALL_COMMAND ""
-        # )
-# else()
-    # ExternalProject_Add(featurizers_lib_download
-            # PREFIX ${featurizers_pref}
-            # GIT_REPOSITORY ${featurizers_URL}
-            # GIT_TAG ${featurizers_TAG}
-            # SOURCE_DIR ${featurizers_ROOT}
-            # CONFIGURE_COMMAND ""
-            # BUILD_COMMAND ""
-            # UPDATE_COMMAND ""
-            # INSTALL_COMMAND ""
-        # )
-# endif()
+# Only due to GIT_CONFIG
+if (MSVC)
+    ExternalProject_Add(featurizers_lib
+            PREFIX ${featurizers_pref}
+            GIT_REPOSITORY ${featurizers_URL}
+            GIT_TAG ${ngraph_TAG}
+            # Need this to properly checkout crlf
+            GIT_CONFIG core.autocrlf=input
+            SOURCE_DIR ${featurizers_ROOT}
+            # Location of CMakeLists.txt
+            SOURCE_SUBDIR src/Featurizers
+            BINARY_DIR ${featurizers_BINARY_DIR}
+            UPDATE_COMMAND ""
+            INSTALL_COMMAND ""
+        )
+else()
+    ExternalProject_Add(featurizers_lib
+            PREFIX ${featurizers_pref}
+            GIT_REPOSITORY ${featurizers_URL}
+            GIT_TAG ${featurizers_TAG}
+            SOURCE_DIR ${featurizers_ROOT}
+            # Location of CMakeLists.txt
+            SOURCE_SUBDIR src/Featurizers
+            BINARY_DIR ${featurizers_BINARY_DIR}
+            UPDATE_COMMAND ""
+            INSTALL_COMMAND ""
+        )
+endif()
 
+add_library(automl_featurizers STATIC IMPORTED)
+add_dependencies(automl_featurizers featurizers_lib)
+target_include_directories(automl_featurizers INTERFACE ${featurizers_ROOT}/src)
+set_property(TARGET automl_featurizers PROPERTY IMPORTED_LOCATION 
+  ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersCode.lib)
 
-set(automl_featurizers_srcs 
-  "${featurizers_ROOT}/src/Featurizers/CatImputerFeaturizer.h"
-  "${featurizers_ROOT}/src/Featurizers/DateTimeFeaturizer.h"
-  "${featurizers_ROOT}/src/Featurizers/SampleAddFeaturizer.h"
-  "${featurizers_ROOT}/src/Featurizers/StringFeaturizer.h"
-  "${featurizers_ROOT}/src/Featurizers/TimeSeriesImputerFeaturizer.h"
-
-  "${featurizers_ROOT}/src/Featurizers/Components/Components.h"
-  "${featurizers_ROOT}/src/Featurizers/Components/InferenceOnlyFeaturizerImpl.h"
-  "${featurizers_ROOT}/src/Featurizers/Components/PipelineExecutionEstimatorImpl.h"
-  "${featurizers_ROOT}/src/Featurizers/Components/TimeSeriesFrequencyEstimator.h"
-  "${featurizers_ROOT}/src/Featurizers/Components/TimeSeriesImputerTransformer.h"
-  "${featurizers_ROOT}/src/Featurizers/Components/TrainingOnlyEstimatorImpl.h"
-
-  "${featurizers_ROOT}/src/Featurizers/DateTimeFeaturizer.cpp"
-  "${featurizers_ROOT}/src/Featurizers/SampleAddFeaturizer.cpp"
-  )
-
-add_library(automl_featurizers STATIC ${automl_featurizers_srcs})
-target_include_directories(automl_featurizers PUBLIC ${featurizers_ROOT}/src)
-
-source_group(TREE ${featurizers_ROOT} FILES ${automl_featurizers_srcs})
-set_target_properties(automl_featurizers PROPERTIES FOLDER "AutoMLFeaturizers")
-
-#target_include_directories(automl_featurizers PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
 if (WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
