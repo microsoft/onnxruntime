@@ -1382,6 +1382,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat4) {
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
 }
+
 #endif
 
 }  // namespace test

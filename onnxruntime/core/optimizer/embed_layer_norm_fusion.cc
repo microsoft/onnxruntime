@@ -137,6 +137,7 @@ static bool MatchPositionEmbeddingSubgraph1(
   }
   // Check if the second input of the Gather node in the path has a constant input of 1
   Node& gather_node = *graph.GetNode(pg_edges[pg_edges.size() - 2]->GetNode().Index());
+
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(gather_node.InputDefs()[1]), int64_t(1), true)) {
     DEBUG_LOG("Second input of Gather should be a constant with value 1. ");
     return false;
@@ -206,6 +207,7 @@ static bool MatchPositionEmbeddingSubgraph1(
   if (unsqueeze_edge != nullptr) {
     matched_edges.push_back(unsqueeze_edge);
   }
+
   return true;
 }
 
@@ -333,6 +335,7 @@ static bool MatchPositionEmbeddingSubgraph2(
   matched_edges.push_back(edges[0]);
   return true;
 }
+
 /**
 Embed Layer Normalization will fuse embeddings and mask processing into one node : 
 The embeddings before conversion:
