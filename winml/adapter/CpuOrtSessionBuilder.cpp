@@ -13,6 +13,7 @@
 
 #include "CpuOrtSessionBuilder.h"
 #include "WinMLAdapter.h"
+#include "WinMLAdapterErrors.h"
 
 // winml includes
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -52,7 +53,7 @@ CpuOrtSessionBuilder::CreateSessionOptions(
   session_options.release();
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
@@ -85,7 +86,7 @@ CpuOrtSessionBuilder::CreateSession(
 
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 HRESULT
 CpuOrtSessionBuilder::Initialize(
@@ -95,6 +96,6 @@ CpuOrtSessionBuilder::Initialize(
     ORT_THROW_IF_ERROR(p_session->get()->Initialize());
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 } // Windows::AI::MachineLearning::Adapter
