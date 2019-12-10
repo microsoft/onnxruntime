@@ -279,6 +279,12 @@ else()
   add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
 endif()
 add_executable(protobuf::protoc ALIAS protoc)
+
+if(UNIX AND onnxruntime_ENABLE_LTO)
+  #https://github.com/protocolbuffers/protobuf/issues/5923
+  target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
+endif()
+
 include(protobuf_function.cmake)
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
