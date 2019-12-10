@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/common/common.h"
 
 inline __declspec(noinline) winrt::hresult_error _winmla_to_hresult() noexcept {
   try {
@@ -17,7 +16,8 @@ inline __declspec(noinline) winrt::hresult_error _winmla_to_hresult() noexcept {
   } catch (std::invalid_argument const& e) {
     return winrt::hresult_invalid_argument(winrt::to_hstring(e.what()));
   } catch (onnxruntime::OnnxRuntimeException const& e) {
-    return winrt::hresult_error(StatusCodeToHRESULT(e.GetStatusCode()));
+    StatusCode eStatusCode = static_cast<StatusCode>(e.GetStatus().Code()); 
+    return winrt::hresult_error(StatusCodeToHRESULT(eStatusCode), winrt::to_hstring(e.what()));
   } catch (std::exception const& e) {
     return winrt::hresult_error(E_FAIL, winrt::to_hstring(e.what()));
   } catch (...) {

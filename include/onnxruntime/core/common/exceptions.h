@@ -65,8 +65,8 @@ class OnnxRuntimeException : public std::exception {
     what_ = ss.str();
   }
 
-  const StatusCode GetStatusCode() const noexcept {
-    return static_cast<StatusCode>(status_.Code());
+  const Status GetStatus() const noexcept {
+    return status_;
   }
   const char* what() const noexcept override {
     return what_.c_str();
