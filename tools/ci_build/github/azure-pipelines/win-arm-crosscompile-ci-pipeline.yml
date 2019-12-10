@@ -1,6 +1,7 @@
 jobs:
 - job: Windows_ARM_CrossCompile_CI_Dev
   timeoutInMinutes: 120
+  pool: Win-CPU-2019
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
   steps:
