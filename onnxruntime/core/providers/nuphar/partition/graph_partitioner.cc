@@ -140,6 +140,7 @@ bool GraphPartitioner::ForcePartition(
 
 // Partition the graph (fusing ops) based on the dependency and whether ops are supported:
 Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
+                                   int& fused_count,
                                    std::vector<std::unique_ptr<ComputeCapability>>& result) {
   // call partition
   ORT_RETURN_IF_ERROR(Evaluate(graph, /*distinguish_subgraph*/ true));
@@ -167,13 +168,12 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
       partition->nodes.push_back(n);
     }
 
-    static int fuse_count = 0;
     if (codegen::CodeGenSettings::Instance().HasOption(kNupharDumpPartition)) {
       std::ostringstream stream;
       if (graph.IsSubgraph()) {
-        stream << "[NUPHAR_DUMP_PARTITION] ## Subgraph ## Fused graph ID " << fuse_count << std::endl;
+        stream << "[NUPHAR_DUMP_PARTITION] ## Subgraph ## Fused graph ID " << fused_count << std::endl;
       } else {
-        stream << "[NUPHAR_DUMP_PARTITION] ## Fused graph ID " << fuse_count << std::endl;
+        stream << "[NUPHAR_DUMP_PARTITION] ## Fused graph ID " << fused_count << std::endl;
       }
       stream << "Partition of size " << iter.second.nodes.size() << " [";
       for (const auto& node_index : partition->nodes) {
@@ -187,7 +187,7 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
     result.emplace_back(
         ToCapacity(
             graph,
-            fuse_count++,
+            fused_count++,
             partition));
   }
 

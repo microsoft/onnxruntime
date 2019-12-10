@@ -113,7 +113,7 @@ bool IsAliasNode(const onnxruntime::Node& node);
 
 // Helper function that creates ComputeCapability for subgraphs
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
-                                              int fuse_count,
+                                              int fused_count,
                                               std::unique_ptr<IndexedSubGraph>& subgraph);
 
 bool IsFusedNode(const Node& node);
