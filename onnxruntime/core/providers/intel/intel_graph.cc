@@ -375,13 +375,52 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
   return std::make_shared<InferenceEngine::CNNNetwork>(network);
 }
 
+void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
+    std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto.SerializeToOstream(&outfile);
+    outfile.close();
+}
+
+std::shared_ptr<ONNX_NAMESPACE::ModelProto> AddInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi& ort, OrtKernelContext* context) {
+
+  size_t num_inputs = ort.KernelContext_GetInputCount(context);
+  auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
+  std::string proto_str;
+  model_proto.SerializeToString(&proto_str);
+  model_copy->ParseFromString(proto_str);
+  auto graph_proto = model_copy->mutable_graph();
+
+  for(size_t i=0; i < num_inputs; i++) {
+    auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
+    g_in_shape->clear_dim();
+
+    auto input_tensor = ort.KernelContext_GetInput(context, i);
+    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+    auto tensor_shape = ort.GetTensorShape(tensor_info);
+    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+    for(size_t dim=0; dim < tensor_shape.size(); dim++) {
+      g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
+    }
+  }
+
+  return model_copy;
+}
+
 void IntelGraph::Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 
-  auto ie_cnn_network = CreateCNNNetwork(model_proto);
+  auto model_with_shape_info = AddInputShapeInfo(model_proto, ort, context);
+
+  if(IsDebugEnabled()) {
+    DumpOnnxModelProto(*model_with_shape_info, "subgraph-with-concrete-shape.onnx");
+    DumpOnnxModelProto(model_proto, "original-subgraph.onnx");
+  }
+
+  auto ie_cnn_network = CreateCNNNetwork(*model_with_shape_info);
   SetIODefs(ie_cnn_network);
 
   InferenceEngine::Core ie;

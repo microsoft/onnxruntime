@@ -226,22 +226,29 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
   //Zero dimension check
   for (size_t i = 0; i < node_inputs.size(); i++) {
-
     auto name = node_inputs[i]->Name();
     auto it = initializers.find(name);
+    auto shape = node_inputs[i]->Shape();
     if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
-      if (node_inputs[i]->Shape()->dim_size() == 0){
+      // Reject 0 dimensional shapes
+      if (shape->dim_size() == 0){
         if(intel_ep::IsDebugEnabled()){
-          std::cout << "Zero dimensions check failed" << std::endl;
+          std::cout << "Reject: Node: " << name << " Zero dimensions check failed" << std::endl;
         }
         return true;
       }
+      // Reject 1D symbolic shapes
+      else if (shape->dim_size() == 1 && shape->dim(0).value_case() == shape->dim(0).kDimParam) {
+        return true;
+      }
       else{
-        auto num_dims = node_inputs[i]->Shape()->dim_size();
+        auto num_dims = shape->dim_size();
         for(int j = 0; j < num_dims; j++){
-          if(node_inputs[i]->Shape()->dim(j).dim_value() == 0){
+          auto dim = shape->dim(j);
+          // Reject if dimension values have 0s
+          if(dim.value_case() == dim.kDimValue && dim.dim_value() == 0){
               if(intel_ep::IsDebugEnabled())
-                std::cout << "Zero dimensions check failed" << std::endl;
+                std::cout << "Reject: Node: " << name << " value dim: " << j << " has 0" << std::endl;
               return true;
           }
         }
