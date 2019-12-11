@@ -17,7 +17,7 @@ inline __declspec(noinline) winrt::hresult_error _winmla_to_hresult() noexcept {
     return winrt::hresult_invalid_argument(winrt::to_hstring(e.what()));
   } catch (onnxruntime::OnnxRuntimeException const& e) {
     StatusCode eStatusCode = static_cast<StatusCode>(e.GetStatus().Code()); 
-    return winrt::hresult_error(StatusCodeToHRESULT(eStatusCode), winrt::to_hstring(e.what()));
+    return winrt::hresult_error(StatusCodeToHRESULT(eStatusCode), winrt::to_hstring(e.GetStatus().ErrorMessage()));
   } catch (std::exception const& e) {
     return winrt::hresult_error(E_FAIL, winrt::to_hstring(e.what()));
   } catch (...) {
