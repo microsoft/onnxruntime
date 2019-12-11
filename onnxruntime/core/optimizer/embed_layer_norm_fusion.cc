@@ -386,9 +386,9 @@ static bool MatchPositionEmbeddingSubgraph(
   // The first input of position_gather_node must be 2d.
   position_embedding = position_gather_node.MutableInputDefs()[0];
 
-  // Check the second input of position gather. There are several cases:
-  // (1) it is initializer
-  // (2) it matches subgraph 1 or 2
+  // Check the second input of position gather. There are the following cases:
+  // (1) it is initializer.
+  // (2) it is not initializer and matches subgraph 1 (for opset 10) or 2 (for opset 11).
   if (graph_utils::IsConstantInitializer(graph, position_gather_node.MutableInputDefs()[1]->Name())) {
     // Check that the tensor has shape (batch_size, sequence_length)
     std::vector<int64_t> data;
@@ -478,14 +478,15 @@ static NodeArg* ExtractEmbedding(Graph& graph,
 /**
 Embed Layer Normalization will fuse embeddings and mask processing into one node : 
 The embeddings before conversion:
-  (input_ids) -------->  Gather ----------+       (segment_ids)
-    |                                    |            |
-    |                                    v            v
-    +--> Shape --> Expand -> Gather---->Add         Gather
-    |                ^                   |            |
-    |                |                   v            v
-    +---(optional graph)               SkipLayerNormalization
-
+  (input_ids) -------->  Gather ---------+       (segment_ids)
+    |                                    |           |
+    |                                    v           v
+    +--> Shape --> Expand -> Gather---->Add        Gather
+    |                ^                    \         /
+    |                |                     \       /
+    +---(optional graph)                      Add
+                                               |
+                                       LayerNormalization
 */
 Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -545,7 +546,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     auto hidden_size = sg_shape->dim()[1].dim_value();
 
-    // Trace back to find Gather --> Add --> SkipLayerNormalization
+    // Trace back to find Gather --> Add --> LayerNormalization
     std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
         {0, 0, "Add", {7}, kOnnxDomain},
         {0, 0, "Gather", {1, 11}, kOnnxDomain}};
@@ -563,6 +564,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (wg_shape == nullptr || wg_shape->dim_size() != 2 ||
         !utils::HasDimValue(wg_shape->dim()[1]) ||
         wg_shape->dim()[1].dim_value() != hidden_size) {
+      DEBUG_LOG("Word embedding shape not expected.");
       continue;
     }
 
@@ -570,47 +572,58 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     NodeArg* position_embedding = nullptr;
     std::vector<NodeIndex> nodes_to_remove;
 
+    // ORT constant folding might be applied to position embedding subgraph when input has static shape.
+    // Here we handle such special case that the input of add node is constant initializer.
     auto add_input_name = add_node.MutableInputDefs()[1]->Name();
     if (graph_utils::IsConstantInitializer(graph, add_input_name)) {
-      // Check that input has static shape
+      // Check that input has static shape.
       auto input_shape = input_ids->Shape();
       if (input_shape->dim_size() != 2 ||
           !utils::HasDimValue(input_shape->dim()[0]) ||
           !utils::HasDimValue(input_shape->dim()[1])) {
+        DEBUG_LOG("Input is expected to have dim value in all dimensions.");
         continue;
       }
 
-      // check tensor shape [batch_size, sequence_length, hidden_size]
       int64_t batch_size = input_shape->dim()[0].dim_value();
       int64_t sequence_length = input_shape->dim()[1].dim_value();
-      int64_t input_size = batch_size * sequence_length;
+      if (batch_size <= 0 || sequence_length <= 0) {
+        continue;
+      }
 
       const ONNX_NAMESPACE::TensorProto* position_embed_tensor;
       if (!graph.GetInitializedTensor(add_input_name, position_embed_tensor)) {
+        DEBUG_LOG("Failed to get initializer tensor.");
         continue;
       }
+      // Tensor shape shall be [batch_size, sequence_length, hidden_size].
       if (position_embed_tensor->dims_size() != 3 ||
           position_embed_tensor->dims(0) != batch_size ||
           position_embed_tensor->dims(1) != sequence_length ||
           position_embed_tensor->dims(2) != hidden_size) {
+        DEBUG_LOG("Position embedding shape not matched.");
         continue;
       }
 
-      // Requires float or float16 data.
+      // Tensor data type should be float or float16.
       const auto data_type = position_embed_tensor->data_type();
       if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
           data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        DEBUG_LOG("Position embedding data type shall be float or float16.");
         continue;
       }
 
+      // The tensor has same data for all batches, and we extract only one batch data as position embedding.
       position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
     } else {
       if (!MatchPositionEmbeddingSubgraph(graph, add_node, input_ids, logger, nodes_to_remove, position_embedding)) {
+        DEBUG_LOG("Failed to match position embedding subgraph.");
         continue;
       }
     }
 
     if (position_embedding == nullptr) {
+      DEBUG_LOG("Failed to get position embedding weights.");
       continue;
     }
 
@@ -618,6 +631,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (pg_shape == nullptr || pg_shape->dim_size() != 2 ||
         !utils::HasDimValue(pg_shape->dim()[1]) ||
         pg_shape->dim()[1].dim_value() != hidden_size) {
+      DEBUG_LOG("Position embedding shape is not expected.");
       continue;
     }
 
@@ -654,12 +668,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     NodeArg* gamma = layer_norm_node.MutableInputDefs()[1];
     NodeArg* beta = layer_norm_node.MutableInputDefs()[2];
-    if (gamma->Shape() == nullptr || gamma->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
+    if (gamma->Shape() == nullptr || gamma->Shape()->dim()[0].dim_value() != hidden_size) {
       DEBUG_LOG("Gamma should be of shape (hidden_size). ");
       continue;
     }
 
-    if (beta->Shape() == nullptr || beta->Shape()->dim()[0].dim_value() != word_embedding->Shape()->dim()[1].dim_value()) {
+    if (beta->Shape() == nullptr || beta->Shape()->dim()[0].dim_value() != hidden_size) {
       DEBUG_LOG("Beta should be of shape (hidden_size). ");
       continue;
     }
@@ -702,6 +716,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
     modified = true;
   }
+
   return Status::OK();
 }
 }  // namespace onnxruntime
