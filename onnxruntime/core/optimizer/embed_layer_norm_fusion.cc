@@ -101,9 +101,6 @@ static bool MatchPositionEmbeddingSubgraph1(
     const logging::Logger& logger,
     std::vector<const Node::EdgeEnd*>& matched_edges) {
 
-  if (position_gather_node.OpType() != "Gather") {
-    return false;
-  }
   std::vector<const Node::EdgeEnd*> pg_edges;
   // Find the "Expand" node
   if (!graph_utils::FindPath(position_gather_node, true, {{0, 1, "Expand", {8}, kOnnxDomain}}, pg_edges, logger)) {
@@ -147,23 +144,23 @@ static bool MatchPositionEmbeddingSubgraph1(
   std::vector<const Node::EdgeEnd*> pg_edges_2;
   Node* p_shape_node_2 = nullptr;
   const Node::EdgeEnd* unsqueeze_edge = nullptr;
-  if (graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1}, kOnnxDomain}}, pg_edges_2, logger)) {
-    p_shape_node_2 = graph.GetNode(pg_edges_2[0]->GetNode().Index());
+  if (pg_edges[7]->GetNode().GetOutputEdgesCount() == 1) {
     // In this case, the "Gather" node in "Path 1" must have 1 output edge.
-    if (pg_edges[7]->GetNode().GetOutputEdgesCount() != 1) {
+    if (!graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1}, kOnnxDomain}}, pg_edges_2, logger)) {
       return false;
-    }
-  } else if (graph_utils::FindPath(expand_node, true,
-                                   {{0, 1, "Concat", {4}, kOnnxDomain},
+    }    
+    p_shape_node_2 = graph.GetNode(pg_edges_2[0]->GetNode().Index());
+  } else if (pg_edges[7]->GetNode().GetOutputEdgesCount() == 2) {
+    // In this case, the "Gather" node in "Path 1" must have 2 output edges.
+    if (!graph_utils::FindPath(expand_node, true,
+                                   {{0, 1, "Concat", {4, 11}, kOnnxDomain},
                                     {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
                                     {0, 0, "Gather", {1, 11}, kOnnxDomain},
                                     {0, 0, "Shape", {1}, kOnnxDomain}},
                                    pg_edges_2, logger)) {
-    p_shape_node_2 = graph.GetNode(pg_edges_2[3]->GetNode().Index());
-    // In this case, the "Gather" node in "Path 1" must have 2 output edges.
-    if (pg_edges[7]->GetNode().GetOutputEdgesCount() != 2) {
       return false;
     }
+    p_shape_node_2 = graph.GetNode(pg_edges_2[3]->GetNode().Index());
     // Check for Unsqueeze --> Concat
     Node& concat_node = *graph.GetNode(pg_edges_2[0]->GetNode().Index());
     std::vector<const Node::EdgeEnd*> pg_edges_3;
