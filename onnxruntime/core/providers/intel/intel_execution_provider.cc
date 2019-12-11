@@ -159,6 +159,7 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "CumSum",
     "LogSoftmax",
     "MeanVarianceNormalization",
+    "Split", //ngraph v1, ov v0
     "LpNormalization",
     "Ceil", //cannot cast
     "Reciprocal",
@@ -237,6 +238,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
 
   auto node_inputs = node->InputDefs();
+  // auto node_outputs = node->OutputDefs();
 
   //Zero dimension check
   for (size_t i = 0; i < node_inputs.size(); i++) {
@@ -269,6 +271,29 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
   }
+
+  /*for(size_t i = 0; i < node_outputs.size(); i++){
+
+    auto out_shape = node_outputs[i]->Shape();
+    if(out_shape != nullptr){
+      if(out_shape->dim_size() == 0){
+        if(intel_ep::IsDebugEnabled()){
+          std::cout << "Zero dimensions check failed" << std::endl;
+        }
+        return true;
+      }
+      else{
+        auto num_dims = out_shape->dim_size();
+        for(int j = 0; j < num_dims; j++){
+          if(out_shape->dim(j).dim_value() == 0){
+            if(intel_ep::IsDebugEnabled())
+              std::cout << "Zero dimensions check failed" << std::endl;
+            return true;
+          }
+        }
+      }
+    }
+  }*/
 
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
@@ -318,10 +343,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Dropout" || optype == "Identity") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
-    auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-    if (it != graph_inputs.end()) {
-        return true;
-    }
+        auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+        if (it != graph_inputs.end()) {
+            return true;
+        }
       }
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
