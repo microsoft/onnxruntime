@@ -17,13 +17,14 @@ namespace SchemaInferenceOverrider
         _In_z_ const char* name, 
         int version, 
         bool isLatest, 
+		const std::string& domain,
         gsl::span<const uint32_t> constantCpuInputs
     )
     {
         Microsoft::WRL::ComPtr<MLOperatorShapeInferrer> shapeInferrer =
             wil::MakeOrThrow<MLOperatorShapeInferrer>(OperatorHelper::ShapeInferenceFunction<T>);
 
-        auto schema = const_cast<onnx::OpSchema*>(onnx::OpSchemaRegistry::Schema(name, version));
+        auto schema = const_cast<onnx::OpSchema*>(onnx::OpSchemaRegistry::Schema(name, version, domain));
 
         std::vector<uint32_t> constantCpuInputsCapture(constantCpuInputs.begin(), constantCpuInputs.end());
         schema->TypeAndShapeInferenceFunction([=](onnx::InferenceContext& ctx) {
@@ -63,30 +64,36 @@ namespace SchemaInferenceOverrider
 #pragma push_macro("REGISTER_FUSED_OP_SCHEMA")
 #define OVERRIDE_SCHEMA(version, isLatest, opName) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( \
-    #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, gsl::span<uint32_t>());
+    #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, onnxruntime::kOnnxDomain, gsl::span<uint32_t>());
     
 #pragma push_macro("OVERRIDE_SCHEMA_EX")
-#define OVERRIDE_SCHEMA_EX(version, isLatest, opName, shapeInferenceName, ...) \
-OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInferenceName>( \
-    #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, std::vector<uint32_t>({##__VA_ARGS__}));
+#define OVERRIDE_SCHEMA_EX(version, isLatest, opName, ...) \
+OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( \
+    #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, onnxruntime::kOnnxDomain, std::vector<uint32_t>({##__VA_ARGS__}));
+
+#pragma push_macro("OVERRIDE_SCHEMA_MS")
+#define OVERRIDE_SCHEMA_MS(version, isLatest, opName, ...) \
+OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( \
+    #opName, OperatorHelper::MsftOperatorSet##version##::sc_sinceVer_##opName, isLatest, onnxruntime::kMSDmlDomain, std::vector<uint32_t>({##__VA_ARGS__}));
 
     inline void OverrideSchemaInferenceFunctions()
     {
-        OVERRIDE_SCHEMA(    7,  true,  Conv);
-        OVERRIDE_SCHEMA(    7,  true,  Transpose);
-        OVERRIDE_SCHEMA(    7,  true,  AveragePool);
-        OVERRIDE_SCHEMA(    7,  false, MaxPool);
-        OVERRIDE_SCHEMA(    7,  true,  LpPool);
-        OVERRIDE_SCHEMA(    7,  true,  Crop);
-        OVERRIDE_SCHEMA(    7,  false, Upsample);
-        OVERRIDE_SCHEMA_EX( 9,  true,  Upsample, Resize, 1); // Upsample v9 uses Resize's shape inference function.
-        OVERRIDE_SCHEMA(    7,  true,  Slice);
-        OVERRIDE_SCHEMA(    7,  true,  Split);
-        OVERRIDE_SCHEMA_EX( 7,  true,  Tile, Tile, 1);
-        OVERRIDE_SCHEMA_EX( 8,  true,  Expand, Expand, 1);
-        OVERRIDE_SCHEMA(    8,  true,  MaxPool);
-        OVERRIDE_SCHEMA_EX( 9,  true,  OneHot, OneHot, 1);
-        OVERRIDE_SCHEMA_EX( 10, true,  Resize, Resize, 1);
+ //       OVERRIDE_SCHEMA(    7,  true,  Conv);
+ //       OVERRIDE_SCHEMA(    7,  true,  Transpose);
+ //       OVERRIDE_SCHEMA(    7,  true,  AveragePool);
+ //       OVERRIDE_SCHEMA(    7,  false, MaxPool);
+ //       OVERRIDE_SCHEMA(    7,  true,  LpPool);
+ //       OVERRIDE_SCHEMA(    7,  true,  Crop);
+ //       OVERRIDE_SCHEMA(    7,  true,  Upsample);
+ //       OVERRIDE_SCHEMA(    7,  true,  Slice);
+ //   //OVERRIDE_SCHEMA(    10,  true,  Slice);
+ //       OVERRIDE_SCHEMA(    7,  true,  Split);
+ //       OVERRIDE_SCHEMA_EX( 7,  true,  Tile,    1);
+ //       OVERRIDE_SCHEMA_EX( 8,  true,  Expand,  1);
+ //       OVERRIDE_SCHEMA(    8,  true,  MaxPool);
+ //       OVERRIDE_SCHEMA_EX( 9,  true,  OneHot,  1);
+ //      // OVERRIDE_SCHEMA_EX( 10, true,  Resize, 1);
+ ////       OVERRIDE_SCHEMA_MS( 1,  true,  ConvTransposeWithDynamicPads, 2);
     }
 #pragma pop_macro("OVERRIDE_SCHEMA_EX")
 #pragma pop_macro("REGISTER_FUSED_OP_SCHEMA")

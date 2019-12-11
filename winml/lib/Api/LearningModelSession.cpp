@@ -214,6 +214,7 @@ void LearningModelSession::Initialize() {
 
   onnxruntime::SessionOptions options = {};
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options));
+  options.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
 
   // Make onnxruntime apply the batch size override, if any
   if (session_options_ && session_options_.BatchSizeOverride() != 0)
@@ -221,6 +222,18 @@ void LearningModelSession::Initialize() {
     onnxruntime::FreeDimensionOverride overrideOption = {};
     overrideOption.dimension_denotation = onnx::DATA_BATCH;
     overrideOption.dimension_override = session_options_.BatchSizeOverride();
+    options.free_dimension_overrides.emplace_back(overrideOption);
+  }
+  {
+    onnxruntime::FreeDimensionOverride overrideOption = {};
+    overrideOption.dimension_denotation = "inputWidth";
+    overrideOption.dimension_override = 640;
+    options.free_dimension_overrides.emplace_back(overrideOption);
+  }
+  {
+    onnxruntime::FreeDimensionOverride overrideOption = {};
+    overrideOption.dimension_denotation = "inputHeight";
+    overrideOption.dimension_override = 576;
     options.free_dimension_overrides.emplace_back(overrideOption);
   }
 

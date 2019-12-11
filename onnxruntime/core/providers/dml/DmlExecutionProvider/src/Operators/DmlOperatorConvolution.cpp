@@ -14,14 +14,17 @@ public:
     DmlOperatorConvolution(
         const MLOperatorKernelCreationContext& kernelInfo,
         DML_CONVOLUTION_MODE mode,
-        DML_CONVOLUTION_DIRECTION direction
+        DML_CONVOLUTION_DIRECTION direction,
+        bool isWithDynamicPads
         )
     :   DmlOperator(kernelInfo),
-        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD)
+        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, isWithDynamicPads)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 2);
+        ML_CHECK_VALID_ARGUMENT((isWithDynamicPads && kernelInfo.GetInputCount() >= 3) || 
+                            (!isWithDynamicPads && kernelInfo.GetInputCount() >= 2));
+        uint32_t biasIndex = isWithDynamicPads ? 3 : 2;
+        std::vector<std::optional<uint32_t>> kernelInputIndices = { 0, 1, biasIndex };
 
-        std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
         DmlOperator::Initialize(kernelInfo, kernelInputIndices);
 
         // Vibranium DirectML is limited to handle only 2D and 3D convolution (4D and 5D tensors). So for 1D tensors,
@@ -32,7 +35,8 @@ public:
         m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
         // Bias is optional so only adjust it if it exists.
-        if (kernelInfo.GetInputCount() > 2)
+        if ((!isWithDynamicPads && kernelInfo.GetInputCount() > 2) ||
+            (isWithDynamicPads && kernelInfo.GetInputCount() > 3))
         {
             uint32_t inputDimSize = kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
             ML_CHECK_VALID_ARGUMENT(
@@ -43,9 +47,9 @@ public:
 
             // Resize the bias to be the same dimension as the input tensor.
             // The 1D tensor needs to be moved to the C channel.
-            m_inputTensorDescs[2] = CreateTensorDescFromInput(
+            m_inputTensorDescs[biasIndex] = CreateTensorDescFromInput(
                 kernelInfo, 
-                2, 
+                biasIndex, 
                 TensorAxis::DoNotCoerce, 
                 TensorAxis::C,
                 TensorAxis::LeftAligned,
@@ -73,7 +77,7 @@ public:
         DML_CONVOLUTION_OPERATOR_DESC convDesc = {};
         convDesc.InputTensor = &inputDescs[0];
         convDesc.FilterTensor = &inputDescs[1];
-        convDesc.BiasTensor = kernelInfo.GetInputCount() > 2 ? &inputDescs[2] : nullptr;
+        convDesc.BiasTensor = isWithDynamicPads ? (kernelInfo.GetInputCount() > 3 ? &inputDescs[3] : nullptr) : (kernelInfo.GetInputCount() > 2 ? &inputDescs[2] : nullptr);
         convDesc.OutputTensor = &outputDescs[0];
         convDesc.Mode = mode;
         convDesc.Direction = direction;
@@ -92,19 +96,20 @@ public:
 };
 
 // A specific type of operation for registration.
-template <DML_CONVOLUTION_MODE Mode, DML_CONVOLUTION_DIRECTION Direction>
+template <DML_CONVOLUTION_MODE Mode, DML_CONVOLUTION_DIRECTION Direction, bool isWithDynamicPads = false>
 class DmlOperatorConvolutionTemplate : public DmlOperatorConvolution
 {
 public:
     DmlOperatorConvolutionTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorConvolution(kernelInfo, Mode, Direction)
+    :   DmlOperatorConvolution(kernelInfo, Mode, Direction, isWithDynamicPads)
     {
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(Conv,               DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
-DML_OP_DEFINE_CREATION_FUNCTION(ConvTranspose,      DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedConv,          DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedConvTranspose, DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(Conv,                           DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(ConvTranspose,                  DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(FusedConv,                      DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_FORWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(FusedConvTranspose,             DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD>);
+DML_OP_DEFINE_CREATION_FUNCTION(ConvTransposeWithDynamicPads,   DmlOperatorConvolutionTemplate<DML_CONVOLUTION_MODE_CROSS_CORRELATION, DML_CONVOLUTION_DIRECTION_BACKWARD, true>);
 
 } // namespace Dml

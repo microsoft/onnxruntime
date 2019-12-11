@@ -82,7 +82,7 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
   winml::LearningModelDeviceKind m_deviceKind;
   // if the user asked us to run on the cpu, or asked us to choose and we chose cpu
   bool m_isCpuDevice;
-  bool m_areMetacommandsEnabled = true;
+  bool m_areMetacommandsEnabled = false;
   std::shared_ptr<WinML::ConverterResourceStore> m_detensorizerStore;
   std::shared_ptr<WinML::ConverterResourceStore> m_tensorizerStore;
 

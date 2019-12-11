@@ -21,6 +21,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
+    if (node->Name() == "Gather__2228")
+    {
+        int foo = 0;
+    }
+
+
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     InitializedTensorSet constant_inputs;
@@ -101,10 +107,21 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     if (unsupported_output_type)
       continue;
+     
+    if (node->Name() == "Shape__2226")
+    {
+        int foo = 0;
+    }
 
     // Remove the output edges of the constant node and then remove the node itself.
     graph_utils::RemoveNodeOutputEdges(graph, *node);
     graph.RemoveNode(node->Index());
+    
+     //graph.Resolve();
+    static int foldedCount = 0;
+    ++foldedCount;
+    printf("folded count: %u\n", foldedCount);
+
 
     // The output nodes already have the right input arg, since we used the same name in the initializer.
     // We could remove unused graph initializers here, but Graph::Resolve() will take care of it.

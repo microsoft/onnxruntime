@@ -6,16 +6,20 @@
 namespace Dml
 {
 
-class DmlOperatorSlice : public DmlOperator, public SliceHelper
+template <uint32_t opsetVersion>
+class DmlOperatorSlice : public DmlOperator, public SliceHelperBase
 {
 public:
     DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo)
     :   DmlOperator(kernelInfo),
-        SliceHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
+        SliceHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        uint32_t minInputCount = (opsetVersion < 10) ? 1 : 3;
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= minInputCount);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
-        DmlOperator::Initialize(kernelInfo);
+
+        std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 };
+        DmlOperator::Initialize(kernelInfo, kernelInputIndices);
 
         assert(m_inputTensorDescs[0].GetDimensionCount() >= gsl::narrow_cast<uint32_t>(m_offsets.size()));
         assert(m_inputTensorDescs[0].GetDimensionCount() >= gsl::narrow_cast<uint32_t>(m_sizes.size()));
@@ -54,6 +58,6 @@ public:
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(Slice, DmlOperatorSlice);
-
+DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  DmlOperatorSlice<7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice10, DmlOperatorSlice<10>);
 } // namespace Dml

@@ -76,6 +76,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Copy);
 DML_OP_EXTERN_CREATION_FUNCTION(FC);
 DML_OP_EXTERN_CREATION_FUNCTION(Conv);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvTranspose);
+DML_OP_EXTERN_CREATION_FUNCTION(ConvTransposeWithDynamicPads);
 DML_OP_EXTERN_CREATION_FUNCTION(AveragePool);
 DML_OP_EXTERN_CREATION_FUNCTION(GlobalAveragePool);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxPool);
@@ -97,7 +98,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(Split);
 DML_OP_EXTERN_CREATION_FUNCTION(Transpose);
 DML_OP_EXTERN_CREATION_FUNCTION(Tile);
 DML_OP_EXTERN_CREATION_FUNCTION(Concat);
-DML_OP_EXTERN_CREATION_FUNCTION(Slice);
+DML_OP_EXTERN_CREATION_FUNCTION(Slice7);
+DML_OP_EXTERN_CREATION_FUNCTION(Slice10);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad);
 DML_OP_EXTERN_CREATION_FUNCTION(SpaceToDepth);
 DML_OP_EXTERN_CREATION_FUNCTION(DepthToSpace);
@@ -220,7 +222,7 @@ const static SupportedTensorDataTypes supportedTypeListAllScalars[1] = { Support
 const static SupportedTensorDataTypes supportedTypeListBool[1] = {SupportedTensorDataTypes::Bool};
 const static SupportedTensorDataTypes supportedTypeListTopK[2] = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int64};
 const static SupportedTensorDataTypes supportedTypeListIndices[1] = { SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
-const static SupportedTensorDataTypes supportedTypeListCast[2] = { SupportedTensorDataTypes::Scalars8to32, SupportedTensorDataTypes::Scalars8to32 };
+const static SupportedTensorDataTypes supportedTypeListCast[2] = { SupportedTensorDataTypes::AllScalars | SupportedTensorDataTypes::Bool, SupportedTensorDataTypes::AllScalars | SupportedTensorDataTypes::Bool };
 const static SupportedTensorDataTypes supportedTypeListScatterGather[2] = { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int64 };
 const static SupportedTensorDataTypes supportedTypeListQuantize[2] = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::UInt8 };
 const static SupportedTensorDataTypes supportedTypeListIsNan[2] = { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::UInt8 };
@@ -233,6 +235,10 @@ const static SupportedTensorDataTypes supportedTypeListLogicalComparison[2] = /*
 #define REG_INFO(version, operatorName, ...) \
     #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
 
+// Versioned operator
+#define REG_INFO_VER(version, operatorName, ...) \
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, false, false, ##__VA_ARGS__, 
+
 // Identity operators use Copy, alias their first input, and require floating point formats
 // for usage in the graph, besides constant inputs.  This is because they currently use 
 // element-wise identity operators  in the graph for striding support, but issue actual copies 
@@ -242,6 +248,10 @@ const static SupportedTensorDataTypes supportedTypeListLogicalComparison[2] = /*
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+
+// MS-domain operators
+#define REG_INFO_MSDML(version, operatorName, ...) \
     #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
 
 const static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
@@ -256,6 +266,8 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  GlobalAveragePool,                  typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      8,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      10, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+     
     {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  GlobalLpPool,                       typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -269,12 +281,14 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  RNN,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
     {REG_INFO(      7,  GRU,                                typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
     {REG_INFO(      7,  LSTM,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::NotSupported)},
+    {REG_INFO_MS(   1,  ConvTransposeWithDynamicPads,       typeNameListDefault,            supportedTypeListFloat16to32,        DmGraphSupport::Supported,      {2})},
 
     // Data Reorganization Layers
     {REG_INFO(      7,  Split,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      7,  Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_VER(  10, Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1, 2, 3})},
     {REG_INFO(      7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -400,19 +414,19 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      9,  OneHot,                             typeNameListOneHot,             supportedTypeListOneHot,            DmGraphSupport::Supported,      {1})},
                                                         
     // Fused operators                                  
-    {REG_INFO_MS(   1,  FusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedConvTranspose,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedInstanceNormalization,         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedBatchNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedMeanVarianceNormalization,     typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedGemm,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  FusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
-    {REG_INFO_MS(   1,  FusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)}, 
+    {REG_INFO_MSDML(1,  FusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedConvTranspose,                 typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedInstanceNormalization,         typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedBatchNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedMeanVarianceNormalization,     typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedGemm,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  FusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)}, 
+    {REG_INFO_MSDML(1,  FusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {}, 2)}, 
                 
     // TODO: DwayneR implement MaxUnpool https://dev.azure.com/microsoft/OS/_workitems/edit/21267466
 };
-
+ 
 template<typename T> 
 MLOperatorEdgeDescription EdgeDesc()
 {

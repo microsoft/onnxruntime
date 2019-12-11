@@ -519,7 +519,7 @@ class Graph {
   void CleanAllInitializedTensors() noexcept;
 
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
-  bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
+  bool CanOverrideInitializer() const noexcept { return false /*ir_version_ >= 4*/; }
 
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.

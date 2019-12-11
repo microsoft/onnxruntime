@@ -45,11 +45,17 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
   if (graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
+  
+    static int shapeToInitCount = 0;
+    ++shapeToInitCount;
+    printf("shape to init count: %u\n", shapeToInitCount);
 
   return Status::OK();
 }
 
 bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
+    
+
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1})) {
     return false;
   }
@@ -73,7 +79,11 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, 
   if (!graph_utils::CanReplaceNodeWithInitializer(graph, node, new_initializer_name, logger)) {
     return false;
   }
-
+       
+    if (node.Name() == "Shape__2226")
+    {
+        int foo = 0;
+    }
   return true;
 }
 

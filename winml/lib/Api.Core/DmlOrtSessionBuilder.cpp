@@ -107,7 +107,11 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
 
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 
-  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
+  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(
+      dmlDevice.Get(), 
+      p_queue, 
+      device->MetacommandsEnabled());
+
   auto session = std::make_unique<onnxruntime::InferenceSession>(options);
 
   // Cache the provider's raw pointer
