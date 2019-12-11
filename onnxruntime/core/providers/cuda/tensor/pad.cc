@@ -121,7 +121,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto& output_tensor = *ctx->Output(0, output_shape);
   if (std::all_of(p_pads->begin(), p_pads->end(), [](const int64_t v) { return v == 0; }) &&
-      std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) && 
+      std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) &&
       output_shape.Size() > 0) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         output_tensor.template MutableData<T>(), input_tensor.template Data<T>(),
