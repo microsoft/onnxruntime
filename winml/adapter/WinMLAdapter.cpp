@@ -613,36 +613,39 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
   struct AllocatorWrapper : public OrtAllocator {
    public:
-    AllocatorWrapper(onnxruntime::AllocatorPtr impl) : impl_(impl) {
+    AllocatorWrapper(onnxruntime::AllocatorPtr impl = nullptr) : impl_(impl) {
       version = ORT_API_VERSION;
       Alloc = AllocImpl;
       Free = FreeImpl;
       Info = InfoImpl;
     }
 
+    AllocatorWrapper& operator=(AllocatorWrapper&& other) {
+      impl_ = other.impl_;
+      return *this;
+    }
+
     static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
-      return static_cast<AllocatorWrapper*>(this_)->impl_->Alloc(size);
+      return static_cast<AllocatorWrapper*>(this_)->impl_.lock()->Alloc(size);
     }
     static void ORT_API_CALL FreeImpl(struct OrtAllocator* this_, void* p) {
-      return static_cast<AllocatorWrapper*>(this_)->impl_->Free(p);
+      return static_cast<AllocatorWrapper*>(this_)->impl_.lock()->Free(p);
     }
     static const struct OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
-      return &(static_cast<const AllocatorWrapper*>(this_)->impl_->Info());
+      return &(static_cast<const AllocatorWrapper*>(this_)->impl_.lock()->Info());
     }
 
    private:
-    onnxruntime::AllocatorPtr impl_;
+    std::weak_ptr<onnxruntime::IAllocator> impl_;
   };
 
   HRESULT STDMETHODCALLTYPE GetProviderAllocator(
       onnxruntime::IExecutionProvider* provider,
       OrtAllocator** allocator) override try {
     auto allocator_ptr = provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault);
-    *allocator = new AllocatorWrapper(allocator_ptr);
-    if (*allocator == nullptr) {
-      return E_OUTOFMEMORY;
-    }
-
+    static AllocatorWrapper wrapper;
+    wrapper = AllocatorWrapper(allocator_ptr);
+    *allocator = &wrapper;
     return S_OK;
   }
   WINML_CATCH_ALL_COM
