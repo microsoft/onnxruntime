@@ -59,10 +59,10 @@ def get_device_index(input):
     
     return device_index
 
-def get_all_fp16_or_fp32_gradients_finite_arg_name(session):
-    all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_fp32_gradients_finite' in x.name or 'all_fp16_gradients_finite' in x.name]
+def get_all_gradients_finite_arg_name(session):
+    all_fp16_or_fp32_gradients_finite_node_args = [x for x in session._outputs_meta if 'all_gradients_finite' in x.name]
     if len(all_fp16_or_fp32_gradients_finite_node_args) != 1:
-        raise RuntimeError("Failed to find a group NodeArg with name that matches 'all_fp32_gradients_finite' or 'all_fp16_gradients_finite'\
+        raise RuntimeError("Failed to find a group NodeArg with name that matches 'all_gradients_finite'\
              from the training session.")
     
     return all_fp16_or_fp32_gradients_finite_node_args[0].name
@@ -493,7 +493,7 @@ class ORTTrainer():
             # when ready to use accumulated gradient with mixed precision, we need to fetch all_infinite to determine 
             # if the gradient is usable. 
             self.output_desc_with_all_fp_16_or_fp32_gradients_finite = [*self.model_desc_.outputs_,
-                IODescription(get_all_fp16_or_fp32_gradients_finite_arg_name(self.session), [1], torch.bool)]
+                IODescription(get_all_gradients_finite_arg_name(self.session), [1], torch.bool)]
 
         self.device_ = device
 
