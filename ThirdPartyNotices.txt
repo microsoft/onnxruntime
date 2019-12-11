@@ -610,7 +610,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 _____
 
-intel/mkl-dnn
+intel/dnnl
 
 Copyright 2016-2018 Intel Corporation
 

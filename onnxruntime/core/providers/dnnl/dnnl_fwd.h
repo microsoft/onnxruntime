@@ -4,7 +4,7 @@
 #pragma once
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }

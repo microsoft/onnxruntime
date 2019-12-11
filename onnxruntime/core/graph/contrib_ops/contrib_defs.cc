@@ -208,25 +208,32 @@ void RegisterBertSchemas() {
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
+EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
+The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
+and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors.
+The last input mask is optional. If mask is provided, mask index (that is position of first 0 in mask, or number of words)
+will be calculated.)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Embedding Layer Normalization")
+      .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
       .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1")
-      .Input(2, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1")
-      .Input(3, "word_embedding", "2D with shape (,hidden_size)", "T")
-      .Input(4, "position_embedding", "2D with shape (, hidden_size)", "T")
-      .Input(5, "segment_embedding", "2D with shape (, hidden_size)", "T")
-      .Input(6, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
-      .Input(7, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
+      .Input(2, "word_embedding", "2D with shape (,hidden_size)", "T")
+      .Input(3, "position_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T")
+      .Input(5, "gamma", "1D gamma tensor for layer normalization with shape (hidden_size)", "T")
+      .Input(6, "beta", "1D beta tensor for layer normalization  with shape (hidden_size)", "T")
+      .Input(7, "mask", "2D attention mask with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 3, 0);
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
         propagateElemTypeFromInputToOutput(ctx, 0, 1);
         if (!hasInputShape(ctx, 0))
           return;
@@ -234,90 +241,50 @@ void RegisterBertSchemas() {
         auto& input_ids_shape = getInputShape(ctx, 0);
         auto& input_ids_dims = input_ids_shape.dim();
 
-        auto& segment_ids_shape = getInputShape(ctx, 1);
-        auto& segment_ids_dims = segment_ids_shape.dim();
-
-        auto& mask_shape = getInputShape(ctx, 2);
-        auto& mask_dims = mask_shape.dim();
-
-        if (input_ids_dims.size() != 2 || segment_ids_dims.size() != 2 || mask_dims.size() != 2) {
-          fail_shape_inference("Inputs 0, 1 and 2 shall be 2 dimensions");
+        if (input_ids_dims.size() != 2) {
+          fail_shape_inference("Inputs 0 shall be 2 dimensions");
         }
 
-        if (input_ids_shape.dim(1).has_dim_value() && segment_ids_shape.dim(1).has_dim_value() && mask_shape.dim(1).has_dim_value()) {
-          if (input_ids_shape.dim(1).dim_value() != segment_ids_shape.dim(1).dim_value() || input_ids_shape.dim(1).dim_value() != mask_shape.dim(1).dim_value()) {
-            fail_shape_inference("Inputs 0, 1 and 2 shall have same value in dimension 1");
-          }
-        } else {
-          fail_shape_inference("Inputs 0, 1 and 2 shall have value in dimension 1");
+        if (!input_ids_dims[1].has_dim_value()) {
+          fail_shape_inference("Inputs 0 shall have value in dimension 1");
         }
 
         // get hidden_size from the last dimension of embedding
         auto& word_embedding_shape = getInputShape(ctx, 3);
         auto& word_embedding_dims = word_embedding_shape.dim();
-        if (word_embedding_dims.size() != 2 || !word_embedding_dims[1].has_dim_value()) {
+        if (word_embedding_dims.size() != 2 ||
+            !word_embedding_dims[1].has_dim_value() ||
+            word_embedding_shape.dim(1).dim_value() <= 0) {
           fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
         }
         int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
 
-        auto& position_embedding_shape = getInputShape(ctx, 4);
-        auto& position_embedding_dims = position_embedding_shape.dim();
-        if (position_embedding_dims.size() != 2) {
-          fail_shape_inference("position_embedding should have 2 dimensions");
-        }
-        if (position_embedding_shape.dim(1).dim_value() != hidden_size) {
-          fail_shape_inference("The last dimension of word_embedding and position_embedding does not match.");
-        }
 
-        auto& segment_embedding_shape = getInputShape(ctx, 5);
-        auto& segment_embedding_dims = segment_embedding_shape.dim();
-        if (segment_embedding_dims.size() != 2) {
-          fail_shape_inference("segment_embedding should have 2 dimensions");
-        }
-        if (segment_embedding_shape.dim(1).dim_value() != hidden_size) {
-          fail_shape_inference("The last dimension of word_embedding and segment_embedding does not match.");
-        }
 
-        auto& gamma_shape = getInputShape(ctx, 6);
-        auto& gamma_dims = gamma_shape.dim();
-        if (gamma_dims.size() != 1) {
-          fail_shape_inference("gamma should have 1 dimension");
-        }
-        if (gamma_shape.dim(0).dim_value() != hidden_size) {
-          fail_shape_inference("The last dimension of word_embedding and gamma does not match.");
-        }
-
-        auto& beta_shape = getInputShape(ctx, 7);
-        auto& beta_dims = beta_shape.dim();
-        if (beta_dims.size() != 1) {
-          fail_shape_inference("beta should have 1 dimension");
-        }
-        if (beta_shape.dim(0).dim_value() != hidden_size) {
-          fail_shape_inference("The last dimension of word_embedding and beta does not match.");
-        }
-
-        // mask shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
+        // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
         ONNX_NAMESPACE::TensorShapeProto output_shape;
-        for (auto& dim : mask_dims) {
+        for (auto& dim : input_ids_dims) {
           *output_shape.add_dim() = dim;
         }
-        if (hidden_size > 0) {
-          output_shape.add_dim();
-          output_shape.mutable_dim(2)->set_dim_value(hidden_size);
-        }
+        output_shape.add_dim();
+        output_shape.mutable_dim(2)->set_dim_value(hidden_size);
+
         updateOutputShape(ctx, 0, output_shape);
 
         // mask_index shape is (batch_size)
         ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-        *mask_index_shape.add_dim() = mask_shape.dim(0);
+        *mask_index_shape.add_dim() = input_ids_dims[0];
         updateOutputShape(ctx, 1, mask_index_shape);
       });
+
+  static const char* FastGelu_ver1_doc = R"DOC(
+GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X))) with an optional input of bias that will be added to X before GELU.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gelu")
+      .SetDoc(FastGelu_ver1_doc)
       .Input(0, "X", "input tensor", "T")
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
       .Output(0, "Y", "output tensor", "T")

@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "WinMLAdapter.h"
+#include "WinMLAdapterErrors.h"
 #include "CustomRegistryHelper.h"
 #include "PheonixSingleton.h"
 #include "LotusEnvironment.h"
@@ -128,7 +129,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
     winrt::copy_to_abi(out.GetView(), *(void**)metadata);
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetInputFeatures(
       ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) override try {
@@ -136,7 +137,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
     winrt::copy_to_abi(input_features_.GetView(), *(void**)features);
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetOutputFeatures(
       ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) override try {
@@ -144,7 +145,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
     winrt::copy_to_abi(output_features_.GetView(), *(void**)features);
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   static std::vector<const char*>
   GetAllNodeOutputs(const onnx::ModelProto& model_proto) {
@@ -309,7 +310,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
     return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   // factory methods for creating an ort model from a stream
   HRESULT STDMETHODCALLTYPE CreateModelProto(
@@ -326,7 +327,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
     return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   // factory methods for creating an ort model from a model_proto
   HRESULT STDMETHODCALLTYPE CreateModelProto(IModelProto* model_proto_in, IModelProto** model_proto) override try {
@@ -334,18 +335,18 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
     return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE CreateModelInfo(IModelProto* model_proto, IModelInfo** model_info) override try {
     auto model_info_outer = wil::MakeOrThrow<ModelInfo>(model_proto->get());
     return model_info_outer.CopyTo(__uuidof(IModelInfo), reinterpret_cast<void**>(model_info));
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   void STDMETHODCALLTYPE EnableDebugOutput() override try {
     WinML::CWinMLLogSink::EnableDebugOutput();
   }
-  WINML_CATCH_ALL_DONOTHING
+  WINMLA_CATCH_ALL_DONOTHING
 
   static bool IsFeatureDescriptorFp16(
       winml::ILearningModelFeatureDescriptor descriptor) {
@@ -422,7 +423,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     }
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   ID3D12Resource* STDMETHODCALLTYPE GetD3D12ResourceFromAllocation(onnxruntime::IExecutionProvider* provider, void* allocation) override try {
 #ifdef USE_DML
@@ -466,7 +467,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return E_NOTIMPL;
 #endif USE_DML
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetMapType(const OrtValue* ort_value, ONNXTensorElementDataType* key_type, ONNXTensorElementDataType* value_type) override try {
     *key_type = *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -498,7 +499,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     }
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetVectorMapType(const OrtValue* ort_value, ONNXTensorElementDataType* key_type, ONNXTensorElementDataType* value_type) override try {
     *key_type = *value_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -512,7 +513,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     }
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetCustomRegistry(IMLOperatorRegistry** registry) override try {
 #ifdef USE_DML
@@ -523,7 +524,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return E_NOTIMPL;
 #endif USE_DML
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetOperatorRegistry(ILearningModelOperatorProviderNative* operator_provider_native, IMLOperatorRegistry** registry) override try {
 #ifdef USE_DML
@@ -536,7 +537,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return E_NOTIMPL;
 #endif USE_DML
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   void* STDMETHODCALLTYPE CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource) override try {
 #ifdef USE_DML
@@ -553,7 +554,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     Dml::FreeGPUAllocation(ptr);
 #endif USE_DML
   }
-  WINML_CATCH_ALL_DONOTHING
+  WINMLA_CATCH_ALL_DONOTHING
 
   HRESULT STDMETHODCALLTYPE CopyTensor(
       onnxruntime::IExecutionProvider* provider,
@@ -566,7 +567,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return E_NOTIMPL;
 #endif USE_DML
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
   // and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
@@ -584,7 +585,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return S_OK;  // needs to return S_OK otherwise everything breaks because this gets called from the learningmodel constructor
 #endif USE_DML
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetProviderMemoryInfo(
       onnxruntime::IExecutionProvider* provider,
@@ -598,7 +599,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     }
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE GetValueMemoryInfo(const OrtValue* ort_value, OrtMemoryInfo** memory_info) override try {
     const auto& tensor = ort_value->Get<onnxruntime::Tensor>();
@@ -609,7 +610,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     }
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   struct AllocatorWrapper : public OrtAllocator {
    public:
@@ -645,7 +646,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 };  // namespace Windows::AI::MachineLearning::Adapter
 std::shared_ptr<WinML::LotusEnvironment> WinMLAdapter::lotus_environment_ = nullptr;
 
@@ -654,7 +655,7 @@ extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter)
   Microsoft::WRL::ComPtr<WinMLAdapter> adapterptr = wil::MakeOrThrow<WinMLAdapter>();
   return adapterptr.CopyTo(__uuidof(IWinMLAdapter), reinterpret_cast<void**>(adapter));
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 // InferenceSession
 // ================
@@ -668,19 +669,19 @@ void STDMETHODCALLTYPE InferenceSession::RegisterGraphTransformers() try {
   GraphTransformerHelpers::RegisterGraphTransformers(session_.get());
 #endif USE_DML
 }
-WINML_CATCH_ALL_DONOTHING
+WINMLA_CATCH_ALL_DONOTHING
 
 HRESULT STDMETHODCALLTYPE InferenceSession::StartProfiling() try {
   this->session_->StartProfiling(PheonixSingleton<WinML::LotusEnvironment>()->GetDefaultLogger());
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 HRESULT STDMETHODCALLTYPE InferenceSession::EndProfiling() try {
   this->session_->EndProfiling();
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 HRESULT STDMETHODCALLTYPE
 InferenceSession::LoadModel(
@@ -692,7 +693,7 @@ InferenceSession::LoadModel(
   ORT_THROW_IF_ERROR(session_protected_load_accessor->Load(std::move(model_proto_ptr)));
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 HRESULT STDMETHODCALLTYPE
 InferenceSession::RegisterCustomRegistry(
@@ -710,28 +711,28 @@ InferenceSession::RegisterCustomRegistry(
 
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 void STDMETHODCALLTYPE InferenceSession::FlushContext(onnxruntime::IExecutionProvider* dml_provider) try {
 #ifdef USE_DML
   Dml::FlushContext(dml_provider);
 #endif USE_DML
 }
-WINML_CATCH_ALL_DONOTHING
+WINMLA_CATCH_ALL_DONOTHING
 
 void STDMETHODCALLTYPE InferenceSession::TrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider) try {
 #ifdef USE_DML
   Dml::TrimUploadHeap(dml_provider);
 #endif USE_DML
 }
-WINML_CATCH_ALL_DONOTHING
+WINMLA_CATCH_ALL_DONOTHING
 
 void STDMETHODCALLTYPE InferenceSession::ReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider) try {
 #ifdef USE_DML
   Dml::ReleaseCompletedReferences(dml_provider);
 #endif USE_DML
 }
-WINML_CATCH_ALL_DONOTHING
+WINMLA_CATCH_ALL_DONOTHING
 
 HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(
     const char* input_name,
@@ -745,6 +746,6 @@ HRESULT STDMETHODCALLTYPE InferenceSession::CopyOneInputAcrossDevices(
   *new_mlvalue = temp_mlvalue.release();
   return S_OK;
 }
-WINML_CATCH_ALL_COM
+WINMLA_CATCH_ALL_COM
 
 }  // namespace Windows::AI::MachineLearning::Adapter

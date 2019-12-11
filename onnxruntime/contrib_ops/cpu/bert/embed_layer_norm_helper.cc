@@ -12,17 +12,23 @@ namespace embed_layer_norm {
 Status CheckInputs(const OpKernelContext* context) {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);
-  const Tensor* mask = context->Input<Tensor>(2);
-  const Tensor* word_embedding = context->Input<Tensor>(3);
-  const Tensor* position_embedding = context->Input<Tensor>(4);
-  const Tensor* segment_embedding = context->Input<Tensor>(5);
-  const Tensor* gamma = context->Input<Tensor>(6);
-  const Tensor* beta = context->Input<Tensor>(7);
+  const Tensor* word_embedding = context->Input<Tensor>(2);
+  const Tensor* position_embedding = context->Input<Tensor>(3);
+  const Tensor* segment_embedding = context->Input<Tensor>(4);
+  const Tensor* gamma = context->Input<Tensor>(5);
+  const Tensor* beta = context->Input<Tensor>(6);
+  const Tensor* mask = context->Input<Tensor>(7); // optional. nullptr if not provided
 
-  if (input_ids->Shape() != segment_ids->Shape() || input_ids->Shape() != mask->Shape()) {
+  if (input_ids->Shape() != segment_ids->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 0, 1 and 2 shall have same shape");
+                           "Input 0 and 1 shall have same shape");
   }
+
+  if (nullptr != mask && input_ids->Shape() != mask->Shape()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 0 and 7 (mask) shall have same shape");
+  }
+
 
   const auto input_dims = input_ids->Shape().GetDims();
   if (input_dims.size() != 2) {
@@ -51,6 +57,11 @@ Status CheckInputs(const OpKernelContext* context) {
   if (word_embedding_dims[1] != position_embedding_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "word_embedding and position_embedding shall have same dimension 1");
+  }
+
+  if (word_embedding_dims[1] != segment_embedding_dims[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "word_embedding and segment_embedding shall have same dimension 1");
   }
 
   const auto beta_dims = beta->Shape().GetDims();

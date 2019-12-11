@@ -5,7 +5,7 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-namespace mkl_dnn {
+namespace ort_dnnl {
 template <typename T>
 class Gemm final : public OpKernel {
  public:
@@ -29,5 +29,5 @@ class Gemm final : public OpKernel {
   float alpha_;
   float beta_;
 };
-}  // namespace mkl_dnn
+}  // namespace ort_dnnl
 }  // namespace onnxruntime
