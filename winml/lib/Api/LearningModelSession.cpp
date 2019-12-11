@@ -13,6 +13,7 @@
 #include "LearningModelDevice.h"
 #include "LearningModelSessionOptions.h"
 #include "TensorFeatureDescriptor.h"
+#include "TelemetryEvent.h"
 
 #include "D3DDeviceCache.h"
 
@@ -88,7 +89,9 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
 }
 
 void LearningModelSession::Initialize() {
-
+  // Begin recording session creation telemetry
+  _winmlt::TelemetryEvent session_creation_event(
+    _winmlt::EventCategory::kSessionCreation);
   // Get the optimized model proto from the learning model
   com_ptr<winmla::IModelProto> model_proto; 
   model_proto.attach(GetOptimizedModel());
@@ -303,7 +306,7 @@ wf::IAsyncOperation<winml::LearningModelEvaluationResult>
 LearningModelSession::EvaluateAsync(
     winml::LearningModelBinding binding,
     hstring const correlation_id) {
-
+  _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
   auto device = device_.as<LearningModelDevice>();
 
   // Get the ORT binding collection
@@ -351,6 +354,7 @@ LearningModelSession::Evaluate(
     winml::LearningModelBinding binding,
     hstring const& correlation_id) try {
   ToggleProfiler();
+  _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
 
   ApplyEvaluationProperties();
 

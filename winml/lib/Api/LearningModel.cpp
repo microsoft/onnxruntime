@@ -5,6 +5,7 @@
 
 #include "LearningModel.h"
 
+#include "TelemetryEvent.h"
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
@@ -20,7 +21,7 @@ WINML_CATCH_ALL
 LearningModel::LearningModel(
     const std::string& path,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
-
+  _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(path.c_str(), model_proto_.put()));
@@ -33,7 +34,7 @@ WINML_CATCH_ALL
 LearningModel::LearningModel(
     const wss::IRandomAccessStreamReference stream,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
-
+  _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(

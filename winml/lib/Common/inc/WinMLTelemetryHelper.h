@@ -25,7 +25,6 @@ typedef struct WinMLModelDescription {
   SIZE_T Version;
 } WinMLModelDescription;
 
-enum WinMLRuntimePerf;
 template <typename T>
 class Profiler;
 
