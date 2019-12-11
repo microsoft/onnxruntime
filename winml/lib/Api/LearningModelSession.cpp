@@ -214,6 +214,7 @@ void LearningModelSession::Initialize() {
 
   onnxruntime::SessionOptions options = {};
   WINML_THROW_IF_FAILED(session_builder->CreateSessionOptions(&options));
+  options.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
 
   // Make onnxruntime apply the batch size override, if any
   if (session_options_ && session_options_.BatchSizeOverride() != 0)
