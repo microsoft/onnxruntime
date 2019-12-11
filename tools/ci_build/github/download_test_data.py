@@ -84,7 +84,8 @@ def download_and_unzip(build_dir, url, dest_folder, use_token = True):
         url_with_token = url
 
     # Download data using AZCopy tool
-    azcopy_exe = 'azcopy.exe' if shutil.which('azcopy') else os.path.join(build_dir,'azcopy')
+    # Our linux CI build machine has azcopy in /usr/bin but the version is too old
+    azcopy_exe = 'azcopy.exe' if sys.platform.startswith("win") and shutil.which('azcopy') else os.path.join(build_dir,'azcopy')
     try:
         subprocess.run([azcopy_exe,'cp', '--log-level','ERROR', '--recursive', url_with_token, build_dir],check=True)
     except Exception as e:
