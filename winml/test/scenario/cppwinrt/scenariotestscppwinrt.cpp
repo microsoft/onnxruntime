@@ -171,7 +171,7 @@ static void BindFeatures(LearningModelBinding binding, IVectorView<ILearningMode
 }
 
 //! Scenario1 : Load , bind, eval a model using all the system defaults (easy path)
-TEST_F(ScenarioCppWinrtTest, Scenario1_LoadBindEvalDefault)
+TEST_F(ScenarioCppWinrtTest, Scenario1LoadBindEvalDefault)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -194,7 +194,7 @@ TEST_F(ScenarioCppWinrtTest, Scenario1_LoadBindEvalDefault)
 
 //! Scenario2: Load a model from stream
 //          - winRT, and win32
-TEST_F(ScenarioCppWinrtTest, Scenario2_LoadModelFromStream)
+TEST_F(ScenarioCppWinrtTest, Scenario2LoadModelFromStream)
 {
     // get a stream
     std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
@@ -211,7 +211,7 @@ TEST_F(ScenarioCppWinrtTest, Scenario2_LoadModelFromStream)
 }
 
 //! Scenario3: pass a SoftwareBitmap into a model
-TEST_F(ScenarioCppWinrtGpuTest, Scenario3_SoftwareBitmapInputBinding)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario3SoftwareBitmapInputBinding)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -257,7 +257,7 @@ winrt::Windows::Foundation::IAsyncOperation<LearningModelEvaluationResult> DoEva
     return session.EvaluateAsync(binding, L"");
 }
 
-TEST_F(ScenarioCppWinrtTest, Scenario5_AsyncEval)
+TEST_F(ScenarioCppWinrtTest, Scenario5AsyncEval)
 {
     auto task = DoEvalAsync();
 
@@ -273,7 +273,7 @@ TEST_F(ScenarioCppWinrtTest, Scenario5_AsyncEval)
 //! Scenario6: use BindInputWithProperties - BitmapBounds, BitmapPixelFormat
 // apparently this scenario is cut for rs5. - not cut, just rewprked. move props
 // to the image value when that is checked in.
-TEST_F(ScenarioCppWinrtGpuTest, Scenario6_BindWithProperties)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario6BindWithProperties)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -319,7 +319,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario6_BindWithProperties)
 }
 
 //! Scenario7: run eval without creating a binding object
-TEST_F(ScenarioCppWinrtTest, Scenario7_EvalWithNoBind)
+TEST_F(ScenarioCppWinrtTest, Scenario7EvalWithNoBind)
 {
     auto map = winrt::single_threaded_map<hstring, winrt::Windows::Foundation::IInspectable>();
 
@@ -341,7 +341,7 @@ TEST_F(ScenarioCppWinrtTest, Scenario7_EvalWithNoBind)
 
 //! Scenario8: choose which device to run the model on - PreferredDeviceType, PreferredDevicePerformance, SetDeviceFromSurface, SetDevice
 // create a session on the default device
-TEST_F(ScenarioCppWinrtTest, Scenario8_SetDeviceSample_Default)
+TEST_F(ScenarioCppWinrtTest, Scenario8SetDeviceSampleDefault)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -352,7 +352,7 @@ TEST_F(ScenarioCppWinrtTest, Scenario8_SetDeviceSample_Default)
 }
 
 // create a session on the CPU device
-TEST_F(ScenarioCppWinrtTest, Scenario8_SetDeviceSample_CPU)
+TEST_F(ScenarioCppWinrtTest, Scenario8SetDeviceSampleCPU)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -363,7 +363,7 @@ TEST_F(ScenarioCppWinrtTest, Scenario8_SetDeviceSample_CPU)
 }
 
 // create a session on the default DML device
-TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_DefaultDirectX)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario8SetDeviceSampleDefaultDirectX)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -374,7 +374,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_DefaultDirectX)
 }
 
 // create a session on the DML device that provides best power
-TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MinPower)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario8SetDeviceSampleMinPower)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -385,7 +385,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MinPower)
 }
 
 // create a session on the DML device that provides best perf
-TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MaxPerf)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario8SetDeviceSampleMaxPerf)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -396,7 +396,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MaxPerf)
 }
 
 // create a session on the same device my camera is on
-TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MyCameraDevice)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario8SetDeviceSampleMyCameraDevice)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -427,7 +427,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_MyCameraDevice)
 }
 
 // create a device from D3D11 Device
-TEST_F(ScenarioCppWinrtGpuSkipEdgeCoreTest, Scenario8_SetDeviceSample_D3D11Device)
+TEST_F(ScenarioCppWinrtGpuSkipEdgeCoreTest, Scenario8SetDeviceSampleD3D11Device)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -457,7 +457,7 @@ TEST_F(ScenarioCppWinrtGpuSkipEdgeCoreTest, Scenario8_SetDeviceSample_D3D11Devic
 }
 
 // create a session on the a specific dx device that I chose some other way , note we have to use native interop here and pass a cmd queue
-TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_CustomCommandQueue)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario8SetDeviceSampleCustomCommandQueue)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -510,7 +510,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario8_SetDeviceSample_CustomCommandQueue)
 
 
 //pass a Tensor in as an input GPU
-TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario9_LoadBindEval_InputTensorGPU)
+TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario9LoadBindEvalInputTensorGPU)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
@@ -597,7 +597,7 @@ TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario9_LoadBindEval_InputTensorGPU)
 
 }
 
-TEST_F(ScenarioCppWinrtGpuTest, Scenario13_SingleModelOnCPUandGPU)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario13SingleModelOnCPUandGPU)
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
     LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -624,7 +624,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario13_SingleModelOnCPUandGPU)
 }
 
 // Validates when binding input image with free dimensions, the binding step is executed correctly.
-TEST_F(ScenarioCppWinrtGpuTest, Scenario11_FreeDimenions_tensor)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario11FreeDimensionsTensor)
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"free_dimensional_image_input.onnx";
     // load a model with expected input size: -1 x -1
@@ -643,7 +643,7 @@ TEST_F(ScenarioCppWinrtGpuTest, Scenario11_FreeDimenions_tensor)
     session.Evaluate(binding, L"");
 }
 
-TEST_F(ScenarioCppWinrtGpuTest, Scenario11_FreeDimenions_image)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario11FreeDimensionsImage)
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"free_dimensional_imageDes.onnx";
     // load a model with expected input size: -1 x -1
@@ -695,7 +695,7 @@ void SubmitEval(LearningModel model, SwapChainEntry *sessionBindings, int swapch
 }
 
 //Scenario14:Load single model, run it mutliple times on a single gpu device using a fast swapchain pattern
-TEST_F(ScenarioCppWinrtGpuTest, Scenario14_RunModelSwapchain)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario14RunModelSwapchain)
 {
     const int swapchainentrycount = 3;
     SwapChainEntry sessionBindings[swapchainentrycount];
@@ -758,7 +758,7 @@ static void LoadBindEval_CustomOperator_CPU(const wchar_t* fileName)
 }
 
 //! Scenario17 : Control the dev diagnostics features of WinML Tracing
-TEST_F(ScenarioCppWinrtTest, Scenario17_DevDiagnostics)
+TEST_F(ScenarioCppWinrtTest, Scenario17DevDiagnostics)
 {
     // load a model
     std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
@@ -781,21 +781,21 @@ TEST_F(ScenarioCppWinrtTest, Scenario17_DevDiagnostics)
 }
 
 // create a session that loads a model with a branch new operator, register the custom operator, and load/bind/eval
-TEST_F(ScenarioCppWinrtTest, Scenario20a_LoadBindEval_CustomOperator_CPU)
+TEST_F(ScenarioCppWinrtTest, Scenario20aLoadBindEvalCustomOperatorCPU)
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"noisy_relu.onnx";
     LoadBindEval_CustomOperator_CPU(filePath.c_str());
 }
 
 // create a session that loads a model with an overridden operator, register the replacement custom operator, and load/bind/eval
-TEST_F(ScenarioCppWinrtTest, Scenario20b_LoadBindEval_ReplacementCustomOperator_CPU)
+TEST_F(ScenarioCppWinrtTest, Scenario20bLoadBindEvalReplacementCustomOperatorCPU)
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"relu.onnx";
     LoadBindEval_CustomOperator_CPU(filePath.c_str());
 }
 
 //! Scenario21: Load two models, set them up to run chained after one another on the same gpu hardware device
-TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario21_RunModel2ChainZ)
+TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario21RunModel2ChainZ)
 {
     // load a model, TODO: get a model that has an image descriptor
     std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
@@ -878,7 +878,7 @@ bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected)
     return ((float)errors / size < cMaxErrorRate);
 }
 
-TEST_F(ScenarioCppWinrtTest, DISABLED_Scenario22_ImageBindingAsCPUTensor)
+TEST_F(ScenarioCppWinrtTest, DISABLED_Scenario22ImageBindingAsCPUTensor)
 {
     std::wstring modulePath = FileHelpers::GetModulePath();
     std::wstring inputImagePath = modulePath + L"fish_720.png";
@@ -953,7 +953,7 @@ TEST_F(ScenarioCppWinrtTest, DISABLED_Scenario22_ImageBindingAsCPUTensor)
     encoder.FlushAsync().get();
 }
 
-TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario22_ImageBindingAsGPUTensor)
+TEST_F(ScenarioCppWinrtGpuTest, DISABLED_Scenario22ImageBindingAsGPUTensor)
 {
     std::wstring modulePath = FileHelpers::GetModulePath();
     std::wstring inputImagePath = modulePath + L"fish_720.png";
