@@ -120,10 +120,29 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 # Add winml_adapter
 ###########################
 
-file(GLOB winml_adapter_files CONFIGURE_DEPENDS
-    "${winml_adapter_dir}/*.h"
-    "${winml_adapter_dir}/*.cpp"
+list(APPEND winml_adapter_files
+    ${winml_adapter_dir}/CpuOrtSessionBuilder.cpp
+    ${winml_adapter_dir}/CpuOrtSessionBuilder.h
+    ${winml_adapter_dir}/CustomRegistryHelper.h
+    ${winml_adapter_dir}/FeatureDescriptorFactory.cpp
+    ${winml_adapter_dir}/FeatureDescriptorFactory.h
+    ${winml_adapter_dir}/LotusEnvironment.cpp
+    ${winml_adapter_dir}/LotusEnvironment.h
+    ${winml_adapter_dir}/pch.h
+    ${winml_adapter_dir}/WinMLAdapter.cpp
+    ${winml_adapter_dir}/WinMLAdapter.h
+    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
+    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h    
     )
+
+if (onnxruntime_USE_DML)
+  list(APPEND winml_adapter_files
+      ${winml_adapter_dir}/AbiCustomRegistryImpl.cpp
+      ${winml_adapter_dir}/AbiCustomRegistryImpl.h
+      ${winml_adapter_dir}/DmlOrtSessionBuilder.cpp
+      ${winml_adapter_dir}/DmlOrtSessionBuilder.h
+      )
+endif(onnxruntime_USE_DML)
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -162,7 +181,7 @@ add_dependencies(winml_adapter winml_api_native_internal)
 # Link libraries
 target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
-  target_link_libraries(winml_adapter PRIVATE ${REPO_PACKAGE_LOCATION}/DirectML.0.0.1/build/DirectML.targets)
+  target_link_libraries(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
 endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
@@ -238,6 +257,9 @@ add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_image PRIVATE wil)
+if (onnxruntime_USE_DML)
+  target_link_libraries(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+endif(onnxruntime_USE_DML)
 
 
 ###########################
@@ -329,6 +351,7 @@ set_target_properties(winml_lib_api
   ${target_folder})
 
 # Add deps
+add_dependencies(winml_lib_api onnx)
 add_dependencies(winml_lib_api winml_sdk_cppwinrt)
 add_dependencies(winml_lib_api winml_api)
 add_dependencies(winml_lib_api winml_api_native)
@@ -336,6 +359,9 @@ add_dependencies(winml_lib_api winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_api PRIVATE wil)
+if (onnxruntime_USE_DML)
+  target_link_libraries(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+endif(onnxruntime_USE_DML)
 
 
 ###########################
@@ -408,10 +434,15 @@ set_target_properties(winml_dll
   PROPERTIES
   OUTPUT_NAME windows.ai.machinelearning)
 
+if (onnxruntime_USE_DML)
+  set(delayload_dml "/DELAYLOAD:directml.dll")
+endif(onnxruntime_USE_DML)
+
 set_target_properties(winml_dll
-  PROPERTIES
-  LINK_FLAGS
-  "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll")
+    PROPERTIES
+    LINK_FLAGS
+    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml}")
+
 
 set_target_properties(winml_dll
   PROPERTIES

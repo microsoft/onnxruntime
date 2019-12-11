@@ -5,32 +5,32 @@
 
 #include "core/common/status.h"
 
-#define WINML_THROW_IF_NOT_OK(status)                                                                 \
-  do {                                                                                                \
-    auto _status = status;                                                                            \
-    if (!_status.IsOK()) {                                                                            \
-      HRESULT hresult = StatusCodeToHRESULT(static_cast<StatusCode>(_status.Code()));                 \
+#define WINML_THROW_IF_NOT_OK(status)                                                                      \
+  do {                                                                                                     \
+    auto _status = status;                                                                                 \
+    if (!_status.IsOK()) {                                                                                 \
+      HRESULT hresult = StatusCodeToHRESULT(static_cast<StatusCode>(_status.Code()));                      \
       telemetry_helper.LogRuntimeError(hresult, _status.ErrorMessage(), __FILE__, __FUNCTION__, __LINE__); \
-      winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(_status.ErrorMessage()));           \
-      throw winrt::hresult_error(hresult, errorMessage);                                              \
-    }                                                                                                 \
+      winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(_status.ErrorMessage()));                \
+      throw winrt::hresult_error(hresult, errorMessage);                                                   \
+    }                                                                                                      \
   } while (0)
 
 //
 // WINML_THROW_IF_*_MSG Variants
 //
 
-#define WINML_THROW_HR_IF_FALSE_MSG(hr, value, message, ...)                   \
-  do {                                                                         \
-    auto _value = value;                                                       \
-    if (_value == false) {                                                     \
-      auto _hr = hr;                                                           \
-      char msg[1024];                                                          \
-      sprintf_s(msg, message, __VA_ARGS__);                                    \
+#define WINML_THROW_HR_IF_FALSE_MSG(hr, value, message, ...)                        \
+  do {                                                                              \
+    auto _value = value;                                                            \
+    if (_value == false) {                                                          \
+      auto _hr = hr;                                                                \
+      char msg[1024];                                                               \
+      sprintf_s(msg, message, __VA_ARGS__);                                         \
       telemetry_helper.LogRuntimeError(_hr, msg, __FILE__, __FUNCTION__, __LINE__); \
-      winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(msg));       \
-      throw winrt::hresult_error(_hr, errorMessage);                           \
-    }                                                                          \
+      winrt::hstring errorMessage(WinML::Strings::HStringFromUTF8(msg));            \
+      throw winrt::hresult_error(_hr, errorMessage);                                \
+    }                                                                               \
   } while (0)
 
 #define WINML_THROW_HR_IF_TRUE_MSG(hr, value, message, ...) WINML_THROW_HR_IF_FALSE_MSG(hr, !(value), message, __VA_ARGS__)
@@ -40,20 +40,20 @@
 // WINML_THROW_IF_FAILED* Variants
 //
 
-#define WINML_THROW_HR(hr)                                                      \
-  {                                                                             \
-    auto _result = hr;                                                          \
+#define WINML_THROW_HR(hr)                                                           \
+  {                                                                                  \
+    auto _result = hr;                                                               \
     telemetry_helper.LogRuntimeError(_result, "", __FILE__, __FUNCTION__, __LINE__); \
-    throw winrt::hresult_error(_result);                                        \
+    throw winrt::hresult_error(_result);                                             \
   }
 
-#define WINML_THROW_IF_FAILED(hr)                                             \
-  do {                                                                        \
-    HRESULT _hr = hr;                                                         \
-    if (FAILED(_hr)) {                                                        \
+#define WINML_THROW_IF_FAILED(hr)                                                  \
+  do {                                                                             \
+    HRESULT _hr = hr;                                                              \
+    if (FAILED(_hr)) {                                                             \
       telemetry_helper.LogRuntimeError(_hr, "", __FILE__, __FUNCTION__, __LINE__); \
-      throw winrt::hresult_error(_hr);                                        \
-    }                                                                         \
+      throw winrt::hresult_error(_hr);                                             \
+    }                                                                              \
   } while (0)
 
 #define WINML_THROW_IF_FAILED_MSG(hr, message, ...)                    \
@@ -108,4 +108,9 @@ inline __declspec(noinline) winrt::hresult_error _to_hresult() noexcept {
 #define WINML_CATCH_ALL_COM        \
   catch (...) {                    \
     return _to_hresult().to_abi(); \
+  }
+
+#define WINML_CATCH_ALL_DONOTHING \
+  catch (...) {                   \
+    return;                       \
   }

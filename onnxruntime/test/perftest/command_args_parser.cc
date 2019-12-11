@@ -32,7 +32,7 @@ namespace perftest {
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|mkldnn|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','mkldnn','tensorrt', "
+      "\t-e [cpu|cuda|dnnl|tensorrt|ngraph|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'ngraph', 'openvino', 'nuphar', 'dml' or 'acl'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
@@ -41,7 +41,7 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
-      "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0. If OpenMP is enabled, this configuration will be ignored.\n"
+      "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
       "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -80,8 +80,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kCpuExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCudaExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kMklDnnExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {

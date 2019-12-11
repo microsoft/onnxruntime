@@ -15,7 +15,7 @@ using namespace WinML;
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModelBinding::LearningModelBinding(
-  Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
+    Windows::AI::MachineLearning::LearningModelSession const& session) try : m_session(session) {
   session.as<winmlp::LearningModelSession>()->CheckClosed();
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
 }
@@ -219,11 +219,11 @@ bool LearningModelBinding::HasKey(hstring const& key) {
 void LearningModelBinding::Split(
     Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
     Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second) {
-  ORT_UNUSED_PARAMETER(first);
-  ORT_UNUSED_PARAMETER(second);
-  throw hresult_not_implemented();
+  // the winrt api guide states: 
+  // If the IMapView instance cannot be split, then both the first and second parameters are null when the method returns.
+  first = nullptr;
+  second = nullptr;
 }
-
 
 ONNXTensorElementDataType STDMETHODCALLTYPE GetONNXTensorElementDataType(winml::TensorKind kind) {
   if (kind == TensorKind::Float) {
@@ -275,7 +275,6 @@ bool LearningModelBinding::IsOfMapType(const Ort::Value& ort_value, TensorKind k
 };
 
 bool LearningModelBinding::IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind) {
-
   if (ort_value.GetTypeInfo().GetONNXType() != ONNX_TYPE_SEQUENCE)
     return false;
 
@@ -305,7 +304,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
       if (descriptor.Kind() == LearningModelFeatureKind::Image) {
         using namespace Windows::Graphics::Imaging;
         // TODO: this format for unbound output needs more discussion
-        BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();        
+        BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
         uint32_t width = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[3]);
         uint32_t height = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[2]);
         uint32_t batchSize = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[0]);
@@ -388,7 +387,7 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 
 Windows::Foundation::IInspectable LearningModelBinding::CreateUnboundOutput(
     const std::string& name,
-    Ort::Value& ort_value) {  
+    Ort::Value& ort_value) {
   // Find valid binding port
   auto bindingPort = FindValidBinding(
       m_session.Model(),
@@ -538,8 +537,8 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_
   if (ml_value.IsTensor()) {
     Ort::Value new_mlvalue = Ort::Value(nullptr);
     WINML_THROW_IF_FAILED(m_session.as<LearningModelSession>()
-      ->GetIInferenceSession()
-      ->CopyOneInputAcrossDevices(name.c_str(), ml_value, new_mlvalue.put()));
+                              ->GetIInferenceSession()
+                              ->CopyOneInputAcrossDevices(name.c_str(), ml_value, new_mlvalue.put()));
     add_or_replace(rc.first, rc.second, new_mlvalue);
   } else {
     add_or_replace(rc.first, rc.second, ml_value);
@@ -573,8 +572,7 @@ const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
 
 const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const { return inputs_; }
 
-void LearningModelBinding::BindUnboundOutputs()
-{
+void LearningModelBinding::BindUnboundOutputs() {
   auto& bound_output_names = GetOutputNames();
   std::unordered_set<std::string> bound_output_names_set(
       bound_output_names.begin(),

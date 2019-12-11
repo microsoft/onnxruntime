@@ -42,14 +42,10 @@ inline onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
   return default_logging_manager;
 }
 
-static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::ApplicationModel::SuspendingEventArgs const& args) {
-
-}
-
 class LotusEnvironment {
  public:
   LotusEnvironment() {
-    const HRESULT etw_status = TraceLoggingRegister(winml_trace_logging_provider);
+    const HRESULT etw_status = TraceLoggingRegister(winmla::winml_trace_logging_provider);
     if (FAILED(etw_status)) {
       throw std::runtime_error("WinML TraceLogging registration failed. Logging will be broken: " + std::to_string(etw_status));
     }
@@ -68,14 +64,10 @@ class LotusEnvironment {
           [](int) { return std::make_unique<onnxruntime::CPUAllocator>(); },
           std::numeric_limits<size_t>::max());
     }
-    RegisterSuspendHandler();
   }
 
   ~LotusEnvironment() {
-    TraceLoggingUnregister(winml_trace_logging_provider);
-    if (suspend_token_) {
-      winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_token_);
-    }
+    TraceLoggingUnregister(winmla::winml_trace_logging_provider);
   }
 
   const onnxruntime::logging::Logger* GetDefaultLogger() {
@@ -83,15 +75,7 @@ class LotusEnvironment {
   }
 
  private:
-  void RegisterSuspendHandler() {
-    try {
-        suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(
-            winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending));
-    } catch (...) {}//Catch in case CoreApplication cannot be found for non-UWP executions
-  }
-
   std::unique_ptr<onnxruntime::Environment> lotus_environment_;
-  winrt::event_token suspend_token_;
   onnxruntime::logging::LoggingManager* default_logging_manager_;
 };
 

@@ -14,6 +14,7 @@
 #define ERROR 0
 
 #include "DmlOrtSessionBuilder.h"
+#include "WinMLAdapterErrors.h"
 
 // winml includes
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -34,15 +35,15 @@ using namespace Windows::AI::MachineLearning;
 namespace Windows::AI::MachineLearning::Adapter {
 
 DmlOrtSessionBuilder::DmlOrtSessionBuilder(
-    ID3D12Device* device, 
-    ID3D12CommandQueue* queue){
+    ID3D12Device* device,
+    ID3D12CommandQueue* queue) {
   device_.copy_from(device);
   queue_.copy_from(queue);
 }
 
 HRESULT
 DmlOrtSessionBuilder::CreateSessionOptions(
-    OrtSessionOptions** options) {
+    OrtSessionOptions** options) try {
   RETURN_HR_IF_NULL(E_POINTER, options);
 
   Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(options));
@@ -58,6 +59,7 @@ DmlOrtSessionBuilder::CreateSessionOptions(
   session_options.release();
   return S_OK;
 }
+WINMLA_CATCH_ALL_COM
 
 static HRESULT
 RegisterCustomRegistry(
@@ -70,7 +72,7 @@ RegisterCustomRegistry(
 
     // Register
     for (auto& custom_registry : custom_registries) {
-        ORT_THROW_IF_ERROR(p_session->RegisterCustomRegistry(custom_registry));
+      ORT_THROW_IF_ERROR(p_session->RegisterCustomRegistry(custom_registry));
     }
   }
 
@@ -109,7 +111,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 HRESULT DmlOrtSessionBuilder::CreateSession(
     OrtSessionOptions* options,
     winmla::IInferenceSession** p_session,
-    onnxruntime::IExecutionProvider** pp_provider) {
+    onnxruntime::IExecutionProvider** pp_provider) try {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
   RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
@@ -135,10 +137,11 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
 
   return S_OK;
 }
+WINMLA_CATCH_ALL_COM
 
 HRESULT DmlOrtSessionBuilder::Initialize(
     winmla::IInferenceSession* p_session,
-    onnxruntime::IExecutionProvider* p_provider) {
+    onnxruntime::IExecutionProvider* p_provider) try {
   RETURN_HR_IF_NULL(E_INVALIDARG, p_session);
   RETURN_HR_IF_NULL(E_INVALIDARG, p_provider);
 
@@ -156,7 +159,8 @@ HRESULT DmlOrtSessionBuilder::Initialize(
 
   return S_OK;
 }
+WINMLA_CATCH_ALL_COM
 
-} // Windows::AI::MachineLearning::Adapter
+}  // namespace Windows::AI::MachineLearning::Adapter
 
 #endif USE_DML

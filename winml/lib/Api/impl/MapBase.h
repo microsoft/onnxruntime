@@ -47,7 +47,6 @@ struct MapBase : winrt::implements<
 
   using LotusKey = typename ValidLotusType<TKey>::Type;
   using LotusValue = typename ValidLotusType<TValue>::Type;
-  //using LotusMap = std::map<LotusKey, LotusValue>;
   using LotusMap = std::pair<std::vector<LotusKey>, std::vector<LotusValue>>;
   using ABIMap = ::winrt::Windows::Foundation::Collections::IMap<TKey, TValue>;
   using ABIMapView = ::winrt::Windows::Foundation::Collections::IMapView<TKey, TValue>;

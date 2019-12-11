@@ -38,7 +38,6 @@ class SessionState;
  */
 class IOBinding {
  public:
-  ~IOBinding();
   /**
    * Call repeatedly to bind as many inputs as required.
    * If called again for the same name will replace an existing value.

@@ -10,8 +10,6 @@
 
 #include "core/framework/op_kernel.h"
 
-#include <DirectML.h>
-
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
 

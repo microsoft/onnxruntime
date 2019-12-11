@@ -13,6 +13,7 @@
 
 #include "CpuOrtSessionBuilder.h"
 #include "WinMLAdapter.h"
+#include "WinMLAdapterErrors.h"
 
 // winml includes
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -33,7 +34,7 @@ CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
 
 HRESULT
 CpuOrtSessionBuilder::CreateSessionOptions(
-    OrtSessionOptions** options) {
+    OrtSessionOptions** options) try {
   RETURN_HR_IF_NULL(E_POINTER, options);
 
   Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(options));
@@ -52,12 +53,13 @@ CpuOrtSessionBuilder::CreateSessionOptions(
   session_options.release();
   return S_OK;
 }
+WINMLA_CATCH_ALL_COM
 
 HRESULT
 CpuOrtSessionBuilder::CreateSession(
     OrtSessionOptions* options,
     winmla::IInferenceSession** p_session,
-    onnxruntime::IExecutionProvider** pp_provider) {
+    onnxruntime::IExecutionProvider** pp_provider) try {
   RETURN_HR_IF_NULL(E_POINTER, p_session);
   RETURN_HR_IF_NULL(E_POINTER, pp_provider);
   RETURN_HR_IF(E_POINTER, *pp_provider != nullptr);
@@ -84,14 +86,16 @@ CpuOrtSessionBuilder::CreateSession(
 
   return S_OK;
 }
+WINMLA_CATCH_ALL_COM
 
 HRESULT
 CpuOrtSessionBuilder::Initialize(
     winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* /*p_provider*/
-) {
+) try {
     ORT_THROW_IF_ERROR(p_session->get()->Initialize());
   return S_OK;
 }
+WINMLA_CATCH_ALL_COM
 
 } // Windows::AI::MachineLearning::Adapter
