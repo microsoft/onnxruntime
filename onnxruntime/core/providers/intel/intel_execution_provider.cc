@@ -217,32 +217,18 @@ bool IsUnsupportedOp(std::string name, std::string device){
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
-
-  std::string device_id = "CPU";
-
-  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
-    device_id = "GPU";
-  #endif
-
-  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
-    device_id = "VPU";
-  #endif
-
-  if(IsUnsupportedOp(optype,device_id)){
-    if(intel_ep::IsDebugEnabled())
-      std::cout << "Node is in the unsupported list" << std::endl;
-    return true;
-  }
+  std::cout << "In unsupported OpMode" << std::endl;
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
 
-  auto node_inputs = node->InputDefs();
+  // auto node_inputs = node->InputDefs();
   // auto node_outputs = node->OutputDefs();
 
   //Zero dimension check
-  for (size_t i = 0; i < node_inputs.size(); i++) {
+  /*for (size_t i = 0; i < node_inputs.size(); i++) {
     auto name = node_inputs[i]->Name();
+    std::cout << "Name is " << name << std::endl;
     auto it = initializers.find(name);
     auto shape = node_inputs[i]->Shape();
     if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
@@ -255,6 +241,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
       // Reject 1D symbolic shapes
       else if (shape->dim_size() == 1 && shape->dim(0).value_case() == shape->dim(0).kDimParam) {
+        std::cout << "Zero dimensions check failed here" << std::endl;
         return true;
       }
       else{
@@ -265,6 +252,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
           if(dim.value_case() == dim.kDimValue && dim.dim_value() == 0){
               if(intel_ep::IsDebugEnabled())
                 std::cout << "Reject: Node: " << name << " value dim: " << j << " has 0" << std::endl;
+                std::cout << "Zero dimensions check failed" << std::endl;
               return true;
           }
         }
@@ -272,7 +260,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
   }
 
-  /*for(size_t i = 0; i < node_outputs.size(); i++){
+  for(size_t i = 0; i < node_outputs.size(); i++){
 
     auto out_shape = node_outputs[i]->Shape();
     if(out_shape != nullptr){
@@ -513,13 +501,32 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
 
+  std::string device_id = "CPU";
+
+  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+    device_id = "GPU";
+  #endif
+
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    device_id = "VPU";
+  #endif
+
+
   /*
+  0. Check if node is in the unsupported list
   1. Check input and output data types are supported.
-  2. Check Op is supported
-   2a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
-   2b. If above is not true, check if the op is available in nGraph.
+  2. Check if there is zero dimension in input and output shapes
+  3. Check Op is supported
+   3a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
+   3b. If above is not true, check if the op is available in nGraph.
   */
 
+  //Check 0
+  if(IsUnsupportedOp(optype,device_id)){
+    if(intel_ep::IsDebugEnabled())
+      std::cout << "Node is in the unsupported list" << std::endl;
+    return false;
+  }
   //Check 1
   bool are_types_supported = true;
 
@@ -531,14 +538,38 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     return false;
   }
 
-  //Check 2a
+  //Check 2
+
+  bool has_zero_dimension = false;
+  node->ForEachDef([&has_zero_dimension,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
+    auto shape = node_arg.Shape();
+    if(shape != nullptr){
+      if(shape->dim_size() == 0){
+        has_zero_dimension = true;
+        return;
+      }
+      for(const auto& dim : shape->dim()) {
+        if(dim.dim_value() == 0){
+          has_zero_dimension = true;
+          return;
+        }
+      }
+    }
+  });
+  if(has_zero_dimension){
+    std::cout << "Zero dimension check failed" << std::endl;
+    return false;
+  }
+
+
+  //Check 3a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
     if(intel_ep::IsDebugEnabled())
       std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
   }
 
-  //Check 2b
+  //Check 3b
   const auto opset = op_map.find(domain);
   if (opset == op_map.end() || opset->second.find(optype) == opset->second.end()) {
     return false;
