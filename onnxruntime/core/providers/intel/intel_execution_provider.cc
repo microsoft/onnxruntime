@@ -12,6 +12,7 @@
 #include "intel_graph.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -217,71 +218,9 @@ bool IsUnsupportedOp(std::string name, std::string device){
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
-  std::cout << "In unsupported OpMode" << std::endl;
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
-
-  // auto node_inputs = node->InputDefs();
-  // auto node_outputs = node->OutputDefs();
-
-  //Zero dimension check
-  /*for (size_t i = 0; i < node_inputs.size(); i++) {
-    auto name = node_inputs[i]->Name();
-    std::cout << "Name is " << name << std::endl;
-    auto it = initializers.find(name);
-    auto shape = node_inputs[i]->Shape();
-    if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
-      // Reject 0 dimensional shapes
-      if (shape->dim_size() == 0){
-        if(intel_ep::IsDebugEnabled()){
-          std::cout << "Reject: Node: " << name << " Zero dimensions check failed" << std::endl;
-        }
-        return true;
-      }
-      // Reject 1D symbolic shapes
-      else if (shape->dim_size() == 1 && shape->dim(0).value_case() == shape->dim(0).kDimParam) {
-        std::cout << "Zero dimensions check failed here" << std::endl;
-        return true;
-      }
-      else{
-        auto num_dims = shape->dim_size();
-        for(int j = 0; j < num_dims; j++){
-          auto dim = shape->dim(j);
-          // Reject if dimension values have 0s
-          if(dim.value_case() == dim.kDimValue && dim.dim_value() == 0){
-              if(intel_ep::IsDebugEnabled())
-                std::cout << "Reject: Node: " << name << " value dim: " << j << " has 0" << std::endl;
-                std::cout << "Zero dimensions check failed" << std::endl;
-              return true;
-          }
-        }
-      }
-    }
-  }
-
-  for(size_t i = 0; i < node_outputs.size(); i++){
-
-    auto out_shape = node_outputs[i]->Shape();
-    if(out_shape != nullptr){
-      if(out_shape->dim_size() == 0){
-        if(intel_ep::IsDebugEnabled()){
-          std::cout << "Zero dimensions check failed" << std::endl;
-        }
-        return true;
-      }
-      else{
-        auto num_dims = out_shape->dim_size();
-        for(int j = 0; j < num_dims; j++){
-          if(out_shape->dim(j).dim_value() == 0){
-            if(intel_ep::IsDebugEnabled())
-              std::cout << "Zero dimensions check failed" << std::endl;
-            return true;
-          }
-        }
-      }
-    }
-  }*/
 
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
@@ -465,13 +404,14 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   return false;
 }
 
-static bool IsTypeSupported(const NodeArg* node_arg) {
+static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
   const auto* type_proto = node_arg->TypeAsProto();
   if (!type_proto) {
     return false;
   }
 
-  switch (type_proto->tensor_type().elem_type()) {
+  if(is_initializer){
+    switch (type_proto->tensor_type().elem_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
   //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
@@ -486,8 +426,24 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
       return true;
     default:
       if(intel_ep::IsDebugEnabled())
-        std::cout << "Type is not supported" << std::endl;
+        std::cout << "Initializer Data Type is not supported" << std::endl;
       return false;
+    }
+  }
+  else{
+    switch (type_proto->tensor_type().elem_type()) {
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
+        return true;
+      default:
+        if(intel_ep::IsDebugEnabled())
+          std::cout << "I/O data type is not supported" << std::endl;
+        return false;
+    }
   }
 }
 
@@ -515,7 +471,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   /*
   0. Check if node is in the unsupported list
   1. Check input and output data types are supported.
-  2. Check if there is zero dimension in input and output shapes
+  2. Check if there is unsupported dimension in input and output shapes
   3. Check Op is supported
    3a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
    3b. If above is not true, check if the op is available in nGraph.
@@ -527,11 +483,18 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
       std::cout << "Node is in the unsupported list" << std::endl;
     return false;
   }
+
+
   //Check 1
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
-    are_types_supported &= IsTypeSupported(&node_arg);
+  node->ForEachDef([&are_types_supported,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
+    bool is_initializer = false;
+    if(is_input){
+      if(graph_viewer.IsConstantInitializer(node_arg.Name(), true))
+        is_initializer = true;
+    }
+    are_types_supported &= IsTypeSupported(&node_arg,is_initializer);
   });
 
   if (!are_types_supported) {
@@ -540,24 +503,32 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 
   //Check 2
 
-  bool has_zero_dimension = false;
-  node->ForEachDef([&has_zero_dimension,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
+  bool has_unsupported_dimension = false;
+  node->ForEachDef([&has_unsupported_dimension,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
     auto shape = node_arg.Shape();
     if(shape != nullptr){
       if(shape->dim_size() == 0){
-        has_zero_dimension = true;
+        has_unsupported_dimension = true;
         return;
       }
-      for(const auto& dim : shape->dim()) {
-        if(dim.dim_value() == 0){
-          has_zero_dimension = true;
-          return;
+      //Reject 1D symbolic shapes
+      else if(shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))){
+        has_unsupported_dimension = true;
+        return;
+      }
+      else{
+        for(const auto& dim : shape->dim()) {
+          if(utils::HasDimValue(dim) && dim.dim_value() == 0){
+            has_unsupported_dimension = true;
+            return;
+          }
         }
       }
     }
   });
-  if(has_zero_dimension){
-    std::cout << "Zero dimension check failed" << std::endl;
+  if(has_unsupported_dimension){
+    if(intel_ep::IsDebugEnabled())
+      std::cout << "Dimension check failed" << std::endl;
     return false;
   }
 
