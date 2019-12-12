@@ -518,6 +518,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
       &(resourceMetadata.TensorDescriptor.sizes[0]),
       sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
       (resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32) ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  m_tensorAllocators.emplace_back(dml_allocator);
 
   // Get the tensor raw data
   void* pAllocatedResource = nullptr;

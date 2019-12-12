@@ -46,9 +46,17 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, WinML::ILotusVa
   bool IsBatch() { return m_batchSize > 1; }
 
  private:
+  struct TensorAllocatorDeleter {
+    void operator()(OrtAllocator* allocator) noexcept {
+      com_ptr<winmla::IWinMLAdapter> adapter;
+      if (SUCCEEDED(OrtGetWinMLAdapter(adapter.put())))
+        adapter->FreeProviderAllocator(allocator);
+    }
+  };
   winrt::Windows::Foundation::Collections::IVector<Windows::Media::VideoFrame> m_videoFrames;
   std::vector<uint32_t> m_widths = {};
   std::vector<uint32_t> m_heights = {};
+  std::vector<std::unique_ptr<OrtAllocator, TensorAllocatorDeleter>> m_tensorAllocators;
   uint32_t m_batchSize = 1;
   // Crop the image with desired aspect ratio.
   // This function does not crop image to desried width and height, but crops to center for desired ratio

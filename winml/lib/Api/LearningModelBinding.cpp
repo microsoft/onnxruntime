@@ -158,7 +158,7 @@ void LearningModelBinding::Bind(
 
   auto featureName = WinML::Strings::UTF8FromHString(name);
   std::tie(bindingName, binding_value, bindingType) = CreateBinding(featureName, value, properties);
-  Ort::Value ortValue = binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr);
+  Ort::Value ortValue = Ort::Value(binding_value);
   switch (bindingType) {
     case BindingType::kInput:
       WINML_THROW_IF_FAILED(BindInput(bindingName, ortValue));

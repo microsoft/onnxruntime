@@ -638,11 +638,18 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
       onnxruntime::IExecutionProvider* provider,
       OrtAllocator** allocator) override try {
     auto allocator_ptr = provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault);
-    *allocator = new AllocatorWrapper(allocator_ptr);
+    *allocator = new (std::nothrow) AllocatorWrapper(allocator_ptr);
     if (*allocator == nullptr) {
       return E_OUTOFMEMORY;
     }
 
+    return S_OK;
+  }
+  WINML_CATCH_ALL_COM
+
+  HRESULT STDMETHODCALLTYPE FreeProviderAllocator(
+      OrtAllocator* allocator) override try {
+    delete static_cast<AllocatorWrapper*>(allocator);
     return S_OK;
   }
   WINML_CATCH_ALL_COM
