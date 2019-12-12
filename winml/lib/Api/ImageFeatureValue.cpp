@@ -173,6 +173,12 @@ ImageFeatureValue::ImageFeatureValue(IVectorView<Windows::Media::VideoFrame> con
   Initialize();
 }
 
+ImageFeatureValue::~ImageFeatureValue() {
+  for (auto allocator : m_tensorAllocators) {
+    m_adapter->FreeProviderAllocator(allocator);
+  }
+}
+
 static std::optional<BitmapPixelFormat> GetBitmapPixelFormatFromMetadata(const IPropertySet& properties) {
   if (properties != nullptr && properties.HasKey(L"BitmapPixelFormat")) {
     if (auto pixelFormatInspectable = properties.Lookup(L"BitmapPixelFormat")) {
@@ -505,12 +511,13 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
   auto provider = spSession->GetExecutionProvider();
 
   // and the adapter
-  com_ptr<winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  if (!m_adapter) {
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(m_adapter.put()));
+  }
 
   // create the OrtValue
   OrtAllocator* dml_allocator;
-  WINML_THROW_IF_FAILED(adapter->GetProviderAllocator(provider, &dml_allocator));
+  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, &dml_allocator));
 
   // create the OrtValue as a tensor letting ort know that we own the data buffer
   Ort::Value ort_tensor = Ort::Value::CreateTensor(
@@ -518,6 +525,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
       &(resourceMetadata.TensorDescriptor.sizes[0]),
       sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
       (resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32) ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+  m_tensorAllocators.emplace_back(dml_allocator);
 
   // Get the tensor raw data
   void* pAllocatedResource = nullptr;
@@ -552,8 +560,9 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
   auto spSession = context.session.as<LearningModelSession>();
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
-  com_ptr<winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  if (!m_adapter) {
+    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(m_adapter.put()));
+  }
 
   // Get the output tensor raw data
   void* pAllocatedResource = nullptr;
@@ -568,7 +577,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
   descriptor.height = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[2]);
 
   Ort::MemoryInfo memory_info(nullptr);
-  adapter->GetValueMemoryInfo(ort_value, memory_info.put());
+  m_adapter->GetValueMemoryInfo(ort_value, memory_info.put());
 
   if (!strcmp(memory_info.Name(), onnxruntime::CPU) ||
       memory_info.MemType()  == ::OrtMemType::OrtMemTypeCPUOutput ||
@@ -596,7 +605,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
     auto pProvider = spSession->GetExecutionProvider();
-    auto d3dResource = adapter->GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
+    auto d3dResource = m_adapter->GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
 
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
