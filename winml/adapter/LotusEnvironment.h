@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/common/logging/isink.h"
-#include "WinMLProfiler.h"
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include "WinMLAdapter.h"

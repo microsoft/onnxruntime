@@ -124,6 +124,8 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
   auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
 
+  const onnxruntime::Env& env = onnxruntime::Env::Default();
+  env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid());
   // Cache the provider's raw pointer
   *pp_provider = gpu_provider.get();
 

@@ -26,22 +26,6 @@ EventCategoryToString(
   }
 }
 
-static EventCategory
-GetEventCategoryFromRuntimePerfMode(
-    WinMLRuntimePerf mode) {
-  switch (mode) {
-    case WinMLRuntimePerf::kLoadModel:
-      return EventCategory::kModelLoad;
-    case WinMLRuntimePerf::kEvaluateModel:
-      return EventCategory::kEvaluation;
-    default:
-      // This should never happen.
-      // If caught downstream by cppwinrt this will be converted to
-      // a winrt::hresult_invalid_argument(...);
-      throw std::invalid_argument("mode");
-  }
-}
-
 TelemetryEvent::TelemetryEvent(
     EventCategory category) {
   auto is_provider_enabled =
@@ -71,18 +55,5 @@ TelemetryEvent::~TelemetryEvent() {
         TraceLoggingString(EventCategoryToString(category_), "event"),
         TraceLoggingInt64(event_id_.value(), "eventId"),
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP));
-  }
-}
-
-PerformanceTelemetryEvent::PerformanceTelemetryEvent(
-    WinMLRuntimePerf mode) : TelemetryEvent(GetEventCategoryFromRuntimePerfMode(mode)),
-                               mode_(mode) {
-  WINML_PROFILING_START(profiler, mode_);
-}
-
-PerformanceTelemetryEvent::~PerformanceTelemetryEvent() {
-  WINML_PROFILING_STOP(profiler, mode_);
-  if (mode_ == WinMLRuntimePerf::kEvaluateModel) {
-    telemetry_helper.LogRuntimePerf(profiler, false);
   }
 }

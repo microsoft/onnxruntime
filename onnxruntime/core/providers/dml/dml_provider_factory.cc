@@ -13,6 +13,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 
@@ -46,6 +47,11 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
     THROW_HR(E_INVALIDARG);
   }
 
+  ComPtr<ID3D12Device> d3d12_device;
+  THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device)));
+  const Env& env = Env::Default();
+  env.GetTelemetryProvider().LogExecutionProviderEvent(d3d12_device->GetAdapterLuid());
+
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
 }
 
@@ -62,7 +68,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
   cmd_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-  
+
   ComPtr<ID3D12CommandQueue> cmd_queue;
   THROW_IF_FAILED(d3d12_device->CreateCommandQueue(&cmd_queue_desc, IID_PPV_ARGS(&cmd_queue)));
 
@@ -85,6 +91,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
                                    DML_FEATURE_LEVEL_2_0,
                                    IID_PPV_ARGS(&dml_device)));
 
+  
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 

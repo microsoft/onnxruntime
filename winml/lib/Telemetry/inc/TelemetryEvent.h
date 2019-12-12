@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include "WinMLProfiler.h"
-
 namespace Windows::AI::MachineLearning::Telemetry {
 
 enum class EventCategory {
@@ -24,18 +22,6 @@ class TelemetryEvent {
  private:
   EventCategory category_;
   std::optional<int64_t> event_id_;
-};
-
-// Wrapper to telemetry event. if the call throws the destructor is still called
-class PerformanceTelemetryEvent : public TelemetryEvent {
- public:
-  PerformanceTelemetryEvent(
-      WinMLRuntimePerf mode);
-
-  ~PerformanceTelemetryEvent();
-
- private:
-  WinMLRuntimePerf mode_;
 };
 
 }  // namespace Windows::AI::MachineLearning::Telemetry

@@ -92,7 +92,6 @@ void LearningModelSession::Initialize() {
   // Begin recording session creation telemetry
   _winmlt::TelemetryEvent session_creation_event(
     _winmlt::EventCategory::kSessionCreation);
-
   // Get the optimized model proto from the learning model
   com_ptr<winmla::IModelProto> model_proto; 
   model_proto.attach(GetOptimizedModel());
@@ -142,11 +141,6 @@ void LearningModelSession::Initialize() {
 
   // Cache the constructed session
   inference_session_ = session;
-
-  telemetry_helper.LogSessionCreation(
-    WinML::Strings::UTF8FromHString(model_.Name()),
-    device_impl->IsCpuDevice(),
-    device_impl->GetDeviceLuid());
 }
 
 wfc::IPropertySet
@@ -312,8 +306,7 @@ wf::IAsyncOperation<winml::LearningModelEvaluationResult>
 LearningModelSession::EvaluateAsync(
     winml::LearningModelBinding binding,
     hstring const correlation_id) {
-  _winmlt::PerformanceTelemetryEvent kEvaluateModel_event(WinMLRuntimePerf::kEvaluateModel);
-
+  _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
   auto device = device_.as<LearningModelDevice>();
 
   // Get the ORT binding collection
@@ -361,7 +354,7 @@ LearningModelSession::Evaluate(
     winml::LearningModelBinding binding,
     hstring const& correlation_id) try {
   ToggleProfiler();
-  _winmlt::PerformanceTelemetryEvent kEvaluateModel_event(WinMLRuntimePerf::kEvaluateModel);
+  _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
 
   ApplyEvaluationProperties();
 

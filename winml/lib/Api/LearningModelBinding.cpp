@@ -487,7 +487,6 @@ STDMETHODIMP LearningModelBinding::Bind(
     IUnknown* value) {
   try {
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
-
     BindingType bindingType;
     std::string bindingName;
     OrtValue* binding_value_ptr = nullptr;
