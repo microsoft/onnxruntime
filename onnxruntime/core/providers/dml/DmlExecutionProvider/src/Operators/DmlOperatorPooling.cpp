@@ -29,6 +29,19 @@ public:
 
         assert(m_kernel.spatialDimensionCount <= ARRAYSIZE(m_kernel.windowSize));
 
+        // The below attributes are temporarily not supported:
+        int ceilMode = kernelInfo.GetOptionalAttribute<int>(AttrName::CeilMode, 0);
+        THROW_HR_IF(E_NOTIMPL, ceilMode != 0);
+
+        int storageOrder = kernelInfo.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
+        THROW_HR_IF(E_NOTIMPL, storageOrder != 0);
+
+        auto dilations = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::Dilations);
+        for (int dilation : dilations)
+        {
+            THROW_HR_IF(E_NOTIMPL, dilation != 1);
+        }
+
         // DML requires that DimensionCount be equal to Input.DimCount - 2 for Pooling
         uint32_t expectedSpatialDimCount = m_inputTensorDescs[0].GetDimensionCount() - 2;
         if (m_kernel.spatialDimensionCount < expectedSpatialDimCount)
