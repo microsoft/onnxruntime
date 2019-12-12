@@ -74,6 +74,7 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     virtual HRESULT STDMETHODCALLTYPE CreateOrtSessionBuilder(
             ID3D12Device* device,
             ID3D12CommandQueue* queue,
+            bool enableMetacommands,
             IOrtSessionBuilder** session_builder) = 0;
 
     // factory methods for creating model protos

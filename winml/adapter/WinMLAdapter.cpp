@@ -453,6 +453,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   HRESULT STDMETHODCALLTYPE CreateOrtSessionBuilder(
       ID3D12Device* device,
       ID3D12CommandQueue* queue,
+      bool enableMetacommands,
       IOrtSessionBuilder** session_builder) override try {
     if (device == nullptr) {
       auto builder = wil::MakeOrThrow<CpuOrtSessionBuilder>();
@@ -460,7 +461,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     }
 #ifdef USE_DML
     else {
-      auto builder = wil::MakeOrThrow<DmlOrtSessionBuilder>(device, queue);
+      auto builder = wil::MakeOrThrow<DmlOrtSessionBuilder>(device, queue, enableMetacommands);
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
     }
 #else

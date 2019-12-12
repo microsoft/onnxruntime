@@ -36,9 +36,11 @@ namespace Windows::AI::MachineLearning::Adapter {
 
 DmlOrtSessionBuilder::DmlOrtSessionBuilder(
     ID3D12Device* device,
-    ID3D12CommandQueue* queue) {
+    ID3D12CommandQueue* queue,
+    bool enableMetacommands) {
   device_.copy_from(device);
   queue_.copy_from(queue);
+  enableMetacommands_ = enableMetacommands;
 }
 
 HRESULT
@@ -121,7 +123,7 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
 
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
 
-  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
+  std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue, enableMetacommands_);
   auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
 
   // Cache the provider's raw pointer

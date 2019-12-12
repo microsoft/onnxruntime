@@ -29,6 +29,7 @@ class DmlOrtSessionBuilder : public Microsoft::WRL::RuntimeClass <
  private:
   winrt::com_ptr<ID3D12Device> device_;
   winrt::com_ptr<ID3D12CommandQueue> queue_;
+  bool enableMetacommands_ = true;
 };
 
 }  // namespace Windows::AI::MachineLearning::Adapter

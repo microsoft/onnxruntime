@@ -107,6 +107,7 @@ void LearningModelSession::Initialize() {
   WINML_THROW_IF_FAILED(adapter->CreateOrtSessionBuilder(
     device_impl->GetD3DDevice(), 
     device_impl->GetDeviceQueue(),
+    device_impl->MetacommandsEnabled(),
     session_builder.put()));
 
   Ort::SessionOptions options(nullptr);
