@@ -646,14 +646,14 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
 
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 
   HRESULT STDMETHODCALLTYPE FreeProviderAllocator(
       OrtAllocator* allocator) override try {
     delete static_cast<AllocatorWrapper*>(allocator);
     return S_OK;
   }
-  WINML_CATCH_ALL_COM
+  WINMLA_CATCH_ALL_COM
 };  // namespace Windows::AI::MachineLearning::Adapter
 std::shared_ptr<WinML::LotusEnvironment> WinMLAdapter::lotus_environment_ = nullptr;
 
