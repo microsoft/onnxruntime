@@ -47,6 +47,10 @@ jobs:
          exit 1
      fi
     displayName: 'Run Test'
+    env:
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+        DisableContribOps: $(DisableContribOps)
+        IsReleaseBuild: $(IsReleaseBuild)
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
     displayName: 'Component Detection'

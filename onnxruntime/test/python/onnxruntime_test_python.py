@@ -66,6 +66,13 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue('[\'InvalidProvider\'] does not contain a subset of available providers' in str(
             context.exception))
 
+    def testSessionProviders(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            # create session from scratch, but constrain it to only use the CPU.
+            sess = onnxrt.InferenceSession(
+                self.get_name("mul_1.onnx"), providers=['CPUExecutionProvider'])
+            self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
+
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
