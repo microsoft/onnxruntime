@@ -1553,7 +1553,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
       for (uint32_t index : m_requiredConstantCpuInputs) {
         MLOperatorTensor tensor = MLOperatorTensor(constantInputGetter(index).Get());
 
-        if (index >= context->InputCount()) {
+        if (index >= static_cast<uint32_t>(context->InputCount())) {
           continue;
         }
         m_constantInputTensorContentsOfKernel[index].isValid = (tensor.GetInterface() != nullptr);
