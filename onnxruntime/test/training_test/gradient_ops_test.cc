@@ -473,6 +473,27 @@ TEST(GradientCheckerTest, SplitGrad) {
   EXPECT_IS_TINY(max_error);
 }
 
+template <typename T>
+static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<TensorInfo>& infos) {
+  std::vector<std::vector<T>> datas(infos.size());
+  for (size_t i = 0; i < infos.size(); i++) {
+    const TensorInfo& info = infos[i];
+
+    // First add an increasing sequence of values with reasonable
+    // differences (larger than the Jacobian delta).
+    T value = 0;
+    for (int64_t n = 0; n < info.shape.Size(); n++) {
+      datas[i].push_back(value);
+      value += T(1e-2);
+    }
+
+    // Next, shuffle the sequence.
+    std::random_shuffle(datas[i].begin(), datas[i].end());
+  }
+
+  return datas;
+}
+
 TEST(GradientCheckerTest, MaxPoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -482,6 +503,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   //maxpool_1d_default
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
+                                          GetRandomValuesForMaxPool<float>({{2, 2, 9}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
@@ -489,6 +511,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   //maxpool_2d_default
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 4, 4}}, &max_error,
+                                          GetRandomValuesForMaxPool<float>({{2, 3, 5, 5}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
                                            MakeAttribute("strides", std::vector<int64_t>{1, 1})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
@@ -497,6 +520,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   // maxpool_2d_pads
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 1, 5, 5}}, {{1, 1, 7, 7}}, &max_error,
+                                          GetRandomValuesForMaxPool<float>({{1, 1, 5, 5}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{2, 2, 2, 2})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
@@ -505,6 +529,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   //maxpool_2d_strides
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 1, 32, 32}}, {{1, 1, 10, 10}}, &max_error,
+                                          GetRandomValuesForMaxPool<float>({{1, 1, 32, 32}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{5, 5}),
                                            MakeAttribute("strides", std::vector<int64_t>{3, 3})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
@@ -513,6 +538,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   //maxpool_3d_default
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3, 3}}, {{2, 1, 2, 2, 2}}, &max_error,
+                                          GetRandomValuesForMaxPool<float>({{2, 1, 3, 3, 3}}),
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
