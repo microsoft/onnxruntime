@@ -305,7 +305,7 @@ public:
 public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     template<typename Info_t, typename Shape_t>
-    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool isWithDynamicPads) :
+    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads) :
         m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(0), shape.GetInputTensorShape(1)))
     {
         m_groupCount = info.GetOptionalAttribute<uint32_t>(AttrName::Group, 1);
@@ -316,7 +316,7 @@ public:
         }
         else
         {
-            InitializeKernelAndShapesTransposed(info, shape, isWithDynamicPads);
+            InitializeKernelAndShapesTransposed(info, shape, hasDynamicPads);
         }
     }
 
@@ -347,7 +347,7 @@ public:
     
     
     template<typename Info_t, typename Shape_t>
-    void InitializeKernelAndShapesTransposed(const Info_t& info, const Shape_t& shapeInfo, bool isWithDynamicPads)
+    void InitializeKernelAndShapesTransposed(const Info_t& info, const Shape_t& shapeInfo, bool hasDynamicPads)
     {
         std::vector<int> outputShape = info.GetOptionalAttributeVectorInt32(AttrName::OutputShape);
         if (!outputShape.empty())
@@ -363,12 +363,13 @@ public:
 
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
 
-        if (isWithDynamicPads)
+        if (hasDynamicPads)
         {
             MLOperatorTensor padsTensor = info.GetConstantInputTensor(2);
             const std::vector<uint32_t>& padsTensorDimensions = padsTensor.GetShape();
+            ML_CHECK_VALID_ARGUMENT(padsTensorDimensions.size() == 1, "Pads dimensions must equal 1");
             const size_t dimCount = padsTensorDimensions[0];
-            ML_CHECK_VALID_ARGUMENT(dimCount > NchwSpatialDimensionCount, "Pads dimensions must be > 2");
+            ML_CHECK_VALID_ARGUMENT(dimCount == 2 * NchwSpatialDimensionCount, "Pads count must equal 4");
             const int64_t* padsData = padsTensor.GetData<int64_t>();
 
             for (size_t i = 0; i < dimCount; ++i)

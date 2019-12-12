@@ -18,6 +18,12 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= minInputCount);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
+        // TODO (23108599): Slice V10 introduces an optional "Steps" input which the kernel does not yet support.
+        if (kernelInfo.GetInputCount() > 4)
+        {
+            THROW_HR(E_NOTIMPL);
+        }
+
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 };
         DmlOperator::Initialize(kernelInfo, kernelInputIndices);
 
