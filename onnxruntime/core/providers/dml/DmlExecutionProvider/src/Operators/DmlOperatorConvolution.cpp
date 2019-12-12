@@ -15,14 +15,14 @@ public:
         const MLOperatorKernelCreationContext& kernelInfo,
         DML_CONVOLUTION_MODE mode,
         DML_CONVOLUTION_DIRECTION direction,
-        bool isWithDynamicPads
+        bool hasDynamicPads
         )
     :   DmlOperator(kernelInfo),
-        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, isWithDynamicPads)
+        ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, hasDynamicPads)
     {
-        ML_CHECK_VALID_ARGUMENT((isWithDynamicPads && kernelInfo.GetInputCount() >= 3) || 
-                            (!isWithDynamicPads && kernelInfo.GetInputCount() >= 2));
-        uint32_t biasIndex = isWithDynamicPads ? 3 : 2;
+        ML_CHECK_VALID_ARGUMENT((hasDynamicPads && kernelInfo.GetInputCount() >= 3) || 
+                            (!hasDynamicPads && kernelInfo.GetInputCount() >= 2));
+        uint32_t biasIndex = hasDynamicPads ? 3 : 2;
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0, 1, biasIndex };
 
         DmlOperator::Initialize(kernelInfo, kernelInputIndices);
@@ -35,8 +35,8 @@ public:
         m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
         // Bias is optional so only adjust it if it exists.
-        if ((!isWithDynamicPads && kernelInfo.GetInputCount() > 2) ||
-            (isWithDynamicPads && kernelInfo.GetInputCount() > 3))
+        if ((!hasDynamicPads && kernelInfo.GetInputCount() > 2) ||
+            (hasDynamicPads && kernelInfo.GetInputCount() > 3))
         {
             uint32_t inputDimSize = kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
             ML_CHECK_VALID_ARGUMENT(
@@ -77,7 +77,7 @@ public:
         DML_CONVOLUTION_OPERATOR_DESC convDesc = {};
         convDesc.InputTensor = &inputDescs[0];
         convDesc.FilterTensor = &inputDescs[1];
-        convDesc.BiasTensor = isWithDynamicPads ? (kernelInfo.GetInputCount() > 3 ? &inputDescs[3] : nullptr) : (kernelInfo.GetInputCount() > 2 ? &inputDescs[2] : nullptr);
+        convDesc.BiasTensor = hasDynamicPads ? (kernelInfo.GetInputCount() > 3 ? &inputDescs[3] : nullptr) : (kernelInfo.GetInputCount() > 2 ? &inputDescs[2] : nullptr);
         convDesc.OutputTensor = &outputDescs[0];
         convDesc.Mode = mode;
         convDesc.Direction = direction;
@@ -96,12 +96,12 @@ public:
 };
 
 // A specific type of operation for registration.
-template <DML_CONVOLUTION_MODE Mode, DML_CONVOLUTION_DIRECTION Direction, bool isWithDynamicPads = false>
+template <DML_CONVOLUTION_MODE Mode, DML_CONVOLUTION_DIRECTION Direction, bool hasDynamicPads = false>
 class DmlOperatorConvolutionTemplate : public DmlOperatorConvolution
 {
 public:
     DmlOperatorConvolutionTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorConvolution(kernelInfo, Mode, Direction, isWithDynamicPads)
+    :   DmlOperatorConvolution(kernelInfo, Mode, Direction, hasDynamicPads)
     {
     }
 };

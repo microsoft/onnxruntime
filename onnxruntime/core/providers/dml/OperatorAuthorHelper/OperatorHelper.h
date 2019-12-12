@@ -548,14 +548,14 @@ public:
         std::vector<int32_t> ends;
         std::vector<int32_t> axes;
         std::vector<int32_t> steps;
-        if (7 == opsetVersion)
+        if (opsetVersion == 7)
         {
             // Get starts, ends and axes from attributes
             starts = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Starts);
             ends = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Ends);
             axes = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
-        else if (10 == opsetVersion)
+        else if (opsetVersion == 10)
         {
             // Get starts, ends, optional axes and optional steps from constant inputs.
             MLOperatorTensor startsTensor = operatorInfo.GetConstantInputTensor(1);
@@ -575,8 +575,9 @@ public:
             {
                 ends.push_back(gsl::narrow_cast<uint32_t>(endsData[i]));
             }
+
             uint32_t inputCount = operatorInfo.GetInputCount();
-            if (operatorInfo.GetInputCount() > 3)
+            if (inputCount > 3)
             {
                 MLOperatorTensor axesTensor = operatorInfo.GetConstantInputTensor(3);
                 const std::vector<uint32_t>& axesTensorDimensions = axesTensor.GetShape();
@@ -588,7 +589,7 @@ public:
                 }
             }
 
-            if (operatorInfo.GetInputCount() > 4)
+            if (inputCount > 4)
             {
                 MLOperatorTensor stepsTensor = operatorInfo.GetConstantInputTensor(4);
                 const std::vector<uint32_t>& stepsTensorDimensions = stepsTensor.GetShape();

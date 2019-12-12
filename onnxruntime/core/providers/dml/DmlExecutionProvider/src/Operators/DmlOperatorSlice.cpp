@@ -6,11 +6,10 @@
 namespace Dml
 {
 
-template <uint32_t opsetVersion>
 class DmlOperatorSlice : public DmlOperator, public SliceHelperBase
 {
 public:
-    DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo)
+    DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo, uint32_t opsetVersion)
     :   DmlOperator(kernelInfo),
         SliceHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
@@ -19,10 +18,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         // TODO (23108599): Slice V10 introduces an optional "Steps" input which the kernel does not yet support.
-        if (kernelInfo.GetInputCount() > 4)
-        {
-            THROW_HR(E_NOTIMPL);
-        }
+        THROW_HR_IF(E_NOTIMPL, kernelInfo.GetInputCount() > 4);
 
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 };
         DmlOperator::Initialize(kernelInfo, kernelInputIndices);
@@ -64,6 +60,18 @@ public:
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  DmlOperatorSlice<7>);
-DML_OP_DEFINE_CREATION_FUNCTION(Slice10, DmlOperatorSlice<10>);
+// A specific type of operation for registration.
+template <uint32_t opsetVersion>
+class DmlOperatorSliceTemplate : public DmlOperatorSlice
+{
+public:
+    DmlOperatorSliceTemplate(const MLOperatorKernelCreationContext& kernelInfo)
+    :   DmlOperatorSlice(kernelInfo, opsetVersion)
+    {
+    }
+};
+
+
+DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  DmlOperatorSliceTemplate<7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice10, DmlOperatorSliceTemplate<10>);
 } // namespace Dml
