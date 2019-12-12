@@ -64,6 +64,9 @@ __global__ void _ScatterElementsKernel(
   output_data[data_idx] = updates[indices_index];
 }
 
+// From the innermost axis (largest) check equality of dim value of input and indices.
+// If same, merge it and continue. Otherwise, copy remaining. The scatter axis need
+// to be keep.
 static int CompactInputIndicesDims(
     int rank, int axis, int64_t* input_dims, int64_t* indices_dims,
     std::vector<int64_t>& eff_input_dims,
