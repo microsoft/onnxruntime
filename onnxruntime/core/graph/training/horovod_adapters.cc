@@ -106,6 +106,11 @@ hvd::Status ORTOpContext::AllocateOutput(hvd::TensorShape /*shape*/, std::shared
   return hvd::Status::InvalidArgument("Not implemented");
 }
 
+hvd::Status ORTOpContext::AllocateZeros(int64_t /*num_elements*/, hvd::DataType /*dtype*/, std::shared_ptr<hvd::Tensor>* tensor) {
+  *tensor = nullptr;
+  return hvd::Status::InvalidArgument("Not implemented");
+}
+
 hvd::Framework ORTOpContext::framework() const {
   // TODO: create ORT in horovod and change this
   return hvd::Framework::TENSORFLOW;

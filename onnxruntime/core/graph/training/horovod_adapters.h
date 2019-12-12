@@ -55,6 +55,8 @@ public:
 
   virtual hvd::Framework framework() const override;
 
+  virtual hvd::Status AllocateZeros(int64_t num_elements, hvd::DataType dtype, std::shared_ptr<hvd::Tensor>* tensor) override;
+
 private:
   AllocatorPtr allocator_;
 };
