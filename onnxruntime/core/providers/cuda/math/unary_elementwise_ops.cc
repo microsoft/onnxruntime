@@ -95,9 +95,9 @@ UNARY_OP_HFD(Reciprocal, 6)
 UNARY_OP_HFD(Sqrt, 6)
 UNARY_OP_HFD(Log, 6)
 UNARY_OP_HFD(Exp, 6)
-UNARY_OP_HFD(Round, 6)
 UNARY_OP_HFD(Erf, 9)
 UNARY_LOGICALOP_TYPED(Not, 1, bool)
+UNARY_OP_HFD(Round, 11)
 
 }  // namespace cuda
 }  // namespace onnxruntime
