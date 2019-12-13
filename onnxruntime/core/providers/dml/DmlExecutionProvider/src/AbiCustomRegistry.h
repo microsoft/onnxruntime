@@ -87,7 +87,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
     std::shared_ptr<KernelSupportQueryMap> GetSupportQueryMap() const
     {
-        return m_graphNodeFactoryMap;
+        return m_kernelSupportQueryMap;
     }
 
  private:

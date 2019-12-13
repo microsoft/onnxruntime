@@ -623,12 +623,10 @@ class MLSupportQueryContext final : public OpNodeInfoWrapper<
 {
  public:
     MLSupportQueryContext() = delete;
+
     MLSupportQueryContext(
             onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
-            const AttributeMap* defaultAttributes) : 
-        OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter())
-    {
-    }
+            const AttributeMap* defaultAttributes);
 
     // TODO - ...
 };

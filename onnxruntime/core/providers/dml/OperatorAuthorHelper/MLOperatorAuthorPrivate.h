@@ -62,7 +62,7 @@ IMLOperatorAttributes1 : public IMLOperatorAttributes
 };
 
 interface __declspec(uuid("897bb586-6cee-4106-8513-dda33151c109")) DECLSPEC_NOVTABLE
-IMLOperatorSupportQueryContextPrivate : public IMLOperatorAttributes
+IMLOperatorSupportQueryContextPrivate : public IMLOperatorAttributes1
 {
     //! Gets the number of inputs to the operator.
     STDMETHOD_(uint32_t, GetInputCount)() const noexcept PURE;
@@ -73,10 +73,26 @@ IMLOperatorSupportQueryContextPrivate : public IMLOperatorAttributes
     //! Returns true if an input to the operator is valid.  
     //! This always returns true except for optional inputs and invalid indices.
     STDMETHOD_(bool, IsInputValid)(uint32_t inputIndex) const noexcept PURE;
+
+    //! Returns true if an output to the operator is valid.
+    //! This always returns true if within GetOutputCount except for optional outputs.
+    STDMETHOD_(bool, IsOutputValid)(uint32_t outputIndex) const noexcept PURE;
+
+    //! Gets the description of the specified input edge of the operator.
+    STDMETHOD(GetInputEdgeDescription)(
+        uint32_t inputIndex, 
+        _Out_ MLOperatorEdgeDescription* edgeDescription
+        ) const noexcept PURE;
+
+    //! Gets the description of the specified output edge of the operator.
+    STDMETHOD(GetOutputEdgeDescription)(
+        uint32_t outputIndex, 
+        _Out_ MLOperatorEdgeDescription* edgeDescription
+        ) const noexcept PURE;
 };
 
 interface __declspec(uuid("023954b3-aed2-4b03-b7c7-f0838053a9a1")) DECLSPEC_NOVTABLE
-IMLOperatorSupportQueryPrivate : public IMLOperatorAttributes1
+IMLOperatorSupportQueryPrivate : public IUnknown
 {
     STDMETHOD(QuerySupport)(
         IMLOperatorSupportQueryContextPrivate* context,

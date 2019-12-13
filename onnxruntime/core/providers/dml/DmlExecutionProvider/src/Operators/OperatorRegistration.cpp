@@ -204,6 +204,9 @@ DML_OP_EXTERN_CREATION_FUNCTION(Scatter);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize);
 DML_OP_EXTERN_CREATION_FUNCTION(ConstantOfShape);
 
+DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
+DML_OP_EXTERN_QUERY_FUNCTION(Slice);
+
 const static char* const typeNameListDefault[1] = {"T"};
 const static char* const typeNameListTopK[2] = { "T", "I" };
 const static char* const typeNameListLogicalComparison[2] = { "T", "T1" };

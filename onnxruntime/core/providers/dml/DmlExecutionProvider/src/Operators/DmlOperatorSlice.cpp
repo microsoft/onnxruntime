@@ -6,11 +6,10 @@
 namespace Dml
 {
 
-template <uint32_t opsetVersion>
 class DmlOperatorSlice : public DmlOperator, public SliceHelperBase
 {
 public:
-    DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo)
+    DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo, uint32_t opsetVersion)
     :   DmlOperator(kernelInfo),
         SliceHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
