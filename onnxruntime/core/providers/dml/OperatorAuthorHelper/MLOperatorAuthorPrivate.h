@@ -29,29 +29,6 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         ) const noexcept PURE;
 };
 
-interface __declspec(uuid("897bb586-6cee-4106-8513-dda33151c109"))
-IMLOperatorSupportQueryContextPrivate : public IMLOperatorAttributes
-{
-    //! Gets the number of inputs to the operator.
-    STDMETHOD_(uint32_t, GetInputCount)() const noexcept PURE;
-
-    //! Gets the number of outputs to the operator.
-    STDMETHOD_(uint32_t, GetOutputCount)() const noexcept PURE;
-
-    //! Returns true if an input to the operator is valid.  
-    //! This always returns true except for optional inputs and invalid indices.
-    STDMETHOD_(bool, IsInputValid)(uint32_t inputIndex) const noexcept PURE;
-};
-
-interface __declspec(uuid("023954b3-aed2-4b03-b7c7-f0838053a9a1")) 
-IMLOperatorSupportQueryPrivate : public IMLOperatorAttributes1
-{
-    STDMETHOD(QuerySupport)(
-        IMLOperatorSupportQueryContextPrivate* context,
-        BOOL* isSupported
-        ) noexcept PURE;
-};
-
 interface __declspec(uuid("63bff199-0203-43c7-86c4-f442a599df4c"))
 IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContext 
 {
@@ -69,6 +46,44 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     ) const noexcept PURE;
 };
 
+//! \interface IMLOperatorAttributes1
+//! \brief Represents the values of an operator's attributes, as determined by a model using the operator.
+//! This interface is called by implementations of custom operator kernels, and by implementations
+//! of shape and type inferrers.
+interface DECLSPEC_UUID("3a798815-dfe3-4bcd-b6a6-f70650d5f80b") DECLSPEC_NOVTABLE
+IMLOperatorAttributes1 : public IMLOperatorAttributes
+{
+    //! Gets an interface pointer for the constant tensor.
+    //! Note the tensor is CPU side (IsCpuData is true).
+    STDMETHOD(GetTensorAttribute)(
+        _In_z_ const char* name,
+        _COM_Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+};
+
+interface __declspec(uuid("897bb586-6cee-4106-8513-dda33151c109")) DECLSPEC_NOVTABLE
+IMLOperatorSupportQueryContextPrivate : public IMLOperatorAttributes
+{
+    //! Gets the number of inputs to the operator.
+    STDMETHOD_(uint32_t, GetInputCount)() const noexcept PURE;
+
+    //! Gets the number of outputs to the operator.
+    STDMETHOD_(uint32_t, GetOutputCount)() const noexcept PURE;
+
+    //! Returns true if an input to the operator is valid.  
+    //! This always returns true except for optional inputs and invalid indices.
+    STDMETHOD_(bool, IsInputValid)(uint32_t inputIndex) const noexcept PURE;
+};
+
+interface __declspec(uuid("023954b3-aed2-4b03-b7c7-f0838053a9a1")) DECLSPEC_NOVTABLE
+IMLOperatorSupportQueryPrivate : public IMLOperatorAttributes1
+{
+    STDMETHOD(QuerySupport)(
+        IMLOperatorSupportQueryContextPrivate* context,
+        BOOL* isSupported
+        ) noexcept PURE;
+};
+
 interface DECLSPEC_UUID("3de1dc1e-13e9-4099-ae88-7b4100083415") DECLSPEC_NOVTABLE
 IMLOperatorRegistryPrivate : public IUnknown
 {
@@ -84,21 +99,6 @@ IMLOperatorRegistryPrivate : public IUnknown
         bool requiresFloatFormatsForGraph = false,
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
         uint32_t constantCpuInputCount = 0
-        ) const noexcept PURE;
-};
-
-//! \interface IMLOperatorAttributes1
-//! \brief Represents the values of an operator's attributes, as determined by a model using the operator.
-//! This interface is called by implementations of custom operator kernels, and by implementations
-//! of shape and type inferrers.
-interface DECLSPEC_UUID("3a798815-dfe3-4bcd-b6a6-f70650d5f80b") DECLSPEC_NOVTABLE
-IMLOperatorAttributes1 : public IMLOperatorAttributes
-{
-    //! Gets an interface pointer for the constant tensor.
-    //! Note the tensor is CPU side (IsCpuData is true).
-    STDMETHOD(GetTensorAttribute)(
-        _In_z_ const char* name,
-        _COM_Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 };
 
