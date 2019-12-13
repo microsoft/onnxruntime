@@ -16,7 +16,7 @@ if (WIN32)
     ExternalProject_Add(featurizers_lib
             PREFIX ${featurizers_pref}
             GIT_REPOSITORY ${featurizers_URL}
-            GIT_TAG ${ngraph_TAG}
+            GIT_TAG ${featurizers_TAG}
             # Need this to properly checkout crlf
             GIT_CONFIG core.autocrlf=input
             SOURCE_DIR ${featurizers_ROOT}
