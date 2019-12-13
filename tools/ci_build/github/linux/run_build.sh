@@ -32,7 +32,9 @@ elif [ $BUILD_OS = "yocto" ]; then
         YOCTO_FOLDER="4.14-sumo"
     fi
     pushd /onnxruntime_src
-    mkdir build-arm
+    if [ ! -d build-arm ]; then
+        mkdir build-arm
+    fi
     cd build-arm
     . /opt/fsl-imx-xwayland/$YOCTO_FOLDER/environment-setup-aarch64-poky-linux
     alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
