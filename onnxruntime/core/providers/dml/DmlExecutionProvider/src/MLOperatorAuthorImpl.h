@@ -616,6 +616,23 @@ void InferAndVerifyOutputSizes(
     const EdgeShapes* inputShapes,
     EdgeShapes& outputShapes);
 
+class MLSupportQueryContext final : public OpNodeInfoWrapper<
+    onnxruntime::ProtoHelperNodeContext,
+    WRL::Base<Microsoft::WRL::ChainInterfaces<IMLOperatorSupportQueryContextPrivate, IMLOperatorAttributes, IMLOperatorAttributes1>>,
+    onnxruntime::null_type>
+{
+ public:
+    MLSupportQueryContext() = delete;
+    MLSupportQueryContext(
+            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+            const AttributeMap* defaultAttributes) : 
+        OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter())
+    {
+    }
+
+    // TODO - ...
+};
+
 onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type);
 std::string ToTypeString(MLOperatorEdgeDescription desc);
 onnx::AttributeProto_AttributeType ToProto(MLOperatorAttributeType type);

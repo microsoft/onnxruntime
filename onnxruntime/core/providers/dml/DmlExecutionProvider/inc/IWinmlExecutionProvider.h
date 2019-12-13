@@ -104,4 +104,10 @@ namespace winrt::Windows::AI::MachineLearning::implementation
     };
 
     using GraphNodeFactoryMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<GraphNodeFactoryRegistration>>;
+
+    using KernelSupportQuery = std::function<bool(
+        const onnxruntime::Node& node)>;
+
+    using KernelSupportQueryMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<KernelSupportQuery>>;
+
 }

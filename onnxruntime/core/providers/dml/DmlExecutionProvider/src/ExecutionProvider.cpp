@@ -45,7 +45,8 @@ namespace Dml
 
     static void CreateDmlKernelRegistry(
         _Outptr_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
-        _Outptr_ std::shared_ptr<const GraphNodeFactoryMap>* graphNodeFactoryMap)
+        _Outptr_ std::shared_ptr<const GraphNodeFactoryMap>* graphNodeFactoryMap,
+        _Outptr_ std::shared_ptr<const KernelSupportQueryMap>* supportQueryMap)
     {
         ComPtr<AbiCustomRegistry> abiRegistry = wil::MakeOrThrow<AbiCustomRegistry>();
         Dml::RegisterDmlOperators(abiRegistry.Get());
@@ -55,6 +56,7 @@ namespace Dml
         auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
         *graphNodeFactoryMap = abiRegistry->GetGraphNodeFactoryMap();
+        *supportQueryMap = abiRegistry->GetSupportQueryMap();
     }
 
     ExecutionProvider::ExecutionProvider(
@@ -176,7 +178,7 @@ namespace Dml
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 		
-        CreateDmlKernelRegistry(&m_kernelRegistry, &m_graphNodeFactoryMap);
+        CreateDmlKernelRegistry(&m_kernelRegistry, &m_graphNodeFactoryMap, &m_supportQueryMap);
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -493,7 +495,15 @@ namespace Dml
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSuppportedDeviceDataTypeMask();
-        return PartitionGraph(graph, *m_graphNodeFactoryMap, registries, deviceDataTypeMask, m_kernelRegistry.get(), partitionKernelPrefix);
+
+        return PartitionGraph(graph, 
+            *m_graphNodeFactoryMap, 
+            *m_supportQueryMap, 
+            registries, 
+            deviceDataTypeMask, 
+            m_kernelRegistry.get(), 
+            partitionKernelPrefix
+        );
     }
 
     Status ExecutionProviderImpl::CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const

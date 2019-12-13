@@ -9,7 +9,8 @@ namespace winrt::Windows::AI::MachineLearning::implementation
 
 AbiCustomRegistry::AbiCustomRegistry() : 
     m_kernelRegistry(std::make_shared<onnxruntime::CustomRegistry>()),
-    m_graphNodeFactoryMap(std::make_shared<GraphNodeFactoryMap>())
+    m_graphNodeFactoryMap(std::make_shared<GraphNodeFactoryMap>()),
+    m_kernelSupportQueryMap(std::make_shared<KernelSupportQueryMap>())
 {
 }
 
@@ -321,13 +322,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept 
 {
-    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, false, false, false);
+    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
 }
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     const MLOperatorKernelDescription* opKernel,
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
+    _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
     bool isInternalOperator,
     bool canAliasFirstInput,
     bool supportsGraph,
@@ -449,6 +451,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         };
 
     onnxruntime::KernelCreateInfo create_info(builder.Build(), lotusKernelCreateFn);
+    onnxruntime::KernelDef* kernelDef = create_info.kernel_def.get();
 
     if (supportsGraph)
     {
@@ -499,7 +502,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         registration->requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
         registration->requiredConstantCpuInputs = constantCpuInputCapture;
 
-        onnxruntime::KernelDef* kernelDef = create_info.kernel_def.get();
         THROW_IF_NOT_OK(m_kernelRegistry->RegisterCustomKernel(create_info));
         (*m_graphNodeFactoryMap)[kernelDef] = registration;
     }
@@ -507,6 +509,28 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     {
         // For backward compatibility, this does not propagate errors
         m_kernelRegistry->RegisterCustomKernel(create_info);
+    }
+
+    if (supportQuery)
+    {
+        ComPtr<IMLOperatorSupportQueryPrivate> supportQueryCapture = supportQuery;
+
+        auto query = std::make_shared<KernelSupportQuery>([supportQueryCapture, defaultAttributesCapture](const onnxruntime::Node& node)
+        {
+            onnxruntime::ProtoHelperNodeContext nodeContext(node);
+            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
+                              
+            // Create the kernel while allowing input shape and output shape queries according to options
+            ComPtr<MLSupportQueryContext> supportContext = wil::MakeOrThrow<MLSupportQueryContext>(
+                    &protoHelper,
+                    &defaultAttributesCapture);
+
+            BOOL bSupported = FALSE;
+            THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
+            return !!bSupported;
+        });
+
+        (*m_kernelSupportQueryMap)[kernelDef] = query;
     }
 
     return S_OK;

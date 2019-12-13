@@ -70,6 +70,7 @@ struct OperatorRegistrationInformation
     // can't be represented as nodes in an optimized graph yet.
     std::optional<uint32_t> requiredInputCountForDmlGraphSupport;
 
+    MLOperatorSupportQueryFunction supportQueryFunction;
 };
 
 DML_OP_EXTERN_CREATION_FUNCTION(Copy);
@@ -257,7 +258,8 @@ const static SupportedTensorDataTypes supportedTypeListLogicalComparison[2] = /*
 const static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
 ///  Domain/Type, Ver,  Name,                               TypeNames,                       Types,                              Graph Support,                  Required const CPU inputs, 
-///                                                                                                                                                              Input count required for graph support
+///                                                                                                                                                              Input count required for graph support,
+///                                                                                                                                                              Support query function
 
     // Deep Learning Standard Layers
     {REG_INFO(      7,  Conv,                               typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -266,7 +268,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  GlobalAveragePool,                  typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      8,  MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO(      10, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
+    {REG_INFO(      10, MaxPool,                            typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported, {}, std::nullopt, QueryMaxPool)},
      
     {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  LpPool,                             typeNameListDefault,             supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -288,7 +290,7 @@ const static OperatorRegistrationInformation operatorRegistrationInformationTabl
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
-    {REG_INFO_VER(  10, Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1, 2, 3})},
+    {REG_INFO_VER(  10, Slice,                              typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported,      {1, 2, 3}, std::nullopt, QuerySlice)},
     {REG_INFO(      7,  Pad,                                typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListFloat16to32,       DmGraphSupport::Supported)},
@@ -511,10 +513,17 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             shapeInferrer = wil::MakeOrThrow<MLOperatorShapeInferrer>(information.shapeInferenceFunction);
         }
 
+        ComPtr<IMLOperatorSupportQueryPrivate> supportQuery;
+        if (information.supportQueryFunction)
+        {
+            supportQuery = wil::MakeOrThrow<MLOperatorSupportQuery>(information.supportQueryFunction);
+        }
+
         THROW_IF_FAILED(registryPrivate->RegisterOperatorKernel(
             &desc, 
             factory.Get(), 
             shapeInferrer.Get(),
+            supportQuery.Get(),
             true, // isInternalOperator
             information.canAliasFirstInput, // alias
             kernelSupportsGraph, // supportsGraph

@@ -134,6 +134,37 @@ public:
     }
 };
 
+void QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
+{
+    *isSupported = false;
+    
+    MLOperatorAttributes attributes(context);
+
+    // The below attributes are temporarily not supported:
+    int ceilMode = attributes.GetOptionalAttribute<int>(AttrName::CeilMode, 0);
+    if (ceilMode != 0)
+    {
+        return;
+    }
+
+    int storageOrder = attributes.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
+    if (storageOrder != 0)
+    {
+        return;
+    }
+
+    auto dilations = attributes.GetOptionalAttributeVectorInt32(AttrName::Dilations);
+    for (int dilation : dilations)
+    {
+        if (dilation != 1)
+        {
+            return;
+        }
+    }
+
+    *isSupported = true;
+}
+
 DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalAveragePool,     DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, true>);
 DML_OP_DEFINE_CREATION_FUNCTION(MaxPool,               DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING1, false>);

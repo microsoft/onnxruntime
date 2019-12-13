@@ -36,6 +36,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         const MLOperatorKernelDescription* operatorKernel,
         IMLOperatorKernelFactory* operatorKernelFactory,
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
+        _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
         bool isInternalOperator,
         bool canAliasFirstInput,
         bool supportsGraph,
@@ -84,6 +85,11 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         return m_graphNodeFactoryMap;
     }
 
+    std::shared_ptr<KernelSupportQueryMap> GetSupportQueryMap() const
+    {
+        return m_graphNodeFactoryMap;
+    }
+
  private:
     static onnx::OpSchema ConvertOpSchema(
         _In_z_ const char* domain, 
@@ -106,6 +112,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
     // Map between Lotus KernelDefs and graph node factories used for fusing nodes for graph compilation
     mutable std::shared_ptr<GraphNodeFactoryMap> m_graphNodeFactoryMap;
+    mutable std::shared_ptr<KernelSupportQueryMap> m_kernelSupportQueryMap;
 };
 
 }    // namespace winrt::Windows::AI::MachineLearning::implementation

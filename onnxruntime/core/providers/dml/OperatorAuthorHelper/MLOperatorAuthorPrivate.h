@@ -29,6 +29,29 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         ) const noexcept PURE;
 };
 
+interface __declspec(uuid("897bb586-6cee-4106-8513-dda33151c109"))
+IMLOperatorSupportQueryContextPrivate : public IMLOperatorAttributes
+{
+    //! Gets the number of inputs to the operator.
+    STDMETHOD_(uint32_t, GetInputCount)() const noexcept PURE;
+
+    //! Gets the number of outputs to the operator.
+    STDMETHOD_(uint32_t, GetOutputCount)() const noexcept PURE;
+
+    //! Returns true if an input to the operator is valid.  
+    //! This always returns true except for optional inputs and invalid indices.
+    STDMETHOD_(bool, IsInputValid)(uint32_t inputIndex) const noexcept PURE;
+};
+
+interface __declspec(uuid("023954b3-aed2-4b03-b7c7-f0838053a9a1")) 
+IMLOperatorSupportQueryPrivate : public IMLOperatorAttributes1
+{
+    STDMETHOD(QuerySupport)(
+        IMLOperatorSupportQueryContextPrivate* context,
+        BOOL* isSupported
+        ) noexcept PURE;
+};
+
 interface __declspec(uuid("63bff199-0203-43c7-86c4-f442a599df4c"))
 IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContext 
 {
@@ -53,6 +76,7 @@ IMLOperatorRegistryPrivate : public IUnknown
         const MLOperatorKernelDescription* operatorKernel,
         IMLOperatorKernelFactory* operatorKernelFactory,
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
+        _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
         bool isInternalOperator,
         bool canAliasFirstInput,
         bool supportsGraph,

@@ -246,6 +246,7 @@ namespace Dml
         const std::vector<const onnxruntime::KernelRegistry*>& dmlRegistries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const GraphNodeFactoryMap& graphNodeFactoryMap,
+        const KernelSupportQueryMap& supportQueryMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
         _Out_ bool* isDmlNode,
@@ -260,6 +261,16 @@ namespace Dml
         for (auto registry : dmlRegistries) 
         {
             const onnxruntime::KernelCreateInfo* createInfo = registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider);
+
+            auto supportQueryIter = supportQueryMap.find(createInfo->kernel_def.get());
+            if (supportQueryIter != supportQueryMap.end())
+            {
+                auto isSupportFn = (*supportQueryIter->second);
+                if (!isSupportFn(node))
+                {
+                    continue;
+                }
+            }
 
             // Check whether the node uses any data types which are unsupported by the device.
             bool nodeContainsSupportedDataTypes = DoesNodeContainSupportedDataTypes(node, supportedDeviceDataTypeMask);
@@ -549,6 +560,7 @@ namespace Dml
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
         const GraphNodeFactoryMap& graphNodeFactoryMap,
+        const KernelSupportQueryMap& supportQueryMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
@@ -609,6 +621,7 @@ namespace Dml
                 registries,
                 supportedDeviceDataTypeMask,
                 graphNodeFactoryMap,
+                supportQueryMap,
                 graphNodePropertyMap,
                 requiredInitializerMap,
                 /*out*/ &isDmlNode,
@@ -725,6 +738,7 @@ namespace Dml
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
         const GraphNodeFactoryMap& graphNodeFactoryMap,
+        const KernelSupportQueryMap& supportQueryMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
@@ -740,6 +754,7 @@ namespace Dml
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graph,
             graphNodeFactoryMap, 
+            supportQueryMap,
             registries,
             supportedDeviceDataTypeMask,
             graphNodePropertyMap, 
