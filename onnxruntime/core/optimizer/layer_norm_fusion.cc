@@ -254,12 +254,12 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           layer_norm_input_defs,
                                           {}, {}, kOnnxDomain);
 
-    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used. 
+    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr) {
       if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        const float* val = onnxruntime::make_unique<Initializer>(*tensor_proto)->data<float>();
-        layer_norm_node.AddAttribute("epsilon", val[0]);
+        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+        layer_norm_node.AddAttribute("epsilon", initializer->data<float>()[0]);
       }
     }
 
