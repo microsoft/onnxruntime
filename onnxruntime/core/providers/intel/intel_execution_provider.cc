@@ -548,7 +548,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
+  node->ForEachDef([&has_unsupported_dimension](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
     auto shape = node_arg.Shape();
     if(shape != nullptr){
       if(shape->dim_size() == 0){
