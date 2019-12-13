@@ -12,6 +12,7 @@
 #include "intel_graph.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -156,9 +157,24 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "Selu",
     "Softplus",
     "GlobalLpPool",
+    "CumSum",
     "LogSoftmax",
     "MeanVarianceNormalization",
-    "LpNormalization"
+    "Split", //ngraph v1, ov v0
+    "LpNormalization",
+    "Ceil", //cannot cast
+    "Reciprocal",
+    "Sqrt",
+    "Exp",
+    "Not",
+    "And",
+    "Or",
+    "Xor",
+    "Less",
+    "Greater",
+    "Equal",
+    "Asinh",
+    "Acosh",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
@@ -199,62 +215,15 @@ bool IsUnsupportedOp(std::string name, std::string device){
   return unsupported_ops.find(name) != unsupported_ops.end();
 }
 
+static constexpr int GetPairingFunctionValue(int a, int b){
+  return  ((a+b)*(a+b+1))/2 + b;
+}
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
 
-  std::string device_id = "CPU";
-
-  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
-    device_id = "GPU";
-  #endif
-
-  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
-    device_id = "VPU";
-  #endif
-
-  if(IsUnsupportedOp(optype,device_id)){
-    if(intel_ep::IsDebugEnabled())
-      std::cout << "Node is in the unsupported list" << std::endl;
-    return true;
-  }
-
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
-
-  auto node_inputs = node->InputDefs();
-
-  //Zero dimension check
-  for (size_t i = 0; i < node_inputs.size(); i++) {
-    auto name = node_inputs[i]->Name();
-    auto it = initializers.find(name);
-    auto shape = node_inputs[i]->Shape();
-    if(it == initializers.end() && node_inputs[i]->Shape() != nullptr){
-      // Reject 0 dimensional shapes
-      if (shape->dim_size() == 0){
-        if(intel_ep::IsDebugEnabled()){
-          std::cout << "Reject: Node: " << name << " Zero dimensions check failed" << std::endl;
-        }
-        return true;
-      }
-      // Reject 1D symbolic shapes
-      else if (shape->dim_size() == 1 && shape->dim(0).value_case() == shape->dim(0).kDimParam) {
-        return true;
-      }
-      else{
-        auto num_dims = shape->dim_size();
-        for(int j = 0; j < num_dims; j++){
-          auto dim = shape->dim(j);
-          // Reject if dimension values have 0s
-          if(dim.value_case() == dim.kDimValue && dim.dim_value() == 0){
-              if(intel_ep::IsDebugEnabled())
-                std::cout << "Reject: Node: " << name << " value dim: " << j << " has 0" << std::endl;
-              return true;
-          }
-        }
-      }
-    }
-  }
 
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
@@ -304,10 +273,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   } else if (optype == "Dropout" || optype == "Identity") {
       auto graph_inputs = graph_viewer.GetInputs();
       for (const auto& input : node->InputDefs()) {
-    auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-    if (it != graph_inputs.end()) {
-        return true;
-    }
+        auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+        if (it != graph_inputs.end()) {
+            return true;
+        }
       }
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
@@ -338,12 +307,21 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //3D pad with negative padding have computation missmatch
     const auto& attributes = node->GetAttributes();
     const auto pad_attr = attributes.find("pads");
-    if (pad_attr != attributes.end() && (pad_attr->second.ints().size() > 4 || pad_attr->second.ints().size() == 3)) {
-      for (const auto& val : pad_attr->second.ints()) {
-        if (val < 0)
+    // if (pad_attr != attributes.end() && (pad_attr->second.ints().size() > 4 || pad_attr->second.ints().size() == 3)) {
+    //   for (const auto& val : pad_attr->second.ints()) {
+    //     if (val < 0)
+    //       return true;
+    //   }
+    // }
+
+    //Negative padding is not supported
+    if(pad_attr != attributes.end()){
+      for(const auto& val : pad_attr->second.ints()){
+        if(val < 0)
           return true;
       }
     }
+
     const auto mode_attr = attributes.find("mode");
     if(mode_attr != attributes.end())
     {
@@ -352,6 +330,39 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
         return allowed_modes.count(mode) == 0;
     }
+  } else if (optype == "Mod") {
+    //Only fmod=1 is supported
+    auto attributes = node->GetAttributes();
+    auto fmod = attributes["fmod"].i();
+    if(fmod != 1)
+      return true;
+    //Only FP32 data type is allowed
+    for(const auto& input : node->InputDefs()){
+      if(input->Type()->find("float") == std::string::npos)
+        return true;
+    }
+  } else if (optype == "Cast") {
+
+      auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+      int val = GetPairingFunctionValue(int(input_data_type) , int(output_data_type));
+      switch(val){
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT8), int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_UINT8)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT16),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_INT16)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT16),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_UINT16)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT32),int(onnx_dtype::TensorProto_DataType_INT32)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT32),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_INT32)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT8),int(onnx_dtype::TensorProto_DataType_INT32)):
+          return false;
+        default:
+          return true;
+      }
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
     //unsupported inputs: starts, ends, axes, steps
@@ -438,13 +449,14 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   return false;
 }
 
-static bool IsTypeSupported(const NodeArg* node_arg) {
+static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
   const auto* type_proto = node_arg->TypeAsProto();
   if (!type_proto) {
     return false;
   }
 
-  switch (type_proto->tensor_type().elem_type()) {
+  if(is_initializer){
+    switch (type_proto->tensor_type().elem_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
   //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
@@ -459,8 +471,23 @@ static bool IsTypeSupported(const NodeArg* node_arg) {
       return true;
     default:
       if(intel_ep::IsDebugEnabled())
-        std::cout << "Type is not supported" << std::endl;
+        std::cout << "Initializer Data Type is not supported" << std::endl;
       return false;
+    }
+  }
+  else{
+    switch (type_proto->tensor_type().elem_type()) {
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
+        return true;
+      default:
+        if(intel_ep::IsDebugEnabled())
+          std::cout << "I/O data type is not supported" << std::endl;
+        return false;
+    }
   }
 }
 
@@ -474,32 +501,90 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
 
+  std::string device_id = "CPU";
+
+  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+    device_id = "GPU";
+  #endif
+
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    device_id = "VPU";
+  #endif
+
+
   /*
+  0. Check if node is in the unsupported list
   1. Check input and output data types are supported.
-  2. Check Op is supported
-   2a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
-   2b. If above is not true, check if the op is available in nGraph.
+  2. Check if there is unsupported dimension in input and output shapes
+  3. Check Op is supported
+   3a. Check if Op is of known unsupported modes (edge cases). If yes return false right away.
+   3b. If above is not true, check if the op is available in nGraph.
   */
+
+  //Check 0
+  if(IsUnsupportedOp(optype,device_id)){
+    if(intel_ep::IsDebugEnabled())
+      std::cout << "Node is in the unsupported list" << std::endl;
+    return false;
+  }
+
 
   //Check 1
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
-    are_types_supported &= IsTypeSupported(&node_arg);
+  node->ForEachDef([&are_types_supported,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
+    bool is_initializer = false;
+    if(is_input){
+      if(graph_viewer.IsConstantInitializer(node_arg.Name(), true))
+        is_initializer = true;
+    }
+    are_types_supported &= IsTypeSupported(&node_arg,is_initializer);
   });
 
   if (!are_types_supported) {
     return false;
   }
 
-  //Check 2a
+  //Check 2
+
+  bool has_unsupported_dimension = false;
+  node->ForEachDef([&has_unsupported_dimension](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
+    auto shape = node_arg.Shape();
+    if(shape != nullptr){
+      if(shape->dim_size() == 0){
+        has_unsupported_dimension = true;
+        return;
+      }
+      //Reject 1D symbolic shapes
+      else if(shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))){
+        has_unsupported_dimension = true;
+        return;
+      }
+      else{
+        for(const auto& dim : shape->dim()) {
+          if(utils::HasDimValue(dim) && dim.dim_value() == 0){
+            has_unsupported_dimension = true;
+            return;
+          }
+        }
+      }
+    }
+  });
+  if(has_unsupported_dimension){
+    if(intel_ep::IsDebugEnabled())
+      std::cout << "Dimension check failed" << std::endl;
+    return false;
+  }
+
+
+  //Check 3a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
     if(intel_ep::IsDebugEnabled())
       std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
   }
 
-  //Check 2b
+  //Check 3b
   const auto opset = op_map.find(domain);
   if (opset == op_map.end() || opset->second.find(optype) == opset->second.end()) {
     return false;
