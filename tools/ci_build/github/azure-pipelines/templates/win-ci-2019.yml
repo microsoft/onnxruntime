@@ -1,0 +1,188 @@
+parameters:
+  DoDebugBuild: 'true'
+  DoCompliance: 'false'
+  BuildCommand: ''
+  JobName: 'Windows_CI_Dev'
+  DoNugetPack:  'false'
+  NuPackScript : ''
+  ArtifactName: 'drop-nuget'
+  DoEsrp: 'false'
+  DoTestCoverage: 'false'
+  BuildArch: 'x64'
+  SetVcvars: 'false'
+  msbuildArchitecture: 'amd64'
+  EnvSetupScript: 'setup_env.bat'
+  CudaVersion: ''
+  AgentPool: 'Win-CPU'
+  AgentDemands: []
+  OrtPackageId: Microsoft.ML.OnnxRuntime
+jobs:
+- job: ${{ parameters.JobName }}
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool:
+    name: ${{ parameters.AgentPool }}
+    demands: ${{ parameters.AgentDemands }}
+  variables:
+    buildDirectory: '$(Build.BinariesDirectory)'
+    BuildCommand: ${{ parameters.BuildCommand }}
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DotNetExe: 'dotnet.exe'
+    CUDA_VERSION: ${{ parameters.CudaVersion }}
+
+  steps:
+    - powershell: |
+        if($env:TELEMETRYGUID)
+        {
+          $length = $env:TELEMETRYGUID.length
+          $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
+            TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+          New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force       
+        }
+      displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+    - task: UsePythonVersion@0
+      inputs: 
+        versionSpec: '3.7' 
+        addToPath: true 
+        architecture: ${{ parameters.BuildArch }}
+
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy     
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
+
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(BuildCommand) --update --config RelWithDebInfo'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: 'x64'
+        configuration: RelWithDebInfo
+        msbuildArchitecture: ${{ parameters.BuildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
+        clean: true
+
+    # Build RelWithDebInfo -- this variable required to build C#
+    - script: |
+       @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
+
+    - template: set-test-data-variables-step.yml
+
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 4.9
+      inputs:
+        versionSpec: 4.9.4   
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore nuget packages'
+      inputs:
+        command: restore
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: 'RelWithDebInfo'
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'      
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Build C#'    
+      inputs:
+        command: build
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: 'RelWithDebInfo'          
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Test C#'  
+      inputs:
+        command: test
+        projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+        configuration: 'RelWithDebInfo'          
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - script: |
+       mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models  
+       DIR dist\ /S /B > wheel_filename_file
+       set /p WHEEL_FILENAME=<wheel_filename_file
+       del wheel_filename_file
+       python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+       set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+       @echo %PATH%
+       python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo   
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      displayName: 'Run tests' 
+
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFiles: '**\*.results.xml'
+        searchFolder: '$(Build.BinariesDirectory)'
+        testRunTitle: 'Unit Test Run'
+      condition: succeededOrFailed()
+
+    # Nuget packaging if needed
+    - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+      - task: BatchScript@1
+        displayName: 'Setup VS2017 env vars'
+        inputs:
+          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: ${{ parameters.msbuildArchitecture }}
+          modifyEnvironment: true    
+      # Esrp signing
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign C# dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+      - script: |
+         ${{ parameters.NuPackScript }}
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+      - task: PublishPipelineArtifact@0
+        displayName: 'Publish Pipeline Artifact: drop-nuget'
+        inputs:
+          artifactName: ${{ parameters.ArtifactName }}
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    # Compliance tasks require logs from Debug Build
+    - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+      - template: compliance.yml
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: succeeded()
+
+    - template: clean-agent-build-directory-step.yml
