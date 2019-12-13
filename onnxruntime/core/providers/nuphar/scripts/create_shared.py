@@ -38,6 +38,18 @@ def gen_checksum(file_checksum, input_dir):
         print('    cs = model_checksum; len = sizeof(model_checksum)/sizeof(model_checksum[0]) - 1;', file=checksum_cc)
         print('}', file=checksum_cc)
 
+def gen_cache_version(input_dir):
+    name = 'ORTInternal_cache_version'
+    with open(os.path.join(input_dir, name + '.cc'), 'w') as cache_version_cc:
+        header_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'NUPHAR_CACHE_VERSION')
+        print('#include "{}"'.format(header_file), file=cache_version_cc)
+        print('extern "C"', file=cache_version_cc)
+        if is_windows():
+            print('__declspec(dllexport)', file=cache_version_cc)
+        print('const char*  _ORTInternal_GetCacheVersion() {', file=cache_version_cc)
+        print('    return __NUPHAR_CACHE_VERSION__;', file=cache_version_cc)
+        print('}', file=cache_version_cc)
+
 def compile_all_cc(path):
     for f in os.listdir(path):
         name, ext = os.path.splitext(f)
@@ -64,6 +76,8 @@ if __name__ == '__main__':
     if args.input_model:
         input_checksum = gen_md5(args.input_model)
         gen_checksum(input_checksum, args.input_dir)
+
+    gen_cache_version(args.input_dir)
 
     if is_windows():
         # create dllmain

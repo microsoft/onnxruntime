@@ -4,6 +4,8 @@
 
 set -x -e -o pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
 function usage {
     echo Usage: create_shared.sh -c cache_dir -m input_model_file -o output_so_file
     echo The generated file would be cache_dir/output_so_file
@@ -49,6 +51,18 @@ __EOF__
     g++ -std=c++14 -fPIC -o checksum.o -c checksum.cc
     rm checksum.cc
 fi
+
+# generate cache_version.cc
+VERSION_FILE="${SCRIPT_DIR}/NUPHAR_CACHE_VERSION"
+cat > $CACHE_DIR/cache_version.cc <<__EOF__
+#include "$VERSION_FILE"
+extern "C"
+const char* _ORTInternal_GetCacheVersion() {
+  return __NUPHAR_CACHE_VERSION__;
+}
+__EOF__
+g++ -std=c++14 -fPIC -o cache_version.o -c cache_version.cc
+rm cache_version.cc
 
 # link
 if ls *.o 1> /dev/null 2>&1; then
