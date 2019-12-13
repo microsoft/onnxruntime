@@ -50,7 +50,7 @@ void SumSlices(const Tensor& input, Tensor& output,
 
 namespace cumsum_op {
 
-static Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out) {
+Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out) {
   if (!axis_tensor)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be provided to the CumSum op");
 
@@ -79,10 +79,37 @@ static Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& ax
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), CumSum<double>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), CumSum<int64_t>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum,
+                               11,
+                               float,
+                               KernelDefBuilder()
+                                   .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+                                   .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+                               CumSum<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum,
+                               11,
+                               double,
+                               KernelDefBuilder()
+                                   .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
+                                   .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+                               CumSum<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum,
+                               11,
+                               int32_t,
+                               KernelDefBuilder()
+                                   .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())
+                                   .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+                               CumSum<int32_t>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum,
+                               11,
+                               int64_t,
+                               KernelDefBuilder()
+                                   .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
+                                   .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+                               CumSum<int64_t>);
 
 template <typename T>
 CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reverse_() {
