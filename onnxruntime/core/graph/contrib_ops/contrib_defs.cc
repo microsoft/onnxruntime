@@ -1542,8 +1542,7 @@ Input and Output scales and zero points are used to requantize the output in a n
 This helps to improve accuracy as after ReduceMean operation the range of the output is expected to decrease.
 
 ```
-reduced_intermediate  = onnx.ReduceMean(data, axis=axes, keepdims=keepdims == 1)
-reduced = ((data_scale/reduced_scale) * (reduced_intermediate - data_zero_point)) + reduced_zero_point
+"Output = Dequantize(Input) -> ReduceMean on fp32 data -> Quantize(output)",
 
 ```
 )DOC")
@@ -1774,7 +1773,7 @@ C (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point
           "average",
           "The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero)."
           "Input and output scales and zero points are used to convert the output to a new quantization range."
-          "output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)"
+          "Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)",
           false))
       .Attr(
           "count_include_pad",
