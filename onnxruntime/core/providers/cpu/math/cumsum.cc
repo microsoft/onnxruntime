@@ -50,7 +50,7 @@ void SumSlices(const Tensor& input, Tensor& output,
 
 namespace cumsum_op {
 
-Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out) {
+Status GetAxis(const Tensor* axis_tensor, const int64_t input_rank, int64_t& axis_out) {
   if (!axis_tensor)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be provided to the CumSum op");
 
