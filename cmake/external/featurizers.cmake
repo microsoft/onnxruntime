@@ -35,6 +35,7 @@ else()
             # Location of CMakeLists.txt
             SOURCE_SUBDIR src/Featurizers
             BINARY_DIR ${featurizers_BINARY_DIR}
+            CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 #            UPDATE_COMMAND ""
             INSTALL_COMMAND ""
         )
