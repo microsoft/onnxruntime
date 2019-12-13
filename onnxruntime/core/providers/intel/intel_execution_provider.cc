@@ -215,6 +215,9 @@ bool IsUnsupportedOp(std::string name, std::string device){
   return unsupported_ops.find(name) != unsupported_ops.end();
 }
 
+static constexpr int GetPairingFunctionValue(int a, int b){
+  return  ((a+b)*(a+b+1))/2 + b;
+}
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
@@ -304,12 +307,21 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     //3D pad with negative padding have computation missmatch
     const auto& attributes = node->GetAttributes();
     const auto pad_attr = attributes.find("pads");
-    if (pad_attr != attributes.end() && (pad_attr->second.ints().size() > 4 || pad_attr->second.ints().size() == 3)) {
-      for (const auto& val : pad_attr->second.ints()) {
-        if (val < 0)
+    // if (pad_attr != attributes.end() && (pad_attr->second.ints().size() > 4 || pad_attr->second.ints().size() == 3)) {
+    //   for (const auto& val : pad_attr->second.ints()) {
+    //     if (val < 0)
+    //       return true;
+    //   }
+    // }
+
+    //Negative padding is not supported
+    if(pad_attr != attributes.end()){
+      for(const auto& val : pad_attr->second.ints()){
+        if(val < 0)
           return true;
       }
     }
+
     const auto mode_attr = attributes.find("mode");
     if(mode_attr != attributes.end())
     {
@@ -318,6 +330,39 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
         return allowed_modes.count(mode) == 0;
     }
+  } else if (optype == "Mod") {
+    //Only fmod=1 is supported
+    auto attributes = node->GetAttributes();
+    auto fmod = attributes["fmod"].i();
+    if(fmod != 1)
+      return true;
+    //Only FP32 data type is allowed
+    for(const auto& input : node->InputDefs()){
+      if(input->Type()->find("float") == std::string::npos)
+        return true;
+    }
+  } else if (optype == "Cast") {
+
+      auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+      int val = GetPairingFunctionValue(int(input_data_type) , int(output_data_type));
+      switch(val){
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT8), int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_UINT8)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT16),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_INT16)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT16),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_UINT16)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT32),int(onnx_dtype::TensorProto_DataType_INT32)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT32),int(onnx_dtype::TensorProto_DataType_FLOAT)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_INT32)):
+        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT8),int(onnx_dtype::TensorProto_DataType_INT32)):
+          return false;
+        default:
+          return true;
+      }
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
     //unsupported inputs: starts, ends, axes, steps
@@ -434,7 +479,6 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
     switch (type_proto->tensor_type().elem_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
