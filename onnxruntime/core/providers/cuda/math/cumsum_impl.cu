@@ -9,66 +9,151 @@ namespace cuda {
 
 template <typename T>
 __global__ void _CumSumKernel(
-    const int64_t input_rank,
     const T* input_data,
-    const int64_t axis,
     const int64_t input_dim_along_axis,
-    const int64_t* input_strides,
+    const int64_t input_stride_along_axis,
     T* output_data,
     const int64_t output_size,
-    size_t element_size,
-    bool exclusive,
-    bool reverse) {
+    const bool exclusive,
+    const bool reverse) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, output_size);
-  int dim = 0; 
-  int remain = indices_index;
-  size_t data_idx = 0;
-  for (int i = 0; i < input_rank; ++i) {
-    indices_strides[i].divmod(remain, dim, remain);
-    if (i == axis) {
-      dim = static_cast<int>(indices_data[indices_index]);
-      if (dim < -input_dim_along_axis || dim >= input_dim_along_axis) {
-        return; // Invalid index
-      }
-      if (dim < 0) {
-        dim += input_dim_along_axis;
-      }
-    }
-    data_idx += input_strides[i] * dim;
+
+  int axis_dim = (indices_index / input_stride_along_axis) % input_dim_along_axis;
+
+  int start = 0;
+  int end = 0;
+
+  if (!reverse && !exclusive) {
+    start = 0;
+    end = axis_dim;
+  
+  } else if (reverse && !exclusive) {
+    start = axis_dim;
+    end = input_dim_along_axis - 1;
+
+  } else if (!reverse && exclusive) {
+    start = 0;
+    end = axis_dim - 1;
+
+  } else { // reverse && exclusive
+    start = axis_dim + 1;
+    end = input_dim_along_axis - 1;
+
   }
-  output_data[indices_index] = input_data[data_idx];
+
+  // count the number of elements to accumulate the sum
+  int count = end - start + 1;
+  if (count <= 0) {
+    output_data[indices_index] = 0;
+    return;  
+  }
+
+  // adjust start index based on the above identified start dim value along the axis of interest
+  int64_t data_index = static_cast<int64_t>(indices_index) + (static_cast<int64_t>(start - axis_dim) * input_stride_along_axis);
+  T sum = 0;
+
+  // keep accumulating values from the start index for 'count' times and skip appropriately 
+  while (count != 0) {
+    sum += input_data[data_index];
+    data_index += input_stride_along_axis;
+    --count;
+  }
+
+  output_data[indices_index] = sum;
 }
 
-
+template<typename T>
 void CumSumImpl(
-    const int64_t input_rank,
-    const void* input_data,
-    const int64_t axis,
+    const T* input_data,
     const int64_t input_dim_along_axis,
-    const int64_t* input_strides,
-    void* output_data,
+    const int64_t input_stride_along_axis,
+    T* output_data,
     const int64_t output_size,
-    size_t element_size,
-    bool exclusive,
-    bool reverse) {
-
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse) {
   if (output_size > 0) {
-
     int blocksPerGrid = static_cast<int>((output_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
-    switch (element_size) {
-      case sizeof(int32_t):
-        break;
-
-      case sizeof(int64_t):
-        break;
-
-      // should not reach here as we validate if the all relevant types are supported in the Compute method 
-      default:
-        ORT_THROW("Unsupported element size by the CumSum CUDA kernel");
-    }
+    _CumSumKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(input_data,
+                                                                        input_dim_along_axis,
+                                                                        input_stride_along_axis,
+                                                                        output_data,
+                                                                        output_size,
+                                                                        exclusive,
+                                                                        reverse);
   }
 }
+
+template void CumSumImpl<int32_t>(
+    const int32_t* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    int32_t* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
+
+template void CumSumImpl<int64_t>(
+    const int64_t* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    int64_t* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
+
+template void CumSumImpl<uint32_t>(
+    const uint32_t* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    uint32_t* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
+
+template void CumSumImpl<uint64_t>(
+    const uint64_t* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    uint64_t* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
+
+template void CumSumImpl<float>(
+    const float* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    float* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
+
+template void CumSumImpl<double>(
+    const double* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    double* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
+
+template void CumSumImpl<half>(
+    const half* input_data,
+    const int64_t input_dim_along_axis,
+    const int64_t input_stride_along_axis,
+    half* output_data,
+    const int64_t output_size,
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
 
 }  // namespace cuda
 }  // namespace onnxruntime

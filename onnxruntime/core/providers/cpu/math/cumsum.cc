@@ -48,11 +48,40 @@ void SumSlices(const Tensor& input, Tensor& output,
 }
 }  // namespace
 
+namespace cumsum_op {
+
+static Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out) {
+  if (!axis_tensor)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be provided to the CumSum op");
+
+  if (axis_tensor->Shape().NumDimensions() > 1)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be 0D or 1D");
+
+  if (axis_tensor->IsDataType<int32_t>()) {
+    axis_out = static_cast<int64_t>(axis_tensor->template Data<int32_t>()[0]);
+  } else if (axis_tensor->IsDataType<int64_t>()) {
+    axis_out = axis_tensor->template Data<int64_t>()[0];
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be of type `int32_t` or `int64_t`");
+  }
+
+  // validate input
+  if (axis_out < -input_rank || axis_out >= input_rank)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis should be in the range [", -input_rank, ",", input_rank, ") but got: ", axis_out);
+
+  if (axis_out < 0)
+    axis_out = axis_out + input_rank;
+
+  return Status::OK();
+}
+
+}  // namespace cumsum_op
+
 namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), CumSum<float>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), CumSum<double>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);;
+ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int32_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()), CumSum<int32_t>);
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum, 11, int64_t, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), CumSum<int64_t>);
 
 template <typename T>
@@ -83,21 +112,17 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   const auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
   const Tensor* axis_tensor = ctx->Input<Tensor>(1);                       // axis input tensor
 
-  if (axis_tensor->Shape().NumDimensions() > 1)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be 0D or 1D");
-
-  int32_t axis = axis_tensor->template Data<int32_t>()[0];  // the axis on which the accumulation is going to done
-  // validate input
-  if (axis < -rank || axis >= rank)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis should be in the range [", -rank, ",", rank, ") but got: ", axis);
-  if (axis < 0)
-    axis = static_cast<int32_t>(rank) + axis;
   TensorShape output_shape(input->Shape());
   auto& output_tensor = *ctx->Output(0, output_shape);  // output tensor
 
   // output tensor's size is 0, nothing to fill - return
   if (output_shape.Size() == 0)
     return Status::OK();
+
+  int64_t axis;
+  auto status = cumsum_op::GetAxis(axis_tensor, rank, axis);
+  if (!status.IsOK())
+    return status;
 
   auto dim(output_tensor.Shape()[axis]);    // dimension size for the axis
   TensorShape slice_shape(input->Shape());  // the shape of one slice of input/output for the given value of the axis

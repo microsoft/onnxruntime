@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-//#include "core/common/common.h"
+#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -12,6 +12,7 @@ namespace cuda {
 class CumSum final : public CudaKernel {
  public:
   explicit CumSum(const OpKernelInfo& info) : CudaKernel(info) {
+    // Process exclusive attribute
     int64_t exclusive = 0;
     auto status = info.GetAttr("exclusive", &exclusive);
     if (status.IsOK()) {
@@ -21,6 +22,8 @@ class CumSum final : public CudaKernel {
         ORT_ENFORCE("attribute exclusive can only be 0 or 1");
       }
     }
+
+    // Process reverse attribute
     int64_t reverse = 0;
     status = info.GetAttr("reverse", &reverse);
     if (status.IsOK()) {
@@ -37,8 +40,8 @@ class CumSum final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
-  bool exclusive_;
-  bool reverse_;
+  bool exclusive_ = false;
+  bool reverse_ = false;
 };
 
 }  // namespace cuda

@@ -3,23 +3,22 @@
 
 #pragma once
 
-//#include <stdint.h>
-//#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include <stdint.h>
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 
+template <typename T>
 void CumSumImpl(
-    const int64_t input_rank,
-    const void* input_data,
-    const int64_t axis,
+    const T* input_data,
     const int64_t input_dim_along_axis,
-    const int64_t* input_strides,
-    void* output_data,
+    const int64_t input_stride_along_axis,
+    T* output_data,
     const int64_t output_size,
-    size_t element_size,
-    bool exclusive,
-    bool reverse);
+    const size_t element_size,
+    const bool exclusive,
+    const bool reverse);
 
 }  // namespace cuda
 }  // namespace onnxruntime
