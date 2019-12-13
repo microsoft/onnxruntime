@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/nuphar/scripts/NUPHAR_CACHE_VERSION"
 #include "core/codegen/common/settings.h"
 
 namespace onnxruntime {
@@ -47,8 +46,6 @@ constexpr static const char* kNupharCodeGenTarget = "nuphar_codegen_target";
 
 // Option to control nuphar code to run with parallel schedule
 constexpr static const char* kNupharParallelMinWorkloads = "nuphar_parallel_min_workloads";
-
-constexpr static const char* kNupharCacheVersion = __NUPHAR_CACHE_VERSION__;
 
 constexpr static const char* kNupharCacheSoName_Default = "jit.so";
 

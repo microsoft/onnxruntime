@@ -36,6 +36,8 @@ if ! [ -x "$(command -v g++)" ]; then
     exit 1
 fi
 
+declare -a all_cc_files
+
 cd $CACHE_DIR
 if [ -x "$MODEL_FILE" ]; then
     # generate checksum.cc
@@ -48,8 +50,7 @@ void _ORTInternal_GetCheckSum(const char*& cs, size_t& len) {
   cs = model_checksum; len = sizeof(model_checksum)/sizeof(model_checksum[0]) - 1;
 }    
 __EOF__
-    g++ -std=c++14 -fPIC -o checksum.o -c checksum.cc
-    rm checksum.cc
+    all_cc_files+=(checksum)
 fi
 
 # generate cache_version.cc
@@ -61,8 +62,12 @@ const char* _ORTInternal_GetCacheVersion() {
   return __NUPHAR_CACHE_VERSION__;
 }
 __EOF__
-g++ -std=c++14 -fPIC -o cache_version.o -c cache_version.cc
-rm cache_version.cc
+all_cc_files+=(cache_version)
+
+for cc_file in "${all_cc_files[@]}"; do
+  g++ -std=c++14 -fPIC -o "$cc_file".o -c "$cc_file".cc
+  rm "$cc_file".cc
+done
 
 # link
 if ls *.o 1> /dev/null 2>&1; then

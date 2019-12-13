@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/nuphar/scripts/NUPHAR_CACHE_VERSION"
 #include "gsl/gsl"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
@@ -37,7 +38,7 @@ static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
       throw std::runtime_error("Failed to create directory " + path.string());
     }
 
-  path.append(kNupharCacheVersion);
+  path.append(__NUPHAR_CACHE_VERSION__);
   if (!create && !fs::is_directory(path))
     return false;
 
@@ -117,13 +118,13 @@ static void VerifyCacheVersion(const std::string& so_path) {
       const char* cache_version = func();
       ORT_ENFORCE(cache_version, "Null cache version string!");
       int cur_major, cur_minor, cur_patch;
-      ParseVersion(kNupharCacheVersion, &cur_major, &cur_minor, &cur_patch);
+      ParseVersion(__NUPHAR_CACHE_VERSION__, &cur_major, &cur_minor, &cur_patch);
       int cache_major, cache_minor, cache_patch;
       ParseVersion(cache_version, &cache_major, &cache_minor, &cache_patch);
 
       // make version check strict until we have thorough design for compatibility
       ORT_ENFORCE((cur_major == cache_major) && (cur_minor == cache_minor),
-                  "Current nuphar runtime version (", kNupharCacheVersion,
+                  "Current nuphar runtime version (", __NUPHAR_CACHE_VERSION__,
                   ") doesn't match cached dll version (", cache_version, ")");
 
       cache_version_checked = true;
