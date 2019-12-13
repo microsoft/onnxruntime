@@ -173,12 +173,6 @@ ImageFeatureValue::ImageFeatureValue(IVectorView<Windows::Media::VideoFrame> con
   Initialize();
 }
 
-ImageFeatureValue::~ImageFeatureValue() {
-  for (auto allocator : m_tensorAllocators) {
-    m_adapter->FreeProviderAllocator(allocator);
-  }
-}
-
 static std::optional<BitmapPixelFormat> GetBitmapPixelFormatFromMetadata(const IPropertySet& properties) {
   if (properties != nullptr && properties.HasKey(L"BitmapPixelFormat")) {
     if (auto pixelFormatInspectable = properties.Lookup(L"BitmapPixelFormat")) {
@@ -516,16 +510,14 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
   }
 
   // create the OrtValue
-  OrtAllocator* dml_allocator;
-  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, &dml_allocator));
+  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, &m_ort_allocator));
 
   // create the OrtValue as a tensor letting ort know that we own the data buffer
   Ort::Value ort_tensor = Ort::Value::CreateTensor(
-      dml_allocator,
+      m_ort_allocator,
       &(resourceMetadata.TensorDescriptor.sizes[0]),
       sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
       (resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32) ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
-  m_tensorAllocators.emplace_back(dml_allocator);
 
   // Get the tensor raw data
   void* pAllocatedResource = nullptr;
