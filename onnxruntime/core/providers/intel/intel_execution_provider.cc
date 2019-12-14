@@ -160,6 +160,7 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "CumSum",
     "LogSoftmax",
     "MeanVarianceNormalization",
+    "Scan",
     "Split", //ngraph v1, ov v0
     "LpNormalization",
     "Ceil", //cannot cast
@@ -278,6 +279,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
             return true;
         }
       }
+      if(optype == "Identity"){
+        if(GetInputCount(node, initializers) == 0)
+          return true;
+      }
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
@@ -363,6 +368,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         default:
           return true;
       }
+  } else if (optype == "Squeeze") {
+    //Shape can't have empty axes attribute
+    const auto& attributes = node->GetAttributes();
+    if (attributes.count("axes") == 0)
+      return true;
   } else if (optype == "Slice") {
     //Slice in opset 10 is currently not supported.
     //unsupported inputs: starts, ends, axes, steps
