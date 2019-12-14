@@ -46,6 +46,10 @@ LearningModel::LearningModel(
 }
 WINML_CATCH_ALL
 
+LearningModel::~LearningModel() {
+  DetachModelProto();
+}
+
 void LearningModel::Initialize() {
   WINML_THROW_IF_FAILED(adapter_->CreateModelInfo(model_proto_.get(), model_info_.put()));
 }
