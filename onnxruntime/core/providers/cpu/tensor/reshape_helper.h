@@ -26,7 +26,6 @@ class ReshapeHelper {
           ORT_ENFORCE(i < input_shape.NumDimensions(),
                       "The dimension with value zero exceeds"
                       " the dimension size of the input tensor.");
-          requested_shape[i] = input_shape[i];
         }
         size *= requested_shape[i];
       }
