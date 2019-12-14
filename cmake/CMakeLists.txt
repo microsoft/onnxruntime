@@ -711,8 +711,8 @@ include(onnxruntime_mlas.cmake)
 
 if(onnxruntime_USE_AUTOML)
   add_definitions(-DMICROSOFT_AUTOML)
-  # Build shared featurizer library
-  include(onnxruntime_automl_featurizers.cmake)
+  # Fetch and build featurizers
+  include(external/featurizers.cmake)
 endif()
 
 if(WIN32)
