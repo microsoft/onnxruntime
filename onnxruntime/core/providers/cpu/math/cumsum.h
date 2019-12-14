@@ -20,7 +20,7 @@ class CumSum final : public OpKernel {
 
 namespace cumsum_op {
 
-Status GetAxis(const Tensor* axis_tensor, const int64_t input_rank, int64_t& axis_out);
+Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out);
 
 }  // namespace cumsum_op
 }  // namespace onnxruntime

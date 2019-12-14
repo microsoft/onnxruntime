@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/fast_divmod.h"
+
 #include "cumsum_impl.h"
 
 namespace onnxruntime {
@@ -10,15 +12,20 @@ namespace cuda {
 template <typename T>
 __global__ void _CumSumKernel(
     const T* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod fast_divmod_input_dim_along_axis,
+    const fast_divmod fast_divmod_input_stride_along_axis,
     T* output_data,
     const int64_t output_size,
     const bool exclusive,
     const bool reverse) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(indices_index, output_size);
 
-  int axis_dim = (indices_index / input_stride_along_axis) % input_dim_along_axis;
+  int input_dim_along_axis = fast_divmod_input_dim_along_axis.d_;
+  int input_stride_along_axis = fast_divmod_input_stride_along_axis.d_;
+
+  int axis_dim = 0;
+  int div = fast_divmod_input_stride_along_axis.div(static_cast<int>(indices_index));
+  fast_divmod_input_dim_along_axis.divmod(div, div, axis_dim);
 
   int start = 0;
   int end = 0;
@@ -49,7 +56,7 @@ __global__ void _CumSumKernel(
   }
 
   // adjust start index based on the above identified start dim value along the axis of interest
-  int64_t data_index = static_cast<int64_t>(indices_index) + (static_cast<int64_t>(start - axis_dim) * input_stride_along_axis);
+  int data_index = static_cast<int>(indices_index) + (start - axis_dim) * input_stride_along_axis;
   T sum = 0;
 
   // keep accumulating values from the start index for 'count' times and skip appropriately 
@@ -65,8 +72,8 @@ __global__ void _CumSumKernel(
 template<typename T>
 void CumSumImpl(
     const T* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     T* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -87,8 +94,8 @@ void CumSumImpl(
 
 template void CumSumImpl<int32_t>(
     const int32_t* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     int32_t* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -97,8 +104,8 @@ template void CumSumImpl<int32_t>(
 
 template void CumSumImpl<int64_t>(
     const int64_t* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     int64_t* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -107,8 +114,8 @@ template void CumSumImpl<int64_t>(
 
 template void CumSumImpl<uint32_t>(
     const uint32_t* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     uint32_t* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -117,8 +124,8 @@ template void CumSumImpl<uint32_t>(
 
 template void CumSumImpl<uint64_t>(
     const uint64_t* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     uint64_t* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -127,8 +134,8 @@ template void CumSumImpl<uint64_t>(
 
 template void CumSumImpl<float>(
     const float* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     float* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -137,8 +144,8 @@ template void CumSumImpl<float>(
 
 template void CumSumImpl<double>(
     const double* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     double* output_data,
     const int64_t output_size,
     const size_t element_size,
@@ -147,8 +154,8 @@ template void CumSumImpl<double>(
 
 template void CumSumImpl<half>(
     const half* input_data,
-    const int64_t input_dim_along_axis,
-    const int64_t input_stride_along_axis,
+    const fast_divmod& input_dim_along_axis,
+    const fast_divmod& input_stride_along_axis,
     half* output_data,
     const int64_t output_size,
     const size_t element_size,

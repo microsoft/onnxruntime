@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cumsum.h"
+#include "core/providers/common.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
@@ -48,9 +49,10 @@ void SumSlices(const Tensor& input, Tensor& output,
 }
 }  // namespace
 
-namespace cumsum_op {
+namespace onnxruntime {
 
-Status GetAxis(const Tensor* axis_tensor, const int64_t input_rank, int64_t& axis_out) {
+namespace cumsum_op {
+Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out) {
   if (!axis_tensor)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must be provided to the CumSum op");
 
@@ -65,19 +67,12 @@ Status GetAxis(const Tensor* axis_tensor, const int64_t input_rank, int64_t& axi
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be of type `int32_t` or `int64_t`");
   }
 
-  // validate input
-  if (axis_out < -input_rank || axis_out >= input_rank)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis should be in the range [", -input_rank, ",", input_rank, ") but got: ", axis_out);
-
-  if (axis_out < 0)
-    axis_out = axis_out + input_rank;
+  axis_out = HandleNegativeAxis(axis_out, input_rank);
 
   return Status::OK();
 }
 
 }  // namespace cumsum_op
-
-namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(CumSum,
                                11,
@@ -135,9 +130,9 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
 
 template <typename T>
 Status CumSum<T>::Compute(OpKernelContext* ctx) const {
-  const Tensor* input = ctx->Input<Tensor>(0);                             // input tensor
-  const auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
-  const Tensor* axis_tensor = ctx->Input<Tensor>(1);                       // axis input tensor
+  const Tensor* input = ctx->Input<Tensor>(0);                       // input tensor
+  auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
+  const Tensor* axis_tensor = ctx->Input<Tensor>(1);                 // axis input tensor
 
   TensorShape output_shape(input->Shape());
   auto& output_tensor = *ctx->Output(0, output_shape);  // output tensor
@@ -147,9 +142,7 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   int64_t axis;
-  auto status = cumsum_op::GetAxis(axis_tensor, rank, axis);
-  if (!status.IsOK())
-    return status;
+  ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
 
   auto dim(output_tensor.Shape()[axis]);    // dimension size for the axis
   TensorShape slice_shape(input->Shape());  // the shape of one slice of input/output for the given value of the axis

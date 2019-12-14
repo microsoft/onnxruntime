@@ -29,14 +29,12 @@ ONNX_OPERATOR_KERNEL_EX(
     CumSum);
 
 Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor* input = ctx->Input<Tensor>(0);                             // input tensor
-  const auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
-  const Tensor* axis_tensor = ctx->Input<Tensor>(1);                       // axis input tensor
+  const Tensor* input = ctx->Input<Tensor>(0);                       // input tensor
+  auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
+  const Tensor* axis_tensor = ctx->Input<Tensor>(1);                 // axis input tensor
 
-  int64_t axis;
-  auto status = cumsum_op::GetAxis(axis_tensor, rank, axis);
-  if (!status.IsOK())
-    return status;
+  int64_t axis = 0;
+  ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
 
   TensorShape output_shape(input->Shape());
   auto& output = *ctx->Output(0, output_shape);  // output tensor
@@ -48,20 +46,22 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_dims = input->Shape().GetDims();
   TensorPitches input_strides(input_dims);
 
+  fast_divmod fast_divmod_input_dim_along_axis(static_cast<int>(input_dims[axis]));
+  fast_divmod fast_divmod_input_stride_along_axis(static_cast<int>(input_strides[axis]));
+
   if (input->IsDataType<float>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input->Data<float>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<float>::MappedType*>(output.MutableData<float>()),
                output_shape.Size(),
                input->DataType()->Size(),
                exclusive_,
                reverse_);
-
   } else if (input->IsDataType<double>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<double>::MappedType*>(input->Data<double>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<double>::MappedType*>(output.MutableData<double>()),
                output_shape.Size(),
                input->DataType()->Size(),
@@ -69,8 +69,8 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
                reverse_);
   } else if (input->IsDataType<int32_t>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<int32_t>::MappedType*>(input->Data<int32_t>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<int32_t>::MappedType*>(output.MutableData<int32_t>()),
                output_shape.Size(),
                input->DataType()->Size(),
@@ -78,8 +78,8 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
                reverse_);
   } else if (input->IsDataType<int64_t>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<int64_t>::MappedType*>(input->Data<int64_t>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<int64_t>::MappedType*>(output.MutableData<int64_t>()),
                output_shape.Size(),
                input->DataType()->Size(),
@@ -87,8 +87,8 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
                reverse_);
   } else if (input->IsDataType<uint32_t>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<uint32_t>::MappedType*>(input->Data<uint32_t>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<uint32_t>::MappedType*>(output.MutableData<uint32_t>()),
                output_shape.Size(),
                input->DataType()->Size(),
@@ -96,8 +96,8 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
                reverse_);
   } else if (input->IsDataType<uint64_t>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<uint64_t>::MappedType*>(input->Data<uint64_t>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<uint64_t>::MappedType*>(output.MutableData<uint64_t>()),
                output_shape.Size(),
                input->DataType()->Size(),
@@ -105,8 +105,8 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
                reverse_);
   } else if (input->IsDataType<MLFloat16>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(input->Data<MLFloat16>()),
-               input_dims[axis],
-               input_strides[axis],
+               fast_divmod_input_dim_along_axis,
+               fast_divmod_input_stride_along_axis,
                reinterpret_cast<typename ToCudaType<MLFloat16>::MappedType*>(output.MutableData<MLFloat16>()),
                output_shape.Size(),
                input->DataType()->Size(),
