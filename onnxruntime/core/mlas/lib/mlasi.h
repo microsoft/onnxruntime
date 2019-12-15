@@ -716,18 +716,11 @@ MlasGetMaximumThreadCount(
 
 #if defined(MLAS_NEON_INTRINSICS)
 typedef float32x4_t MLAS_FLOAT32X4;
+typedef int32x4_t MLAS_INT32X4;
 #elif defined(MLAS_SSE2_INTRINSICS)
 typedef __m128 MLAS_FLOAT32X4;
+typedef __m128i MLAS_INT32X4;
 #endif
-
-template<typename PacketType>
-struct MLAS_PACKET_TRAITS;
-
-template<>
-struct MLAS_PACKET_TRAITS<MLAS_FLOAT32X4>
-{
-    typedef float ElementType;
-};
 
 inline
 MLAS_FLOAT32X4
@@ -740,28 +733,15 @@ MlasZeroFloat32x4(void)
 #endif
 }
 
-template<typename PacketType>
-PacketType
-MlasPacketLoad(const typename MLAS_PACKET_TRAITS<PacketType>::ElementType* Buffer);
-
-template<>
 inline
 MLAS_FLOAT32X4
-MlasPacketLoad<MLAS_FLOAT32X4>(const float* Buffer)
+MlasLoadFloat32x4(const float* Buffer)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vld1q_f32(Buffer);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_loadu_ps(Buffer);
 #endif
-}
-
-inline
-MLAS_FLOAT32X4
-MlasLoadFloat32x4(const float* Buffer)
-{
-    // TODO: Remove old wrapper.
-    return MlasPacketLoad<MLAS_FLOAT32X4>(Buffer);
 }
 
 inline
@@ -843,28 +823,15 @@ MlasExtractLaneFloat32x4<0>(MLAS_FLOAT32X4 Vector)
 
 #endif
 
-template<typename PacketType>
-PacketType
-MlasPacketBroadcast(typename MLAS_PACKET_TRAITS<PacketType>::ElementType Value);
-
-template<>
 inline
 MLAS_FLOAT32X4
-MlasPacketBroadcast<MLAS_FLOAT32X4>(float Value)
+MlasBroadcastFloat32x4(float Value)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vdupq_n_f32(Value);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_set1_ps(Value);
 #endif
-}
-
-inline
-MLAS_FLOAT32X4
-MlasBroadcastFloat32x4(float Value)
-{
-    // TODO: Remove old wrapper.
-    return MlasPacketBroadcast<MLAS_FLOAT32X4>(Value);
 }
 
 inline
@@ -880,21 +847,13 @@ MlasBroadcastFloat32x4(const float* Value)
 
 inline
 MLAS_FLOAT32X4
-MlasPacketAdd(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vaddq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_add_ps(Vector1, Vector2);
 #endif
-}
-
-inline
-MLAS_FLOAT32X4
-MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
-{
-    // TODO: Remove old wrapper.
-    return MlasPacketAdd(Vector1, Vector2);
 }
 
 inline
@@ -910,21 +869,13 @@ MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 
 inline
 MLAS_FLOAT32X4
-MlasPacketMultiply(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vmulq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_mul_ps(Vector1, Vector2);
 #endif
-}
-
-inline
-MLAS_FLOAT32X4
-MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
-{
-    // TODO: Remove old wrapper.
-    return MlasPacketMultiply(Vector1, Vector2);
 }
 
 inline
@@ -959,7 +910,7 @@ MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 
 inline
 MLAS_FLOAT32X4
-MlasPacketMaximum(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vmaxq_f32(Vector1, Vector2);
@@ -970,29 +921,13 @@ MlasPacketMaximum(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 
 inline
 MLAS_FLOAT32X4
-MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
-{
-    // TODO: Remove old wrapper.
-    return MlasPacketMaximum(Vector1, Vector2);
-}
-
-inline
-MLAS_FLOAT32X4
-MlasPacketMinimum(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_NEON_INTRINSICS)
     return vminq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #endif
-}
-
-inline
-MLAS_FLOAT32X4
-MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
-{
-    // TODO: Remove old wrapper.
-    return MlasPacketMinimum(Vector1, Vector2);
 }
 
 inline
@@ -1061,6 +996,17 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_SSE2_INTRINSICS)
     __m128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
     return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
+#endif
+}
+
+inline
+MLAS_INT32X4
+MlasBroadcastInt32x4(int32_t Value)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vdupq_n_s32(Value);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_set1_epi32(Value);
 #endif
 }
 
