@@ -13,7 +13,6 @@ template <typename Tin>
 void GatherElementsImpl(
     const int64_t rank,  // both inputs have same rank and this is validated in the main Compute
     const void* input_data,
-    const int64_t input_size,
     const int64_t input_dim_along_axis,
     const int64_t* input_strides,
     const Tin* indices_data,

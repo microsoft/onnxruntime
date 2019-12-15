@@ -108,10 +108,9 @@ class TestNuphar(unittest.TestCase):
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
         subprocess.run([onnx_test_runner, '-e', 'nuphar', '-n', 'download_sample_10', cwd], check=True, cwd=cwd)
 
-        # run onnxruntime_perf_test
+        # run onnxruntime_perf_test, note that nuphar currently is not integrated with ORT thread pool, so set -x 1 to avoid thread confliction with OpenMP
         onnxruntime_perf_test = os.path.join(cwd, 'onnxruntime_perf_test')
-        subprocess.run([onnxruntime_perf_test, '-e', 'nuphar', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
-        subprocess.run([onnxruntime_perf_test, '-e', 'cpu', '-o', '99', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
+        subprocess.run([onnxruntime_perf_test, '-e', 'nuphar', '-x', '1', '-t', '20', bert_squad_model, '1.txt'], check=True, cwd=cwd)
 
 
     def test_rnn_benchmark(self):
