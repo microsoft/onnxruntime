@@ -39,27 +39,31 @@ constexpr float B = 0.7978845608028654;  // sqrt(2.0/M_PI)
 
 constexpr float C = 0.035677408136300125;  // 0.044715 * sqrt(2.0/M_PI)
 
-template <typename T, unsigned TPB>
-__global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {
+template <typename T, unsigned TPB, bool hasBias>
+__global__ void FastGeluKernel(const T a, const T b, const T c,
+                               int input_length, int bias_length,
+                               const T* input, const T* bias, T* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
   if (idx < input_length) {
     const T x = input[idx];
-    const T in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
+    const T in = hasBias ? x + bias[idx % bias_length] : x;
     const T cdf = a + a * _Tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
 }
 
-template <unsigned TPB>
-__global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int input_length, int bias_length, const half2* input, const half2* bias, half2* output) {
+template <unsigned TPB, bool hasBias>
+__global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c,
+                                int input_length, int bias_length,
+                                const half2* input, const half2* bias, half2* output) {
 // half2 arithmetic functions requires cuda architecture >= 5.3
 #if __CUDA_ARCH__ >= 530
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
   if (idx < input_length) {
     const half2 x = input[idx];
-    const half2 in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
+    const half2 in = hasBias ? x + bias[idx % bias_length] : x;
     const half2 cdf = a + a * _Tanh(in * (c * in * in + b));
     output[idx] = in * cdf;
   }
@@ -67,16 +71,26 @@ __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int
 }
 
 template <>
-bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output) {
+bool LaunchFastGeluKernel(cudaStream_t stream,
+                          int input_length, int bias_length,
+                          const float* input, const float* bias, float* output) {
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
-  FastGeluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+  if (bias != nullptr) {
+    FastGeluKernel<float, blockSize, true>
+        <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+  } else {
+    FastGeluKernel<float, blockSize, false>
+        <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+  }
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template <>
-bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output) {
+bool LaunchFastGeluKernel(cudaStream_t stream,
+                          int input_length, int bias_length,
+                          const half* input, const half* bias, half* output) {
   constexpr int blockSize = 256;
 
   if (0 == (bias_length & 1) && DeviceProp::GetDeviceProps().major >= 7) {
@@ -88,10 +102,23 @@ bool LaunchFastGeluKernel(cudaStream_t stream, int input_length, int bias_length
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
-    FastGeluKernel2<blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+    if (bias != nullptr) {
+      FastGeluKernel2<blockSize, true>
+          <<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+    } else {
+      FastGeluKernel2<blockSize, false>
+          <<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+    }
+
   } else {
     const int gridSize = (input_length + blockSize - 1) / blockSize;
-    FastGeluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+    if (bias != nullptr) {
+      FastGeluKernel<half, blockSize, true>
+          <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+    } else {
+      FastGeluKernel<half, blockSize, false>
+          <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+    }
   }
 
   return CUDA_CALL(cudaPeekAtLastError());
