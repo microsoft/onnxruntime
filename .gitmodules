@@ -48,5 +48,4 @@
 	url = https://github.com/nlohmann/json
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
-	url = https://github.com/kevinch-nv/onnx-tensorrt.git
-	branch = seven-update
+	url = https://github.com/onnx/onnx-tensorrt.git
