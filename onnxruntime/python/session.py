@@ -148,3 +148,9 @@ class TrainingSession(InferenceSession):
     def __del__(self):
         if self._sess:
             self._sess.finalize()
+
+    def get_state(self):
+        return self._sess.get_state()
+
+    def load_state(self, dict, strict=False):
+        self._sess.load_state(dict, strict)

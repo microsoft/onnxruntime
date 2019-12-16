@@ -449,6 +449,11 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   return Status::OK();
 }
 
+bool InferenceSession::IsInitialized() const {
+  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  return is_inited_;
+}
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   auto tp = session_profiler_.StartTime();

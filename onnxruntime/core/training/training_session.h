@@ -136,10 +136,21 @@ class TrainingSession : public InferenceSession {
       const PathString& checkpoint_path,
       std::unordered_map<std::string, std::string>& properties);
 
+  /** Update the session initializers with passed-in state tensors
+  @param state_tensors, a map of previous state, usually load from checkpoint
+  @param strict, if it is true, it require current session has exact the same set of initializers as the checkpoint.
+         if false, it allow some initializers are missing in checkpoints, or some initializers in checkpoint are missing in current session
+  */
+  common::Status UpdateInitializedTensors(const NameMLValMap& state_tensors, bool strict = false);
+
   // TODO: remove or refine below temp interfaces.
   NameMLValMap GetWeights() const;
 
   common::Status UpdateTrainableWeightsInfoInGraph();
+
+  common::Status GetStateTensors(NameMLValMap& state_tensors);
+
+  const DataTransferManager& GetDataTransferManager();
 
   // (To be deprecated)
   // Update the weights when updater is not part of the training graph

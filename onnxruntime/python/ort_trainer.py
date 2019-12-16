@@ -86,7 +86,7 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     output_descs_resolved = resolve_symbolic_dimensions(inputs, input_descs, output_descs)
     torch_outputs = {}
     for output_desc in output_descs_resolved:
-        torch_tensor = torch.zeros(output_desc.shape_, device=device, dtype=output_desc.dtype_)
+        torch_tensor = torch.zeros(output_desc.shape_, device=device, dtype= output_desc.eval_dtype_ if hasattr(output_desc, 'eval_dtype_') else output_desc.dtype_)
         device_index = device.index if device.index else 0
         iobinding.bind_output(output_desc.name_, torch_tensor.device.type, device_index, 
                               dtype_torch_to_numpy(torch_tensor.dtype),  
@@ -436,11 +436,7 @@ def create_ort_training_session_bind_parameters(model, device, world_rank=-1, wo
 class ORTTrainer():
     def __init__(self, model, loss_fn, model_desc, training_optimizer_name, map_optimizer_attributes,
                  learning_rate_description, device, gradient_accumulation_steps=1, postprocess_model=None,
-                 world_rank=-1, world_size=1, bind_parameters=False,
-                 use_mixed_precision=False, allreduce_post_accumulation=False):
-        # TODO: bind_parameters is mainly for check point at the pytorch side. Once we decided to use ORT checkpoint, 
-        # we shall removed this option. we shall also remove self.parameters, name_parameters, and state_dict.
-        # we shall also remove code used to create self.torch_params.
+                 world_rank=-1, world_size=1, use_mixed_precision=False, allreduce_post_accumulation=False):
         super(ORTTrainer, self).__init__()
         self.is_train = True
         self.model_ = model
@@ -456,11 +452,12 @@ class ORTTrainer():
         self.device_ = device
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.current_step = 0
+        self.post_process_model_fn_ = postprocess_model
 
         model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
 
-        if postprocess_model:
-            postprocess_model(model)
+        if self.post_process_model_fn_:
+            self.post_process_model_fn_(model)
 
         if self.use_mixed_precision:
             self.loss_scale_input_name, self.scaled_loss_output_name = add_loss_scale_input(model)
@@ -469,19 +466,20 @@ class ORTTrainer():
             self.loss_scale_input_name, self.scaled_loss_output_name = '', ''
 
         self.verify_fully_optimized_model(model)
-        self.session, self.train_io_binding, self.eval_io_binding, self.output_name, self.torch_params, self.output_types = \
+        self.session, self.train_io_binding, self.eval_io_binding, self.output_name, _, self.output_types = \
             create_ort_training_session_with_optimizer(model, device,
                 training_optimizer_name, learning_rate_description.name_, map_optimizer_attributes,
                 self.world_rank, self.world_size,
-                self.gradient_accumulation_steps, bind_parameters=bind_parameters, 
+                self.gradient_accumulation_steps, bind_parameters=False,
                 use_mixed_precision=use_mixed_precision, allreduce_post_accumulation=allreduce_post_accumulation,
                 loss_scale_input_name=self.loss_scale_input_name, scaled_loss_output_name=self.scaled_loss_output_name)
 
-        if self.use_mixed_precision:
-            # ORT backend has modified model output dtype from float32 to float16.  
-            for o_desc in self.model_desc_.outputs_:
-                if o_desc.dtype_ == torch.float32:
-                    o_desc.dtype_ = torch.float16
+        # ORT backend has modified model output dtype from float32 to float16.  
+        for o_desc in self.model_desc_.outputs_:
+            if self.use_mixed_precision and o_desc.dtype_ == torch.float32:
+                o_desc.eval_dtype_ = torch.float16
+            else:
+                o_desc.eval_dtype_ = o_desc.dtype_  
 
         # gradient accumulation buffers are connected to a single node with a boolean, dimension 1 tensor output.
         # add a matching output to drive gradient accumulation.
@@ -497,14 +495,6 @@ class ORTTrainer():
 
         self.device_ = device
 
-    def parameters(self):
-        if not self.torch_params:
-            return None
-        return list(self.torch_params.values())
-
-    def named_parameters(self):
-        return self.torch_params.items()
-
     def train(self):
         self.is_train = True
 
@@ -512,12 +502,42 @@ class ORTTrainer():
         self.is_train = False
 
     def state_dict(self):
-        return self.torch_params
+        session_state = self.session.get_state()
+        torch_state = {}
+        for name in session_state:
+            torch_state[name] = torch.from_numpy(session_state[name])
+        return torch_state
 
     def load_state_dict(self, state_dict, strict=False):
-        for name, param in self.torch_params.items():
-            input_param = state_dict[name]
-            param.data.copy_(input_param.data)
+        session_state = {}
+        for name in state_dict:
+            session_state[name] = state_dict[name].numpy()
+        self.session.load_state(session_state, strict)
+
+    def save_as_onnx(self, path):
+        #convert pytorch model to onnx first
+        model = convert_model_loss_fn_to_onnx(self.model_, self.loss_fn_, self.model_desc_, torch.device('cpu'))
+
+        if self.post_process_model_fn_:
+            self.post_process_model_fn_(model)
+
+        state_tensors = self.session.get_state()
+        #replace the initializers with new value
+        new_weights = []
+        replace_indices = []
+        i = 0
+        for w in model.graph.initializer:
+            if w.name in state_tensors:
+                new_weights.append(numpy_helper.from_array(state_tensors[w.name], w.name))
+                replace_indices.append(i)
+            i += 1
+        replace_indices.sort(reverse=True)
+        for w_i in replace_indices:
+            del model.graph.initializer[w_i]
+        model.graph.initializer.extend(new_weights)
+
+        with open(path, "wb") as f:
+          f.write(model.SerializeToString())
 
     def train_step(self, input, fetches=None):
         # input contains input tensors (model inputs and labels), 

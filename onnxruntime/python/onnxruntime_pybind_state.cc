@@ -65,7 +65,7 @@
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
-int cuda_device_id=0;
+int cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 #endif
 #ifdef USE_TENSORRT
@@ -85,6 +85,10 @@ size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 #endif
 #ifdef USE_BRAINSLICE
 #include "core/providers/brainslice/brainslice_provider_factory.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "core/training/data_transfer_utils.h"
 #endif
 
 namespace onnxruntime {
@@ -166,7 +170,7 @@ void AddNonTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
   }
 }
 
-void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
+py::object TensorToPyObj(OrtValue& val, const DataTransferManager* data_transfer_manager = nullptr) {
   const Tensor& rtensor = val.Get<Tensor>();
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
@@ -184,7 +188,18 @@ void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
 
   if (numpy_type != NPY_OBJECT) {
-    memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+    //if it is not cpu tenosr, need to copy to host
+    if (rtensor.Location().device.Type() != OrtDevice::CPU) {
+      if (!data_transfer_manager)
+        throw std::runtime_error("TensorToPyObj: data transfer manager is needed when convert non-CPU tensor to numpy array");
+      static const OrtAllocatorInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+      std::vector<char> tensor_data_buffer{};
+      tensor_data_buffer.resize(rtensor.SizeInBytes());
+      ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
+          *data_transfer_manager, rtensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
+      memcpy(outPtr, tensor_data_buffer.data(), dtype->Size() * shape.Size());
+    } else
+      memcpy(outPtr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
   } else {
     // Handle string type.
     py::object* outObj = static_cast<py::object*>(outPtr);
@@ -193,7 +208,11 @@ void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
       outObj[i] = py::cast(*src);
     }
   }
-  pyobjs.push_back(obj);
+  return obj;
+}
+
+void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
+  pyobjs.push_back(TensorToPyObj(val));
 }
 
 static std::string GetDeviceName(const OrtDevice& device) {
@@ -214,7 +233,7 @@ struct TrainingParameters {
   std::unordered_set<std::string> weights_to_train;
   onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
   std::vector<std::string> weights_not_to_train;
-  
+
   // optimizer
   std::string training_optimizer_name;
   std::string loss_scale_input_name;
@@ -302,11 +321,11 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
   opt_graph_config.gradient_accumulation_steps = gradient_accumulation_steps;
   opt_graph_config.allreduce_in_fp16 = true;
 
-  // this condition block is temporary. 
+  // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
   // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
   // eventually we will have one all reduce kernel and let opt_graph_config to have
-  // an allreduce_post_accumulation option and remove the use_nccl option. 
+  // an allreduce_post_accumulation option and remove the use_nccl option.
   if (allreduce_post_accumulation)
     opt_graph_config.use_nccl = true;
   else
@@ -321,10 +340,10 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
   return Status::OK();
 }
 
-void SetupAndBuildOptimizer(onnxruntime::training::TrainingSession* sess, 
-  const std::unordered_set<std::string>& weights_to_train, 
-  const std::unordered_map<std::string, NodeArg*>& fp16_weights_map, 
-  const TrainingParameters& parameters) {
+void SetupAndBuildOptimizer(onnxruntime::training::TrainingSession* sess,
+                            const std::unordered_set<std::string>& weights_to_train,
+                            const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
+                            const TrainingParameters& parameters) {
   // Add optimizer
   OptimizerGraphConfig opt_graph_config{};
   std::unordered_map<std::string, OptimizerNodeConfig> opt_configs;
@@ -348,20 +367,19 @@ void SetupAndBuildOptimizer(onnxruntime::training::TrainingSession* sess,
   status = sess->BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs);
   if (!status.IsOK())
     throw std::runtime_error(status.ToString().c_str());
-  
+
 #ifdef USE_HOROVOD
-  // this condition block is temporary. 
+  // this condition block is temporary.
   // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
   // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
   bool use_nccl = parameters.allreduce_post_accumulation;
-  if (!use_nccl && parameters.world_size > 1)
-  {
+  if (!use_nccl && parameters.world_size > 1) {
     auto mpi_context = setup_horovod();
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
   }
-#endif  
+#endif
 }
 
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
@@ -384,8 +402,8 @@ void InitializeSession(InferenceSession* sess) {
 #ifdef USE_CUDA
   {
     RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
-    cuda_device_id=0;
-	cuda_mem_limit = INT_MAX;
+    cuda_device_id = 0;
+    cuda_mem_limit = INT_MAX;
   }
 #endif
 
@@ -485,10 +503,10 @@ void addGlobalMethods(py::module& m) {
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 #ifdef USE_CUDA
-  m.def("set_cuda_device_id", [](const int id){cuda_device_id = id;});
-  m.def("set_cuda_mem_limit", [](const int64_t limit){
-        cuda_mem_limit = static_cast<size_t>(limit); 
-       });
+  m.def("set_cuda_device_id", [](const int id) { cuda_device_id = id; });
+  m.def("set_cuda_mem_limit", [](const int64_t limit) {
+    cuda_mem_limit = static_cast<size_t>(limit);
+  });
 #endif
 }
 
@@ -955,16 +973,16 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
       .def("finalize", [](py::object) {
 #ifdef USE_HOROVOD
-	  shutdown_horovod();
+        shutdown_horovod();
 #endif
-        })
+      })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
         auto status = sess->Load(path);
         if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
         status = sess->ApplyTransformationsToMainGraph();
-        if (!status.IsOK()){
+        if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
         auto weights_to_train = parameters.weights_to_train;
@@ -1009,7 +1027,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error(status.ToString().c_str());
         }
         status = sess->ApplyTransformationsToMainGraph();
-        if (!status.IsOK()){
+        if (!status.IsOK()) {
           throw std::runtime_error(status.ToString().c_str());
         }
 
@@ -1045,8 +1063,44 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
 
-
         InitializeSession(sess);
+      })
+      .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
+        NameMLValMap state_tensors;
+        ORT_THROW_IF_ERROR(sess->GetStateTensors(state_tensors));
+        auto& data_transfer_manager = sess->GetDataTransferManager();
+        //convert to numpy array
+        std::map<std::string, py::object> rmap;
+        for (auto& kv : state_tensors) {
+          if (kv.second.IsTensor()) {
+            rmap.insert({kv.first, TensorToPyObj(kv.second, &data_transfer_manager)});
+          } else {
+            throw std::runtime_error("Non tensor type in session state tensors is not expected.");
+          }
+        }
+        return rmap;
+      })
+      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<string, py::object>& state, bool strict) {
+        NameMLValMap state_tensors;
+        for (auto initializer : state) {
+          OrtValue ml_value;
+          CreateGenericMLValue(GetAllocator(), initializer.first, initializer.second, &ml_value);
+          if (PyErr_Occurred()) {
+            PyObject *ptype, *pvalue, *ptraceback;
+            PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+
+            PyObject* pStr = PyObject_Str(ptype);
+            std::string sType = py::reinterpret_borrow<py::str>(pStr);
+            Py_XDECREF(pStr);
+            pStr = PyObject_Str(pvalue);
+            sType += ": ";
+            sType += py::reinterpret_borrow<py::str>(pStr);
+            Py_XDECREF(pStr);
+            throw std::runtime_error(sType);
+          }
+          state_tensors.insert(std::make_pair(initializer.first, ml_value));
+        }
+        ORT_THROW_IF_ERROR(sess->UpdateInitializedTensors(state_tensors, strict));
       });
 }
 

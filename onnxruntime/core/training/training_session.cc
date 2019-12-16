@@ -180,8 +180,8 @@ Status TrainingSession::BuildLossFunction(const LossFunctionInfo& loss_func_info
 }
 
 Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::string>& weights_to_train,
-                                                     bool use_fp16_initializer,
-                                                     std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
+                                             bool use_fp16_initializer,
+                                             std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg) {
   ORT_RETURN_IF_ERROR(TransformGraphForMixedPrecision(model_->MainGraph(), weights_to_train, use_fp16_initializer, fp32_weight_name_to_fp16_node_arg));
 
   std::unordered_set<std::string> fp16_weight_initializer_names{};
@@ -346,12 +346,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
   return status;
 }
 
-Status TrainingSession::SaveCheckpoint(
-    const PathString& checkpoint_path,
-    const std::unordered_map<std::string, std::string>& properties) {
-  const bool is_profiler_enabled = session_state_.Profiler().IsEnabled();
-  const TimePoint start_time = is_profiler_enabled ? session_state_.Profiler().StartTime() : TimePoint{};
-
+common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
   std::unordered_set<std::string> checkpointed_tensor_names{};
   checkpointed_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
@@ -360,9 +355,21 @@ Status TrainingSession::SaveCheckpoint(
   checkpointed_tensor_names.insert(
       fp16_weight_initializer_names_.begin(), fp16_weight_initializer_names_.end());
 
+  return session_state_.GetInitializedTensors(checkpointed_tensor_names, false, state_tensors);
+}
+
+const DataTransferManager& TrainingSession::GetDataTransferManager() {
+  return session_state_.GetDataTransferMgr();
+}
+
+Status TrainingSession::SaveCheckpoint(
+    const PathString& checkpoint_path,
+    const std::unordered_map<std::string, std::string>& properties) {
+  const bool is_profiler_enabled = session_state_.Profiler().IsEnabled();
+  const TimePoint start_time = is_profiler_enabled ? session_state_.Profiler().StartTime() : TimePoint{};
+
   NameMLValMap checkpointed_initialized_tensors{};
-  ORT_RETURN_IF_ERROR(session_state_.GetInitializedTensors(
-      checkpointed_tensor_names, false, checkpointed_initialized_tensors));
+  ORT_RETURN_IF_ERROR(GetStateTensors(checkpointed_initialized_tensors));
 
   ORT_RETURN_IF_ERROR(SaveModelCheckpoint(
       checkpoint_path, session_state_.GetDataTransferMgr(),
@@ -397,6 +404,30 @@ Status TrainingSession::LoadCheckpointAndUpdateInitializedTensors(
         profiling::EventCategory::SESSION_EVENT, "checkpoint_load", start_time);
   }
 
+  return Status::OK();
+}
+
+common::Status TrainingSession::UpdateInitializedTensors(const NameMLValMap& state_tensors, bool strict) {
+  if (!IsInitialized())
+    return Status(ONNXRUNTIME, FAIL, "Can't update initializers before session initialized.");
+  NameMLValMap initializers;
+  std::unordered_set<std::string> ckpt_initializer_names;
+  std::transform(state_tensors.begin(), state_tensors.end(),
+                 std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()),
+                 [](auto pair) { return pair.first; });
+  ORT_RETURN_IF_ERROR(session_state_.GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
+  for (auto& state : state_tensors) {
+    auto it = initializers.find(state.first);
+    if (it != initializers.end()) {
+      if (!it->second.IsTensor() || !state.second.IsTensor())
+        return Status(ONNXRUNTIME, FAIL, "Non-tensor type as initializer is not expected.");
+      auto* initializer_tensor = it->second.GetMutable<Tensor>();
+      auto& ckpt_tensor = state.second.Get<Tensor>();
+      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+    } else if (strict) {
+      return Status(ONNXRUNTIME, FAIL, "Checkpoint tensor: " + state.first + " is not found in training session");
+    }
+  }
   return Status::OK();
 }
 
