@@ -283,6 +283,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
+    "-G" + "CodeBlocks - Unix Makefiles",#slx
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
@@ -507,7 +508,7 @@ def setup_tensorrt_vars(args):
         os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
 
         # Set FP16 flag
-        os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
+        os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
 
     return tensorrt_home
 
