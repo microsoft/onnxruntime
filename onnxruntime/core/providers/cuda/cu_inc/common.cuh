@@ -133,7 +133,7 @@ __device__ __inline__ half _Round(half a) {
 #if __CUDA_ARCH__ < 530
   return half(rintf((float)a));
 #else
-  return hrint(a); }
+  return hrint(a);
 #endif
 }
 
