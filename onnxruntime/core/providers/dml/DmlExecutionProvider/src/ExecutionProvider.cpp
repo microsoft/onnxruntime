@@ -129,6 +129,10 @@ namespace Dml
         }
     }
 
+// ORT release pipelines agent pools do not have 19H1 SDK installed which defines D3D_FEATURE_LEVEL_1_0_CORE.
+// Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK 
+// using the command line installer tool with VS2019
+// Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
 #define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
 
     ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
