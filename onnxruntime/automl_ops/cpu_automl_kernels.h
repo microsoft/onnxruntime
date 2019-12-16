@@ -8,6 +8,8 @@
 
 namespace onnxruntime {
 namespace automl {
+
 Status RegisterCpuAutoMLKernels(KernelRegistry& kernel_registry);
+
 } // namespace automl
-}  // namespace onnxruntime
+} // namespace onnxruntime
