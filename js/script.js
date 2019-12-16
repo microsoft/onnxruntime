@@ -764,8 +764,15 @@ function commandMessage(key) {
             
         "linux,Python(3.5-3.7),X86,DirectML":
         	"This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md' target='_blank'>build from source</a>.",
-
-
+		
+		"linux,Java,X64,DefaultCPU":
+			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+			
+		"linux,Java,X64,CUDA":
+			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+			
+		"mac,Java,X64,DefaultCPU":
+			"Follow&nbsp;<a href='https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#common-build-instructions' target='_blank'>build</a> and&nbsp;<a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>"	
 
 
     };
