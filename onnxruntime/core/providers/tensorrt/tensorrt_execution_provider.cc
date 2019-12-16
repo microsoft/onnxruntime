@@ -104,6 +104,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const char* workspace_env = getenv("ORT_TENSORRT_MAX_WORKSPACE_SIZE");
   if (workspace_env)
     max_workspace_size_ = atoi(workspace_env);
+
+  const char* fp16_env = getenv("ORT_TENSORRT_FP16_ENABLE");
+  if (fp16_env)
+    fp16_en_ = (atoi(fp16_env) == 0 ? false : true);
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -534,7 +538,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         for (int j = 0, end = nb_dims; j < end; ++j) {
           shapes_min[j] = 1;
           shapes_opt[j] = 1;
-          shapes_max[j] = 1;
+          shapes_max[j] = 1000;
         }
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], nb_dims);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], nb_dims);
@@ -557,6 +561,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_config->addOptimizationProfile(trt_profile);
+    if (fp16_en_ && trt_builder->platformHasFastFp16()) {
+      std::cout << "FP16 is enabled in compile" << std::endl;
+      trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    }
 
     auto trt_engine = unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
     if (trt_engine == nullptr) {
@@ -641,7 +649,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_};
+            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_en_};
       *state = p.release();
       return 0;
     };
@@ -666,10 +674,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int total_bindings = num_binding_inputs + num_binding_outputs;
       std::vector<void*> buffers(total_bindings);
 
-      //TODO: check shape tensor inputs by allInutShapesSpecified()
+      //TODO: check shape tensor inputs by allInputShapesSpecified()
       bool dynamic_shape = false;
       auto trt_context = trt_state->context;
-      if (!trt_context->allInputDimensionsSpecified()) {
+      if (!trt_context->allInputDimensionsSpecified() || !trt_context->allInputShapesSpecified()) {
         dynamic_shape = true;
       }
 
@@ -745,6 +753,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       if (dimension_update) {
         auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->addOptimizationProfile(trt_profile);
+        if (*(trt_state->fp16_en_ptr) && trt_builder->platformHasFastFp16()) {
+          trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+        }
         trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);
         ORT_ENFORCE(trt_state->engine != nullptr);
 

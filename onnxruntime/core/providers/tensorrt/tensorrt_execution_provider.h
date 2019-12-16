@@ -50,6 +50,7 @@ struct TensorrtFuncState {
   std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   std::vector<std::vector<int64_t>> output_shapes;
   OrtMutex* tensorrt_mu_ptr = nullptr;
+  bool* fp16_en_ptr = nullptr;
 };
 
 // Logical device representation.
@@ -76,6 +77,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   int max_partition_iterations_ = 1000;
   int min_subgraph_size_ = 1;
+  bool fp16_en_ = 0;
 
   struct InferDeleter {
     template <typename T>
