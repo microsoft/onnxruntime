@@ -100,6 +100,13 @@ if(NOT WIN32)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
   endif()
+else()
+  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
+  if (HAS_D2FH4)
+    message("Enabling /d2FH4-")
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
+  endif()
 endif()
 
 if(onnxruntime_USE_OPENMP)
@@ -704,8 +711,8 @@ include(onnxruntime_mlas.cmake)
 
 if(onnxruntime_USE_AUTOML)
   add_definitions(-DMICROSOFT_AUTOML)
-  # Build shared featurizer library
-  include(onnxruntime_automl_featurizers.cmake)
+  # Fetch and build featurizers
+  include(external/featurizers.cmake)
 endif()
 
 if(WIN32)

@@ -11,10 +11,12 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/nuphar/scripts/NUPHAR_CACHE_VERSION"
 #include "gsl/gsl"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
 #include <experimental/filesystem>
+#include <atomic>
 #include <fstream>
 namespace fs = std::experimental::filesystem;
 
@@ -27,13 +29,6 @@ static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
   if (!settings.HasOption(kNupharCachePath))
     return false;
 
-  std::string version;
-  if (settings.HasOption(kNupharCacheVersion)) {
-    version = settings.GetOptionValue(kNupharCacheVersion);
-  } else {
-    version = kNupharCacheVersion_Current;
-  }
-
   path = settings.GetOptionValue(kNupharCachePath);
   if (!create && !fs::is_directory(path))
     return false;
@@ -43,7 +38,7 @@ static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
       throw std::runtime_error("Failed to create directory " + path.string());
     }
 
-  path.append(version);
+  path.append(__NUPHAR_CACHE_VERSION__);
   if (!create && !fs::is_directory(path))
     return false;
 
@@ -78,6 +73,63 @@ static void* GetFuncFromLibrary(const std::string& so_path, const std::string& f
   if (throw_if_not_found && !s.IsOK())
     ORT_ENFORCE(false, "Cannot find ", func_name, " in ", so_path);
   return func;
+}
+
+static void ParseVersion(const char* version, int* major, int* minor, int* patch) {
+  std::stringstream ss(version);
+  std::string val;
+
+  auto ver_num_fn = [](const std::string& val) {
+    ORT_ENFORCE(!val.empty(), "Empty version number");
+    if (val.length() > 1 && val[0] == '0') {
+      ORT_THROW("Invalid version number: ", val);
+    }
+    ORT_ENFORCE(std::all_of(val.begin(), val.end(), [](char c) { return isdigit(c); }),
+                "Invalid version number: ", val);
+    return std::stoi(val);
+  };
+
+  std::getline(ss, val, '.');
+  ORT_ENFORCE(ss.good(), "Invalid version format: ", version);
+  *major = ver_num_fn(val);
+
+  std::getline(ss, val, '.');
+  *minor = ver_num_fn(val);
+
+  std::getline(ss, val);
+  *patch = ver_num_fn(val);
+}
+
+static void VerifyCacheVersion(const std::string& so_path) {
+  static std::atomic<bool> cache_version_checked{false};
+  static std::mutex cache_version_mutex;
+
+  // make sure we only check cache version once
+  if (!cache_version_checked.load(std::memory_order::memory_order_acquire)) {
+    std::lock_guard<std::mutex> lock(cache_version_mutex);
+    if (!cache_version_checked.load(std::memory_order::memory_order_acquire)) {
+      cache_version_checked.store(true, std::memory_order::memory_order_release);
+      // ensure we have _ORTInternal_GetCacheVersion_ function
+      void* f = GetFuncFromLibrary(so_path, "_ORTInternal_GetCacheVersion", /*throw_if_not_found*/ true);
+      ORT_ENFORCE(f, "NULL library function pointer!");
+
+      typedef const char* (*GetVersionFunc)();
+      GetVersionFunc func = reinterpret_cast<GetVersionFunc>(f);
+      const char* cache_version = func();
+      ORT_ENFORCE(cache_version, "Null cache version string!");
+      int cur_major, cur_minor, cur_patch;
+      ParseVersion(__NUPHAR_CACHE_VERSION__, &cur_major, &cur_minor, &cur_patch);
+      int cache_major, cache_minor, cache_patch;
+      ParseVersion(cache_version, &cache_major, &cache_minor, &cache_patch);
+
+      // make version check strict until we have thorough design for compatibility
+      ORT_ENFORCE((cur_major == cache_major) && (cur_minor == cache_minor),
+                  "Current nuphar runtime version (", __NUPHAR_CACHE_VERSION__,
+                  ") doesn't match cached dll version (", cache_version, ")");
+
+      cache_version_checked = true;
+    }
+  }
 }
 
 static bool disable_caching_due_to_checksum_failure = false;
@@ -130,6 +182,8 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   std::string so_path;
   if (!GetCacheSoFilePath(so_path))
     return nullptr;
+
+  VerifyCacheVersion(so_path);
 
   if (!VerifyTVMModuleChecksum(so_path))
     return nullptr;

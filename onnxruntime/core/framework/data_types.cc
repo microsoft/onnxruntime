@@ -8,10 +8,6 @@
 #include "core/framework/data_types_internal.h"
 #include "core/graph/onnx_protobuf.h"
 
-#ifdef MICROSOFT_AUTOML
-#include "automl_ops/automl_types.h"
-#endif
-
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -237,9 +233,6 @@ class DataTypeRegistry {
 
   DataTypeRegistry() {
     RegisterAllProtos([this](MLDataType mltype) { RegisterDataType(mltype); });
-#ifdef MICROSOFT_AUTOML
-    automl::RegisterAutoMLTypes([this](MLDataType mltype) { RegisterDataType(mltype); });
-#endif
   }
 
   ~DataTypeRegistry() = default;
