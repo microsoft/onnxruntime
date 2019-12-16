@@ -8,7 +8,7 @@ The NNAPI EP requires Android devices with Android 8.1 or higher.
 
 ## Build NNAPI EP
 
-For build instructions, please see the [BUILD page](../../BUILD.md#Android-NNAPI)
+For build instructions, please see the [BUILD page](../../BUILD.md#Android-NNAPI).
 
 ## Using NNAPI EP in C/C++
 
