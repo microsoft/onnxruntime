@@ -129,7 +129,13 @@ template <>
 __device__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
-__device__ __inline__ half _Round(half a) { return rint(a); }
+__device__ __inline__ half _Round(half a) { 
+#if __CUDA_ARCH__ < 530
+  return half(rintf((float)a));
+#else
+  return hrint(a); }
+#endif
+}
 
 template <typename T>
 __device__ __inline__ T _Exp(T a);
