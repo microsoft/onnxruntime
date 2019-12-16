@@ -100,7 +100,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
-* [Android NNAPI](#Android)
+* [Android NNAPI](#Android-NNAPI)
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
 
@@ -112,6 +112,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Architectures**
 * [x86](#x86)
 * [ARM](#ARM)
+* [Android](#Android)
 
 ---
 
@@ -190,7 +191,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5 but validated with the feature set equivalent to TensorRT 5. Some TensorRT 6 new features such as dynamic shape is not available at this time.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
@@ -277,18 +278,9 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 ---
 
-### Android
+### Android NNAPI
 
-#### Cross compiling on Linux
-
-1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
-
-2. Get a pre-compiled protoc from [here](https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip). Please unzip it after downloading.
-
-3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
-
-#### Notes
-* For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` with `-DANDROID_ABI=armeabi-v7a`.
+See information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
 
 ---
 
@@ -540,4 +532,28 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
    If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
 
 2. Use `.\build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
+
+---
+
+### Android
+
+#### Pre-Requisites
+
+Install Android NDK from https://developer.android.com/ndk/downloads
+
+#### Build Instructions
+
+##### Cross compiling on Windows
+
+```bash
+./build.bat --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+```
+
+##### Cross compiling on Linux
+
+```bash
+./build.sh --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+```
+
+If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
 

@@ -34,7 +34,7 @@ FROM ubuntu:16.04 AS minimal
 WORKDIR /onnxruntime/server/
 COPY --from=build /onnxruntime/build/Release/onnxruntime_server /onnxruntime/server/
 COPY --from=build /onnxruntime/build/Release/libonnxruntime.so.* /lib/
-COPY --from=build /onnxruntime/build/Release/mkl-dnn/install/lib/libdnnl.so* /lib/
+COPY --from=build /onnxruntime/build/Release/dnnl/install/lib/libdnnl.so* /lib/
 RUN apt-get update && apt-get install -y libgomp1
 ENTRYPOINT ["/onnxruntime/server/onnxruntime_server"]
 

@@ -123,15 +123,10 @@ namespace perftest {
         test_config.run_config.f_verbose = true;
         break;
       case 'x':
-#ifdef USE_OPENMP
-        fprintf(stderr, "cannot use argument '-x' when OpenMP is enabled.\n");
-        return false;
-#else
         test_config.run_config.intra_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         if (test_config.run_config.intra_op_num_threads < 0) {
           return false;
         }
-#endif
         break;
       case 'y':
         test_config.run_config.inter_op_num_threads = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));

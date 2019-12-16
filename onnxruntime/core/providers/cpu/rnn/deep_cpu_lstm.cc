@@ -292,15 +292,14 @@ DeepCpuLstmOp::Compute(OpKernelContext* context) const {
   Status status;
   // auto& logger = context->Logger();
 
-  auto data_type = X.DataType();
-  if (utils::IsPrimitiveDataType<float>(data_type))
+  if (X.IsDataType<float>())
     status = ComputeImpl<float>(*context);
-  else if (utils::IsPrimitiveDataType<double>(data_type)) {
+  else if (X.IsDataType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
     ORT_NOT_IMPLEMENTED("LSTM operator does not support double yet");
   } else
-    ORT_THROW("Invalid data type for LSTM operator of ", data_type);
+    ORT_THROW("Invalid data type for LSTM operator of ", X.DataType());
 
   return status;
 }

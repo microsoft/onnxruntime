@@ -178,18 +178,18 @@ class KernelComputeCtx {
   }
 
   // UpdateRealizedDims is used to sync realize dim
-  // Note insert_exclusive_axis is introduced to adjusted shape.
+  // Note insert_inclusive_axis is introduced to adjusted shape.
   // It is commonly used in Scan or other subgraphs
   // when Tensors' shapes in a subgraph are sliced from the main grahp.
-  // Using the sliced axis as insert_exclusive_axis can find the correct shape dim in the main graph
+  // Using the sliced axis as insert_inclusive_axis can find the correct shape dim in the main graph
   inline void UpdateRealizedDims(
       const std::vector<std::pair<size_t, std::string>>& symbols,
       std::vector<int64_t>& realized_output_shape,
-      size_t insert_exclusive_axis = 65535 /*minimal maximum of size_t*/) {
+      size_t insert_inclusive_axis = 65535 /*minimal maximum of size_t*/) {
     for (const auto& s_pair : symbols) {
       size_t dim = s_pair.first;
       size_t adjusted_dim = dim;
-      if (dim > insert_exclusive_axis) {
+      if (dim >= insert_inclusive_axis) {
         adjusted_dim = dim + 1;
       }
 

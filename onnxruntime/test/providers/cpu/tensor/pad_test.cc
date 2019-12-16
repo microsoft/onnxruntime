@@ -154,7 +154,7 @@ TEST(TensorOpTest, Pad_Constant_2D) {
                                 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f, 1234.0f});
 }
 
-TEST(TensorOpTest, Pad_Constant_2D_negative) {
+TEST(TensorOpTest, Pad_Constant_2D_negative_pads_1) {
   RunAllOpsetAllDomainPadTests({2, 3},
                                {11.0f, 21.0f, 31.0f,
                                 12.0f, 22.0f, 32.0f},
@@ -165,6 +165,54 @@ TEST(TensorOpTest, Pad_Constant_2D_negative) {
                                 1234.0f, 1234.0f, 11.0f, 21.0f,
                                 1234.0f, 1234.0f, 12.0f, 22.0f,
                                 1234.0f, 1234.0f, 1234.0f, 1234.0f});
+}
+
+TEST(TensorOpTest, Pad_Constant_2D_negative_pads_2) {
+  RunAllOpsetAllDomainPadTests({2, 3},
+                               {11.0f, 21.0f, 31.0f,
+                                12.0f, 22.0f, 32.0f},
+                               {-1, 0, 0, 0},
+                               1234.f,
+                               {1, 3},
+                               {12.0f, 22.0f, 32.0f});
+}
+
+TEST(TensorOpTest, Pad_Constant_3D_negative_pads) {
+  RunAllOpsetAllDomainPadTests({1, 1, 3},
+                               {0.f, 1.0f, 2.f},
+                               {0, 0, -1, 0, 0, -1},
+                               0.f,
+                               {1, 1, 1},
+                               {1.f});
+}
+
+TEST(TensorOpTest, Pad_Constant_4D_negative_pads) {
+  // input_vals contains values from 0 to 99 (inclusive)
+  std::vector<float> input_vals;
+  input_vals.reserve(100);
+  for (int i = 0; i < 100; ++i) {
+    input_vals.push_back(static_cast<float>(i));
+  }
+
+  // holder for output_vals (expected)
+  std::vector<float> output_vals;
+  output_vals.reserve(21);
+
+  float seed = 13;
+  for (int i = 0; i < 7; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      output_vals.push_back(static_cast<float>(seed + j));
+    }
+    seed += 10;
+  }
+
+  // run tests
+  RunAllOpsetAllDomainPadTests({1, 1, 10, 10},
+                               input_vals,
+                               {0, 0, -1, -3, 0, 0, -2, -4},
+                               0.f,
+                               {1, 1, 7, 3},
+                               output_vals);
 }
 
 TEST(TensorOpTest, Pad_3D_complex) {
