@@ -126,7 +126,8 @@ void LearningModelSession::Initialize() {
 
   // Register the custom operator registry
   auto model = model_.as<winmlp::LearningModel>();
-  WINML_THROW_IF_FAILED(session->RegisterCustomRegistry(model->GetOperatorRegistry()));
+  operatorRegistry_.reset(model->GetOperatorRegistry());
+  WINML_THROW_IF_FAILED(session->RegisterCustomRegistry(operatorRegistry_.get()));
 
   // Register only the transformers not already in ORT
   session->RegisterGraphTransformers();

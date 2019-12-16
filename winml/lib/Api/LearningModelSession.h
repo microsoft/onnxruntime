@@ -6,6 +6,7 @@
 #include "LearningModelSession.g.h"
 
 #include "LearningModelBinding.h"
+#include "MLOperatorAuthor.h"
 #include "WinML_Lock.h"
 #include "WinMLAdapter.h"
 
@@ -102,6 +103,12 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
  private:
   com_ptr<winmla::IInferenceSession> inference_session_;
+  struct IMLOperatorRegistryDeleter {
+    void operator()(IMLOperatorRegistry* p) {
+        p->Release();
+    }
+  };
+  std::unique_ptr<IMLOperatorRegistry, IMLOperatorRegistryDeleter> operatorRegistry_;
 
   // reference to the active execution provider. weak
   onnxruntime::IExecutionProvider* cached_execution_provider_ = nullptr;
