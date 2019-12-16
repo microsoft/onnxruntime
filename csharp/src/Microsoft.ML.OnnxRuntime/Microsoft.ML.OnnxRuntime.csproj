@@ -113,14 +113,6 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
-    <None Include="$(NativeBuildOutputDir)\DirectML.pdb"
-          Condition="Exists('$(NativeBuildOutputDir)\DirectML.pdb')
-                     And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
-          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
-          CopyToOutputDirectory="Always"
-          Visible="false"
-    />
     <None Include="$(NativeBuildOutputDir)\dnnl.dll"
           Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
