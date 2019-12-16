@@ -70,7 +70,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 | OS/Compiler | Supports VC  | Supports GCC     |
 |-------------|:------------:|:----------------:|
 |Windows 10   | YES          | Not tested       |
-|Linux        | NO           | YES(gcc>=5.0)    |
+|Linux        | NO           | YES(gcc>=4.8)    |
 
 ## System Requirements
 For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
