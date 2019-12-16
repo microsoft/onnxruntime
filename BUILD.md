@@ -86,6 +86,7 @@ For other system requirements and other dependencies, please see [this section](
 |**Build Shared Library**|--build_shared_lib||
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
+|**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`.|
 
 
 # Additional Build Instructions
