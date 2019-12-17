@@ -39,6 +39,10 @@ static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBi
   return nullptr;
 }
 
+LearningModelBinding::~LearningModelBinding() {
+  Clear();
+}
+
 using NullableBindingPort = std::optional<std::pair<Windows::AI::MachineLearning::ILearningModelFeatureDescriptor, BindingType>>;
 
 static NullableBindingPort FindValidBinding(
@@ -159,14 +163,18 @@ void LearningModelBinding::Bind(
   OrtAllocator* ort_allocator = nullptr;
   auto featureName = WinML::Strings::UTF8FromHString(name);
   std::tie(bindingName, binding_value, bindingType, ort_allocator) = CreateBinding(featureName, value, properties);
-  Ort::Allocator ortAllocator(adapter_.get(), ort_allocator);
-  Ort::Value ortValue = binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr);
   switch (bindingType) {
     case BindingType::kInput:
-      WINML_THROW_IF_FAILED(BindInput(bindingName, ortValue, ortAllocator));
+      WINML_THROW_IF_FAILED(BindInput(
+          bindingName,
+          binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr),
+          Ort::Allocator(adapter_.get(), ort_allocator)));
       break;
     case BindingType::kOutput:
-      WINML_THROW_IF_FAILED(BindOutput(bindingName, ortValue, ortAllocator));
+      WINML_THROW_IF_FAILED(BindOutput(
+          bindingName,
+          binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr),
+          Ort::Allocator(adapter_.get(), ort_allocator)));
       break;
     default:
       FAIL_FAST();
@@ -502,14 +510,18 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
     std::tie(bindingName, binding_value_ptr, bindingType, ort_allocator) = CreateBinding(featureName, to, nullptr);
-    Ort::Value ortValue = binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr);
-    Ort::Allocator ortAllocator(adapter_.get(), ort_allocator);
     switch (bindingType) {
       case BindingType::kInput:
-        WINML_THROW_IF_FAILED(BindInput(bindingName, ortValue, ortAllocator));
+        WINML_THROW_IF_FAILED(BindInput(
+            bindingName,
+            binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr),
+            Ort::Allocator(adapter_.get(), ort_allocator)));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_FAILED(BindOutput(bindingName, ortValue, ortAllocator));
+        WINML_THROW_IF_FAILED(BindOutput(
+            bindingName,
+            binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr),
+            Ort::Allocator(adapter_.get(), ort_allocator)));
         break;
       default:
         FAIL_FAST();
@@ -528,44 +540,43 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, c
 }
 
 // This method releases control of memory of ml_value from caller of BindInput
-HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value& ml_value, Ort::Allocator& ort_allocator) {
+HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value&& ml_value, Ort::Allocator&& ort_allocator) {
   auto rc = Contains(input_names_, name);
 
-  auto add_or_replace = [this, &name](const bool exists, size_t index, Ort::Value& value, Ort::Allocator& ort_allocator) {
+  auto add_or_replace = [this, &name](const bool exists, size_t index, Ort::Value&& value, Ort::Allocator&& ort_allocator) {
     if (exists) {
-      inputs_[index] = Ort::Value(value.release());
-      input_allocators_[index] = Ort::Allocator(adapter_.get(), ort_allocator.release());
+      inputs_[index] = std::move(value);
+      input_allocators_[index] = std::move(ort_allocator);
     } else {
       input_names_.push_back(name);
-      inputs_.push_back(Ort::Value(value.release()));
-      input_allocators_.push_back(Ort::Allocator(adapter_.get(), ort_allocator.release()));
+      inputs_.push_back(std::move(value));
+      input_allocators_.push_back(std::move(ort_allocator));
     }
   };
   if (ml_value.IsTensor()) {
-    Ort::Value new_mlvalue = Ort::Value(nullptr);
+    OrtValue* new_mlvalue;
     WINML_THROW_IF_FAILED(m_session.as<LearningModelSession>()
                               ->GetIInferenceSession()
-                              ->CopyOneInputAcrossDevices(name.c_str(), ml_value, new_mlvalue.put()));
-    add_or_replace(rc.first, rc.second, new_mlvalue, ort_allocator);
+                              ->CopyOneInputAcrossDevices(name.c_str(), ml_value, &new_mlvalue));
+    add_or_replace(rc.first, rc.second, Ort::Value(new_mlvalue), Ort::Allocator(adapter_.get(), ort_allocator.release()));
   } else {
-    add_or_replace(rc.first, rc.second, ml_value, ort_allocator);
+    add_or_replace(rc.first, rc.second, Ort::Value(ml_value.release()), Ort::Allocator(adapter_.get(), ort_allocator.release()));
   }
   return S_OK;
 }
 
 // This method releases control of memory of ml_value from caller of BindInput
-HRESULT LearningModelBinding::BindOutput(const std::string& name, Ort::Value& ml_value, Ort::Allocator& ort_allocator) {
+HRESULT LearningModelBinding::BindOutput(const std::string& name, Ort::Value&& ml_value, Ort::Allocator&& ort_allocator) {
   auto rc = Contains(output_names_, name);
-  OrtValue* ml_value_data = ml_value.release();
   if (rc.first) {
-    outputs_[rc.second] = ml_value_data ? Ort::Value(ml_value_data) : Ort::Value(nullptr);
-    output_allocators_[rc.second] = Ort::Allocator(adapter_.get(), ort_allocator.release());
+    outputs_[rc.second] = std::move(ml_value);
+    output_allocators_[rc.second] = std::move(ort_allocator);
     return S_OK;
   }
 
   output_names_.push_back(name);
-  outputs_.push_back(ml_value_data ? Ort::Value(ml_value_data) : Ort::Value(nullptr));
-  output_allocators_.push_back(Ort::Allocator(adapter_.get(), ort_allocator.release()));
+  outputs_.push_back(std::move(ml_value));
+  output_allocators_.push_back(std::move(ort_allocator));
   return S_OK;
 }
 
@@ -619,9 +630,7 @@ void LearningModelBinding::BindUnboundOutputs() {
 
   // Add all unbound outputs to binding collection
   for (const auto& unbound_output : unbound_output_names) {
-    Ort::Value out(nullptr);
-    auto out_allocator = Ort::Allocator();
-    WINML_THROW_IF_FAILED(BindOutput(unbound_output, out, out_allocator));
+    WINML_THROW_IF_FAILED(BindOutput(unbound_output, Ort::Value(nullptr), Ort::Allocator()));
   }
 }
 

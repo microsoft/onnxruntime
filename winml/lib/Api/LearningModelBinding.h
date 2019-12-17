@@ -22,6 +22,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IKeyValuePair<hstring, Windows::Foundation::IInspectable>;
 
   LearningModelBinding() = delete;
+  ~LearningModelBinding();
   LearningModelBinding(Windows::AI::MachineLearning::LearningModelSession const& session);
 
   void Bind(hstring const& name, Windows::Foundation::IInspectable const& value);
@@ -54,7 +55,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   std::vector<Ort::Value>& LearningModelBinding::GetOutputs();
   const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
   const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
-  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value, Ort::Allocator& ort_allocator);
+  HRESULT BindOutput(const std::string& name, Ort::Value&& ml_value, Ort::Allocator&& ort_allocator);
   void BindUnboundOutputs();
 
  private:
@@ -66,7 +67,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
   bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
-  HRESULT BindInput(const std::string& name, Ort::Value& ml_value, Ort::Allocator& ort_allocator);
+  HRESULT BindInput(const std::string& name, Ort::Value&& ml_value, Ort::Allocator&& ort_allocator);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
