@@ -7,10 +7,10 @@
 
 #include "Featurizers/MaxAbsScalarFeaturizer.h"
 
-namespace featurizers = Microsoft::Featurizer::Featurizers;
+namespace feat = Microsoft::Featurizer::Featurizers;
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 template <typename T> struct OutputTypeMapper {};
 template <> struct OutputTypeMapper<int8_t> { using type = float_t; };
@@ -32,13 +32,13 @@ public:
 
   Status Compute(OpKernelContext *ctx) const override {
     // Create the transformer
-    featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
+    feat::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
       [ctx](void) {
         const auto * state_tensor(ctx->Input<Tensor>(0));
         const uint8_t * const state_data(state_tensor->Data<uint8_t>());
 
         Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-        return featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type>(archive);
+        return feat::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type>(archive);
       }()
     );
 
@@ -171,5 +171,5 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MaxAbsScalarTransformer<double_t>
 );
 
-} // namespace automl
+} // namespace featurizers
 } // namespace onnxruntime

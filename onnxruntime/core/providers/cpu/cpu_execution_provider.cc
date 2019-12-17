@@ -1271,7 +1271,7 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuContribKernels(kernel_registry));
 #endif
 #ifdef ML_FEATURIZERS
-  ORT_RETURN_IF_ERROR(::onnxruntime::automl::RegisterCpuAutoMLKernels(kernel_registry));
+  ORT_RETURN_IF_ERROR(::onnxruntime::featurizers::RegisterCpuAutoMLKernels(kernel_registry));
 #endif
   return Status::OK();
 }

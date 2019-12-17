@@ -25,7 +25,7 @@
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
@@ -352,5 +352,5 @@ void RegisterStringFeaturizerVer1() {
     ;
 }
 
-} // namespace automl
+} // namespace featurizers
 } // namespace onnxruntime

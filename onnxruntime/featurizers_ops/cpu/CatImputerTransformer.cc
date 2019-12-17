@@ -7,10 +7,10 @@
 
 #include "Featurizers/CatImputerFeaturizer.h"
 
-namespace featurizers = Microsoft::Featurizer::Featurizers;
+namespace feat = Microsoft::Featurizer::Featurizers;
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 template <typename T>
 struct OutputTypeMapper {};
@@ -35,13 +35,13 @@ class CatImputerTransformer final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     // Create the transformer
-    featurizers::CatImputerTransformer<T> transformer(
+    feat::CatImputerTransformer<T> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return featurizers::CatImputerTransformer<T>(archive);
+          return feat::CatImputerTransformer<T>(archive);
         }());
 
     // Get the input
@@ -93,5 +93,5 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>()),
     CatImputerTransformer<std::string>);
 
-}  // namespace automl
+}  // namespace featurizers
 }  // namespace onnxruntime

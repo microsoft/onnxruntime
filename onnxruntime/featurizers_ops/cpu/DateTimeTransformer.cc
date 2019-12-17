@@ -7,10 +7,10 @@
 
 #include "Featurizers/DateTimeFeaturizer.h"
 
-namespace featurizers = Microsoft::Featurizer::Featurizers;
+namespace feat = Microsoft::Featurizer::Featurizers;
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 class DateTimeTransformer final : public OpKernel {
 public:
@@ -19,13 +19,13 @@ public:
 
   Status Compute(OpKernelContext *ctx) const override {
     // Create the transformer
-    featurizers::DateTimeTransformer transformer(
+    feat::DateTimeTransformer transformer(
       [ctx](void) {
         const auto * state_tensor(ctx->Input<Tensor>(0));
         const uint8_t * const state_data(state_tensor->Data<uint8_t>());
 
         Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-        return featurizers::DateTimeTransformer(archive);
+        return feat::DateTimeTransformer(archive);
       }()
     );
 
@@ -124,5 +124,5 @@ ONNX_OPERATOR_KERNEL_EX(
     DateTimeTransformer
 );
 
-} // namespace automl
+} // namespace featurizers
 } // namespace onnxruntime

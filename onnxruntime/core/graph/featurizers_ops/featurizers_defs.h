@@ -4,9 +4,9 @@
 #pragma once
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 void RegisterAutoMLSchemas(void);
 
-} // namespace automl
+} // namespace featurizers
 } // namespace onnxruntime

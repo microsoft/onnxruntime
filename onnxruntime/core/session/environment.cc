@@ -55,7 +55,7 @@ Status Environment::Initialize() {
       contrib::RegisterContribSchemas();
 #endif
 #ifdef ML_FEATURIZERS
-      automl::RegisterAutoMLSchemas();
+      featurizers::RegisterAutoMLSchemas();
 #endif
 #ifdef USE_DML
       dml::RegisterDmlSchemas();

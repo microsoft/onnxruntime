@@ -7,7 +7,7 @@
 #include "core/framework/data_types.h"
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 // Forward declarations
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSFeaturizersDomain, 1, float_t, CatImputerTransformer);
@@ -74,5 +74,5 @@ Status RegisterCpuAutoMLKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-} // namespace automl
+} // namespace featurizers
 } // namespace onnxruntime
