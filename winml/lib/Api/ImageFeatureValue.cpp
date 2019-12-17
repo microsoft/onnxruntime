@@ -510,14 +510,12 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
   }
 
   // create the OrtValue
-  OrtAllocator* dml_allocator;
-  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, &dml_allocator));
-
-  std::unique_ptr<OrtAllocator>ort_allocator_temp(dml_allocator);
+  Ort::Allocator dml_allocator(m_adapter.get(), nullptr);
+  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, dml_allocator.put()));
 
   // create the OrtValue as a tensor letting ort know that we own the data buffer
   Ort::Value ort_tensor = Ort::Value::CreateTensor(
-      ort_allocator_temp.get(),
+      dml_allocator,
       &(resourceMetadata.TensorDescriptor.sizes[0]),
       sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
       (resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32) ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
@@ -540,7 +538,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
   }
 
   *ort_value = ort_tensor.release();
-  *ort_allocator = ort_allocator_temp.release();
+  *ort_allocator = dml_allocator.release();
   return S_OK;
 }
 WINML_CATCH_ALL_COM

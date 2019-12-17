@@ -21,11 +21,6 @@ LearningModelBinding::LearningModelBinding(
 }
 WINML_CATCH_ALL
 
-LearningModelBinding::~LearningModelBinding()
-{
-  Clear();
-}
-
 static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBinding(
     winrt::Windows::Foundation::Collections::IIterable<ILearningModelFeatureDescriptor> descriptors,
     const std::wstring& name) {
@@ -130,7 +125,6 @@ std::tuple<std::string, OrtValue*, BindingType, OrtAllocator*> LearningModelBind
         spLotusValueProvider->GetOrtValue(context, value.put(), ort_allocator.put()),
         "The model variable %s failed tensorization.",
         name.c_str());
-    auto spImageFeatureValue = spLotusValueProvider.try_as<ImageFeatureValue>();
   } else {
     WINML_THROW_HR_IF_TRUE_MSG(
         WINML_ERR_INVALID_BINDING,
@@ -626,7 +620,7 @@ void LearningModelBinding::BindUnboundOutputs() {
   // Add all unbound outputs to binding collection
   for (const auto& unbound_output : unbound_output_names) {
     Ort::Value out(nullptr);
-    Ort::Allocator out_allocator(adapter_.get(), nullptr);
+    auto out_allocator = Ort::Allocator();
     WINML_THROW_IF_FAILED(BindOutput(unbound_output, out, out_allocator));
   }
 }
