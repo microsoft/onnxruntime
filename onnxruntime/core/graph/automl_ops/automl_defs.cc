@@ -34,14 +34,7 @@ using ONNX_NAMESPACE::OPTIONAL;
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
-static void RegisterHashOneHotVectorizerFeaturizerVer1();
-static void RegisterImputationMarkerFeaturizerVer1();
-static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
-static void RegisterMinMaxScalarFeaturizerVer1();
-static void RegisterMissingDummiesFeaturizerVer1();
-static void RegisterOneHotEncoderFeaturizerVer1();
-static void RegisterRobustScalarFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
 
 // ----------------------------------------------------------------------
