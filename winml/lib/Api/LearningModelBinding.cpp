@@ -163,18 +163,20 @@ void LearningModelBinding::Bind(
   OrtAllocator* ort_allocator = nullptr;
   auto featureName = WinML::Strings::UTF8FromHString(name);
   std::tie(bindingName, binding_value, bindingType, ort_allocator) = CreateBinding(featureName, value, properties);
+  Ort::Value ortValue = binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr);
+  Ort::Allocator ortAllocator(adapter_.get(), ort_allocator);
   switch (bindingType) {
     case BindingType::kInput:
       WINML_THROW_IF_FAILED(BindInput(
           bindingName,
-          binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr),
-          Ort::Allocator(adapter_.get(), ort_allocator)));
+          std::move(ortValue),
+          std::move(ortAllocator)));
       break;
     case BindingType::kOutput:
       WINML_THROW_IF_FAILED(BindOutput(
           bindingName,
-          binding_value ? Ort::Value(binding_value) : Ort::Value(nullptr),
-          Ort::Allocator(adapter_.get(), ort_allocator)));
+          std::move(ortValue),
+          std::move(ortAllocator)));
       break;
     default:
       FAIL_FAST();
@@ -510,18 +512,20 @@ STDMETHODIMP LearningModelBinding::Bind(
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
     std::tie(bindingName, binding_value_ptr, bindingType, ort_allocator) = CreateBinding(featureName, to, nullptr);
+    Ort::Value ortValue = binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr);
+    Ort::Allocator ortAllocator(adapter_.get(), ort_allocator);
     switch (bindingType) {
       case BindingType::kInput:
         WINML_THROW_IF_FAILED(BindInput(
             bindingName,
-            binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr),
-            Ort::Allocator(adapter_.get(), ort_allocator)));
+            std::move(ortValue),
+            std::move(ortAllocator)));
         break;
       case BindingType::kOutput:
         WINML_THROW_IF_FAILED(BindOutput(
             bindingName,
-            binding_value_ptr ? Ort::Value(binding_value_ptr) : Ort::Value(nullptr),
-            Ort::Allocator(adapter_.get(), ort_allocator)));
+            std::move(ortValue),
+            std::move(ortAllocator)));
         break;
       default:
         FAIL_FAST();
@@ -558,9 +562,9 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value&& ml
     WINML_THROW_IF_FAILED(m_session.as<LearningModelSession>()
                               ->GetIInferenceSession()
                               ->CopyOneInputAcrossDevices(name.c_str(), ml_value, &new_mlvalue));
-    add_or_replace(rc.first, rc.second, Ort::Value(new_mlvalue), Ort::Allocator(adapter_.get(), ort_allocator.release()));
+    add_or_replace(rc.first, rc.second, Ort::Value(new_mlvalue), std::move(ort_allocator));
   } else {
-    add_or_replace(rc.first, rc.second, Ort::Value(ml_value.release()), Ort::Allocator(adapter_.get(), ort_allocator.release()));
+    add_or_replace(rc.first, rc.second, Ort::Value(ml_value.release()), std::move(ort_allocator));
   }
   return S_OK;
 }
