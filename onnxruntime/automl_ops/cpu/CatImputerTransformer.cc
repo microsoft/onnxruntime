@@ -65,7 +65,7 @@ class CatImputerTransformer final : public OpKernel {
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     CatImputerTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     float_t,
     kCpuExecutionProvider,
@@ -75,7 +75,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     CatImputerTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     double_t,
     kCpuExecutionProvider,
@@ -85,7 +85,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     CatImputerTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     string,
     kCpuExecutionProvider,

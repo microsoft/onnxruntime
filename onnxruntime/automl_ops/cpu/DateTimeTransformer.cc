@@ -113,7 +113,7 @@ public:
 
 ONNX_OPERATOR_KERNEL_EX(
     DateTimeTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()

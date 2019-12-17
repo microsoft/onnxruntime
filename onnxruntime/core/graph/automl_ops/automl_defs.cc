@@ -70,7 +70,7 @@ void RegisterCatImputerFeaturizerVer1() {
 
     MS_AUTOML_OPERATOR_SCHEMA(CatImputerTransformer)
         .SinceVersion(1)
-        .SetDomain(kMSAutoMLDomain)
+        .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
         .Input(
             0,
@@ -144,7 +144,7 @@ void RegisterDateTimeFeaturizerVer1() {
 
     MS_AUTOML_OPERATOR_SCHEMA(DateTimeTransformer)
         .SinceVersion(1)
-        .SetDomain(kMSAutoMLDomain)
+        .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
         .Input(
             0,
@@ -250,7 +250,7 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
 
     MS_AUTOML_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
         .SinceVersion(1)
-        .SetDomain(kMSAutoMLDomain)
+        .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
         .Input(
             0,
@@ -317,7 +317,7 @@ void RegisterStringFeaturizerVer1() {
 
     MS_AUTOML_OPERATOR_SCHEMA(StringTransformer)
         .SinceVersion(1)
-        .SetDomain(kMSAutoMLDomain)
+        .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
         .Input(
             0,

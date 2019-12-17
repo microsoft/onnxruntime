@@ -13,7 +13,7 @@ namespace test {
 
 TEST(CategoryImputer, Float_values) {
 
-  OpTester test("CatImputerTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
   // State from when the transformer was trained. Corresponds to a 
   // most frequent value during training of 1.5
@@ -29,7 +29,7 @@ TEST(CategoryImputer, Float_values) {
 }
 
 TEST(CategoryImputer, Double_values) {
-  OpTester test("CatImputerTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to a
   // most frequent value during training of 1.5
@@ -45,7 +45,7 @@ TEST(CategoryImputer, Double_values) {
 }
 
 TEST(CategoryImputer, String_values) {
-  OpTester test("CatImputerTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to a
   // most frequent value during training of "one"

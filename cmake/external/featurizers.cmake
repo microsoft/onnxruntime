@@ -57,29 +57,3 @@ if (WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
     set_target_properties(automl_featurizers PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
 endif()
-
-# Build this in CentOS
-# foreach(_test_name IN ITEMS
-    # CatImputerFeaturizer_UnitTests
-    # DateTimeFeaturizer_UnitTests
-    # HashOneHotVectorizerFeaturizer_UnitTests
-    # ImputationMarkerFeaturizer_UnitTests
-    # LabelEncoderFeaturizer_UnitTests
-    # MaxAbsScalarFeaturizer_UnitTests
-    # MinMaxScalarFeaturizer_UnitTests
-    # MissingDummiesFeaturizer_UnitTests
-    # OneHotEncoderFeaturizer_UnitTests
-    # RobustScalarFeaturizer_UnitTests
-    # SampleAddFeaturizer_UnitTest
-    # StringFeaturizer_UnitTest
-    # Structs_UnitTest
-    # TimeSeriesImputerFeaturizer_UnitTest
-# )
-    # add_executable(${_test_name} ${featurizers_ROOT}/src/Featurizers/UnitTests/${_test_name}.cpp)
-    # add_dependencies(${_test_name} automl_featurizers)
-    # target_include_directories(${_test_name} PRIVATE ${featurizers_ROOT}/src)
-    # target_link_libraries(${_test_name} automl_featurizers)
-    # list(APPEND featurizers_TEST_SRC ${featurizers_ROOT}/src/Featurizers/UnitTests/${_test_name}.cpp)
-# endforeach()
-
-# source_group(TREE ${featurizers_ROOT}/src/Featurizers/UnitTests FILES ${featurizers_TEST_SRC})

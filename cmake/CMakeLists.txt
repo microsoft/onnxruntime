@@ -710,7 +710,7 @@ include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
 if(onnxruntime_USE_AUTOML)
-  add_definitions(-DMICROSOFT_AUTOML)
+  add_definitions(-DML_FEATURIZERS)
   # Fetch and build featurizers
   include(external/featurizers.cmake)
 endif()

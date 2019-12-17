@@ -51,7 +51,7 @@ public:
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     int8_t,
     kCpuExecutionProvider,
@@ -62,7 +62,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     int16_t,
     kCpuExecutionProvider,
@@ -73,7 +73,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     int32_t,
     kCpuExecutionProvider,
@@ -84,7 +84,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     int64_t,
     kCpuExecutionProvider,
@@ -95,7 +95,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     uint8_t,
     kCpuExecutionProvider,
@@ -106,7 +106,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     uint16_t,
     kCpuExecutionProvider,
@@ -117,7 +117,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     uint32_t,
     kCpuExecutionProvider,
@@ -128,7 +128,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     uint64_t,
     kCpuExecutionProvider,
@@ -139,7 +139,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     float_t,
     kCpuExecutionProvider,
@@ -150,7 +150,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     double_t,
     kCpuExecutionProvider,
@@ -161,7 +161,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     bool,
     kCpuExecutionProvider,
@@ -172,7 +172,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     string,
     kCpuExecutionProvider,

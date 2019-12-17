@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace test {
 
 TEST(StringTransformer, Integer_values) {
-  OpTester test("StringTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
   // State input is needed, but no actual state is required.
   test.AddInput<uint8_t>("State", {0}, {});
@@ -27,7 +27,7 @@ TEST(StringTransformer, Integer_values) {
 }
 
 TEST(StringTransformer, Double_values) {
-  OpTester test("StringTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
   // State input is needed, but no actual state is required.
   test.AddInput<uint8_t>("State", {0}, {});
@@ -42,7 +42,7 @@ TEST(StringTransformer, Double_values) {
 }
 
 TEST(StringTransformer, Bool_values) {
-  OpTester test("StringTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State input is needed, but no actual state is required.
   test.AddInput<uint8_t>("State", {0}, {});
@@ -57,7 +57,7 @@ TEST(StringTransformer, Bool_values) {
 }
 
 TEST(StringTransformer, String_values) {
-  OpTester test("StringTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State input is needed, but no actual state is required.
   test.AddInput<uint8_t>("State", {0}, {});
