@@ -55,7 +55,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   std::vector<Ort::Value>& LearningModelBinding::GetOutputs();
   const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
   const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
-  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value, OrtAllocator* ort_allocator);
+  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value, Ort::Allocator& ort_allocator);
   void BindUnboundOutputs();
 
  private:
@@ -67,7 +67,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
   bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
-  HRESULT BindInput(const std::string& name, Ort::Value& ml_value, OrtAllocator* ort_allocator);
+  HRESULT BindInput(const std::string& name, Ort::Value& ml_value, Ort::Allocator& ort_allocator);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
@@ -77,10 +77,10 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   com_ptr<winmla::IWinMLAdapter> adapter_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> inputs_;
-  std::vector<OrtAllocator*> input_allocators_;
+  std::vector<Ort::Allocator> input_allocators_;
   std::vector<std::string> output_names_;
   std::vector<Ort::Value> outputs_;
-  std::vector<OrtAllocator*> output_allocators_;
+  std::vector<Ort::Allocator> output_allocators_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 
