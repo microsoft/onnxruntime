@@ -36,9 +36,9 @@ typename ToCudaType<T>::MappedType ToCudaValue(const T& value) {
   return value;
 }
 
-template<>
+template <>
 typename ToCudaType<MLFloat16>::MappedType ToCudaValue<MLFloat16>(const MLFloat16& value) {
-  return *reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType *>(&value.val);
+  return *reinterpret_cast<const typename ToCudaType<MLFloat16>::MappedType*>(&value.val);
 }
 
 template <typename T>
@@ -120,6 +120,16 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   auto& output_tensor = *ctx->Output(0, output_shape);
+  if (std::all_of(p_pads->begin(), p_pads->end(), [](const int64_t v) { return v == 0; }) &&
+      std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) &&
+      output_shape.Size() > 0) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        output_tensor.template MutableData<T>(), input_tensor.template Data<T>(),
+        sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
+        cudaMemcpyDeviceToDevice, 0));
+    return Status::OK();
+  }
+
   ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
   ORT_RETURN_IF_ERROR(input_dims.CopyToGpu());
   ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());

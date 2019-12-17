@@ -47,6 +47,8 @@ class CPUExecutionProvider : public IExecutionProvider {
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
+#else
+    ORT_UNUSED_PARAMETER(info);
 #endif
       InsertAllocator(
           std::shared_ptr<IArenaAllocator>(

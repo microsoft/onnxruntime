@@ -507,12 +507,10 @@ class OpTester {
 
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
-    auto mltype = DataTypeImpl::GetType<TensorSeq>();
-    ORT_ENFORCE(mltype != nullptr, "TensorSeq must be a registered cpp type");
-    auto ptr = onnxruntime::make_unique<TensorSeq>();
-    ptr->dtype = DataTypeImpl::GetType<T>();
     auto num_tensors = seq_tensors.tensors.size();
-    ptr->tensors.resize(num_tensors);
+    std::vector<Tensor> tensors;
+    tensors.resize(num_tensors);
+    auto elem_type = DataTypeImpl::GetType<T>();
     for (size_t i = 0; i < num_tensors; ++i) {
       TensorShape shape{seq_tensors.tensors[i].shape};
       auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
@@ -520,9 +518,9 @@ class OpTester {
                   " input values doesn't match tensor size of ", shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& tensor = ptr->tensors[i];
+      auto& tensor = tensors[i];
 
-      tensor = Tensor(DataTypeImpl::GetType<T>(),
+      tensor = Tensor(elem_type,
                       shape,
                       allocator);
 
@@ -533,6 +531,9 @@ class OpTester {
     }
 
     OrtValue value;
+    auto mltype = DataTypeImpl::GetType<TensorSeq>();
+    auto ptr = onnxruntime::make_unique<TensorSeq>(elem_type);
+    ptr->SetElements(std::move(tensors));
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
     data.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto), std::move(value),
