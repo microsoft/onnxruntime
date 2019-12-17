@@ -188,7 +188,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (*out_size != -1) {
       ORT_ENFORCE(*out_size >= 0);
       // total padding size
-      int64_t paddings = std::max<int64_t>(0, (in_size - 1) * stride + kernel + dilation - 1 + adj - *out_size);
+      int64_t paddings = std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *out_size);
       if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when paddings are odd.
         *pad_head = paddings - paddings / 2;
         *pad_tail = paddings / 2;
@@ -210,14 +210,14 @@ struct ConvTransposeAttributes : public ConvAttributes {
         case AutoPadType::SAME_LOWER:
           *pad_head = 0;
           *pad_tail = 0;
-          *out_size = (in_size - 1) * stride + kernel + dilation - 1 + adj;
+          *out_size = (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1;
           break;
         default:
           throw NotImplementedException("pad type not supported");
       }
     } else {
       *out_size =
-          (in_size - 1) * stride + kernel + dilation - 1 + adj - *pad_head - *pad_tail;
+          (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail;
     }
   }
 };
