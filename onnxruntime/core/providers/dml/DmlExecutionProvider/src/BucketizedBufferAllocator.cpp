@@ -229,7 +229,7 @@ namespace Dml
     }
 
     CPUAllocator::CPUAllocator(OrtMemType memType)
-        : m_allocatorInfo("DML CPU", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), 0, memType)
+        : m_allocatorInfo("DML CPU", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0), 0, memType)
     {
     }
 
