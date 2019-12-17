@@ -14,13 +14,13 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     )
 endif()
 
-if(NOT onnxruntime_USE_AUTOML)
+if(NOT onnxruntime_USE_FEATURIZERS)
   file(GLOB_RECURSE featurizers_to_remove_graph_src
     "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.cc"
     )
-  foreach(I in ${automl_to_remove_graph_src})
-    list(REMOVE_ITEM featurizers_to_remove_graph_src ${I})
+  foreach(I in ${featurizers_to_remove_graph_src})
+    list(REMOVE_ITEM onnxruntime_graph_src ${I})
   endforeach()
 endif()
 

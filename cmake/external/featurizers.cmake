@@ -41,19 +41,19 @@ else()
         )
 endif()
 
-add_library(automl_featurizers STATIC IMPORTED)
-add_dependencies(automl_featurizers featurizers_lib)
-target_include_directories(automl_featurizers INTERFACE ${featurizers_ROOT}/src)
+add_library(onnxruntime_featurizers STATIC IMPORTED)
+add_dependencies(onnxruntime_featurizers featurizers_lib)
+target_include_directories(onnxruntime_featurizers INTERFACE ${featurizers_ROOT}/src)
 
 if(MSVC)
-  set_property(TARGET automl_featurizers PROPERTY IMPORTED_LOCATION
+  set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
     ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersCode.lib)
 else()
-  set_property(TARGET automl_featurizers PROPERTY IMPORTED_LOCATION
+  set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
     ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/libFeaturizersCode.a)
 endif()
 
 if (WIN32)
     # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(automl_featurizers PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
+    set_target_properties(onnxruntime_featurizers PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/ConfigureVisualStudioCodeAnalysis.props)
 endif()
