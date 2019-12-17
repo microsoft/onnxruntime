@@ -38,19 +38,20 @@ CpuOrtSessionBuilder::CreateSessionOptions(
   RETURN_HR_IF_NULL(E_POINTER, options);
 
   Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(options));
-  std::unique_ptr<Ort::SessionOptions> session_options = std::make_unique<Ort::SessionOptions>(*options);
+  Ort::SessionOptions session_options(*options);
 
   // set the graph optimization level to all (used to be called level 3)
-  session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   // Onnxruntime will use half the number of concurrent threads supported on the system
   // by default. This causes MLAS to not exercise every logical core.
   // We force the thread pool size to be maxxed out to ensure that WinML always
   // runs the fastest.
-  session_options->SetIntraOpNumThreads(std::thread::hardware_concurrency());
+  session_options.SetIntraOpNumThreads(std::thread::hardware_concurrency());
 
-  // all done with the smart ptr
+  // call release() so the underlying OrtSessionOptions object isn't freed
   session_options.release();
+
   return S_OK;
 }
 WINMLA_CATCH_ALL_COM

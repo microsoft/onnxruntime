@@ -47,15 +47,15 @@ DmlOrtSessionBuilder::CreateSessionOptions(
   RETURN_HR_IF_NULL(E_POINTER, options);
 
   Ort::ThrowOnError(Ort::GetApi().CreateSessionOptions(options));
-  std::unique_ptr<Ort::SessionOptions> session_options = std::make_unique<Ort::SessionOptions>(*options);
+  Ort::SessionOptions session_options(*options);
 
   // set the graph optimization level to all (used to be called level 3)
-  session_options->SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
-  session_options->DisableMemPattern();
+  session_options.DisableMemPattern();
 
-  // all done with the smart ptr
+  // call release() so the underlying OrtSessionOptions object isn't freed
   session_options.release();
   return S_OK;
 }

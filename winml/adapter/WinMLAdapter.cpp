@@ -318,13 +318,13 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
       IModelProto** model_proto) override try {
     ZeroCopyInputStreamWrapper wrapper(stream_reference);
 
-    auto model_proto_inner = new onnx::ModelProto();
+    auto model_proto_inner = std::make_unique<onnx::ModelProto>();
     THROW_HR_IF_MSG(
         E_INVALIDARG,
         model_proto_inner->ParseFromZeroCopyStream(&wrapper) == false,
         "The stream failed to parse.");
 
-    auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner);
+    auto model_proto_outer = wil::MakeOrThrow<ModelProto>(model_proto_inner.release());
     return model_proto_outer.CopyTo(__uuidof(IModelProto), reinterpret_cast<void**>(model_proto));
   }
   WINMLA_CATCH_ALL_COM
