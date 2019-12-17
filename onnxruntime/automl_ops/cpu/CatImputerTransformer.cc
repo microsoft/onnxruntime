@@ -12,45 +12,50 @@ namespace featurizers = Microsoft::Featurizer::Featurizers;
 namespace onnxruntime {
 namespace automl {
 
-template <typename T> struct OutputTypeMapper {};
-template <> struct OutputTypeMapper<float_t> { using type = float_t; };
-template <> struct OutputTypeMapper<double_t> { using type = double_t; };
-template <> struct OutputTypeMapper<string> { using type = string; };
+template <typename T>
+struct OutputTypeMapper {};
+template <>
+struct OutputTypeMapper<float_t> { using type = float_t; };
+template <>
+struct OutputTypeMapper<double_t> { using type = double_t; };
+template <>
+struct OutputTypeMapper<std::string> { using type = std::string; };
 
-inline float_t const & PreprocessOptional(float_t const &value) { return value; }
-inline double_t const & PreprocessOptional(double_t const &value) { return value; }
-inline nonstd::optional<string> PreprocessOptional(string value) { return value.empty() ? nonstd::optional<string>() : nonstd::optional<string>(std::move(value)); }
+inline float_t const& PreprocessOptional(float_t const& value) { return value; }
+inline double_t const& PreprocessOptional(double_t const& value) { return value; }
+inline nonstd::optional<std::string> PreprocessOptional(std::string value) {
+  return value.empty() ? nonstd::optional<std::string>() : nonstd::optional<std::string>(std::move(value));
+}
 
 template <typename T>
 class CatImputerTransformer final : public OpKernel {
-public:
-  explicit CatImputerTransformer(const OpKernelInfo &info) : OpKernel(info) {
+ public:
+  explicit CatImputerTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
-  Status Compute(OpKernelContext *ctx) const override {
+  Status Compute(OpKernelContext* ctx) const override {
     // Create the transformer
     featurizers::CatImputerTransformer<T> transformer(
-      [ctx](void) {
-        const auto * state_tensor(ctx->Input<Tensor>(0));
-        const uint8_t * const state_data(state_tensor->Data<uint8_t>());
+        [ctx](void) {
+          const auto* state_tensor(ctx->Input<Tensor>(0));
+          const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
-        Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-        return featurizers::CatImputerTransformer<T>(archive);
-      }()
-    );
+          Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
+          return featurizers::CatImputerTransformer<T>(archive);
+        }());
 
     // Get the input
     const auto* input_tensor(ctx->Input<Tensor>(1));
-    const T * input_data(input_tensor->Data<T>());
+    const T* input_data(input_tensor->Data<T>());
 
     // Prepare the output
-    Tensor * output_tensor(ctx->Output(0, input_tensor->Shape()));
-    typename OutputTypeMapper<T>::type * output_data(output_tensor->MutableData<typename OutputTypeMapper<T>::type>());
+    Tensor* output_tensor(ctx->Output(0, input_tensor->Shape()));
+    typename OutputTypeMapper<T>::type* output_data(output_tensor->MutableData<typename OutputTypeMapper<T>::type>());
 
     // Execute
     const int64_t length(input_tensor->Shape().Size());
 
-    for(int64_t i = 0; i < length; ++i) {
+    for (int64_t i = 0; i < length; ++i) {
       output_data[i] = transformer.execute(PreprocessOptional(input_data[i]));
     }
 
@@ -66,8 +71,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float_t>()),
-    CatImputerTransformer<float_t>
-);
+    CatImputerTransformer<float_t>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     CatImputerTransformer,
@@ -77,8 +81,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<double_t>()),
-    CatImputerTransformer<double_t>
-);
+    CatImputerTransformer<double_t>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     CatImputerTransformer,
@@ -88,8 +91,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>()),
-    CatImputerTransformer<std::string>
-);
+    CatImputerTransformer<std::string>);
 
-} // namespace automl
-} // namespace onnxruntime
+}  // namespace automl
+}  // namespace onnxruntime

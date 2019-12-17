@@ -14,7 +14,9 @@ namespace automl {
 
 inline float_t const & PreprocessOptional(float_t const &value) { return value; }
 inline double_t const & PreprocessOptional(double_t const &value) { return value; }
-inline nonstd::optional<string> PreprocessOptional(string value) { return value.empty() ? nonstd::optional<string>() : nonstd::optional<string>(std::move(value)); }
+inline nonstd::optional<std::string> PreprocessOptional(std::string value) { 
+  return value.empty() ? nonstd::optional<std::string>() : nonstd::optional<std::string>(std::move(value));
+}
 
 template <typename InputT>
 class ImputationMarkerTransformer final : public OpKernel {

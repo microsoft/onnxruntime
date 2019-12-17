@@ -5,6 +5,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 
+#include "Archive.h"
 #include "Featurizers/MissingDummiesFeaturizer.h"
 
 namespace featurizers = Microsoft::Featurizer::Featurizers;
@@ -14,7 +15,9 @@ namespace automl {
 
 inline float_t const & PreprocessOptional(float_t const &value) { return value; }
 inline double_t const & PreprocessOptional(double_t const &value) { return value; }
-inline nonstd::optional<string> PreprocessOptional(string value) { return value.empty() ? nonstd::optional<string>() : nonstd::optional<string>(std::move(value)); }
+inline nonstd::optional<std::string> PreprocessOptional(std::string value) { 
+  return value.empty() ? nonstd::optional<std::string>() : nonstd::optional<std::string>(std::move(value));
+}
 
 template <typename InputT>
 class MissingDummiesTransformer final : public OpKernel {

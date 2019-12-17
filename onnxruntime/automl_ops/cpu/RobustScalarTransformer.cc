@@ -5,6 +5,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 
+#include "Archive.h"
 #include "Featurizers/RobustScalarFeaturizer.h"
 
 namespace featurizers = Microsoft::Featurizer::Featurizers;
