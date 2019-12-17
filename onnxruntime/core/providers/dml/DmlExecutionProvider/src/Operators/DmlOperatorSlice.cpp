@@ -71,17 +71,6 @@ public:
     }
 };
 
-// A specific type of operation for registration.
-template <uint32_t opsetVersion>
-class DmlOperatorSliceTemplate : public DmlOperatorSlice
-{
-public:
-    DmlOperatorSliceTemplate(const MLOperatorKernelCreationContext& kernelInfo)
-    :   DmlOperatorSlice(kernelInfo, opsetVersion)
-    {
-    }
-};
-
 void QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
 {
     *isSupported = (context->GetInputCount() <= 4);
