@@ -281,6 +281,11 @@ namespace Dml
                     bool requiredCpuInputsConstant = true;
                     for (uint32_t inputIndex : graphNodeFactorMapIter->second->requiredConstantCpuInputs)
                     {
+                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
+                        {
+                            continue;
+                        }
+
                         const onnx::TensorProto* tensor = nullptr;
                         const std::string& inputName = node.InputDefs()[inputIndex]->Name();
 
