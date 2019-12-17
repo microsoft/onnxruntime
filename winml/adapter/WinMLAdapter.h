@@ -147,3 +147,59 @@ private:
 };
 
 }  // namespace Windows::AI::MachineLearning::Adapter
+
+namespace Ort {
+// Ort::Allocator is not in the C ABI yet so it will have to be in the WinMLAdapter for now.
+// This struct was copied using the Base struct from onnxruntime_cxx_api.h for reference
+// Ort::Allocator struct is used as a smart pointer to OrtAllocator.
+struct Allocator {
+  Allocator() {
+    m_ort_allocator = nullptr;
+    m_adapter = nullptr;
+  }
+  Allocator(winmla::IWinMLAdapter* adapter, OrtAllocator* ort_allocator) :
+      m_adapter(adapter), m_ort_allocator(ort_allocator) {}
+
+  ~Allocator() {
+    if (m_adapter != nullptr && m_ort_allocator != nullptr) {
+      m_adapter->FreeProviderAllocator(m_ort_allocator);
+    }
+  }
+
+  operator OrtAllocator*() { return m_ort_allocator; }
+  operator const OrtAllocator*() const { return m_ort_allocator; }
+
+  OrtAllocator* release() {
+    OrtAllocator* p = m_ort_allocator;
+    m_ort_allocator = nullptr;
+    m_adapter = nullptr;
+    return p;
+  }
+
+  OrtAllocator** put() noexcept {
+    assert(m_ort_allocator == nullptr);
+    return &m_ort_allocator;
+  }
+
+  Allocator(const Allocator&) = delete;
+  Allocator& operator=(const Allocator&) = delete;
+  Allocator(Allocator&& v) noexcept :
+      m_adapter{v.m_adapter}, m_ort_allocator{v.m_ort_allocator} {
+    v.m_adapter = nullptr;
+    v.m_ort_allocator = nullptr;
+  }
+  void operator=(Allocator&& v) noexcept {
+    if (m_ort_allocator != nullptr && m_adapter != nullptr) {
+      m_adapter->FreeProviderAllocator(m_ort_allocator);
+    }
+    m_adapter = v.m_adapter;
+    m_ort_allocator = v.m_ort_allocator;
+    v.m_adapter = nullptr;
+    v.m_ort_allocator = nullptr;
+  }
+
+ private:
+  winmla::IWinMLAdapter* m_adapter;
+  OrtAllocator* m_ort_allocator;
+};
+} // namespace Ort

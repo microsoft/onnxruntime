@@ -158,7 +158,8 @@ struct MapBase : winrt::implements<
   }
 
   STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue** ort_value) {
+  (WinML::BindingContext& context, OrtValue** ort_value, OrtAllocator** ort_allocator) {
+    ORT_UNUSED_PARAMETER(ort_allocator);
     ORT_UNUSED_PARAMETER(context);
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 

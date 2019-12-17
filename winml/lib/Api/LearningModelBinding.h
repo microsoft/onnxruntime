@@ -22,7 +22,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IKeyValuePair<hstring, Windows::Foundation::IInspectable>;
 
   LearningModelBinding() = delete;
-
+  ~LearningModelBinding();
   LearningModelBinding(Windows::AI::MachineLearning::LearningModelSession const& session);
 
   void Bind(hstring const& name, Windows::Foundation::IInspectable const& value);
@@ -36,7 +36,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& first,
       Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable>& second);
 
-  std::tuple<std::string, OrtValue*, WinML::BindingType> CreateBinding(
+  std::tuple<std::string, OrtValue*, WinML::BindingType, OrtAllocator*> CreateBinding(
       const std::string& name,
       const Windows::Foundation::IInspectable& value,
       Windows::Foundation::Collections::IPropertySet const& properties);
@@ -55,7 +55,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   std::vector<Ort::Value>& LearningModelBinding::GetOutputs();
   const std::vector<std::string>& LearningModelBinding::GetInputNames() const;
   const std::vector<Ort::Value>& LearningModelBinding::GetInputs() const;
-  HRESULT BindOutput(const std::string& name, Ort::Value& ml_value);
+  HRESULT BindOutput(const std::string& name, Ort::Value&& ml_value, Ort::Allocator&& ort_allocator);
   void BindUnboundOutputs();
 
  private:
@@ -67,7 +67,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   bool IsOfTensorType(const Ort::Value& ort_value, TensorKind kind);
   bool IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
   bool IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind);
-  HRESULT BindInput(const std::string& name, Ort::Value& ml_value);
+  HRESULT BindInput(const std::string& name, Ort::Value&& ml_value, Ort::Allocator&& ort_allocator);
 
  private:
   const Windows::AI::MachineLearning::LearningModelSession m_session;
@@ -77,8 +77,10 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   com_ptr<winmla::IWinMLAdapter> adapter_;
   std::vector<std::string> input_names_;
   std::vector<Ort::Value> inputs_;
+  std::vector<Ort::Allocator> input_allocators_;
   std::vector<std::string> output_names_;
   std::vector<Ort::Value> outputs_;
+  std::vector<Ort::Allocator> output_allocators_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
 

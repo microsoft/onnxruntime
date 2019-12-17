@@ -208,7 +208,8 @@ struct TensorBase : TBase {
 
   // ILotusValueProviderPrivate::GetOrtValue
   STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue** ort_value) {
+  (WinML::BindingContext& context, OrtValue** ort_value, OrtAllocator** ort_allocator) {
+    ORT_UNUSED_PARAMETER(ort_allocator);
     RETURN_HR_IF_NULL_MSG(
         WINML_ERR_INVALID_BINDING,
         m_resources,
