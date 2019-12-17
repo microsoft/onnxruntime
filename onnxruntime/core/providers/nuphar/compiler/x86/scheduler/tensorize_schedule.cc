@@ -57,6 +57,7 @@ static Status TensorizeGEMVInteger16(const tvm::Tensor& tensor,
 }
 
 // TODO: refactor below function
+#if 0
 static Status TensorizeGEMVInteger(const tvm::Tensor& tensor,
                                    const int64_t input_dim,
                                    tvm_codegen::CodeGenContext& ctx_codegen,
@@ -92,6 +93,7 @@ static Status TensorizeGEMVInteger(const tvm::Tensor& tensor,
 
   return Status::OK();
 }
+#endif
 
 static Status TensorizeIGEMV(const tvm::Tensor& tensor,
                              tvm_codegen::CodeGenContext& ctx_codegen,
@@ -107,7 +109,9 @@ static Status TensorizeIGEMV(const tvm::Tensor& tensor,
   // Default tiling size
   // TODO: tuning tiling sizes later
   int tensorize_embed = 1;
-  int tensorize_input = (target_str == "avx512-skylake") ? 1024 : (target_str == "avx2") ? 512 : 256;
+  //int tensorize_input = (target_str == "avx512-skylake") ? 1024 : (target_str == "avx2") ? 512 : 256;
+
+  int tensorize_input = 64;
 
   // Tensorize kernel shape
   std::vector<int32_t> kernel_shape;
@@ -273,7 +277,7 @@ static Status TensorizeIGEMM(const tvm::Tensor& tensor,
   tvm::Expr input_iter(zo);
   tvm::Expr load_shift = tvm::ir::Simplify(kernel_shape[2] / layout_tile_row * input_dim_padded - kernel_shape[2]);
   tvm::Expr load_offset = tvm::ir::Simplify((input_iter % (std::max(1, vector_width / kernel_shape[2]))) * load_shift);
-  TensorizeDimMeta input_meta(input_iter, kernel_shape[2], layout_tile_row, load_offset);
+  TensorizeDimMeta input_meta(input_iter, input_dim_padded, kernel_shape[2], layout_tile_row, load_offset);
 
   TensorizeIntGemm8bit igemm8bit("igemm8bit", kernel_shape, target_str);
   igemm8bit.InsertTensorizeDimInfo("m", batchseq_meta);
@@ -348,14 +352,16 @@ static bool IMatMulTensorizeSchedule(
                                                     "avx512-skylake")
                                          .IsOK();
     } else if (feature.hasAVX2) {  // isAVX2
-      ORT_ENFORCE(!is_scalar, "scalar AVX2 is not supported!");
-      // TODO: release 8bit tensorize GEMV for AVX2
-      status_tensorize = isGEMV ? TensorizeGEMVInteger(imatmul, *p_input_dim, ctx_codegen, ctx_sched).IsOK()
-                                : TensorizeIGEMM(imatmul, ctx_codegen, ctx_sched, batchseq_expr,
-                                                 {*p_embed_dim, *p_embed_dim_padded},
-                                                 {*p_input_dim, *p_input_dim_padded},
-                                                 "avx2")
-                                      .IsOK();
+                                   //ORT_ENFORCE(!is_scalar, "scalar AVX2 is not supported!");
+                                   // TODO: release 8bit tensorize GEMV for AVX2
+
+      status_tensorize = is_scalar ? TensorizeIGEMV(imatmul, ctx_codegen, ctx_sched, false, "avx2").IsOK()
+                                   //status_tensorize = isGEMV ? TensorizeIGEMV(imatmul, ctx_codegen, ctx_sched, true, "avx2").IsOK()
+                                   : TensorizeIGEMM(imatmul, ctx_codegen, ctx_sched, batchseq_expr,
+                                                    {*p_embed_dim, *p_embed_dim_padded},
+                                                    {*p_input_dim, *p_input_dim_padded},
+                                                    "avx2")
+                                         .IsOK();
     } else if (feature.hasAVX) {  // isAVX
       status_tensorize = is_scalar ? TensorizeIGEMV(imatmul, ctx_codegen, ctx_sched, /*tensorize=*/false, "avx").IsOK()
                                    : TensorizeIGEMM(imatmul, ctx_codegen, ctx_sched, batchseq_expr,

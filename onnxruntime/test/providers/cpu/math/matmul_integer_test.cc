@@ -45,8 +45,10 @@ TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
 template <typename T>
 std::vector<T> ToVector(const int* value, int size) {
   std::vector<T> data(size);
-  for (int i = 0; i < size; i++)
+  for (int i = 0; i < size; i++) {
     data[i] = static_cast<T>(value[i]);
+    //std::cout << "val : " << value[i] << std::endl;
+  }
   return data;
 }
 
@@ -58,8 +60,10 @@ void RunMatMulIntegerU8S8Test(const int M, const int N, const int K) {
   static std::uniform_int_distribution<int> n_signed(-128, 127);
   Eigen::MatrixXi T1 = Eigen::MatrixXi::Random(K, M)
                            .unaryExpr([](int) { return n_unsigned(e); });
+  //T1 = Eigen::MatrixXi::Ones(K, M);
   Eigen::MatrixXi T2 = Eigen::MatrixXi::Random(N, K)
                            .unaryExpr([](int) { return n_signed(e); });
+  //T2 = Eigen::MatrixXi::Ones(N, K);
   Eigen::MatrixXi T3 = (T2 * T1).eval();
 
   test.AddInput<uint8_t>("T1", {M, K},
@@ -81,6 +85,27 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
   RunMatMulIntegerU8S8Test(1, 2, 16);
   RunMatMulIntegerU8S8Test(1, 2, 64);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV_Perf) {
+  RunMatMulIntegerU8S8Test(1, 3328, 256);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV_bug) {
+  RunMatMulIntegerU8S8Test(1, 8, 400);
+  RunMatMulIntegerU8S8Test(1, 8, 68);
+  RunMatMulIntegerU8S8Test(1, 8, 36);
+}
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV_bug1) {
+  //RunMatMulIntegerU8S8Test(4, 8, 64);
+  RunMatMulIntegerU8S8Test(4, 8, 68);
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV_Perf2) {
+  RunMatMulIntegerU8S8Test(1, 400, 832);
+}
+TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV_Perf3) {
+  RunMatMulIntegerU8S8Test(1, 512, 1024);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {

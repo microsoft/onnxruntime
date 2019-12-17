@@ -25,8 +25,8 @@ struct TensorizeDimMeta {
   TensorizeDimMeta(tvm::Expr dimIter, tvm::Expr dimSize, int tileSize, bool hasTail, tvm::Expr tailCond)
       : dim_iter(dimIter), dim_size(dimSize), tile_size(tileSize), has_tail(hasTail), tail_cond(tailCond) {}
 
-  TensorizeDimMeta(tvm::Expr dimIter, int tileSize, int layoutSize, tvm::Expr offset)
-      : dim_iter(dimIter), tile_size(tileSize), layout_size(layoutSize), load_offset(offset) {}
+  TensorizeDimMeta(tvm::Expr dimIter, tvm::Expr dimSize, int tileSize, int layoutSize, tvm::Expr offset)
+      : dim_iter(dimIter), dim_size(dimSize), tile_size(tileSize), layout_size(layoutSize), load_offset(offset) {}
 
   int64_t DimSizeValue() {
     const int64_t* p_dim_size = tvm::as_const_int(dim_size);
