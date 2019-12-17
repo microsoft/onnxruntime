@@ -52,7 +52,7 @@ bash $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/_basics/_machi
 
 echo "############## base line : 844d9106 ##################"
 commitid="844d9106" # "da17d3ae" #"13954366" 
-bash $ORT_SCRIPT_PATH/trend_run.sh $commitid " --use_nccl=True --use_nccl_tensor_fusion=True --cuda_mem_limit=30"
+bash $ORT_SCRIPT_PATH/trend_run.sh $commitid " --use_nccl=True --cuda_mem_limit=30"
 
 bash $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/_basics/_machine_info.sh
 

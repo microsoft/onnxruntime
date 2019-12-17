@@ -7,78 +7,29 @@ namespace onnxruntime {
 namespace cuda {
 
 NcclAllReduce::NcclAllReduce(const OpKernelInfo& info) : NcclKernel(info) {
-  int64_t use_tensor_fusion = 0;
-  info.GetAttrOrDefault<int64_t>("tensor_fusion", &use_tensor_fusion, int64_t(0));
-  use_tensor_fusion_ = use_tensor_fusion != 0;
 }
 
 Status NcclAllReduce::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = nullptr;  // Default stream
   ncclComm_t comm = nccl_->Comm();
 
-  if (use_tensor_fusion_ && context->InputCount() > 1) {
-    auto onnx_type = context->Input<Tensor>(0)->DataType();
+  for (int i = 0; i < context->InputCount(); i++) {
+    const Tensor* input_tensor = context->Input<Tensor>(i);
+    auto onnx_type = input_tensor->DataType();
+    const void* input_data = input_tensor->DataRaw();
+    size_t input_count = input_tensor->Shape().Size();
+
+    Tensor* output_tensor = context->Output(i, input_tensor->Shape());
+    void* output_data = output_tensor->MutableDataRaw();
+
     ncclDataType_t dtype = GetNcclDataType(onnx_type);
-
-    // Compute fusion buffer size.
-    uint64_t fusion_count = 0;
-    for (int i = 0; i < context->InputCount(); i++) {
-      const Tensor* input_tensor = context->Input<Tensor>(i);
-      fusion_count += input_tensor->Shape().Size();
-    }
-
-    // Allocate fusion buffer.
-    auto fusion_buffer = GetScratchBuffer<void>(fusion_count * onnx_type->Size());
-    void* fusion_data = fusion_buffer.get();
-
-    // Copy inputs into the fusion buffer.
-    uint64_t offset = 0;
-    for (int i = 0; i < context->InputCount(); i++) {
-      const Tensor* input_tensor = context->Input<Tensor>(i);
-      const void* input_data = input_tensor->DataRaw();
-      size_t input_size = input_tensor->SizeInBytes();
-      void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(fusion_data_at_offset, input_data, input_size, cudaMemcpyDeviceToDevice));
-      offset += input_size;
-    }
-
-    // AllReduce on the fusion buffer.
-    NCCL_RETURN_IF_ERROR(ncclAllReduce(fusion_data, fusion_data, fusion_count, dtype, ncclSum, comm, stream));
-
-    // Copy from fusion buffer to outputs.
-    offset = 0;
-    for (int i = 0; i < context->InputCount(); i++) {
-      const Tensor* input_tensor = context->Input<Tensor>(i);
-      Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-      void* output_data = output_tensor->MutableDataRaw();
-      size_t output_size = output_tensor->SizeInBytes();
-      void* fusion_data_at_offset = (int8_t*)fusion_data + offset;
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_data, fusion_data_at_offset, output_size, cudaMemcpyDeviceToDevice));
-      offset += output_size;
-    }
-  } else {
-    for (int i = 0; i < context->InputCount(); i++) {
-      const Tensor* input_tensor = context->Input<Tensor>(i);
-      auto onnx_type = input_tensor->DataType();
-      const void* input_data = input_tensor->DataRaw();
-      size_t input_count = input_tensor->Shape().Size();
-
-      Tensor* output_tensor = context->Output(i, input_tensor->Shape());
-      void* output_data = output_tensor->MutableDataRaw();
-
-      // Allreduce on individual inputs.
-      ncclDataType_t dtype = GetNcclDataType(onnx_type);
-      NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
-    }
+    NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, stream));
   }
 
   return Status::OK();
 }
 
 NcclAllGather::NcclAllGather(const OpKernelInfo& info) : NcclKernel(info) {
-  int64_t use_tensor_fusion = 0;
-  info.GetAttrOrDefault<int64_t>("tensor_fusion", &use_tensor_fusion, int64_t(0));
-  use_tensor_fusion_ = use_tensor_fusion != 0;
 }
 
 Status NcclAllGather::ComputeInternal(OpKernelContext* context) const {
@@ -136,9 +87,6 @@ size_t NcclAllGather::BroadcastCount(const TensorShape& input_shape) const {
 }
 
 NcclReduceScatter::NcclReduceScatter(const OpKernelInfo& info) : NcclKernel(info) {
-  int64_t use_tensor_fusion = 0;
-  info.GetAttrOrDefault<int64_t>("tensor_fusion", &use_tensor_fusion, int64_t(0));
-  use_tensor_fusion_ = use_tensor_fusion != 0;
 }
 
 Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
@@ -211,13 +159,21 @@ size_t NcclReduceScatter::ReduceCount(const TensorShape& input_shape) const {
   return reduce_shape.Size();
 }
 
+static std::vector<std::pair<int, int>> AliasRange(int start, int end) {
+  std::vector<std::pair<int, int>> aliases;
+  for (int i = start; i < end; i++) {
+    aliases.push_back(std::pair<int, int>(i, i));
+  }
+  return aliases;
+}
+
 ONNX_OPERATOR_KERNEL_EX(
     NcclAllReduce,
     kOnnxDomain,
     9,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(0, 0)
+        .Alias(AliasRange(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
     NcclAllReduce);
 
@@ -227,7 +183,7 @@ ONNX_OPERATOR_KERNEL_EX(
     9,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(0, 0)
+        .Alias(AliasRange(0, 1024))
         .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
     NcclAllGather);
 

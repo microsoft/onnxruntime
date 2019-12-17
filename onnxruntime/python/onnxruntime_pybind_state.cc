@@ -331,10 +331,6 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
   else
     opt_graph_config.use_nccl = false;
 
-  if (opt_graph_config.use_nccl)
-    // for now nccl allreduce kernel only implements for use_nccl_tensor_fusion case.
-    opt_graph_config.use_nccl_tensor_fusion = true;
-
   opt_graph_config_result = std::move(opt_graph_config);
 
   return Status::OK();

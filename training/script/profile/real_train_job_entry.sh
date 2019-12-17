@@ -52,7 +52,7 @@ bash $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/_basics/_machi
 
 echo "############## Real Training Job with commit : 844d9106 ##################"
 commitid="844d9106"
-bash $ORT_SCRIPT_PATH/real_train_run.sh $commitid " --use_nccl=True --use_nccl_tensor_fusion=True --cuda_mem_limit=30"
+bash $ORT_SCRIPT_PATH/real_train_run.sh $commitid " --use_nccl=True --cuda_mem_limit=30"
 
 bash $PHILLY_DATA_DIRECTORY/$PHILLY_VC/pengwa/profile/scripts-ort/_basics/_machine_info.sh
 

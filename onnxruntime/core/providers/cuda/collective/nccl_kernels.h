@@ -13,9 +13,6 @@ class NcclAllReduce final : public NcclKernel {
   explicit NcclAllReduce(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  bool use_tensor_fusion_ = false;
 };
 
 class NcclAllGather final : public NcclKernel {
@@ -27,8 +24,6 @@ class NcclAllGather final : public NcclKernel {
  private:
   size_t AllGatherCount(const TensorShape& input_shape) const;
   size_t BroadcastCount(const TensorShape& input_shape) const;
-
-  bool use_tensor_fusion_ = false;
 };
 
 class NcclReduceScatter final : public NcclKernel {
@@ -41,8 +36,6 @@ class NcclReduceScatter final : public NcclKernel {
   TensorShape OutputShape(const TensorShape& input_shape) const;
   size_t ReduceScatterCount(const TensorShape& input_shape) const;
   size_t ReduceCount(const TensorShape& input_shape) const;
-
-  bool use_tensor_fusion_ = false;
 };
 
 }  // namespace cuda
