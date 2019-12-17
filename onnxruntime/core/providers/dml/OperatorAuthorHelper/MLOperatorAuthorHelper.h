@@ -735,6 +735,7 @@ public:
 using MLOperatorTypeInferenceFunction = void (CALLBACK*)(IMLOperatorTypeInferenceContext*);
 using MLOperatorShapeInferenceFunction = void (CALLBACK*)(IMLOperatorShapeInferenceContext*);
 using MLOperatorKernelCreateFn = void(*)(IMLOperatorKernelCreationContext*, IMLOperatorKernel**);
+using MLOperatorSupportQueryFunction = void (CALLBACK*)(IMLOperatorSupportQueryContextPrivate*, bool*);
 
 class MLOperatorShapeInferrer : public Microsoft::WRL::RuntimeClass<
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMLOperatorShapeInferrer>
@@ -753,6 +754,29 @@ public:
 
 private:
     MLOperatorShapeInferenceFunction m_shapeInferenceFn = nullptr;
+};
+
+class MLOperatorSupportQuery : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMLOperatorSupportQueryPrivate>
+{
+public:
+    MLOperatorSupportQuery(MLOperatorSupportQueryFunction queryFn) :
+        m_queryFn(queryFn)
+    {}
+
+    HRESULT STDMETHODCALLTYPE QuerySupport(
+        IMLOperatorSupportQueryContextPrivate* context,
+        BOOL* isSupported) noexcept override try
+    {
+        bool fIsSupported = false;
+        m_queryFn(context, &fIsSupported);
+        *isSupported = fIsSupported ? TRUE : FALSE;
+        return S_OK;
+    }
+    CATCH_RETURN();
+
+private:
+    MLOperatorSupportQueryFunction m_queryFn = nullptr;
 };
 
 class MLOperatorTypeInferrer : public Microsoft::WRL::RuntimeClass<
