@@ -509,8 +509,8 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
     WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(m_adapter.put()));
   }
 
-  OrtAllocator* dml_allocator;
   // create the OrtValue
+  OrtAllocator* dml_allocator;
   WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, &dml_allocator));
 
   std::unique_ptr<OrtAllocator>ort_allocator_temp(dml_allocator);
