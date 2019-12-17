@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/constants.h"
-#include "core/graph/automl_ops/automl_defs.h"
+#include "core/graph/featurizers_ops/featurizers_defs.h"
 #include "core/graph/op.h"
 
 #include "onnx/defs/schema.h"

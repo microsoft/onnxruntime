@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "automl_ops/cpu_automl_kernels.h"
+#include "featurizers_ops/cpu_featurizers_kernels.h"
 
 #include "core/graph/constants.h"
 #include "core/framework/data_types.h"

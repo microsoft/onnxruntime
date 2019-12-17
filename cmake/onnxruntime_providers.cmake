@@ -25,14 +25,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
-file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -88,8 +85,8 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
 endif()
 
 if (onnxruntime_USE_AUTOML)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_featurizers_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
 endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})

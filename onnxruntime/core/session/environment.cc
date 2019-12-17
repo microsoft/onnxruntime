@@ -11,7 +11,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
 #ifdef ML_FEATURIZERS
-#include "core/graph/automl_ops/automl_defs.h"
+#include "core/graph/featurizers_ops/featurizers_defs.h"
 #endif
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"

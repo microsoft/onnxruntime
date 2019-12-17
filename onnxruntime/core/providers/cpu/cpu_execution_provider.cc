@@ -10,7 +10,7 @@
 #endif
 
 #ifdef ML_FEATURIZERS
-#include "automl_ops/cpu_automl_kernels.h"
+#include "automl_ops/cpu_featurizers_kernels.h"
 #endif
 
 #include "core/framework/compute_capability.h"

@@ -131,8 +131,8 @@ endif()
 
 if(onnxruntime_USE_AUTOML)
   list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/automl_ops/*.h"
-    "${TEST_SRC_DIR}/automl_ops/*.cc")
+    "${TEST_SRC_DIR}/featurizers_ops/*.h"
+    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
