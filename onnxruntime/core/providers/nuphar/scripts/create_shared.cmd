@@ -6,6 +6,7 @@ setlocal EnableDelayedExpansion
 
 if "%1"=="" goto Usage
 
+set SCRIPT_DIR=%~dp0
 set CACHE_DIR=%~f1
 set MODEL_FILE=%~f2
 
@@ -45,6 +46,16 @@ echo extern "C" >>%CHECKSUM_CC%
 echo __declspec(dllexport) >>%CHECKSUM_CC%
 echo void _ORTInternal_GetCheckSum(const char*^& cs, size_t^& len) { >> %CHECKSUM_CC%
 echo   cs = model_checksum; len = sizeof(model_checksum)/sizeof(model_checksum[0]) - 1;} >>%CHECKSUM_CC%
+
+REM generate cache version
+set CACHE_VERSION_CC=%CACHE_DIR%\cache_version.cc
+set VERSION_FILE=%SCRIPT_DIR%NUPHAR_CACHE_VERSION
+echo Generating %CACHE_VERSION_CC%...
+echo #include "%VERSION_FILE%" >%CACHE_VERSION_CC%
+echo extern "C" >>%CACHE_VERSION_CC%
+echo __declspec(dllexport) >>%CACHE_VERSION_CC%
+echo const char* _ORTInternal_GetCacheVersion() { >> %CACHE_VERSION_CC%
+echo   return __NUPHAR_CACHE_VERSION__;} >>%CACHE_VERSION_CC%
 
 :Compile
 cd /d %CACHE_DIR%

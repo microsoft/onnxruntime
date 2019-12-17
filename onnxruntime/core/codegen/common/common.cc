@@ -117,10 +117,10 @@ const onnxruntime::Node* GetInputNode(const Node& node, const NodeArg* def) {
 
 // create capacity from subgraph
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
+                                              int fused_count,
                                               std::unique_ptr<IndexedSubGraph>& subgraph) {
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  static int fuse_count = 0;
-  meta_def->name = "Fuse" + std::to_string(fuse_count++);
+  meta_def->name = "Fuse" + std::to_string(fused_count);
   meta_def->domain = "Fuse";
 
   std::set<NodeIndex> node_indices(subgraph->nodes.begin(), subgraph->nodes.end());

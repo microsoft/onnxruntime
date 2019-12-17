@@ -27,7 +27,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   const auto& input_shape = input_tensor->Shape();
   const auto& input_dims = input_shape.GetDims();
   const int64_t input_rank = static_cast<int64_t>(input_dims.size());
-  const int64_t input_size = input_shape.Size();
 
   // Process indices tensor
   const auto* indices_tensor = context->Input<Tensor>(1);
@@ -67,7 +66,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     GatherElementsImpl<int32_t>(
         input_rank,
         input_tensor->DataRaw(),
-        input_size,
         input_dims[axis],
         gpu_input_strides.GpuPtr(),
         indices_data,
@@ -82,7 +80,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
     GatherElementsImpl<int64_t>(
         input_rank,
         input_tensor->DataRaw(),
-        input_size,
         input_dims[axis],
         gpu_input_strides.GpuPtr(),
         indices_data,
