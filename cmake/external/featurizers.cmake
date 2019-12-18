@@ -3,7 +3,7 @@
 # This source code should not depend on the onnxruntime and may be built independently
 
 set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
-set(featurizers_TAG "4df80d5865a9d4e97f6d0b9304d4316115a04d9e")
+set(featurizers_TAG "c51dd845b1ada85a04dff7ac5a0827a623905e6d")
 
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})

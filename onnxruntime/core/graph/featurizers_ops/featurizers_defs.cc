@@ -8,20 +8,20 @@
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 
-#define MS_AUTOML_OPERATOR_SCHEMA(name)                         MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name)    MS_AUTOML_OPERATOR_SCHEMA_UNIQ(Counter, name)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA(name)                        MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name)   MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ(Counter, name)
 
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ(Counter, name)               \
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ(Counter, name)          \
   static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(    \
       op_schema_register_once##name##Counter) ONNX_UNUSED =         \
       ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
 
-#define MS_AUTOML_OPERATOR_SCHEMA_ELSEWHERE(name, schema_func)                          MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func)     MS_AUTOML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_ELSEWHERE(name, schema_func)                          MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func)     MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
 
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)    \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(                \
-      op_schema_register_once##name##Counter) ONNX_UNUSED =                     \
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)   \
+  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(                    \
+      op_schema_register_once##name##Counter) ONNX_UNUSED =                         \
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 namespace onnxruntime {
@@ -40,7 +40,7 @@ static void RegisterStringFeaturizerVer1();
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
-void RegisterAutoMLSchemas() {
+void RegisterMSFeaturizersSchemas() {
     RegisterCatImputerFeaturizerVer1();
     RegisterDateTimeFeaturizerVer1();
     RegisterMaxAbsScalarFeaturizerVer1();
@@ -51,7 +51,7 @@ void RegisterAutoMLSchemas() {
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 void RegisterCatImputerFeaturizerVer1() {
-    static const char * doc = R"DOC(
+    static const char* doc = R"DOC(
         Imputes (populates) values with the mode (most common value) encountered during
         training. This featurizer supports float and double for most (if not all) frameworks
         due to the existance of NaN in those types. Other types require 'optional' support
@@ -68,7 +68,7 @@ void RegisterCatImputerFeaturizerVer1() {
           execute(2.0) -> 2.0
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(CatImputerTransformer)
+    MS_FEATURIZERS_OPERATOR_SCHEMA(CatImputerTransformer)
         .SinceVersion(1)
         .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
@@ -108,7 +108,7 @@ void RegisterCatImputerFeaturizerVer1() {
 }
 
 void RegisterDateTimeFeaturizerVer1() {
-    static const char * doc = R"DOC(
+    static const char* doc = R"DOC(
         Extracts various datetime-related values from a UTC time_point.
 
         C++-style pseudo signature:
@@ -142,7 +142,7 @@ void RegisterDateTimeFeaturizerVer1() {
           }
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(DateTimeTransformer)
+    MS_FEATURIZERS_OPERATOR_SCHEMA(DateTimeTransformer)
         .SinceVersion(1)
         .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
@@ -200,7 +200,7 @@ void RegisterDateTimeFeaturizerVer1() {
             "No information is available"
         )
         .TypeAndShapeInferenceFunction(
-            [](ONNX_NAMESPACE::InferenceContext &ctx) {
+            [](ONNX_NAMESPACE::InferenceContext& ctx) {
                 ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
                 ctx.getOutputType(1)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
                 ctx.getOutputType(2)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
@@ -232,7 +232,7 @@ void RegisterDateTimeFeaturizerVer1() {
 }
 
 void RegisterMaxAbsScalarFeaturizerVer1() {
-    static const char * doc = R"DOC(
+    static const char* doc = R"DOC(
         Scales input based on the maximum absolute value of all data encountered during training.
 
         C++-style pseudo signature:
@@ -248,7 +248,7 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
           execute(100.0) -> 100 / 4.0
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
+    MS_FEATURIZERS_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
         .SinceVersion(1)
         .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
@@ -304,7 +304,7 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
 }
 
 void RegisterStringFeaturizerVer1() {
-    static const char * doc = R"DOC(
+    static const char* doc = R"DOC(
         Converts the input into a string representation based on the input's type.
 
         C++-style pseudo signature:
@@ -315,7 +315,7 @@ void RegisterStringFeaturizerVer1() {
           execute(3.14) -> "3.14"
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(StringTransformer)
+    MS_FEATURIZERS_OPERATOR_SCHEMA(StringTransformer)
         .SinceVersion(1)
         .SetDomain(kMSFeaturizersDomain)
         .SetDoc(doc)
@@ -352,5 +352,5 @@ void RegisterStringFeaturizerVer1() {
     ;
 }
 
-} // namespace featurizers
-} // namespace onnxruntime
+}  // namespace featurizers
+}  // namespace onnxruntime
