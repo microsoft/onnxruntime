@@ -257,7 +257,7 @@ static inline void ComputeSoftmax(std::vector<float>& values) {
     if (value > v_max)
       v_max = value;
   }
-  float this_sum = 0.;
+  float this_sum = 0.f;
   for (float& value : values) {
     value = std::exp(value - v_max);
     this_sum += value;
