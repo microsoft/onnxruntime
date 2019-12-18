@@ -10,60 +10,40 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     1,
     float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0), \
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
     TreeEnsembleRegressor<float>);
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     1,
     double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0), \
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
     TreeEnsembleRegressor<double>);
 
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     : OpKernel(info),
-      nodes_treeids_(info.GetAttrsOrDefault<int64_t>("nodes_treeids")),
-      nodes_nodeids_(info.GetAttrsOrDefault<int64_t>("nodes_nodeids")),
-      nodes_featureids_(info.GetAttrsOrDefault<int64_t>("nodes_featureids")),
-      nodes_values_(info.GetAttrsOrDefault<float>("nodes_values")),
-      nodes_hitrates_(info.GetAttrsOrDefault<float>("nodes_hitrates")),
-      nodes_truenodeids_(info.GetAttrsOrDefault<int64_t>("nodes_truenodeids")),
-      nodes_falsenodeids_(info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids")),
-      missing_tracks_true_(info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true")),
-      target_nodeids_(info.GetAttrsOrDefault<int64_t>("target_nodeids")),
-      target_treeids_(info.GetAttrsOrDefault<int64_t>("target_treeids")),
-      target_ids_(info.GetAttrsOrDefault<int64_t>("target_ids")),
-      target_weights_(info.GetAttrsOrDefault<float>("target_weights")),
-      base_values_(info.GetAttrsOrDefault<float>("base_values")),
-      transform_(::onnxruntime::ml::MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))),
+      base_values_(info.GetAttrsOrDefault<T>("base_values")),
+      post_transform_(::onnxruntime::ml::MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))),
       aggregate_function_(::onnxruntime::ml::MakeAggregateFunction(info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"))) {
   ORT_ENFORCE(info.GetAttr<int64_t>("n_targets", &n_targets_).IsOK());
 
+  std::vector<int64_t> nodes_treeids_(info.GetAttrsOrDefault<int64_t>("nodes_treeids"));
+  std::vector<int64_t> nodes_nodeids_(info.GetAttrsOrDefault<int64_t>("nodes_nodeids"));
+  std::vector<int64_t> nodes_featureids_(info.GetAttrsOrDefault<int64_t>("nodes_featureids"));
+  std::vector<T> nodes_values_(info.GetAttrsOrDefault<T>("nodes_values"));
+  std::vector<T> nodes_hitrates_(info.GetAttrsOrDefault<T>("nodes_hitrates"));
+  std::vector<int64_t> nodes_truenodeids_(info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"));
+  std::vector<int64_t> nodes_falsenodeids_(info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"));
+  std::vector<int64_t> missing_tracks_true_(info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"));
+  std::vector<int64_t> target_nodeids_(info.GetAttrsOrDefault<int64_t>("target_nodeids"));
+  std::vector<int64_t> target_treeids_(info.GetAttrsOrDefault<int64_t>("target_treeids"));
+  std::vector<int64_t> target_ids_(info.GetAttrsOrDefault<int64_t>("target_ids"));
+  std::vector<T> target_weights_(info.GetAttrsOrDefault<T>("target_weights"));
+
   //update nodeids to start at 0
   ORT_ENFORCE(!nodes_treeids_.empty());
-  int64_t current_tree_id = 1234567891L;
-  std::vector<int64_t> tree_offsets;
-
-  for (size_t i = 0; i < nodes_treeids_.size(); i++) {
-    if (nodes_treeids_[i] != current_tree_id) {
-      tree_offsets.push_back(nodes_nodeids_[i]);
-      current_tree_id = nodes_treeids_[i];
-    }
-    int64_t offset = tree_offsets[tree_offsets.size() - 1];
-    nodes_nodeids_[i] = nodes_nodeids_[i] - offset;
-    if (nodes_falsenodeids_[i] >= 0) {
-      nodes_falsenodeids_[i] = nodes_falsenodeids_[i] - offset;
-    }
-    if (nodes_truenodeids_[i] >= 0) {
-      nodes_truenodeids_[i] = nodes_truenodeids_[i] - offset;
-    }
-  }
-  for (size_t i = 0; i < target_nodeids_.size(); i++) {
-    int64_t offset = tree_offsets[target_treeids_[i]];
-    target_nodeids_[i] = target_nodeids_[i] - offset;
-  }
-
+  std::vector<NODE_MODE> nodes_modes_;
   std::vector<std::string> modes = info.GetAttrsOrDefault<std::string>("nodes_modes");
 
   for (const auto& mode : modes) {
@@ -79,149 +59,220 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   ORT_ENFORCE(nodes_id_size == nodes_truenodeids_.size());
   ORT_ENFORCE(nodes_id_size == nodes_falsenodeids_.size());
   ORT_ENFORCE((nodes_id_size == nodes_hitrates_.size()) || (nodes_hitrates_.empty()));
+  ORT_ENFORCE(base_values_.empty() || base_values_.size() == static_cast<size_t>(n_targets_));
 
   max_tree_depth_ = 1000;
-  offset_ = four_billion_;
-  using LeafNodeData = std::tuple<int64_t, int64_t, int64_t, float>;
-  //leafnode data, these are the votes that leaves do
-  for (size_t i = 0; i < target_nodeids_.size(); i++) {
-    leafnode_data_.push_back(std::make_tuple(target_treeids_[i], target_nodeids_[i], target_ids_[i], target_weights_[i]));
-  }
-  std::sort(begin(leafnode_data_), end(leafnode_data_), [](LeafNodeData const& t1, LeafNodeData const& t2) {
-    if (std::get<0>(t1) != std::get<0>(t2))
-      return std::get<0>(t1) < std::get<0>(t2);
 
-    return std::get<1>(t1) < std::get<1>(t2);
-  });
-  //make an index so we can find the leafnode data quickly when evaluating
-  int64_t field0 = -1;
-  int64_t field1 = -1;
-  for (size_t i = 0; i < leafnode_data_.size(); i++) {
-    int64_t id0 = std::get<0>(leafnode_data_[i]);
-    int64_t id1 = std::get<1>(leafnode_data_[i]);
-    if (id0 != field0 || id1 != field1) {
-      int64_t id = id0 * four_billion_ + id1;
-      auto p3 = std::make_pair(id, i);  // position is i
-      leafdata_map_.insert(p3);
-      field0 = id;
-      field1 = static_cast<int64_t>(i);
-    }
+  // Filling nodes_.
+  nbnodes_ = nodes_treeids_.size();
+  nodes_ = new TreeNodeElement[(int)nbnodes_];
+  roots_.clear();
+  std::map<TreeNodeElementId, TreeNodeElement*> idi;
+  size_t i;
+
+  for (i = 0; i < nodes_treeids_.size(); ++i) {
+    TreeNodeElement* node = nodes_ + i;
+    node->id.tree_id = (int)nodes_treeids_[i];
+    node->id.node_id = (int)nodes_nodeids_[i];
+    node->feature_id = (int)nodes_featureids_[i];
+    node->value = nodes_values_[i];
+    node->hitrates = i < nodes_hitrates_.size() ? nodes_hitrates_[i] : -1;
+    node->mode = nodes_modes_[i];
+    node->truenode = NULL;   // nodes_truenodeids_[i];
+    node->falsenode = NULL;  // nodes_falsenodeids_[i];
+    node->missing_tracks = i < (size_t)missing_tracks_true_.size()
+                               ? (missing_tracks_true_[i] == 1
+                                      ? MissingTrack::TRUE
+                                      : MissingTrack::FALSE)
+                               : MissingTrack::NONE;
+    ORT_ENFORCE(idi.find(node->id) == idi.end());
+    idi.insert(std::pair<TreeNodeElementId, TreeNodeElement*>(node->id, node));
   }
-  //treenode ids, some are roots, and roots have no parents
-  std::unordered_map<int64_t, size_t> parents;  //holds count of all who point to you
-  std::unordered_map<int64_t, size_t> indices;
-  //add all the nodes to a map, and the ones that have parents are not roots
-  std::unordered_map<int64_t, size_t>::iterator it;
-  size_t start_counter = 0L;
-  for (size_t i = 0; i < nodes_treeids_.size(); i++) {
-    //make an index to look up later
-    int64_t id = nodes_treeids_[i] * four_billion_ + nodes_nodeids_[i];
-    auto p3 = std::make_pair(id, i);  // i is the position
-    indices.insert(p3);
-    it = parents.find(id);
-    if (it == parents.end()) {
-      //start counter at 0
-      auto p1 = std::make_pair(id, start_counter);
-      parents.insert(p1);
-    }
+
+  TreeNodeElementId coor;
+  TreeNodeElement* it;
+  for (i = 0; i < (size_t)nbnodes_; ++i) {
+    it = nodes_ + i;
+    if (it->mode == NODE_MODE::LEAF)
+      continue;
+    coor.tree_id = it->id.tree_id;
+    coor.node_id = (int)nodes_truenodeids_[i];
+
+    auto found = idi.find(coor);
+    ORT_ENFORCE(found != idi.end());
+    if (coor.node_id >= 0 && coor.node_id < nbnodes_) {
+      it->truenode = found->second;
+      ORT_ENFORCE(!((it->truenode->id.tree_id != it->id.tree_id) ||
+                    (it->truenode->id.node_id == it->id.node_id)));
+    } else
+      it->truenode = NULL;
+
+    coor.node_id = (int)nodes_falsenodeids_[i];
+    found = idi.find(coor);
+    ORT_ENFORCE(found != idi.end());
+    if (coor.node_id >= 0 && coor.node_id < nbnodes_) {
+      it->falsenode = found->second;
+      ORT_ENFORCE(!((it->falsenode->id.tree_id != it->id.tree_id) ||
+                    (it->falsenode->id.node_id == it->id.node_id)));
+    } else
+      it->falsenode = NULL;
   }
-  //all true nodes aren't roots
-  for (size_t i = 0; i < nodes_truenodeids_.size(); i++) {
-    if (nodes_modes_[i] == ::onnxruntime::ml::NODE_MODE::LEAF) continue;
-    //they must be in the same tree
-    int64_t id = nodes_treeids_[i] * offset_ + nodes_truenodeids_[i];
-    it = parents.find(id);
-    ORT_ENFORCE(it != parents.end());
-    it->second++;
+
+  int64_t previous = -1;
+  for (i = 0; i < (size_t)nbnodes_; ++i) {
+    if ((previous == -1) || (previous != nodes_[i].id.tree_id))
+      roots_.push_back(nodes_ + i);
+    previous = nodes_[i].id.tree_id;
   }
-  //all false nodes aren't roots
-  for (size_t i = 0; i < nodes_falsenodeids_.size(); i++) {
-    if (nodes_modes_[i] == ::onnxruntime::ml::NODE_MODE::LEAF) continue;
-    //they must be in the same tree
-    int64_t id = nodes_treeids_[i] * offset_ + nodes_falsenodeids_[i];
-    it = parents.find(id);
-    ORT_ENFORCE(it != parents.end());
-    it->second++;
+
+  TreeNodeElementId ind;
+  SparseValue w;
+  for (i = 0; i < target_nodeids_.size(); i++) {
+    ind.tree_id = (int)target_treeids_[i];
+    ind.node_id = (int)target_nodeids_[i];
+    ORT_ENFORCE(idi.find(ind) != idi.end());
+    w.i = target_ids_[i];
+    w.value = target_weights_[i];
+    idi[ind]->weights.push_back(w);
   }
-  //find all the nodes that dont have other nodes pointing at them
-  for (auto& parent : parents) {
-    if (parent.second == 0) {
-      int64_t id = parent.first;
-      it = indices.find(id);
-      ORT_ENFORCE(it != indices.end());
-      roots_.push_back(it->second);
-    }
-  }
-  ORT_ENFORCE(base_values_.empty() || base_values_.size() == static_cast<size_t>(n_targets_));
+
+  nbtrees_ = roots_.size();
+  has_missing_tracks_ = missing_tracks_true_.size() == nodes_truenodeids_.size();
 }
 
 template <typename T>
-common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(std::unordered_map < int64_t, std::tuple<float, float, float>>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const {
-  //walk down tree to the leaf
-  auto mode = static_cast<::onnxruntime::ml::NODE_MODE>(nodes_modes_[treeindex]);
-  int64_t loopcount = 0;
-  int64_t root = treeindex;
-  while (mode != ::onnxruntime::ml::NODE_MODE::LEAF) {
-    T val = Xdata[feature_base + nodes_featureids_[treeindex]];
-    bool tracktrue = true;
-    if (missing_tracks_true_.size() != nodes_truenodeids_.size()) {
-      tracktrue = false;
-    } else {
-      tracktrue = (missing_tracks_true_[treeindex] != 0) && std::isnan(static_cast<float>(val));
-    }
-    float threshold = nodes_values_[treeindex];
-    if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_LEQ) {
-      treeindex = val <= threshold || tracktrue ? nodes_truenodeids_[treeindex] : nodes_falsenodeids_[treeindex];
-    } else if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_LT) {
-      treeindex = val < threshold || tracktrue ? nodes_truenodeids_[treeindex] : nodes_falsenodeids_[treeindex];
-    } else if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_GTE) {
-      treeindex = val >= threshold || tracktrue ? nodes_truenodeids_[treeindex] : nodes_falsenodeids_[treeindex];
-    } else if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_GT) {
-      treeindex = val > threshold || tracktrue ? nodes_truenodeids_[treeindex] : nodes_falsenodeids_[treeindex];
-    } else if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_EQ) {
-      treeindex = val == threshold || tracktrue ? nodes_truenodeids_[treeindex] : nodes_falsenodeids_[treeindex];
-    } else if (mode == ::onnxruntime::ml::NODE_MODE::BRANCH_NEQ) {
-      treeindex = val != threshold || tracktrue ? nodes_truenodeids_[treeindex] : nodes_falsenodeids_[treeindex];
-    }
+TreeEnsembleRegressor<T>::~TreeEnsembleRegressor() {
+  delete[] nodes_;
+}
 
-    if (treeindex < 0) {
-      return common::Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION,
-                            "treeindex evaluated to a negative value, which should not happen.");
-    }
-    treeindex = treeindex + root;
-    mode = (::onnxruntime::ml::NODE_MODE)nodes_modes_[treeindex];
-    loopcount++;
-    if (loopcount > max_tree_depth_) break;
+#define TREE_FIND_VALUE(CMP)                                         \
+  if (has_missing_tracks_) {                                         \
+    while (root->mode != NODE_MODE::LEAF && loopcount >= 0) {        \
+      val = x_data[root->feature_id];                                \
+      root = (val CMP root->value ||                                 \
+              (root->missing_tracks == MissingTrack::TRUE &&         \
+               std::isnan(static_cast<T>(val))))                     \
+                 ? root->truenode                                    \
+                 : root->falsenode;                                  \
+      --loopcount;                                                   \
+    }                                                                \
+  } else {                                                           \
+    while (root->mode != NODE_MODE::LEAF && loopcount >= 0) {        \
+      val = x_data[root->feature_id];                                \
+      root = val CMP root->value ? root->truenode : root->falsenode; \
+      --loopcount;                                                   \
+    }                                                                \
   }
-  //should be at leaf
-  int64_t id = nodes_treeids_[treeindex] * four_billion_ + nodes_nodeids_[treeindex];
-  //auto it_lp = leafdata_map.find(id);
-  auto it_lp = leafdata_map_.find(id);
-  if (it_lp != leafdata_map_.end()) {
-    size_t index = it_lp->second;
-    int64_t treeid = std::get<0>(leafnode_data_[index]);
-    int64_t nodeid = std::get<1>(leafnode_data_[index]);
-    while (treeid == nodes_treeids_[treeindex] && nodeid == nodes_nodeids_[treeindex]) {
-      int64_t classid = std::get<2>(leafnode_data_[index]);
-      float weight = std::get<3>(leafnode_data_[index]);
-      auto it_classes = classes.find(classid);
-      if (it_classes != classes.end()) {
-        auto& tuple = it_classes->second;
-        std::get<0>(tuple) += weight;
-        if (weight < std::get<1>(tuple)) std::get<1>(tuple) = weight;
-        if (weight > std::get<2>(tuple)) std::get<2>(tuple) = weight;
-      } else {
-        std::tuple<float, float, float> tuple = std::make_tuple(weight, weight, weight);
-        auto p1 = std::make_pair(classid, tuple);
-        classes.insert(p1);
-      }
-      index++;
-      if (index >= leafnode_data_.size()) {
+
+template <typename T>
+common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(T* predictions, TreeNodeElement* root,
+                                                         const T* x_data,
+                                                         unsigned char* has_predictions) const {
+  bool tracktrue;
+  T val;
+  if (same_mode_) {
+    int64_t loopcount = max_tree_depth_;
+    switch (root->mode) {
+      case NODE_MODE::BRANCH_LEQ:
+        TREE_FIND_VALUE(<=)
         break;
+      case NODE_MODE::BRANCH_LT:
+        TREE_FIND_VALUE(<)
+        break;
+      case NODE_MODE::BRANCH_GTE:
+        TREE_FIND_VALUE(>=)
+        break;
+      case NODE_MODE::BRANCH_GT:
+        TREE_FIND_VALUE(>)
+        break;
+      case NODE_MODE::BRANCH_EQ:
+        TREE_FIND_VALUE(==)
+        break;
+      case NODE_MODE::BRANCH_NEQ:
+        TREE_FIND_VALUE(!=)
+        break;
+      case NODE_MODE::LEAF:
+        break;
+      default: {
+        std::ostringstream err_msg;
+        err_msg << "Invalid mode of value: " << static_cast<std::underlying_type<NODE_MODE>::type>(root->mode);
+        throw std::runtime_error(err_msg.str());
       }
-      treeid = std::get<0>(leafnode_data_[index]);
-      nodeid = std::get<1>(leafnode_data_[index]);
     }
+  } else {  // Different rules to compare to node thresholds.
+    int64_t loopcount = 0;
+    T threshold;
+    while ((root->mode != NODE_MODE::LEAF) && (loopcount <= max_tree_depth_)) {
+      val = x_data[root->feature_id];
+      tracktrue = root->missing_tracks == MissingTrack::TRUE &&
+                  std::isnan(static_cast<T>(val));
+      threshold = root->value;
+      switch (root->mode) {
+        case NODE_MODE::BRANCH_LEQ:
+          root = val <= threshold || tracktrue
+                     ? root->truenode
+                     : root->falsenode;
+          break;
+        case NODE_MODE::BRANCH_LT:
+          root = val < threshold || tracktrue
+                     ? root->truenode
+                     : root->falsenode;
+          break;
+        case NODE_MODE::BRANCH_GTE:
+          root = val >= threshold || tracktrue
+                     ? root->truenode
+                     : root->falsenode;
+          break;
+        case NODE_MODE::BRANCH_GT:
+          root = val > threshold || tracktrue
+                     ? root->truenode
+                     : root->falsenode;
+          break;
+        case NODE_MODE::BRANCH_EQ:
+          root = val == threshold || tracktrue
+                     ? root->truenode
+                     : root->falsenode;
+          break;
+        case NODE_MODE::BRANCH_NEQ:
+          root = val != threshold || tracktrue
+                     ? root->truenode
+                     : root->falsenode;
+          break;
+        default: {
+          std::ostringstream err_msg;
+          err_msg << "Invalid mode of value: " << static_cast<std::underlying_type<NODE_MODE>::type>(root->mode);
+          throw std::runtime_error(err_msg.str());
+        }
+      }
+      ++loopcount;
+    }
+  }
+
+  //should be at leaf
+  switch (aggregate_function_) {
+    case AGGREGATE_FUNCTION::AVERAGE:
+    case AGGREGATE_FUNCTION::SUM:
+      for (auto it = root->weights.begin(); it != root->weights.end(); ++it) {
+        predictions[it->i] += it->value;
+        has_predictions[it->i] = 1;
+      }
+      break;
+    case AGGREGATE_FUNCTION::MIN:
+      for (auto it = root->weights.begin(); it != root->weights.end(); ++it) {
+        predictions[it->i] = (!has_predictions[it->i] || it->value < predictions[it->i])
+                                 ? it->value
+                                 : predictions[it->i];
+        has_predictions[it->i] = 1;
+      }
+      break;
+    case AGGREGATE_FUNCTION::MAX:
+      for (auto it = root->weights.begin(); it != root->weights.end(); ++it) {
+        predictions[it->i] = (!has_predictions[it->i] || it->value > predictions[it->i])
+                                 ? it->value
+                                 : predictions[it->i];
+        has_predictions[it->i] = 1;
+      }
+      break;
   }
   return common::Status::OK();
 }
@@ -239,40 +290,113 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
   Tensor* Y = context->Output(0, TensorShape({N, n_targets_}));
 
-  int64_t write_index = 0;
   const auto* x_data = X->template Data<T>();
 
-  for (int64_t i = 0; i < N; i++)  //for each class
-  {
-    int64_t current_weight_0 = i * stride;
-    std::unordered_map<int64_t, std::tuple<float, float, float>> scores; // sum, min, max
-    //for each tree
-    for (size_t j = 0; j < roots_.size(); j++) {
-      //walk each tree from its root
-      ORT_RETURN_IF_ERROR(ProcessTreeNode(scores, roots_[j], x_data, current_weight_0));
-    }
-    //find aggregate, could use a heap here if there are many classes
-    std::vector<float> outputs;
-    for (int64_t j = 0; j < n_targets_; j++) {
-      //reweight scores based on number of voters
-      auto it_scores = scores.find(j);
-      float val = base_values_.size() == (size_t)n_targets_ ? base_values_[j] : 0.f;
-      if (it_scores != scores.end()) {
-        if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::AVERAGE) {
-          val += std::get<0>(scores[j]) / roots_.size();   //first element of tuple is already a sum
-        } else if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::SUM) {
-          val += std::get<0>(scores[j]);
-        } else if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::MIN) {
-          val += std::get<1>(scores[j]);  // second element of tuple is min
-        } else if (aggregate_function_ == ::onnxruntime::ml::AGGREGATE_FUNCTION::MAX) {
-          val += std::get<2>(scores[j]);  // third element of tuple is max
-        }
+  if (n_targets_ == 1) {
+    T origin = base_values_.size() == 1 ? base_values_[0] : 0.f;
+    if (N == 1) {
+      T scores = 0;
+      unsigned char has_scores = 0;
+
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t j = 0; j < nbtrees_; ++j)
+        ProcessTreeNode(&scores, roots_[j], x_data, &has_scores);
+
+      T val = has_scores
+                  ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                         ? scores / roots_.size()
+                         : scores) +
+                        origin
+                  : origin;
+      *((T*)(Y->template MutableData<T>())) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
+                                                  ? ComputeProbit(val)
+                                                  : val;
+    } else {
+      T scores;
+      unsigned char has_scores;
+      T val;
+#ifdef USE_OPENMP
+#pragma omp parallel for private(scores, has_scores, val)
+#endif
+      for (int64_t i = 0; i < N; ++i) {
+        scores = 0;
+        has_scores = 0;
+
+        for (size_t j = 0; j < (size_t)nbtrees_; ++j)
+          ProcessTreeNode(&scores, roots_[j], x_data + i * stride, &has_scores);
+
+        val = has_scores
+                  ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                         ? scores / roots_.size()
+                         : scores) +
+                        origin
+                  : origin;
+        *((T*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
+                                                        ? ComputeProbit(val)
+                                                        : val;
       }
-      outputs.push_back(val);
     }
-    write_scores(outputs, transform_, write_index, Y, -1);
-    write_index += scores.size();
+  } else {
+    if (N == 1) {
+      std::vector<T> scores(n_targets_, (T)0);
+      std::vector<unsigned char> has_scores(n_targets_, 0);
+
+#ifdef USE_OPENMP
+#pragma omp parallel for
+#endif
+      for (int64_t j = 0; j < nbtrees_; ++j)
+        ProcessTreeNode(scores.data(), roots_[j], x_data, has_scores.data());
+
+      std::vector<T> outputs(n_targets_);
+      T val;
+      for (int64_t j = 0; j < n_targets_; ++j) {
+        //reweight scores based on number of voters
+        val = base_values_.size() == (size_t)n_targets_ ? base_values_[j] : 0.f;
+        val = (has_scores[j])
+                  ? val + (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                               ? scores[j] / roots_.size()
+                               : scores[j])
+                  : val;
+        outputs[j] = val;
+      }
+      write_scores(outputs, post_transform_, 0, Y, -1);
+
+    } else {
+      std::vector<T> scores(n_targets_, (T)0);
+      std::vector<T> outputs(n_targets_);
+      std::vector<unsigned char> has_scores(n_targets_, 0);
+      int64_t current_weight_0;
+      T val;
+
+#ifdef USE_OPENMP
+#pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0)
+#endif
+      for (int64_t i = 0; i < N; ++i) {
+        current_weight_0 = i * stride;
+        std::fill(scores.begin(), scores.end(), (T)0);
+        std::fill(outputs.begin(), outputs.end(), (T)0);
+        memset(has_scores.data(), 0, has_scores.size());
+
+        for (size_t j = 0; j < roots_.size(); ++j)
+          ProcessTreeNode(scores.data(), roots_[j], x_data + current_weight_0,
+                          has_scores.data());
+
+        for (int64_t j = 0; j < n_targets_; ++j) {
+          val = base_values_.size() == (size_t)n_targets_ ? base_values_[j] : 0.f;
+          val = (has_scores[j])
+                    ? val + (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                                 ? scores[j] / roots_.size()
+                                 : scores[j])
+                    : val;
+          outputs[j] = val;
+        }
+        write_scores(outputs, post_transform_, i * n_targets_, Y, -1);
+      }
+    }
   }
+
   return Status::OK();
 }
 

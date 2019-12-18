@@ -13,35 +13,60 @@ class TreeEnsembleRegressor final : public OpKernel {
  public:
   explicit TreeEnsembleRegressor(const OpKernelInfo& info);
   common::Status Compute(OpKernelContext* context) const override;
+  ~TreeEnsembleRegressor();
 
  private:
-  common::Status ProcessTreeNode(std::unordered_map < int64_t, std::tuple<float, float, float>>& classes, int64_t treeindex, const T* Xdata, int64_t feature_base) const;
+  struct TreeNodeElementId {
+    int tree_id;
+    int node_id;
+    inline bool operator==(const TreeNodeElementId& xyz) const {
+      return (tree_id == xyz.tree_id) && (node_id == xyz.node_id);
+    }
+    inline bool operator<(const TreeNodeElementId& xyz) const {
+      return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
+    }
+  };
 
-  std::vector<int64_t> nodes_treeids_;
-  std::vector<int64_t> nodes_nodeids_;
-  std::vector<int64_t> nodes_featureids_;
-  std::vector<float> nodes_values_;
-  std::vector<float> nodes_hitrates_;
-  std::vector<NODE_MODE> nodes_modes_;
-  std::vector<int64_t> nodes_truenodeids_;
-  std::vector<int64_t> nodes_falsenodeids_;
-  std::vector<int64_t> missing_tracks_true_;
+  struct SparseValue {
+    int64_t i;
+    T value;
+  };
 
-  std::vector<int64_t> target_nodeids_;
-  std::vector<int64_t> target_treeids_;
-  std::vector<int64_t> target_ids_;
-  std::vector<float> target_weights_;
+  enum MissingTrack {
+    NONE,
+    TRUE,
+    FALSE
+  };
 
-  std::vector<float> base_values_;
+  struct TreeNodeElement {
+    TreeNodeElementId id;
+    int feature_id;
+    T value;
+    T hitrates;
+    NODE_MODE mode;
+    TreeNodeElement* truenode;
+    TreeNodeElement* falsenode;
+    MissingTrack missing_tracks;
+
+    std::vector<SparseValue> weights;
+  };
+
+  std::vector<T> base_values_;
   int64_t n_targets_;
-  ::onnxruntime::ml::POST_EVAL_TRANSFORM transform_;
-  ::onnxruntime::ml::AGGREGATE_FUNCTION aggregate_function_;
-  std::vector<std::tuple<int64_t, int64_t, int64_t, float>> leafnode_data_;
-  std::unordered_map<int64_t, size_t> leafdata_map_;
-  std::vector<int64_t> roots_;
-  int64_t offset_;
+  POST_EVAL_TRANSFORM post_transform_;
+  AGGREGATE_FUNCTION aggregate_function_;
+  int64_t nbnodes_;
+  TreeNodeElement* nodes_;
+  std::vector<TreeNodeElement*> roots_;
+
   int64_t max_tree_depth_;
-  const int64_t four_billion_ = 4000000000L;
+  int64_t nbtrees_;
+  bool same_mode_;
+  bool has_missing_tracks_;
+
+  common::Status ProcessTreeNode(T* predictions, TreeNodeElement* root,
+                                 const T* x_data,
+                                 unsigned char* has_predictions) const;
 };
 }  // namespace ml
 }  // namespace onnxruntime

@@ -180,6 +180,17 @@ static inline float ErfInv(float x) {
   return x;
 }
 
+static inline double ErfInv(double x) {
+  double sgn = x < 0 ? -1.0 : 1.0;
+  x = (1 - x) * (1 + x);
+  double log = std::log(x);
+  double v = 2 / (3.141592653589793 * 0.147) + 0.5 * log;
+  double v2 = 1 / (0.147) * log;
+  double v3 = -v + std::sqrt(v * v - v2);
+  x = sgn * std::sqrt(v3);
+  return x;
+}
+
 //https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
 static inline void multiclass_probability(int64_t classcount, const std::vector<float>& r, std::vector<float>& p) {
   int64_t sized2 = classcount * classcount;
@@ -235,9 +246,15 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
 }
 
 static const float ml_sqrt2 = 1.41421356f;
+static const double ml_sqrt2d = 1.414213562373095048;
 
 static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));
+  return (val < 0) ? (1 - v) : v;
+}
+
+static inline double ComputeLogistic(double val) {
+  double v = 1 / (1 + std::exp(-std::abs(val)));
   return (val < 0) ? (1 - v) : v;
 }
 
@@ -245,24 +262,29 @@ static inline float ComputeProbit(float val) {
   return ml_sqrt2 * ErfInv(2 * val - 1);
 }
 
+static inline double ComputeProbit(double val) {
+  return ml_sqrt2d * ErfInv(2 * val - 1);
+}
+
 static inline float sigmoid_probability(float score, float proba, float probb) {
   float val = score * proba + probb;
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(std::vector<T>& values) {
   // compute exp with negative number to be numerically stable
-  float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
+  T v_max = -std::numeric_limits<T>::max();
+  for (T value : values) {
     if (value > v_max)
       v_max = value;
   }
-  float this_sum = 0.f;
-  for (float& value : values) {
+  T this_sum = 0.;
+  for (T& value : values) {
     value = std::exp(value - v_max);
     this_sum += value;
   }
-  for (float& value : values)
+  for (T& value : values)
     value /= this_sum;
 }
 
@@ -288,17 +310,38 @@ static inline void ComputeSoftmaxZero(std::vector<float>& values) {
     value /= this_sum;
 }
 
+static inline void ComputeSoftmaxZero(std::vector<double>& values) {
+  // compute exp with negative number to be numerically stable
+  double v_max = -std::numeric_limits<double>::max();
+  for (double value : values) {
+    if (value > v_max)
+      v_max = value;
+  }
+  double exp_neg_v_max = std::exp(-v_max);
+  double this_sum = 0.;
+  for (double& value : values) {
+    if (value > 1e-14 || value < -1e-14) {
+      value = std::exp(value - v_max);
+      this_sum += value;
+    } else {
+      value *= exp_neg_v_max;
+    }
+  }
+  for (double& value : values)
+    value /= this_sum;
+}
+
 template <typename T>
 void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                   int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
       case POST_EVAL_TRANSFORM::PROBIT:
-        for (float& score : scores)
+        for (T& score : scores)
           score = ComputeProbit(score);
         break;
       case POST_EVAL_TRANSFORM::LOGISTIC:
-        for (float& score : scores)
+        for (T& score : scores)
           score = ComputeLogistic(score);
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
