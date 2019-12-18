@@ -239,7 +239,7 @@ static LearningModelSession CreateSession(LearningModel model)
     return session;
 }
 
-TEST_F(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
+TEST_F(LearningModelSessionAPITestsGpu, CreateSessionWithCastToFloat16InModel)
 {
     // load a model
     EXPECT_NO_THROW(LoadModel(L"fp16-truncate-with-cast.onnx"));
@@ -247,7 +247,7 @@ TEST_F(LearningModelSessionAPITests, CreateSessionWithCastToFloat16InModel)
     CreateSession(m_model);
 }
 
-TEST_F(LearningModelSessionAPITests, DISABLED_CreateSessionWithFloat16InitializersInModel)
+TEST_F(LearningModelSessionAPITestsGpu, DISABLED_CreateSessionWithFloat16InitializersInModel)
 {
     // Disabled due to https://microsoft.visualstudio.com/DefaultCollection/OS/_workitems/edit/21624720:
     // Model fails to resolve due to ORT using incorrect IR version within partition

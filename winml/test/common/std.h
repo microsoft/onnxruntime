@@ -55,12 +55,19 @@
 #define INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
 #endif
 
+
+#ifndef USE_DML
+#define GPUTEST \
+    GTEST_SKIP() << "GPU tests disabled because this is a WinML only build (no DML)";
+#else
 #define GPUTEST \
     if (auto noGpuTests = RuntimeParameters::Parameters.find("noGPUtests");             \
         noGpuTests != RuntimeParameters::Parameters.end() && noGpuTests->second != "0") \
     {                                                                                   \
         GTEST_SKIP() << "GPU tests disabled";                                           \
     }
+#endif 
+    
 
 #define SKIP_EDGECORE \
     if (auto isEdgeCore = RuntimeParameters::Parameters.find("EdgeCore");               \
