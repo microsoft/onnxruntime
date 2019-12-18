@@ -68,12 +68,12 @@ protected:
 };
 using ScenarioCppWinrtGpuTestDeathTest = ScenarioCppWinrtGpuTest;
 
-class ScenarioCppWinrtGpuSkipEdgeCoreTest : public ScenarioCppWinrtTest
+class ScenarioCppWinrtGpuSkipEdgeCoreTest : public ScenarioCppWinrtGpuTest
 {
 protected:
     void SetUp() override
     {
-        ScenarioCppWinrtTest::SetUp();
+        ScenarioCppWinrtGpuTest::SetUp();
         SKIP_EDGECORE
     }
 };
@@ -780,15 +780,21 @@ TEST_F(ScenarioCppWinrtTest, Scenario17DevDiagnostics)
     EXPECT_NO_THROW(session.Evaluate(binding, L""));
 }
 
+/** 
+ * Custom Operator Tests are labeled as GPU tests because the DML code is interlaced with the custom op code
+ * even though CPU custom ops shouldn't be dependent on GPU functionality.
+ * These should be reclassed to ScenarioCppWinrtTest once the DML code is decoupled from the custom op code.
+**/ 
+
 // create a session that loads a model with a branch new operator, register the custom operator, and load/bind/eval
-TEST_F(ScenarioCppWinrtTest, Scenario20aLoadBindEvalCustomOperatorCPU)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario20aLoadBindEvalCustomOperatorCPU) 
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"noisy_relu.onnx";
     LoadBindEval_CustomOperator_CPU(filePath.c_str());
 }
 
 // create a session that loads a model with an overridden operator, register the replacement custom operator, and load/bind/eval
-TEST_F(ScenarioCppWinrtTest, Scenario20bLoadBindEvalReplacementCustomOperatorCPU)
+TEST_F(ScenarioCppWinrtGpuTest, Scenario20bLoadBindEvalReplacementCustomOperatorCPU)
 {
     std::wstring filePath = FileHelpers::GetModulePath() + L"relu.onnx";
     LoadBindEval_CustomOperator_CPU(filePath.c_str());
