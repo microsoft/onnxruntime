@@ -532,21 +532,21 @@ TEST(ConvTransposeTest, ConvTranspose_DefaultStridesAndDilations) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
-TEST(ConvTransposeTest, ConvTranspose_1D_NonDefaultStridesAndDilations) {
+TEST(ConvTransposeTest, ConvTranspose_2D_NonDefaultStridesAndDilations) {
   ConvTransposeOpAttributes attrs = {
-      vector<int64_t>{4},     // kernel_shape
-      {},                     // output_padding
-      {},                     // output_shape
-      vector<int64_t>{0, 0},  // pads
-      vector<int64_t>{2},     // strides
-      vector<int64_t>{3},     // dilations
-      1                       // group
+      vector<int64_t>{1, 4},        // kernel_shape
+      {},                           // output_padding
+      {},                           // output_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 2},        // strides
+      vector<int64_t>{1, 3},        // dilations
+      1                             // group
   };
   vector<float> X = {1., 2.};
-  vector<int64_t> X_shape = {1, 1, 2};
+  vector<int64_t> X_shape = {1, 1, 1, 2};
   vector<float> W = {1., 1., 1., 1.};
-  vector<int64_t> W_shape = {1, 1, 4};
-  vector<int64_t> Y_shape = {1, 1, 12};
+  vector<int64_t> W_shape = {1, 1, 1, 4};
+  vector<int64_t> Y_shape = {1, 1, 1, 12};
   auto expected_vals = {1.f, 0.f, 2.f, 1.f, 0.f, 2.f, 1.f, 0.f, 2.f, 1.f, 0.f, 2.f};
 
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
