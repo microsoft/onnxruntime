@@ -27,11 +27,6 @@ void matmulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
-std::function<void(OpSchema&)> PoolOpSchemaGenerator(
-    const char* name,
-    const char* opName,
-    const char* additionalDescription,
-    bool use_dilation);
 
 void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1866,9 +1861,8 @@ C (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point
           "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
-      .Output(0, "C", "Constrain output to 8 bit tensor", "T1")
+      .Output(0, "C", "Constrain output to 8 bit tensor", "T")
       .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
-      .TypeConstraint("T1", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -1897,21 +1891,85 @@ C (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point
         }
       });
 
+  const char* QLinearAveragePoolDoc_ver1 = R"DOC(
+ QLinearAveragePool consumes an input tensor X and applies average pooling across
+ the tensor according to kernel sizes, stride sizes, and pad lengths.
+ average pooling consisting of computing the average on all values of a
+ subset of the input tensor according to the kernel size and downsampling the
+ data into the output tensor Y for further processing. The output spatial shape will be following:
+ ```
+ output_spatial_shape[i] = floor((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
+ ```
+ or
+ ```
+ output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
+ ```
+ if ceil_mode is enabled
+
+ ```
+ * pad_shape[i] is sum of pads along axis i
+ ```
+
+ `auto_pad` is a DEPRECATED attribute. If you are using them currently, the output spatial shape will be following:
+ ```
+ VALID: output_spatial_shape[i] = ceil((input_spatial_shape[i] - kernel_spatial_shape[i] + 1) / strides_spatial_shape[i])
+ SAME_UPPER or SAME_LOWER: output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides_spatial_shape[i])
+ ```
+ And pad shape will be following if `SAME_UPPER` or `SAME_LOWER`:
+ ```
+ pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
+ ```
+ 
+The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
+
+Input and output scales and zero points are used to convert the output to a new quantization range.
+Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
+)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAveragePool)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .FillUsing(ONNX_NAMESPACE::PoolOpSchemaGenerator(
-          "QLinearAveragePool",
-          "average",
-          "The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero)."
-          "Input and output scales and zero points are used to convert the output to a new quantization range."
-          "Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)",
-          false))
+      .SetDoc(QLinearAveragePoolDoc_ver1)
       .Attr(
           "count_include_pad",
           "Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
+      .Attr(
+          "kernel_shape",
+          "The size of the kernel along each axis.",
+          AttributeProto::INTS)
+      .Attr(
+          "strides",
+          "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
+          AttributeProto::INTS,
+          OPTIONAL)
+      .Attr(
+          "auto_pad",
+          contrib_ops_auto_pad_doc,
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "ceil_mode",
+          "Whether to use ceil or floor (default) to compute the output shape.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(
+          0,
+          "X",
+          "Input data tensor from the previous operator; "
+          "dimensions for image case are (N x C x H x W), "
+          "where N is the batch size, C is the number of "
+          "channels, and H and W are the height and the "
+          "width of the data. For non image case, the "
+          "dimensions are in the form of "
+          "(N x C x D1 x D2 ... Dn), where N is the batch "
+          "size. Optionally, if dimension denotation is "
+          "in effect, the operation expects the input "
+          "data tensor to arrive with the dimension denotation "
+          "of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
+          "T")
       .Input(
           1,
           "x_scale",
@@ -1933,150 +1991,30 @@ C (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point
           "y_zero_point",
           "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
-          OpSchema::Optional);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConvInteger)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(	
-The convolution operator consumes a quantized input tensor, its scale and zero point,	
-a quantized filter, its scale and zero point, and computes the output. 
-This operator fuses ConvInteger + int32->float step
-Bias can be float or int32. When bias is float it adds the bias to the convolution result after converting the result to float.
-Bias is quantized using scale as x_scale * w_scale and zero point as '0'
-Each scale and zero point pair must have same shape. It means they must be either scalars (per tensor) or 1-D tensors (per channel).	
-The production MUST never overflow. The accumulation may overflow in 32 bits	
-if the input is 8 bits.)DOC")
-      .Input(
-          0,
-          "x",
-          "Input data tensor from previous layer; "
-          "has size (N x C x H x W), where N is the batch size, "
-          "C is the number of channels, and H and W are the "
-          "height and width. Note that this is for the 2D image. "
-          "Otherwise the size is (N x C x D1 x D2 ... x Dn). "
-          "Optionally, if dimension denotation is "
-          "in effect, the operation expects input data tensor "
-          "to arrive with the dimension denotation of [DATA_BATCH, "
-          "DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
-          "T1")
-      .Input(
-          1,
-          "w",
-          "The weight tensor that will be used in the "
-          "convolutions; has size (M x C/group x kH x kW), where C "
-          "is the number of channels, and kH and kW are the "
-          "height and width of the kernel, and M is the number "
-          "of feature maps. For more than 2 dimensions, the "
-          "kernel shape will be (M x C/group x k1 x k2 x ... x kn), "
-          "where (k1 x k2 x ... kn) is the dimension of the kernel. "
-          "Optionally, if dimension denotation is in effect, "
-          "the operation expects the weight tensor to arrive "
-          "with the dimension denotation of [FILTER_OUT_CHANNEL, "
-          "FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. "
-          "X.shape[1] == (W.shape[1] * group) == C "
-          "(assuming zero based indices for the shape array). "
-          "Or in other words FILTER_IN_CHANNEL should be equal to DATA_CHANNEL. ",
-          "T2")
-      .Input(
-          2,
-          "x_zero_point",
-          "Zero point tensor for input 'x'. It's optional and default value is 0. It's a scalar, which means a per-tensor/layer quantization.",
-          "T1",
-          OpSchema::Optional)
-      .Input(
-          3,
-          "w_zero_point",
-          "Scale tensor for input 'w'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, "
-          "which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number "
-          "of elements should be equal to the number of output channels (M)",
-          "T2",
-          OpSchema::Optional)
-      .Input(
-          4,
-          "x_scale",
-          "Scale tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          5,
-          "w_scale",
-          "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, "
-          "which means a per-tensor/layer or per output channel quantization. "
-          "If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
-          "tensor(float)")
-      .Input(
-          6,
-          "B",
-          "Optional 1D bias to be added to the convolution, has size of M.",
-          "tensor(float)",
           OpSchema::Optional)
       .Output(
           0,
-          "y",
-          "Output data tensor that contains the result of the "
-          "convolution. The output dimensions are functions "
-          "of the kernel size, stride size, and pad lengths.",
-          "tensor(float)")
+          "Y",
+          "Output data tensor from average or max pooling across "
+          "the input tensor. Dimensions will vary based "
+          "on various kernel, stride, and pad sizes. Floor value of "
+          "the dimension is used",
+          "T")
       .TypeConstraint(
-          "T1",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input x and its zero point data type to 8-bit integer tensor.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(int8)", "tensor(uint8)"},
-          "Constrain input w and its zero point data type to 8-bit integer tensor.")
-      .Attr(
-          "auto_pad",
-          contrib_ops_auto_pad_doc,
-          AttributeProto::STRING,
-          std::string("NOTSET"))
-      .Attr(
-          "kernel_shape",
-          "The shape of the convolution kernel. If not present, should be inferred from input 'w'.",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "dilations",
-          "dilation value along each spatial axis of the filter. If not present, the dilation defaults to 1 along each axis.",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "strides",
-          "Stride along each spatial axis. If not present, the stride defaults to 1 along each axis.",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "pads",
-          "Padding for the beginning and ending along each spatial axis, it can take any value greater than or equal to 0."
-          "The value represent the number of pixels added to the beginning and end part of the corresponding axis."
-          "`pads` format should be as follow [x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of"
-          "pixels added at the beginning of axis `i` and xi_end, the number of pixels added at the end of axis `i`."
-          "This attribute cannot be used simultaneously with auto_pad attribute. If not present, the padding defaults"
-          "to 0 along start and end of each spatial axis.",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "group",
-          "number of groups input channels and output channels are divided into. default is 1.",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto x_type = ctx.getInputType(0);
-        auto w_type = ctx.getInputType(1);
-        auto y_type = ctx.getOutputType(0);
-        if (nullptr == x_type || nullptr == w_type ||
-            x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
-            w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
-          fail_type_inference("inputs are expected to have tensor type.");
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          // MaxPool with two outputs case.
+          auto output_type = ctx.getOutputType(1);
+          if (output_type->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType ||
+              output_type->value_case() == ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET) {
+            output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
+          }
         }
-        y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
-
-        ValidateTypeAndShapeForScaleAndZP(ctx, 2, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 3, x_type->tensor_type().elem_type(), true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 5, w_type->tensor_type().elem_type(), true);
-
-        convPoolShapeInference(ctx, true, false, 0, 1);
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
