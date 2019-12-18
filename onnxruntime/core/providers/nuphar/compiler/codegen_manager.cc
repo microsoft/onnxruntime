@@ -6,6 +6,7 @@
 #include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/codegen/passes/scheduler/all_schedules.h"
 #include "core/codegen/passes/weight_layout/transpose_2d.h"
+#include "core/codegen/passes/weight_layout/transpose_pad_2d.h"
 #include "core/codegen/passes/weight_layout/tiling_2d.h"
 #include "core/codegen/passes/weight_layout/vertical_stripes_2d.h"
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
@@ -113,6 +114,11 @@ static void RegisterAllNupharWeightLayouts(tvm_codegen::WeightLayoutRegistry* la
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 16)));
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTiling2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16, 16)));
+
+  layout_registry->Register(
+      std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTransposePad2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8, 32)));
+  layout_registry->Register(
+      std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutTransposePad2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16, 32)));
 
   layout_registry->Register(
       std::move(onnxruntime::make_unique<tvm_codegen::WeightLayoutVerticalStripe2D>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 8)));

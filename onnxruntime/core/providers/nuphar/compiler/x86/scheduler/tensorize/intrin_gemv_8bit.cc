@@ -59,11 +59,11 @@ tvm::TensorIntrin TensorizeIntGemv8bit::CreateTensorIntrin() {
       0,
       /*offset_factor*/ 1);
 
-  int h_unroll = shape_[1] / 32;
+  int row_unroll = shape_[1] / 32;
   auto sum_int32x8 = tvm::make_const(HalideIR::Int(32, 8), 0);
   auto one = tvm::make_const(HalideIR::Int(16, 16), 1);
 
-  for (int i = 0; i < h_unroll; ++i) {
+  for (int i = 0; i < row_unroll; ++i) {
     auto a_uint8x32 = a_buf.vload({i * 32}, HalideIR::UInt(8, 32));
     auto b_int8x32 = b_buf.vload({0, i * 32}, HalideIR::Int(8, 32));
 

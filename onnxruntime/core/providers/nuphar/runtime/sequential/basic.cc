@@ -38,15 +38,7 @@ void BasicExecBlock::Run(KernelComputeCtx* kernel_compute_ctx) {
   const tvm::runtime::PackedFunc& func = func_info_->packed_func;
 
   func.CallPacked(tvm_args, &rvalue);
-#if 1
-  auto begin = Clock::now();
-  for (int t = 0; t < 10000; t++)
-    func.CallPacked(tvm_args, &rvalue);
-  auto end = Clock::now();
 
-  auto latency = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-  std::cout << "mkl pack:" << (double)(latency) / (double)(10000000.0) << " ms" << std::endl;
-#endif
   // Check aliased outputs
   if (tvm_output_count < func_info_->ort_output_count) {
     const std::vector<DLTensor>& dl_tensors = subgraph_compute_ctx.dl_tensors;

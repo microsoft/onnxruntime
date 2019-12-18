@@ -13,6 +13,7 @@
 #include "core/codegen/mti/tensor/transpose.h"
 #include "core/codegen/passes/weight_layout/tiling_2d.h"
 #include "core/codegen/passes/weight_layout/transpose_2d.h"
+#include "core/codegen/passes/weight_layout/transpose_pad_2d.h"
 #include "core/common/cpuid_info.h"  // TODO: refactor to control through config
 #include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
@@ -128,13 +129,7 @@ static Status EvaluateMatMulInteger(
 
       // Tensorization: AVX2: 8bit GEMM AVX512: 8bit GEMV and GEMM
       bool isGEMV = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1);
-      isGEMV;
-      //bool use_tensorization = !force_mkl && !force_no_tensorize && (feature.hasAVX512 || (feature.hasAVX2 && !isGEMV) || (!feature.hasAVX2 && feature.hasAVX));
       bool use_tensorization = !force_mkl && !force_no_tensorize && (feature.hasAVX512 || feature.hasAVX2 || feature.hasAVX);
-
-      //if (isGEMV) {
-      //  std::cout << "GEMV  M:1, N:" << embed_dim << ",K:" << input_dim << std::endl;
-      //}
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];
@@ -166,14 +161,8 @@ static Status EvaluateMatMulInteger(
         isScalar;
 
         // Tensorization has two layout options: 1) Transpose or 2) Tiling
+        auto layout_key = isScalar ? tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg)) : isGEMV ? tvm_codegen::WeightLayoutTransposePad2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width) : tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width);
 
-#if 0
-        auto layout_key = !(isGEMV || isScalar) ? tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width)
-                                                : tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
-#else
-        auto layout_key = !isScalar ? tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width)
-                                    : tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
-#endif
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
         tvm::Tensor output_tensor = IMatMulTensorize(A, B_marshalled, batchseq_dim, input_dim, embed_dim, vector_width, name + "_IMatMulTensorize");
