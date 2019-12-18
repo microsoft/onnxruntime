@@ -230,6 +230,82 @@ void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, in
   }
 }
 
+std::function<void(OpSchema&)> QLinearMathDocGenerator(const char* name, const char* additionalDocumentation) {
+  return [=](OpSchema& schema) {
+    std::string doc = R"DOC(
+Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadcasting support).
+
+{additionalDocumentation}
+)DOC";
+    ONNX_NAMESPACE::ReplaceAll(doc, "{name}", name);
+    ONNX_NAMESPACE::ReplaceAll(doc, "{additionalDocumentation}", additionalDocumentation);
+    schema.SetDoc(doc);
+    schema.Input(0, "A", "First operand.", "T");
+    schema.Input(
+        1,
+        "A_scale",
+        "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
+        "tensor(float)");
+    schema.Input(
+        2,
+        "A_zero_point",
+        "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+        "T",
+        OpSchema::Optional);
+    schema.Input(3, "B", "Second operand.", "T");
+    schema.Input(
+        4,
+        "B_scale",
+        "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
+        "tensor(float)");
+    schema.Input(
+        5,
+        "B_zero_point",
+        "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+        "T",
+        OpSchema::Optional);
+    schema.Input(
+        6,
+        "C_scale",
+        "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
+        "tensor(float)");
+    schema.Input(
+        7,
+        "C_zero_point",
+        "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+        "T",
+        OpSchema::Optional);
+    schema.Output(0, "C", "Result, has same element type as two inputs", "T");
+    schema.TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to 8 bit signed and unsigned tensors.");
+    schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+      auto a_type = ctx.getInputType(0);
+      auto b_type = ctx.getInputType(3);
+
+      if (nullptr == a_type || nullptr == b_type ||
+          a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+          b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+        fail_type_inference("inputs are expected to have tensor type.");
+      }
+
+      // validate scale and zero points
+      ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), true);
+
+      if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3))
+        bidirectionalBroadcastShapeInference(
+            ctx.getInputType(0)->tensor_type().shape(),
+            ctx.getInputType(3)->tensor_type().shape(),
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+    });
+  };
+}
+
 const char* contrib_ops_pads_doc =
     "Padding for the beginning and ending along each spatial axis, it can take any value greater "
     "than or equal to 0. The value represent the number of pixels added to the beginning "
@@ -1587,75 +1663,15 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAdd)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(Performs element-wise binary quantized addition (with Numpy-style broadcasting support).
-This operator supports **multidirectional (i.e., Numpy-style) broadcasting**.
-```
-C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point
-```
-)DOC")
-      .Input(0, "A", "First operand.", "T")
-      .Input(
-          1,
-          "A_scale",
-          "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          2,
-          "A_zero_point",
-          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Input(3, "B", "Second operand.", "T")
-      .Input(
-          4,
-          "B_scale",
-          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          5,
-          "B_zero_point",
-          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Input(
-          6,
-          "C_scale",
-          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          7,
-          "C_zero_point",
-          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Output(0, "C", "Result, has same element type as two inputs", "T")
-      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to 8 bit signed and unsigned tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      .FillUsing(QLinearMathDocGenerator("addition",
+                                         "C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point"));
 
-        auto a_type = ctx.getInputType(0);
-        auto b_type = ctx.getInputType(3);
-
-        if (nullptr == a_type || nullptr == b_type ||
-            a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
-            b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
-          fail_type_inference("inputs are expected to have tensor type.");
-        }
-
-        // validate scale and zero points
-        ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), true);
-
-        if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3))
-          bidirectionalBroadcastShapeInference(
-              ctx.getInputType(0)->tensor_type().shape(),
-              ctx.getInputType(3)->tensor_type().shape(),
-              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
-      });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .FillUsing(QLinearMathDocGenerator("multiplication",
+                                         "output_intermediate (int32) = (A - A_zero_point) * (B - B_zero_point)"
+                                         "\nC (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point"));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearReduceMean)
       .SetDomain(kMSDomain)
@@ -1816,81 +1832,6 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMul)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
-"This operator supports **multidirectional (i.e., Numpy-style) broadcasting**
-```
-output_intermediate (int32) = (A - A_zero_point) * (B - B_zero_point)
-C (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point
-```
-)DOC")
-      .Input(0, "A", "First operand.", "T")
-      .Input(
-          1,
-          "A_scale",
-          "Input A's scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          2,
-          "A_zero_point",
-          "Input A zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Input(3, "B", "Second operand.", "T")
-      .Input(
-          4,
-          "B_scale",
-          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          5,
-          "B_zero_point",
-          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Input(
-          6,
-          "C_scale",
-          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
-          "tensor(float)")
-      .Input(
-          7,
-          "C_zero_point",
-          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
-          "T",
-          OpSchema::Optional)
-      .Output(0, "C", "Constrain output to 8 bit tensor", "T")
-      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input types to 8 bit signed and unsigned tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        auto a_type = ctx.getInputType(0);
-        auto b_type = ctx.getInputType(3);
-
-        if (nullptr == a_type || nullptr == b_type ||
-            a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
-            b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
-          fail_type_inference("inputs are expected to have tensor type.");
-        }
-
-        // validate scale and zero points
-        ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-        ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), true);
-
-        if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3)) {
-          bidirectionalBroadcastShapeInference(
-              ctx.getInputType(0)->tensor_type().shape(),
-              ctx.getInputType(3)->tensor_type().shape(),
-              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
-        }
-      });
-
   const char* QLinearAveragePoolDoc_ver1 = R"DOC(
  QLinearAveragePool consumes an input tensor X and applies average pooling across
  the tensor according to kernel sizes, stride sizes, and pad lengths.
@@ -2006,15 +1947,19 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
           "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (ctx.getNumOutputs() > 1) {
-          // MaxPool with two outputs case.
-          auto output_type = ctx.getOutputType(1);
-          if (output_type->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType ||
-              output_type->value_case() == ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET) {
-            output_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT64);
-          }
+
+        auto data_type = ctx.getInputType(0);
+        if (nullptr == data_type || data_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
         }
-        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 1);
+
+        // validate scale and zero points
+        ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+        ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
+        ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+        ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+
+        ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
