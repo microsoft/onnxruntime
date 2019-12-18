@@ -132,7 +132,10 @@ template <typename T>
 Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);                       // input tensor
   auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
-  const Tensor* axis_tensor = ctx->Input<Tensor>(1);                 // axis input tensor
+  if (rank == 0)
+    return ORT_MAKE_STATUS("Cannot apply CumSum operator on a scalar");
+
+  const Tensor* axis_tensor = ctx->Input<Tensor>(1);  // axis input tensor
 
   TensorShape output_shape(input->Shape());
   auto& output_tensor = *ctx->Output(0, output_shape);  // output tensor

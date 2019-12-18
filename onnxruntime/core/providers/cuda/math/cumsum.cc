@@ -4,7 +4,6 @@
 #include "cumsum.h"
 #include "cumsum_impl.h"
 #include "core/providers/cpu/math/cumsum.h"
-#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -31,7 +30,10 @@ ONNX_OPERATOR_KERNEL_EX(
 Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);                       // input tensor
   auto rank = static_cast<int64_t>(input->Shape().NumDimensions());  // the rank of the input/output
-  const Tensor* axis_tensor = ctx->Input<Tensor>(1);                 // axis input tensor
+  if (rank == 0)
+    return ORT_MAKE_STATUS("Cannot apply CumSum operator on a scalar");
+
+  const Tensor* axis_tensor = ctx->Input<Tensor>(1);  // axis input tensor
 
   int64_t axis = 0;
   ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
@@ -44,10 +46,18 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
 
   const auto& input_dims = input->Shape().GetDims();
-  TensorPitches input_strides(input_dims);
+
+  int64_t current_dim = rank - 1;
+  int64_t input_stride_along_axis = 1;
+
+  // axis (and by extension current_dim) can never be negative as this is validated much before
+  // so no need to add the extra check to make sure current_dim is within bounds of the vector size
+  while (current_dim > axis) {
+    input_stride_along_axis *= input_dims[current_dim--];
+  }
 
   fast_divmod fast_divmod_input_dim_along_axis(static_cast<int>(input_dims[axis]));
-  fast_divmod fast_divmod_input_stride_along_axis(static_cast<int>(input_strides[axis]));
+  fast_divmod fast_divmod_input_stride_along_axis(static_cast<int>(input_stride_along_axis));
 
   if (input->IsDataType<float>()) {
     CumSumImpl(reinterpret_cast<const typename ToCudaType<float>::MappedType*>(input->Data<float>()),
