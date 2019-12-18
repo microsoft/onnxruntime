@@ -107,7 +107,7 @@ class OpaqueCApiTestKernel final : public OpKernel {
 
 ONNX_OPERATOR_KERNEL_EX(
     OpaqueCApiTestKernel,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
@@ -131,7 +131,7 @@ static void RegisterCustomKernel() {
   // Registry the schema
   ONNX_TEST_OPERATOR_SCHEMA(OpaqueCApiTestKernel)
       .SetDoc("Replace all of h chars to _ in the original string contained within experimental type")
-      .SetDomain(onnxruntime::kMSAutoMLDomain)
+      .SetDomain(onnxruntime::kMSFeaturizersDomain)
       .SinceVersion(1)
       .Input(
           0,
@@ -153,7 +153,7 @@ static void RegisterCustomKernel() {
   // Register kernel directly to KernelRegistry
   // because we can not create custom ops with Opaque types
   // as input
-  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSAutoMLDomain, 1, OpaqueCApiTestKernel)>;
+  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSFeaturizersDomain, 1, OpaqueCApiTestKernel)>;
   auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
   kernel_registry->Register(fn());
 }
@@ -179,7 +179,7 @@ std::string CreateModel() {
     outputs.push_back(&output_arg);
 
     auto& node = graph.AddNode("OpaqueCApiTestKernel", "OpaqueCApiTestKernel", "Replace all h to underscore",
-                               inputs, outputs, nullptr, onnxruntime::kMSAutoMLDomain);
+                               inputs, outputs, nullptr, onnxruntime::kMSFeaturizersDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   EXPECT_TRUE(graph.Resolve().IsOK());

@@ -15,7 +15,7 @@ namespace test {
 
 TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_04) {
   const time_t date = 217081624;
-  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {4}, {0, 0, 0, 0});
@@ -77,7 +77,7 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_04) {
 TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05) {
   const time_t date = 217081625;
 
-  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {4}, {0, 0, 0, 0});
@@ -139,7 +139,7 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05_and_Past_1976_Nov_17__12_27
   const time_t date1 = 217081625;
   const time_t date2 = 217081624;
 
-  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {4}, {0, 0, 0, 0});
@@ -226,7 +226,7 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05_and_Past_1976_Nov_17__12_27
 TEST(DateTimeTransformer, Future_2025_June_30) {
   const time_t date = 1751241600;
 
-  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSAutoMLDomain);
+  OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {4}, {0, 0, 0, 0});
