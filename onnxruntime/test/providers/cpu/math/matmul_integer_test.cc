@@ -82,12 +82,9 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
   RunMatMulIntegerU8S8Test(1, 2, 16);
   RunMatMulIntegerU8S8Test(1, 2, 64);
-}
-
-TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV_bug) {
-  RunMatMulIntegerU8S8Test(1, 8, 400);
-  RunMatMulIntegerU8S8Test(1, 8, 68);
   RunMatMulIntegerU8S8Test(1, 8, 36);
+  RunMatMulIntegerU8S8Test(1, 8, 68);
+  RunMatMulIntegerU8S8Test(1, 8, 400);
   RunMatMulIntegerU8S8Test(1, 512, 1024);
 }
 
