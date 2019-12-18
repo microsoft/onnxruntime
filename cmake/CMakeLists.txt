@@ -83,6 +83,10 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 
+# training options
+option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -467,7 +471,7 @@ if (onnxruntime_USE_JEMALLOC)
 endif()
 
 include_directories(
-  ${ONNXRUNTIME_INCLUDE_DIR} 
+  ${ONNXRUNTIME_INCLUDE_DIR}
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
@@ -737,6 +741,9 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   include(onnxruntime_training.cmake)
+  if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
+    include(onnxruntime_training_e2e_tests.cmake)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_CSHARP)

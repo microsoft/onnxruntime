@@ -28,8 +28,11 @@ struct BertParameters : public TrainingRunner::Parameters {
   float initial_lr_phase2;
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
+
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
+
+  PathString convergence_test_output_file;
 };
 
 struct OrtParameters {
@@ -60,6 +63,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
        "checkpoint in checkpoints_dir, if any, is used.",
         cxxopts::value<std::string>()->default_value(""))
       ("log_dir", "The directory to write tensorboard events.",
+        cxxopts::value<std::string>()->default_value(""))
+      ("convergence_test_output_file", "The convergence test output file path.",
         cxxopts::value<std::string>()->default_value(""))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("train_batch_size_phase2", "Total batch size for training.", cxxopts::value<int>()->default_value("1"))
@@ -197,6 +202,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.log_dir = ToPathString(flags["log_dir"].as<std::string>());
     params.train_data_dir_phase2 = ToPathString(flags["train_data_dir_phase2"].as<std::string>());
     params.test_data_dir_phase2 = ToPathString(flags["test_data_dir_phase2"].as<std::string>());
+    params.convergence_test_output_file = ToPathString(flags["convergence_test_output_file"].as<std::string>());
     params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
@@ -312,6 +318,18 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
   return Status::OK();
 }
 
+// specifies convergence test output file data
+struct ConvergenceTestDataRecord {
+  size_t step{};
+  float total_loss{}, mlm_loss{}, nsp_loss{};
+
+  static std::string GetCsvHeaderLine() { return "step,total_loss,mlm_loss,nsp_loss\n"; }
+
+  std::string GetCsvLine() const {
+    return onnxruntime::MakeString(step, ",", total_loss, ",", mlm_loss, ",", nsp_loss, "\n");
+  }
+};
+
 // NOTE: these variables need to be alive when the error_function is called.
 float total_loss = 0.0f;
 float mlm_loss = 0.0f;
@@ -394,9 +412,13 @@ void setup_training_params(BertParameters& params) {
     const Tensor& mlm_loss_t = fetches[1].Get<Tensor>();
     const Tensor& nsp_loss_t = fetches[2].Get<Tensor>();
 
-    total_loss += GetLossValue(total_loss_t);
-    mlm_loss += GetLossValue(mlm_loss_t);
-    nsp_loss += GetLossValue(nsp_loss_t);
+    const auto curr_total_loss = GetLossValue(total_loss_t);
+    const auto curr_mlm_loss = GetLossValue(mlm_loss_t);
+    const auto curr_nsp_loss = GetLossValue(nsp_loss_t);
+
+    total_loss += curr_total_loss;
+    mlm_loss += curr_mlm_loss;
+    nsp_loss += curr_nsp_loss;
 
     if (params.EnableTensorboard()) {
       const Tensor& summary_loss_t = fetches[3].Get<Tensor>();
@@ -411,6 +433,12 @@ void setup_training_params(BertParameters& params) {
         TrainingUtil::PrintTensor(fetch_names[i], fetches[i].Get<Tensor>(), ofs);
       }
       ofs.close();
+    }
+
+    if (!params.convergence_test_output_file.empty()) {
+      const ConvergenceTestDataRecord convergence_test_data{step, curr_total_loss, curr_mlm_loss, curr_nsp_loss};
+      std::ofstream output_file{params.convergence_test_output_file, std::ios_base::app};
+      output_file << convergence_test_data.GetCsvLine();
     }
   };
 
@@ -557,6 +585,14 @@ int main(int argc, char* argv[]) {
   // setup onnxruntime env
   unique_ptr<Environment> env;
   RETURN_IF_FAIL(Environment::Create(env));
+
+  // initialize test output file
+  if (!params.convergence_test_output_file.empty()) {
+    std::ofstream output_file(params.convergence_test_output_file);
+    LOGS_DEFAULT_IF(!output_file, WARNING)
+        << "Failed to open convergence test output file: " << ToMBString(params.convergence_test_output_file);
+    output_file << ConvergenceTestDataRecord::GetCsvHeaderLine();
+  }
 
   // start training session
   if (params.is_perf_test) {
