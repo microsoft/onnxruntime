@@ -41,7 +41,7 @@ class TreeEnsembleRegressor final : public OpKernel {
   struct TreeNodeElement {
     TreeNodeElementId id;
     int feature_id;
-    float value;  // T value?
+    float value;     // T value?
     float hitrates;  // T value?
     NODE_MODE mode;
     TreeNodeElement* truenode;
@@ -64,7 +64,7 @@ class TreeEnsembleRegressor final : public OpKernel {
   bool same_mode_;
   bool has_missing_tracks_;
 
-  common::Status ProcessTreeNode(T* predictions, TreeNodeElement* root,
+  common::Status ProcessTreeNode(float* predictions, TreeNodeElement* root,
                                  const T* x_data,
                                  unsigned char* has_predictions) const;
 };

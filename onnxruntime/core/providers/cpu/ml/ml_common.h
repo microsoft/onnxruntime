@@ -250,20 +250,19 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-template <typename T>
-static inline void ComputeSoftmax(std::vector<T>& values) {
+static inline void ComputeSoftmax(std::vector<float>& values) {
   // compute exp with negative number to be numerically stable
-  T v_max = -std::numeric_limits<T>::max();
-  for (T value : values) {
+  float v_max = -std::numeric_limits<float>::max();
+  for (float value : values) {
     if (value > v_max)
       v_max = value;
   }
-  T this_sum = 0.;
-  for (T& value : values) {
+  float this_sum = 0.;
+  for (float& value : values) {
     value = std::exp(value - v_max);
     this_sum += value;
   }
-  for (T& value : values)
+  for (float& value : values)
     value /= this_sum;
 }
 

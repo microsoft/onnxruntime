@@ -13,14 +13,12 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
     TreeEnsembleRegressor<float>);
 
-/*
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     1,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
     TreeEnsembleRegressor<double>);
-*/
 
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
@@ -168,7 +166,7 @@ TreeEnsembleRegressor<T>::~TreeEnsembleRegressor() {
   }
 
 template <typename T>
-common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(T* predictions, TreeNodeElement* root,
+common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(float* predictions, TreeNodeElement* root,
                                                          const T* x_data,
                                                          unsigned char* has_predictions) const {
   bool tracktrue;
@@ -296,9 +294,9 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
   const auto* x_data = X->template Data<T>();
 
   if (n_targets_ == 1) {
-    T origin = base_values_.size() == 1 ? base_values_[0] : 0.f;
+    float origin = base_values_.size() == 1 ? base_values_[0] : 0.f;
     if (N == 1) {
-      T scores = 0;
+      float scores = 0;
       unsigned char has_scores = 0;
 
 #ifdef USE_OPENMP
@@ -307,19 +305,19 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       for (int64_t j = 0; j < nbtrees_; ++j)
         ProcessTreeNode(&scores, roots_[j], x_data, &has_scores);
 
-      T val = has_scores
-                  ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
-                         ? scores / roots_.size()
-                         : scores) +
-                        origin
-                  : origin;
-      *((T*)(Y->template MutableData<T>())) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
-                                                  ? ComputeProbit((float)val)
-                                                  : val;
+      float val = has_scores
+                      ? (aggregate_function_ == AGGREGATE_FUNCTION::AVERAGE
+                             ? scores / roots_.size()
+                             : scores) +
+                            origin
+                      : origin;
+      *((float*)(Y->template MutableData<T>())) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
+                                                      ? ComputeProbit(val)
+                                                      : val;
     } else {
-      T scores;
+      float scores;
       unsigned char has_scores;
-      T val;
+      float val;
 #ifdef USE_OPENMP
 #pragma omp parallel for private(scores, has_scores, val)
 #endif
@@ -336,14 +334,14 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
                          : scores) +
                         origin
                   : origin;
-        *((T*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
-                                                        ? ComputeProbit((float)val)
-                                                        : val;
+        *((float*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
+                                                            ? ComputeProbit(val)
+                                                            : val;
       }
     }
   } else {
     if (N == 1) {
-      std::vector<T> scores(n_targets_, (T)0);
+      std::vector<float> scores(n_targets_, (T)0);
       std::vector<unsigned char> has_scores(n_targets_, 0);
 
 #ifdef USE_OPENMP
@@ -352,8 +350,8 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       for (int64_t j = 0; j < nbtrees_; ++j)
         ProcessTreeNode(scores.data(), roots_[j], x_data, has_scores.data());
 
-      std::vector<T> outputs(n_targets_);
-      T val;
+      std::vector<float> outputs(n_targets_);
+      float val;
       for (int64_t j = 0; j < n_targets_; ++j) {
         //reweight scores based on number of voters
         val = base_values_.size() == (size_t)n_targets_ ? base_values_[j] : 0.f;
@@ -367,19 +365,19 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       write_scores(outputs, post_transform_, 0, Y, -1);
 
     } else {
-      std::vector<T> scores(n_targets_, (T)0);
-      std::vector<T> outputs(n_targets_);
+      std::vector<float> scores(n_targets_, (T)0);
+      std::vector<float> outputs(n_targets_);
       std::vector<unsigned char> has_scores(n_targets_, 0);
       int64_t current_weight_0;
-      T val;
+      float val;
 
 #ifdef USE_OPENMP
 #pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0)
 #endif
       for (int64_t i = 0; i < N; ++i) {
         current_weight_0 = i * stride;
-        std::fill(scores.begin(), scores.end(), (T)0);
-        std::fill(outputs.begin(), outputs.end(), (T)0);
+        std::fill(scores.begin(), scores.end(), 0.f);
+        std::fill(outputs.begin(), outputs.end(), 0.f);
         memset(has_scores.data(), 0, has_scores.size());
 
         for (size_t j = 0; j < roots_.size(); ++j)
