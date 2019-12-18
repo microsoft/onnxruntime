@@ -16,7 +16,11 @@ function(get_installed_sdk
     set(${sdk_folder} ${win10_sdk_root} PARENT_SCOPE)
 
     # return the sdk version
-    set(${output_sdk_version} ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION} PARENT_SCOPE)
+    if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+        set(${output_sdk_version} ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION} PARENT_SCOPE)
+    else()
+        set(${output_sdk_version} ${CMAKE_SYSTEM_VERSION} PARENT_SCOPE)
+    endif()
 endfunction()
 
 # current sdk binary directory
