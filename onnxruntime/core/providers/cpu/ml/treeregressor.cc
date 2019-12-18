@@ -13,17 +13,19 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
     TreeEnsembleRegressor<float>);
 
+/*
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     1,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
     TreeEnsembleRegressor<double>);
+*/
 
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
     : OpKernel(info),
-      base_values_(info.GetAttrsOrDefault<T>("base_values")),
+      base_values_(info.GetAttrsOrDefault<float>("base_values")),
       post_transform_(::onnxruntime::ml::MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))),
       aggregate_function_(::onnxruntime::ml::MakeAggregateFunction(info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"))) {
   ORT_ENFORCE(info.GetAttr<int64_t>("n_targets", &n_targets_).IsOK());
@@ -31,15 +33,16 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   std::vector<int64_t> nodes_treeids_(info.GetAttrsOrDefault<int64_t>("nodes_treeids"));
   std::vector<int64_t> nodes_nodeids_(info.GetAttrsOrDefault<int64_t>("nodes_nodeids"));
   std::vector<int64_t> nodes_featureids_(info.GetAttrsOrDefault<int64_t>("nodes_featureids"));
-  std::vector<T> nodes_values_(info.GetAttrsOrDefault<T>("nodes_values"));
-  std::vector<T> nodes_hitrates_(info.GetAttrsOrDefault<T>("nodes_hitrates"));
+  // GetAttrsOrDefault for double not available.
+  std::vector<float> nodes_values_(info.GetAttrsOrDefault<float>("nodes_values"));
+  std::vector<float> nodes_hitrates_(info.GetAttrsOrDefault<float>("nodes_hitrates"));
   std::vector<int64_t> nodes_truenodeids_(info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"));
   std::vector<int64_t> nodes_falsenodeids_(info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"));
   std::vector<int64_t> missing_tracks_true_(info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"));
   std::vector<int64_t> target_nodeids_(info.GetAttrsOrDefault<int64_t>("target_nodeids"));
   std::vector<int64_t> target_treeids_(info.GetAttrsOrDefault<int64_t>("target_treeids"));
   std::vector<int64_t> target_ids_(info.GetAttrsOrDefault<int64_t>("target_ids"));
-  std::vector<T> target_weights_(info.GetAttrsOrDefault<T>("target_weights"));
+  std::vector<float> target_weights_(info.GetAttrsOrDefault<float>("target_weights"));
 
   //update nodeids to start at 0
   ORT_ENFORCE(!nodes_treeids_.empty());
@@ -311,7 +314,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
                         origin
                   : origin;
       *((T*)(Y->template MutableData<T>())) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
-                                                  ? ComputeProbit(val)
+                                                  ? ComputeProbit((float)val)
                                                   : val;
     } else {
       T scores;
@@ -334,7 +337,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
                         origin
                   : origin;
         *((T*)(Y->template MutableData<T>()) + i) = (post_transform_ == POST_EVAL_TRANSFORM::PROBIT)
-                                                        ? ComputeProbit(val)
+                                                        ? ComputeProbit((float)val)
                                                         : val;
       }
     }

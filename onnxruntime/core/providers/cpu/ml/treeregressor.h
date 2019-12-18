@@ -29,7 +29,7 @@ class TreeEnsembleRegressor final : public OpKernel {
 
   struct SparseValue {
     int64_t i;
-    T value;
+    float value;  // T value?
   };
 
   enum MissingTrack {
@@ -41,8 +41,8 @@ class TreeEnsembleRegressor final : public OpKernel {
   struct TreeNodeElement {
     TreeNodeElementId id;
     int feature_id;
-    T value;
-    T hitrates;
+    float value;  // T value?
+    float hitrates;  // T value?
     NODE_MODE mode;
     TreeNodeElement* truenode;
     TreeNodeElement* falsenode;
@@ -51,7 +51,7 @@ class TreeEnsembleRegressor final : public OpKernel {
     std::vector<SparseValue> weights;
   };
 
-  std::vector<T> base_values_;
+  std::vector<float> base_values_;  // T value?
   int64_t n_targets_;
   POST_EVAL_TRANSFORM post_transform_;
   AGGREGATE_FUNCTION aggregate_function_;
