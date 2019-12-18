@@ -24,7 +24,6 @@ static const std::unordered_set<std::string> valid_keys = {
     kNupharFastMath,
     kNupharFastActivation,
     kNupharForceNoTensorize,
-    kNupharTensorizeParallel,
     kNupharTensorize_IGEMM_Tile_M,
     kNupharTensorize_IGEMM_Tile_N,
     kNupharTensorize_IGEMM_Tile_K,

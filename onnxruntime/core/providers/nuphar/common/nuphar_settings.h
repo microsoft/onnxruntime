@@ -25,12 +25,6 @@ constexpr static const char* kNupharMatMulExec_ExternCpu = "extern_cpu";
 
 constexpr static const char* kNupharForceNoTensorize = "nuphar_force_no_tensorize";
 
-// Option to enable TVM parallel schedule
-// TVM parallel schedule is necessary for multi-thread case,
-// however, it will introduce extra overhead even when number of thread = 1.
-// So add this option to avoid the overhead for single thread case.
-constexpr static const char* kNupharTensorizeParallel = "nuphar_igemm_parallel";
-
 constexpr static const char* kNupharTensorize_IGEMM_Tile_M = "nuphar_igemm_tile_m";
 constexpr static const char* kNupharTensorize_IGEMM_Tile_N = "nuphar_igemm_tile_n";
 constexpr static const char* kNupharTensorize_IGEMM_Tile_K = "nuphar_igemm_tile_k";
