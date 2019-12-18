@@ -24,17 +24,7 @@ GradientDef GetGradientForOp(const Node* node,
   ORT_ENFORCE(gradient_builder != nullptr,
               "The gradient builder has not been registered:", node->OpType());
 
-  auto gradient_def = gradient_builder->GetGradientDefs();
-
-  // TODO: Figure out the correct default copy behavior
-  // modify the GradientDef returned by GetGradiendDefs()
-  if (gradient_builder->CopyAttributes() && node->GetAttributes().size() > 0) {
-    for (NodeDef& node_def : gradient_def) {
-      node_def.attributes = node->GetAttributes();
-    }
-  }
-
-  return gradient_def;
+  return gradient_builder->GetGradientDefs();
 }
 
 #define REGISTER_GRADIENT_BUILDER(op, gradientbuilder) \

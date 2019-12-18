@@ -37,10 +37,6 @@ class GradientBuilderBase {
 
   virtual ~GradientBuilderBase() {}
 
-  virtual bool CopyAttributes() const {
-    return true;
-  }
-
   GradientDef GetGradientDefs() const {
     GradientDef node_defs = GetGradientDefsImpl();
     for (size_t i = 0; i < node_defs.size(); ++i) {
