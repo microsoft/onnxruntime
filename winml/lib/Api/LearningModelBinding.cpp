@@ -150,7 +150,7 @@ void LearningModelBinding::Bind(
     hstring const& name,
     Windows::Foundation::IInspectable const& value,
     Windows::Foundation::Collections::IPropertySet const& properties) try {
-  _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
+  _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding, false);
 
   BindingType bindingType;
   std::string bindingName;
@@ -486,7 +486,7 @@ STDMETHODIMP LearningModelBinding::Bind(
     UINT32 cchName,
     IUnknown* value) {
   try {
-    _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
+    _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding, false);
     BindingType bindingType;
     std::string bindingName;
     OrtValue* binding_value_ptr = nullptr;

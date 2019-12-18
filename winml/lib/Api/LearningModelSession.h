@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include "LearningModelSession.g.h"
 
 #include "LearningModelBinding.h"
@@ -125,6 +127,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   // is_first_evaluate_ is used as a heuristic to determine
   // when the dml upload heap can be trimmed.
   bool is_first_evaluate_ = true;
+
+  // used to counter time to send up evaluation stop telemetry event
+  const long long kDurationBetweenSending = 1000 * 50;  // duration in (us).  send a event every 50ms
+  std::chrono::high_resolution_clock::time_point time_sent_last_;
 };
 
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

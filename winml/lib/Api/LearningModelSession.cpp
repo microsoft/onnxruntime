@@ -91,7 +91,7 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
 void LearningModelSession::Initialize() {
   // Begin recording session creation telemetry
   _winmlt::TelemetryEvent session_creation_event(
-    _winmlt::EventCategory::kSessionCreation);
+    _winmlt::EventCategory::kSessionCreation, true);
   // Get the optimized model proto from the learning model
   com_ptr<winmla::IModelProto> model_proto; 
   model_proto.attach(GetOptimizedModel());
@@ -307,7 +307,15 @@ wf::IAsyncOperation<winml::LearningModelEvaluationResult>
 LearningModelSession::EvaluateAsync(
     winml::LearningModelBinding binding,
     hstring const correlation_id) {
-  _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
+  auto end_time = std::chrono::high_resolution_clock::now();
+  bool sendTelemetry = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - time_sent_last_).count() > kDurationBetweenSending);
+  // Begin recording session creation telemetry
+  _winmlt::TelemetryEvent session_creation_event(
+      _winmlt::EventCategory::kEvaluation, sendTelemetry);
+
+  if (sendTelemetry) {
+    time_sent_last_ = std::chrono::high_resolution_clock::now();
+  }
   auto device = device_.as<LearningModelDevice>();
 
   // Get the ORT binding collection
@@ -355,7 +363,15 @@ LearningModelSession::Evaluate(
     winml::LearningModelBinding binding,
     hstring const& correlation_id) try {
   ToggleProfiler();
-  _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
+  auto end_time = std::chrono::high_resolution_clock::now();
+  bool sendTelemetry = (std::chrono::duration_cast<std::chrono::microseconds>(end_time - time_sent_last_).count() > kDurationBetweenSending);
+  // Begin recording session creation telemetry
+  _winmlt::TelemetryEvent session_creation_event(
+      _winmlt::EventCategory::kEvaluation, sendTelemetry);
+
+  if (sendTelemetry) {
+    time_sent_last_ = std::chrono::high_resolution_clock::now();
+  }
 
   ApplyEvaluationProperties();
 

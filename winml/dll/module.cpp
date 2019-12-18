@@ -34,6 +34,7 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
       break;
     case DLL_PROCESS_DETACH:
       // Unregister Trace Logging Provider feeding telemetry
+      telemetry_helper.LogWinMLShutDown();
       telemetry_helper.UnRegister();
 
 #ifdef NDEBUG
@@ -68,7 +69,8 @@ STDAPI DllCanUnloadNow() {
   // CoFreeUnusedLibraries since there can be outstanding COM object
   // references to many objects (AbiCustomRegistry, IMLOperatorKernelContext,
   // IMLOperatorTensor, etc) that are not reference counted in this path.
-  //
+  
+  
   // In order to implement DllCanUnloadNow we would need to reference count
   // all of the instances of non-WinRT COM objects that have been shared
   // across the dll boundary or harden the boundary APIs to make sure to

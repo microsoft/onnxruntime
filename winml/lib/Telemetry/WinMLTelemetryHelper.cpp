@@ -16,7 +16,15 @@ WinMLTelemetryHelper::WinMLTelemetryHelper()
 WinMLTelemetryHelper::~WinMLTelemetryHelper() {
 }
 
-
+void WinMLTelemetryHelper::LogWinMLShutDown() {
+  WinMLTraceLoggingWrite(
+      provider_,
+      "ShutDownWinML",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
+      TraceLoggingString("windows.ai.machinelearning.dll is unloaded", "message"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
 void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line) {
   if (!telemetry_enabled_)
     return;
