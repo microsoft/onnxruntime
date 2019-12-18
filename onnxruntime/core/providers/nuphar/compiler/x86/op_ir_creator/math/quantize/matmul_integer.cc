@@ -158,7 +158,6 @@ static Status EvaluateMatMulInteger(
         // and this case is not likely happen in real model
         // so add option to fall back to a general reduction
         bool isScalar = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1) && (embed_dim == 1);
-        isScalar;
 
         // Tensorization has two layout options: 1) Transpose or 2) Tiling
         auto layout_key = isScalar ? tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg)) : isGEMV ? tvm_codegen::WeightLayoutTransposePad2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width) : tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width);
