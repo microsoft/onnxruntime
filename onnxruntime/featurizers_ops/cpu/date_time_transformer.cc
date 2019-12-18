@@ -115,12 +115,9 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("OutputT0", DataTypeImpl::GetTensorType<int32_t>())
-        .TypeConstraint("OutputT1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("OutputT2", DataTypeImpl::GetTensorType<uint16_t>())
-        .TypeConstraint("OutputT3", DataTypeImpl::GetTensorType<std::string>()),
-    DateTimeTransformer
-);
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint64_t>()),
+    DateTimeTransformer);
 
 }  // namespace featurizers
 }  // namespace onnxruntime
