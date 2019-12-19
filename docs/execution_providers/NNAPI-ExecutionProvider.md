@@ -8,25 +8,7 @@ The NNAPI EP requires Android devices with Android 8.1 or higher.
 
 ## Build NNAPI EP
 
-### Pre-Requisites
-
-To build onnxruntime with NNAPI EP, install Android NDK first (see [BUILD.md](/BUILD.md#android))
-
-### Build Instructions
-
-The basic commands are following. There are also some other parameters for building the Android version. See [BUILD.md](/BUILD.md#android) for the details.
-
-#### Cross compiling on Windows
-
-```bash
-./build.bat --android --android_ndk_path <android ndk path> --dnnlibrary
-```
-
-#### Cross compiling on Linux
-
-```bash
-./build.sh --android --android_ndk_path <android ndk path> --dnnlibrary
-```
+For build instructions, please see the [BUILD page](../../BUILD.md#Android-NNAPI).
 
 ## Using NNAPI EP in C/C++
 
