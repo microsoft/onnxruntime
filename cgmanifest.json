@@ -446,6 +446,15 @@
             },
             "type": "git"
          }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "4df80d5865a9d4e97f6d0b9304d4316115a04d9e",
+               "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
+            },
+            "type": "git"
+         }
       }
    ],
    "Version": 1

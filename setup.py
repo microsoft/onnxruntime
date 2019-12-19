@@ -165,6 +165,8 @@ examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
+if package_name == 'onnxruntime-nuphar':
+  extra.extend([path.join('nuphar', 'NUPHAR_CACHE_VERSION')])
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")

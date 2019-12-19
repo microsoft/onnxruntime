@@ -130,7 +130,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
-    parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
+    parser.add_argument("--use_featurizers", action='store_true', help="Build with ML Featurizer support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
@@ -293,7 +293,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),
+                 "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
@@ -938,10 +938,18 @@ def main():
             if args.test:
                 log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
                 args.test = False
-          else:
-            toolset = 'host=x64'
-            if (args.msvc_toolset):
-                toolset += ',version=' + args.msvc_toolset
+          else:            
+            if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
+                #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
+                #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
+                #14.16 is MSVC version
+                #141 is MSVC Toolset Version
+                #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
+                toolset = 'v141,host=x64,version=' + args.msvc_toolset
+            elif args.msvc_toolset:
+                toolset = 'host=x64,version=' + args.msvc_toolset
+            else:
+                toolset = 'host=x64'
             if (args.cuda_version):
                 toolset += ',cuda=' + args.cuda_version
 
