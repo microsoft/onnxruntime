@@ -129,10 +129,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
 endif()
 
-if(onnxruntime_USE_AUTOML)
+if(onnxruntime_USE_FEATURIZERS)
   list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/automl_ops/*.h"
-    "${TEST_SRC_DIR}/automl_ops/*.cc")
+    "${TEST_SRC_DIR}/featurizers_ops/*.h"
+    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
@@ -218,8 +218,8 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_AUTOML)
-   list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
+if(onnxruntime_USE_FEATURIZERS)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
 endif()
 
 if(onnxruntime_USE_DML)
