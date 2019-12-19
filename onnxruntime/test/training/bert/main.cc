@@ -122,8 +122,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("alpha", "Adam/Lamb alpha parameter", cxxopts::value<float>()->default_value("0.9"))
       ("beta", "Adam/Lamb beta parameter", cxxopts::value<float>()->default_value("0.999"))
       ("lambda", "Adam/Lamb lambda parameter", cxxopts::value<float>()->default_value("0.01"))
-      ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"));
-
+      ("epsilon", "Adam/Lamb epsilon parameter", cxxopts::value<float>()->default_value("1e-6"))
+      ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -153,6 +153,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "warmup_ratio is not in valid range [0.0, 1.0]");
     }
     params.lr_params.warmup_ratio = ratio;
+
+    params.cuda_mem_limit_in_gb = flags["cuda_mem_limit_in_gb"].as<float>();
 
     float ratio_phase2 = flags["warmup_ratio_phase2"].as<float>();
     if (ratio_phase2 > 1.f || ratio_phase2 < 0.f) {
@@ -466,6 +468,31 @@ void setup_training_params(BertParameters& params) {
   };
 }
 
+static bool GetParametersForPhase(
+    size_t phase,  // counting from 0
+    const BertParameters& base_parameters, BertParameters& round_parameters) {
+  // beyond phase 2
+  if (phase >= 2) return false;
+
+  // don't do phase 2
+  if (phase == 1 && base_parameters.train_data_dir_phase2.empty()) return false;
+
+  round_parameters = base_parameters;
+
+  if (phase == 1) {  // phase 2
+    round_parameters.train_data_dir = round_parameters.train_data_dir_phase2;
+    round_parameters.test_data_dir = round_parameters.test_data_dir_phase2;
+
+    round_parameters.lr_params.initial_lr = round_parameters.initial_lr_phase2;
+    round_parameters.lr_params.warmup_ratio = round_parameters.warmup_ratio_phase2;
+    round_parameters.num_train_steps = round_parameters.num_train_steps_phase2;
+    round_parameters.batch_size = round_parameters.batch_size_phase2;
+    round_parameters.gradient_accumulation_steps = round_parameters.gradient_accumulation_steps_phase2;
+  }
+
+  return true;
+}
+
 static Status RunPerformanceTest(const BertParameters& params) {
   // setup fake data
   const int batch_size = static_cast<int>(params.batch_size);
@@ -499,31 +526,6 @@ static Status RunPerformanceTest(const BertParameters& params) {
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
   return Status::OK();
-}
-
-static bool GetParametersForPhase(
-    size_t phase,  // counting from 0
-    const BertParameters& base_parameters, BertParameters& round_parameters) {
-  // beyond phase 2
-  if (phase >= 2) return false;
-
-  // don't do phase 2
-  if (phase == 1 && base_parameters.train_data_dir_phase2.empty()) return false;
-
-  round_parameters = base_parameters;
-
-  if (phase == 1) {  // phase 2
-    round_parameters.train_data_dir = round_parameters.train_data_dir_phase2;
-    round_parameters.test_data_dir = round_parameters.test_data_dir_phase2;
-
-    round_parameters.lr_params.initial_lr = round_parameters.initial_lr_phase2;
-    round_parameters.lr_params.warmup_ratio = round_parameters.warmup_ratio_phase2;
-    round_parameters.num_train_steps = round_parameters.num_train_steps_phase2;
-    round_parameters.batch_size = round_parameters.batch_size_phase2;
-    round_parameters.gradient_accumulation_steps = round_parameters.gradient_accumulation_steps_phase2;
-  }
-
-  return true;
 }
 
 static Status RunTraining(const BertParameters& params) {

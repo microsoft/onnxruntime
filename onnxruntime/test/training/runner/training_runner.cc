@@ -148,7 +148,10 @@ Status TrainingRunner::Initialize() {
     CUDAExecutionProviderInfo xp_info{params_.mpi_context.local_rank};
     auto cuda_xp = std::make_unique<CUDAExecutionProvider>(xp_info);
     pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
-    ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+    if (params_.cuda_mem_limit_in_gb > 0)
+      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info, false, (size_t)(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024))));
+    else
+      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
   ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
@@ -192,7 +195,6 @@ Status TrainingRunner::Initialize() {
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
   if (params_.mpi_context.world_rank == 0 && !params_.model_actual_running_graph_path.empty()) {
     session_.Save(params_.model_actual_running_graph_path, TrainingSession::SaveOption::NO_RELOAD);
-
   }
 
   // maybe in the future we can support an evaluation-only run
@@ -238,37 +240,10 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     fetch_grad_accumulator_output.push_back(it->second);
   }
 
-  // initialize data loaders
-  ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));
   if (test_data_loader) {
     ORT_RETURN_IF_ERROR(test_data_loader->InitializeDataSetIndex(0));
   }
-
-  if (params_.is_perf_test && params_.perf_warm_up_iters > 0) {
-    auto training_data = training_data_loader.CurrentDataSet();
-    auto num_batches = training_data->TotalBatch(params_.batch_size);
-    ORT_RETURN_IF(params_.perf_warm_up_iters > num_batches,
-                  "perf_warm_up_iters is bigger than number of available batches.");
-
-    printf("Warming up for perf test.\n");
-    for (size_t batch = 0; batch < params_.perf_warm_up_iters; ++batch) {
-      std::vector<MLValue> feeds = training_data->GetKthBatch(params_.batch_size, batch, pinned_allocator_);
-      if (loss_scaler_) {
-        float loss_scale = loss_scaler_->GetLossScale();
-        TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scale_val, pinned_allocator_);
-        feeds.push_back(loss_scale_val);
-      }
-      TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val, pinned_allocator_);
-      feeds.push_back(lr_ort_val);
-
-      vector<MLValue> fetches;
-      ORT_RETURN_IF_ERROR(session_.Run(RunOptions(),
-                                       feed_names,
-                                       feeds,
-                                       fetch_names,
-                                       &fetches));
-    }
-  }
+  ORT_RETURN_IF_ERROR(training_data_loader.InitializeDataSetIndex(training_data_set_index_));
 
   const size_t num_shards_to_visit = training_data_loader.NumShards();
   const auto lr_scheduler = LearningRateScheduler::Create(params_.lr_params, params_.num_train_steps);
