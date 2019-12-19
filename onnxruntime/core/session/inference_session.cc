@@ -791,6 +791,8 @@ common::Status InferenceSession::Initialize() {
   try {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreationStart();
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
@@ -870,7 +872,6 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // and log telemetry
-    const Env& env = Env::Default();
     bool model_use_fp16 = ModelUseFP16(model_->ToProto());
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
                                                   model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
@@ -1119,6 +1120,13 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     total_run_duration_since_last_ = 0;
   }
 
+  // check the frequency to send Evalutaion Stop event
+  if (TimeDiffMicroSeconds(time_sent_last_evalutation_stop_) > kDurationBetweenSendingEvaluationStop) {
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogEvaluationStop();
+    // reset counters
+    time_sent_last_evalutation_stop_ = std::chrono::high_resolution_clock::now();
+  }
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);
