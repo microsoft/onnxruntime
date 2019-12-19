@@ -26,8 +26,8 @@ class Model {
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const logging::Logger& logger)
-      : Model(graph_name, is_onnx_domain_only, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {}, {},
-              logger) {}
+                 :Model(graph_name,is_onnx_domain_only, ModelMetaData(),IOnnxRuntimeOpSchemaRegistryList(),{},{},
+                     logger){}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,
@@ -105,24 +105,15 @@ class Model {
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
-  static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
-                             /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
-
   // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
   static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
-  static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
-
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
-
-  // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
-  static common::Status LoadFromBytes(int count, void* pBytes,
-                                      /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,

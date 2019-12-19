@@ -27,142 +27,6 @@ void matmulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
-
-void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
-  propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-  // we need at least two inputs to have a shape for this inference.
-  if (!hasNInputShapes(ctx, 2)) {
-    return;
-  }
-
-  int64_t group = getAttribute(ctx, "group", 1);
-
-  auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
-  }
-
-  // first dim is the batch axis and the next is the number of channels.
-  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
-
-  std::vector<int64_t> dilations;
-  if (getRepeatedAttribute(ctx, "dilations", dilations)) {
-    if (dilations.size() != n_input_dims) {
-      return;
-    }
-  } else {
-    dilations.assign(n_input_dims, 1);
-  }
-
-  std::vector<int64_t> strides;
-  if (getRepeatedAttribute(ctx, "strides", strides)) {
-    if (strides.size() != n_input_dims) {
-      return;
-    }
-  } else {
-    strides.assign(n_input_dims, 1);
-  }
-
-  std::vector<int64_t> kernel_shape;
-  if (getRepeatedAttribute(ctx, "kernel_shape", kernel_shape)) {
-    if (kernel_shape.size() != n_input_dims) {
-      return;
-    }
-  } else {
-    auto second_input_shape = ctx.getInputType(1)->tensor_type().shape();
-    for (int i = 2; i < second_input_shape.dim_size(); ++i) {
-      if (!second_input_shape.dim(i).has_dim_value()) {
-        return;
-      }
-      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
-    }
-  }
-
-  std::vector<int64_t> effective_kernel_shape = kernel_shape;
-  for (int i = 0; i < static_cast<int>(kernel_shape.size()); i++) {
-    // accounting for dilation, how big is the kernel in this dimension
-    effective_kernel_shape[i] =
-        (effective_kernel_shape[i] - 1) * dilations[i] + 1;
-  }
-
-  std::vector<int64_t> pads;
-
-  // Infer output shape if 'pads' tensor is available
-  const auto* pads_initializer = ctx.getInputData(2);
-  if (nullptr == pads_initializer) {
-    return;
-  }
-
-  if (pads_initializer->dims_size() != 1 ||
-      pads_initializer->data_type() != TensorProto::INT64)
-    fail_shape_inference(
-        "'pads' input must be a 1D (shape: [2 * n_input_dims]) tensor of type int64");
-
-  pads = ParseData<int64_t>(pads_initializer);
-
-  if (pads.size() != static_cast<size_t>(2 * n_input_dims))
-    fail_shape_inference("Pads has incorrect number of values");
-
-  std::vector<int64_t> output_shape;
-  bool output_shape_presented = true;
-  if (getRepeatedAttribute(ctx, "output_shape", output_shape)) {
-    if (output_shape.size() != n_input_dims) {
-      return;
-    }
-  } else {
-    output_shape_presented = false;
-  }
-
-  std::vector<int64_t> output_padding;
-  if (getRepeatedAttribute(ctx, "output_padding", output_padding)) {
-    if (output_padding.size() != n_input_dims) {  // Added only to one side.
-      return;
-    }
-  } else {
-    output_padding.assign(n_input_dims, 0);
-  }
-
-  auto final_output_shape =
-      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-
-  *final_output_shape->add_dim() = input_shape.dim(0);
-  *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
-      group;  // channels should be the second dim of second input multiply
-              // group.
-
-  int size_of_output;
-  if (output_shape_presented) {
-    size_of_output = static_cast<int>(output_shape.size());
-    for (int i = 0; i < size_of_output; ++i) {
-      if (input_shape.dim(i + 2).has_dim_value()) {
-        if (output_shape[i] < input_shape.dim(i + 2).dim_value()) {
-          // TODO: throw exception?
-          return;  // output shape value cannot be smaller than the input shape
-                   // value
-        }
-      }
-      final_output_shape->add_dim()->set_dim_value(output_shape[i]);
-    }
-    return;
-  } else {
-    size_of_output = input_shape.dim_size() - 2;
-    for (int i = 0; i < size_of_output; ++i) {
-      if (input_shape.dim(i + 2).has_dim_value()) {
-        int64_t output_shape_dim =
-            strides[i] * (input_shape.dim(i + 2).dim_value() - 1) +
-            output_padding[i] + effective_kernel_shape[i] - pads[i] -
-            pads[i + n_input_dims];
-        final_output_shape->add_dim()->set_dim_value(output_shape_dim);
-      } else {
-        final_output_shape->add_dim();
-      }
-    }
-    return;
-  }
-}
-
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -377,10 +241,12 @@ will be calculated.)DOC";
         auto& input_ids_shape = getInputShape(ctx, 0);
         auto& input_ids_dims = input_ids_shape.dim();
 
-        // Note that both batch size and sequence length could be symbolic.
-        // So we only check dimension size here.
         if (input_ids_dims.size() != 2) {
           fail_shape_inference("Inputs 0 shall be 2 dimensions");
+        }
+
+        if (!input_ids_dims[1].has_dim_value()) {
+          fail_shape_inference("Inputs 0 shall have value in dimension 1");
         }
 
         // get hidden_size from the last dimension of embedding
@@ -392,6 +258,8 @@ will be calculated.)DOC";
           fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
         }
         int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
+
+
 
         // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
         ONNX_NAMESPACE::TensorShapeProto output_shape;
@@ -1050,7 +918,9 @@ Sample echo operator.)DOC");
           "",
           "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "Constrain input and output types to float tensors")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::convTransposeWithDynamicPadsShapeInference);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FusedConv)
       .SetDomain(kMSDomain)

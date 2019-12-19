@@ -32,7 +32,7 @@ Status SequenceLength::Compute(OpKernelContext* context) const {
   auto* Y = context->Output(0, {});
   ORT_ENFORCE(Y != nullptr, "SequenceLength: Got nullptr for output tensor");
   auto* Y_data = Y->template MutableData<int64_t>();
-  *Y_data = static_cast<int64_t>(X->Size());
+  *Y_data = static_cast<int64_t>(X->tensors.size());
 
   return Status::OK();
 }
@@ -86,15 +86,15 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   const auto* I = context->Input<Tensor>(1);
   ORT_ENFORCE(I != nullptr, "Got nullptr input for index tensor");
   int64_t input_seq_idx = GetSeqIdx(*I);
-  if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(X->Size()))) {
+  if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(X->tensors.size()))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->Size(), ")");
+                           "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", X->tensors.size(), ")");
   }
 
   if (input_seq_idx < 0) {
-    input_seq_idx = static_cast<int64_t>(X->Size()) + input_seq_idx;
+    input_seq_idx = static_cast<int64_t>(X->tensors.size()) + input_seq_idx;
   }
-  const Tensor& indexed_tensor = X->Get(input_seq_idx);
+  const Tensor& indexed_tensor = X->tensors[input_seq_idx];
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
   ORT_ENFORCE(Y != nullptr, "SequenceAt: Got nullptr for output tensor");
   CopyCpuTensor(&indexed_tensor, Y);
@@ -167,7 +167,7 @@ Status SequenceEmpty::Compute(OpKernelContext* context) const {
       ORT_THROW("Unsupported 'dtype' value: ", dtype_);
   }
 
-  Y->SetType(seq_dtype);
+  Y->dtype = seq_dtype;
   return Status::OK();
 }
 
@@ -182,12 +182,12 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
-Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, std::vector<Tensor>& tensors) {
+Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, TensorSeq& tseq) {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   Tensor tmp(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
   CopyCpuTensor(&in_tensor, &tmp);
-  tensors.push_back(std::move(tmp));
+  tseq.tensors.push_back(std::move(tmp));
   return Status::OK();
 }
 
@@ -199,14 +199,14 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(X != nullptr, "Got nullptr for input tensor.");
 
   // Data type of the input tensor MUST be same as that of the input sequence
-  if (!S->IsSameDataType(*X)) {
+  if (S->dtype != X->DataType()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Data type of the input tensor MUST be same as that of the input sequence. Sequence data type (",
-                           DataTypeImpl::ToString(S->DataType()), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
+                           DataTypeImpl::ToString(S->dtype), "), input tensor data type (", DataTypeImpl::ToString(X->DataType()), ")");
   }
 
   const auto* I = context->Input<Tensor>(2);
-  int64_t num_tensors_input_seq = static_cast<int64_t>(S->Size());
+  int64_t num_tensors_input_seq = static_cast<int64_t>(S->tensors.size());
   int64_t input_seq_idx = num_tensors_input_seq + 1;  // default is append
   if (I) {                                            // position is optional
     input_seq_idx = GetSeqIdx(*I);
@@ -222,22 +222,19 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   ORT_ENFORCE(Y != nullptr, "SequenceInsert: Got nullptr for output sequence");
-  std::vector<Tensor> tensors;
-  tensors.reserve(num_tensors_input_seq + 1);
+  Y->dtype = S->dtype;
+  Y->tensors.reserve(num_tensors_input_seq + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      CreateCopyAndAppendCpuTensor(*X, context, tensors);
-      CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
+      CreateCopyAndAppendCpuTensor(*X, context, *Y);
+      CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
     } else {
-      CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
+      CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
     }
   }
   if (input_seq_idx == num_tensors_input_seq + 1) {
-    CreateCopyAndAppendCpuTensor(*X, context, tensors);
+    CreateCopyAndAppendCpuTensor(*X, context, *Y);
   }
-
-  Y->SetType(S->DataType());
-  Y->SetElements(std::move(tensors));
 
   return Status::OK();
 }
@@ -258,7 +255,7 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(S != nullptr, "Got nullptr for sequence input.");
 
   const auto* I = context->Input<Tensor>(1);
-  int64_t num_tensors_input_seq = static_cast<int64_t>(S->Size());
+  int64_t num_tensors_input_seq = static_cast<int64_t>(S->tensors.size());
   int64_t input_seq_idx = num_tensors_input_seq - 1;  // default is erase last one
   if (I) {                                            // position is optional
     input_seq_idx = GetSeqIdx(*I);
@@ -274,16 +271,15 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   ORT_ENFORCE(Y != nullptr, "SequenceErase: Got nullptr for output sequence");
-  Y->SetType(S->DataType());
-  std::vector<Tensor> tensors;
-  tensors.reserve(num_tensors_input_seq - 1);
+  Y->dtype = S->dtype;
+  Y->tensors.reserve(num_tensors_input_seq - 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       continue;
     }
-    CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
+    CreateCopyAndAppendCpuTensor(S->tensors[i], context, *Y);
   }
-  Y->SetElements(std::move(tensors));
+
   return Status::OK();
 }
 
@@ -314,14 +310,13 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   }
 
   // now copy the tensors to the output sequence
-  Y->SetType(first_dtype);
-  std::vector<Tensor> tensors;
-  tensors.reserve(num_inputs);
+  Y->dtype = first_dtype;
+  Y->tensors.reserve(num_inputs);
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
-    CreateCopyAndAppendCpuTensor(*X, context, tensors);
+    CreateCopyAndAppendCpuTensor(*X, context, *Y);
   }
-  Y->SetElements(std::move(tensors));
+
   return Status::OK();
 }
 
@@ -351,17 +346,18 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
   const Tensor* p_split_input = context->Input<Tensor>(1);
 
   Status status;
+  auto data_type = input.DataType();
 
-  if (input.IsDataType<float>())
+  if (utils::IsPrimitiveDataType<float>(data_type))
     status = ComputeImpl<float>(*context, input, p_split_input);
-  else if (input.IsDataType<double>())
+  else if (utils::IsPrimitiveDataType<double>(data_type))
     status = ComputeImpl<double>(*context, input, p_split_input);
-  else if (input.IsDataType<int32_t>())
+  else if (utils::IsPrimitiveDataType<int32_t>(data_type))
     status = ComputeImpl<int32_t>(*context, input, p_split_input);
-  else if (input.IsDataTypeString())
+  else if (utils::IsDataTypeString(data_type))
     status = ComputeImpl<std::string>(*context, input, p_split_input);
   else
-    ORT_THROW("SplitToSequence operator does not support ", input.DataType(), " yet");
+    ORT_THROW("SplitToSequence operator does not support ", data_type, " yet");
 
   return status;
 }
@@ -425,12 +421,13 @@ inline void copy_data<std::string>(const std::string* src, std::string* dst, siz
 
 static int64_t GetScalarSplitInput(const Tensor& tensor) {
   int64_t retval = INT_MAX;
-  if (tensor.IsDataType<int32_t>()) {
+  auto data_type = tensor.DataType();
+  if (utils::IsPrimitiveDataType<int32_t>(data_type)) {
     retval = *(tensor.Data<int32_t>());
-  } else if (tensor.IsDataType<int64_t>()) {
+  } else if (utils::IsPrimitiveDataType<int64_t>(data_type)) {
     retval = *(tensor.Data<int64_t>());
   } else {
-    ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(tensor.DataType()));
+    ORT_THROW("Invalid data type for split tensor ", DataTypeImpl::ToString(data_type));
   }
   return retval;
 }
@@ -499,9 +496,11 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
   // copy dimensions so we can update the selected axis in place
   auto& input_dims = input_shape.GetDims();
   std::vector<int64_t> output_dimensions{input_dims};
-  std::vector<Tensor> tensors;
+
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
+  auto& tseq = *context.Output<TensorSeq>(0);
+  tseq.dtype = input.DataType();
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on while considering uneven split
     int split_size;
@@ -543,12 +542,8 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     }
 
     // finally move the resulting tensor to the output sequence
-    tensors.push_back(std::move(output_tensor));
+    tseq.tensors.push_back(std::move(output_tensor));
   }
-
-  auto& tseq = *context.Output<TensorSeq>(0);
-  tseq.SetType(input.DataType());
-  tseq.SetElements(std::move(tensors));
 
   return Status::OK();
 }

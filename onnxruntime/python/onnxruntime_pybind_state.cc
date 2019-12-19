@@ -8,7 +8,6 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
-#include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
@@ -182,8 +181,10 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
   const auto& seq_tensors = val.Get<TensorSeq>();
+  size_t num_tensors = seq_tensors.tensors.size();
   py::list py_list;
-  for (const auto& rtensor : seq_tensors) {
+  for (size_t i = 0; i < num_tensors; ++i) {
+    const auto& rtensor = seq_tensors.tensors[i];
     py::object obj;
     GetPyObjFromTensor(rtensor, obj);
     py_list.append(obj);
@@ -193,38 +194,30 @@ void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
 
 void AddNonTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   // Should be in sync with core/framework/datatypes.h
-  auto val_type = val.Type();
-  if (val_type->IsTensorSequenceType()) {
+  if (val.Type() == DataTypeImpl::GetType<TensorSeq>()) {
     AddNonTensor<TensorSeq>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToString>()) {
+    AddNonTensor<MapStringToString>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToInt64>()) {
+    AddNonTensor<MapStringToInt64>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToFloat>()) {
+    AddNonTensor<MapStringToFloat>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapStringToDouble>()) {
+    AddNonTensor<MapStringToDouble>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToString>()) {
+    AddNonTensor<MapInt64ToString>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToInt64>()) {
+    AddNonTensor<MapInt64ToInt64>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToFloat>()) {
+    AddNonTensor<MapInt64ToFloat>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<MapInt64ToDouble>()) {
+    AddNonTensor<MapInt64ToDouble>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<VectorMapStringToFloat>()) {
+    AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
+  } else if (val.Type() == DataTypeImpl::GetType<VectorMapInt64ToFloat>()) {
+    AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
   } else {
-    utils::ContainerChecker c_checker(val_type);
-    if (c_checker.IsMap()) {
-      if (c_checker.IsMapOf<std::string, std::string>()) {
-        AddNonTensor<MapStringToString>(val, pyobjs);
-      } else if (c_checker.IsMapOf<std::string, int64_t>()) {
-        AddNonTensor<MapStringToInt64>(val, pyobjs);
-      } else if (c_checker.IsMapOf<std::string, float>()) {
-        AddNonTensor<MapStringToFloat>(val, pyobjs);
-      } else if (c_checker.IsMapOf<std::string, double>()) {
-        AddNonTensor<MapStringToDouble>(val, pyobjs);
-      } else if (c_checker.IsMapOf<int64_t, std::string>()) {
-        AddNonTensor<MapInt64ToString>(val, pyobjs);
-      } else if (c_checker.IsMapOf<int64_t, int64_t>()) {
-        AddNonTensor<MapInt64ToInt64>(val, pyobjs);
-      } else if (c_checker.IsMapOf<int64_t, float>()) {
-        AddNonTensor<MapInt64ToFloat>(val, pyobjs);
-      } else if (c_checker.IsMapOf<int64_t, double>()) {
-        AddNonTensor<MapInt64ToDouble>(val, pyobjs);
-      }
-    } else {
-      if (c_checker.IsSequenceOf<std::map<std::string, float>>()) {
-        AddNonTensor<VectorMapStringToFloat>(val, pyobjs);
-      } else if (c_checker.IsSequenceOf<std::map<int64_t, float>>()) {
-        AddNonTensor<VectorMapInt64ToFloat>(val, pyobjs);
-      } else {
-        throw std::runtime_error("Output is a non-tensor type which is not supported.");
-      }
-    }
+    throw std::runtime_error("Output is a non-tensor type which is not supported.");
   }
 }
 
@@ -351,7 +344,6 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
 }
 
 void addGlobalMethods(py::module& m) {
-  m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
       "get_device", []() -> std::string { return BACKEND_DEVICE; },
@@ -658,79 +650,72 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-            std::ostringstream res;
-            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              res << "[]";
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+        std::ostringstream res;
+        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          res << "[]";
+        } else {
+          res << "[";
+          for (int i = 0; i < shape->dim_size(); ++i) {
+            if (utils::HasDimValue(shape->dim(i))) {
+              res << shape->dim(i).dim_value();
+            } else if (utils::HasDimParam(shape->dim(i))) {
+              res << "'" << shape->dim(i).dim_param() << "'";
             } else {
-              res << "[";
-              for (int i = 0; i < shape->dim_size(); ++i) {
-                if (utils::HasDimValue(shape->dim(i))) {
-                  res << shape->dim(i).dim_value();
-                } else if (utils::HasDimParam(shape->dim(i))) {
-                  res << "'" << shape->dim(i).dim_param() << "'";
-                } else {
-                  res << "None";
-                }
-
-                if (i < shape->dim_size() - 1) {
-                  res << ", ";
-                }
-              }
-              res << "]";
-            }
-            res << ")";
-
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-            auto shape = na.Shape();
-            std::vector<py::object> arr;
-            if (shape == nullptr || shape->dim_size() == 0) {
-              return arr;
+              res << "None";
             }
 
-            arr.resize(shape->dim_size());
-            for (int i = 0; i < shape->dim_size(); ++i) {
-              if (utils::HasDimValue(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (utils::HasDimParam(shape->dim(i))) {
-                arr[i] = py::cast(shape->dim(i).dim_param());
-              } else {
-                arr[i] = py::none();
-              }
+            if (i < shape->dim_size() - 1) {
+              res << ", ";
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+          }
+          res << "]";
+        }
+        res << ")";
+
+        return std::string(res.str());
+      },
+           "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+        auto shape = na.Shape();
+        std::vector<py::object> arr;
+        if (shape == nullptr || shape->dim_size() == 0) {
+          return arr;
+        }
+
+        arr.resize(shape->dim_size());
+        for (int i = 0; i < shape->dim_size(); ++i) {
+          if (utils::HasDimValue(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_value());
+          } else if (utils::HasDimParam(shape->dim(i))) {
+            arr[i] = py::cast(shape->dim(i).dim_param());
+          } else {
+            arr[i] = py::none();
+          }
+        }
+        return arr;
+      },
+                             "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<InferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
-      // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
-      // without any conversion. So this init method can be used for model file path (string)
-      // and model content (bytes)
-      .def(py::init([](const SessionOptions& so, const std::string& arg, bool is_arg_file_name) {
-        // Given arg is the file path. Invoke the corresponding ctor().
-        if (is_arg_file_name) {
-          return onnxruntime::make_unique<InferenceSession>(so, arg, SessionObjectInitializer::Get());
-        }
-
-        // Given arg is the model content as bytes. Invoke the corresponding ctor().
-        std::istringstream buffer(arg);
-        return onnxruntime::make_unique<InferenceSession>(so, buffer, SessionObjectInitializer::Get());
-      }))
+      .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
+      .def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(
-          "load_model", [](InferenceSession* sess, std::vector<std::string>& provider_types) {
-            OrtPybindThrowIfError(sess->Load());
+          "load_model", [](InferenceSession* sess, const std::string& path, std::vector<std::string>& provider_types) {
+            OrtPybindThrowIfError(sess->Load(path));
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
+      .def("read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel, std::vector<std::string>& provider_types) {
+        std::istringstream buffer(serializedModel);
+        OrtPybindThrowIfError(sess->Load(buffer));
+        InitializeSession(sess, provider_types);
+      },
+           R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -786,9 +771,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("get_providers", [](InferenceSession* sess) -> const std::vector<std::string>& {
         return sess->GetRegisteredProviderTypes();
       })
-      .def_property_readonly("session_options", [](InferenceSession* sess) -> const SessionOptions& {
-        return sess->GetSessionOptions();
-      })
       .def_property_readonly("inputs_meta", [](const InferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
         auto res = sess->GetModelInputs();
         OrtPybindThrowIfError(res.first);
@@ -812,11 +794,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 }
 
 #ifdef USE_MIMALLOC
-static struct {
-  PyMemAllocatorEx mem;
-  PyMemAllocatorEx raw;
-  PyMemAllocatorEx obj;
-} allocators;
+  static struct {
+      PyMemAllocatorEx mem;
+      PyMemAllocatorEx raw;
+      PyMemAllocatorEx obj;
+  } allocators;
 #endif
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
@@ -825,34 +807,36 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #ifdef USE_MIMALLOC
   PyMemAllocatorEx alloc;
-  alloc.malloc = [](void* ctx, size_t size) {
+  alloc.malloc = [] (void *ctx, size_t size) { 
     ORT_UNUSED_PARAMETER(ctx);
-    return mi_malloc(size);
+    return mi_malloc(size); 
   };
 
-  alloc.calloc = [](void* ctx, size_t nelem, size_t elsize) {
+  alloc.calloc = [] (void *ctx, size_t nelem, size_t elsize) { 
     ORT_UNUSED_PARAMETER(ctx);
-    return mi_calloc(nelem, elsize);
+    return mi_calloc(nelem, elsize); 
   };
 
-  alloc.realloc = [](void* ctx, void* ptr, size_t new_size) {
-    if (mi_is_in_heap_region(ptr)) {
-      return mi_realloc(ptr, new_size);
-    } else {
-      PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
-      return a->realloc(ctx, ptr, new_size);
+  alloc.realloc = [] (void *ctx, void *ptr, size_t new_size) { 
+    if(mi_is_in_heap_region(ptr)) {
+      return mi_realloc(ptr, new_size); 
+    }
+    else {
+      PyMemAllocatorEx * a = (PyMemAllocatorEx *)ctx;
+      return a->realloc(ctx, ptr, new_size); 
     }
   };
 
-  alloc.free = [](void* ctx, void* ptr) {
-    if (mi_is_in_heap_region(ptr)) {
+  alloc.free = [] (void *ctx, void *ptr) { 
+    if(mi_is_in_heap_region(ptr)) {
       mi_free(ptr);
-    } else {
+    }
+    else {
       PyMemAllocatorEx* a = (PyMemAllocatorEx*)ctx;
       a->free(ctx, ptr);
     }
   };
-
+  
   alloc.ctx = &allocators.raw;
   PyMem_GetAllocator(PYMEM_DOMAIN_RAW, &allocators.raw);
   PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &alloc);

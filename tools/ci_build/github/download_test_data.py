@@ -69,7 +69,7 @@ def get_endpoint_by_region(current_endpoint, azure_location):
 
 def get_region_based_url(url, azure_location):
     current_endpoint = urlsplit(url).netloc
-    endpoint_by_region = get_endpoint_by_region(current_endpoint, azure_location)
+    endpoint_by_region = get_endpoint_by_region(current_endpoint, args.azure_region)
     url = url.replace(current_endpoint, endpoint_by_region)
     print("url changed to %s" % url)
     return url
@@ -84,13 +84,9 @@ def download_and_unzip(build_dir, url, dest_folder, use_token = True):
         url_with_token = url
 
     # Download data using AZCopy tool
-    # Our linux CI build machine has azcopy in /usr/bin but the version is too old
-    azcopy_exe = 'azcopy.exe' if sys.platform.startswith("win") and shutil.which('azcopy') else os.path.join(build_dir,'azcopy')
     try:
-        subprocess.run([azcopy_exe,'cp', '--log-level','ERROR', '--recursive', url_with_token, build_dir],check=True)
-    except Exception as e:
-        print(e)
-        print(azcopy_exe)
+        subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', '--recursive', url_with_token, build_dir],check=True)
+    except:
         raise Exception("Downloading data failed. Source: " + url + " Destination: " + build_dir)
 
     os.makedirs(dest_folder,exist_ok=True)
@@ -111,23 +107,22 @@ def download_and_unzip(build_dir, url, dest_folder, use_token = True):
 def download_additional_data(build_dir, azure_region):
     additional_data_url = 'https://onnxruntimetestdata.blob.core.windows.net/models/'
     url = get_region_based_url(args.test_data_url, azure_region)
-    if not shutil.which('cmake'):
-      cmake_url = urljoin(additional_data_url, 'cmake-3.15.1-win64-x64.zip')
-      print("Starting download for cmake : " + cmake_url)
-      download_and_unzip(build_dir, cmake_url, 'cmake_temp', False)
-      dest_dir = os.path.join(build_dir,'cmake')
-      if os.path.exists(dest_dir):
+
+    cmake_url = urljoin(additional_data_url, 'cmake-3.15.1-win64-x64.zip')
+    print("Starting download for cmake : " + cmake_url)
+    download_and_unzip(build_dir, cmake_url, 'cmake_temp', False)
+    dest_dir = os.path.join(build_dir,'cmake')
+    if os.path.exists(dest_dir):
         print('deleting %s' % dest_dir)
         shutil.rmtree(dest_dir)
-      shutil.move(os.path.join(build_dir,'cmake_temp','cmake-3.15.1-win64-x64'),dest_dir)
+    shutil.move(os.path.join(build_dir,'cmake_temp','cmake-3.15.1-win64-x64'),dest_dir)
 
     # Download OpenCPPCoverageSetup.exe
     opencpp_url = urljoin(additional_data_url, 'OpenCppCoverageSetup-x64-0.9.7.0.exe')
     print("Starting download for opencppcoverage " + opencpp_url)
     dest_folder = os.path.join(build_dir, 'installer','opencppcoverage')
     os.makedirs(dest_folder,exist_ok=True)
-    azcopy_exe = 'azcopy.exe' if shutil.which('azcopy') else os.path.join(build_dir,'azcopy')
-    subprocess.run([azcopy_exe,'cp', '--log-level','ERROR', opencpp_url, os.path.join(dest_folder,'installer.exe')],check=True)
+    subprocess.run([os.path.join(build_dir,'azcopy'),'cp', '--log-level','ERROR', opencpp_url, os.path.join(dest_folder,'installer.exe')],check=True)
 
 args = parse_arguments()
 models_folder = 'models'
@@ -142,9 +137,8 @@ if args.edge_device:
         raise Exception(local_file_name + " does not exist on edge device. Downloading test data step failed.")
 else:
     all_downloads_done = False
-    azure_region = args.azure_region
-    if not azure_region:
-       azure_region = get_azure_region()
+    azure_region = get_azure_region()
+
     try:
         # Download test data
         url = get_region_based_url(args.test_data_url, azure_region)

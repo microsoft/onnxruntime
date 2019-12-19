@@ -153,10 +153,6 @@ class NupharExecutionProvider : public IExecutionProvider {
 
   mutable std::unordered_map<std::string, std::unique_ptr<Tensor>> constant_initializers_used_in_compiled_nodes_;
   mutable std::unordered_map<std::string, int> domain_versions_;
-
-  // used to create unique fused node name, make it static because
-  // subsession may create multiple instances of EPs
-  static int global_fused_count_;
 };
 
 }  // namespace onnxruntime

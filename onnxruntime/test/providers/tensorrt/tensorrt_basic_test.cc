@@ -56,7 +56,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_function_test.onnx";
+  std::string model_file_name = "trt_execution_provider_test_graph.onnx";
   status = onnxruntime::Model::Save(model, model_file_name);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
@@ -165,7 +165,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_nodeindexmapping_test.onnx";
+  std::string model_file_name = "trt_execution_provider_NodeIndexMappingTest.onnx";
   status = onnxruntime::Model::Save(model, model_file_name);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};

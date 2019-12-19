@@ -279,6 +279,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   ORT_ENFORCE(nullptr == axes_tensor || start_tensor->Shape() == axes_tensor->Shape(), "Starts and axes shape mismatch");
   ORT_ENFORCE(nullptr == steps_tensor || start_tensor->Shape() == steps_tensor->Shape(), "Starts and steps shape mismatch");
 
+  const auto& dtype = start_tensor->DataType();
   const auto& size = start_tensor->Shape().Size();
   input_starts.resize(size);
   input_ends.resize(size);
@@ -288,7 +289,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
   if (nullptr != steps_tensor)
     input_steps.resize(size);
 
-  if (start_tensor->IsDataType<int32_t>()) {
+  if (utils::IsPrimitiveDataType<int32_t>(dtype)) {
     std::copy(start_tensor->Data<int32_t>(), start_tensor->Data<int32_t>() + size, input_starts.begin());
     std::copy(ends_tensor->Data<int32_t>(), ends_tensor->Data<int32_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
@@ -298,7 +299,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
       std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
   }
 
-  else if (start_tensor->IsDataType<int64_t>()) {
+  else if (utils::IsPrimitiveDataType<int64_t>(dtype)) {
     std::copy(start_tensor->Data<int64_t>(), start_tensor->Data<int64_t>() + size, input_starts.begin());
     std::copy(ends_tensor->Data<int64_t>(), ends_tensor->Data<int64_t>() + size, input_ends.begin());
     if (nullptr != axes_tensor)
@@ -310,7 +311,7 @@ void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
 
   // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
   else {
-    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", start_tensor->DataType());
+    ORT_THROW("Data type for starts and ends inputs' need to be int32_t or int64_t, but instead got ", dtype);
   }
 }
 
