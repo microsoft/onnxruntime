@@ -9,7 +9,6 @@
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_16bit.h"
-#include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_8bit.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemm_8bit.h"
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
 #include "core/codegen/passes/scheduler/schedule_utils.h"
