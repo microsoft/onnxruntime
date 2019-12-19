@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/codegen/common/utils.h"
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 
 namespace onnxruntime {
@@ -57,6 +58,19 @@ bool InsertRootScheduleAndClosure(
   return true;
 }
 
+// Check precondition for vectorize schedule
+bool ShouldTryVectorization(
+    const tvm::Tensor& tensor,
+    ScheduleContext& ctx) {
+  auto it = ctx.scheduled_tensors.find(tensor->op.get());
+  if (it != ctx.scheduled_tensors.end()) {
+    if (it->second > ScheduleType::ScheduleInline) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Check the schedule of tensor
 // If it is not scheduled, try to vectorize it.
 // Note TryVectorization has to use with compute_root.
@@ -65,12 +79,8 @@ bool TryVectorization(
     const tvm::Tensor& tensor,
     int64_t natural_vector_size,
     ScheduleContext& ctx) {
-  auto it = ctx.scheduled_tensors.find(tensor->op.get());
-  if (it != ctx.scheduled_tensors.end()) {
-    if (it->second > ScheduleType::ScheduleInline) {
-      return false;
-    }
-  }
+  if (!ShouldTryVectorization(tensor, ctx))
+    return false;
 
   auto shape = tensor->shape;
   auto rank = shape.size();
@@ -91,7 +101,11 @@ bool TryVectorization(
       auto axis = compute_op->axis;
       tvm::IterVar x = axis[rank - 1];
       if ((*tail_dim) > natural_vector_size) {
-        if ((*tail_dim) % natural_vector_size == 0) {
+        if ((*tail_dim) % natural_vector_size != 0) {
+          natural_vector_size = GCD<int64_t>(natural_vector_size, (*tail_dim));
+        }
+
+        if (natural_vector_size > 1) {
           tvm::IterVar xi, xo;
           ctx.schedule[tensor->op].split(x, static_cast<int32_t>(natural_vector_size), &xo, &xi);
           ctx.schedule[tensor->op].vectorize(xi);

@@ -25,7 +25,8 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
                          const std::initializer_list<float>& expected_output,
                          const vector<int64_t>& expected_output_shape,
                          OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                         const std::string& err_str = "") {
+                         const std::string& err_str = "",
+                         const std::unordered_set<std::string>& excluded_provider_types = {kTensorrtExecutionProvider}) {
   OpTester test("ConvTranspose");
   test.AddAttribute("kernel_shape", attributes.kernel_shape);
   test.AddAttribute("pads", attributes.pads);
@@ -52,9 +53,31 @@ void TestConvTransposeOp(const ConvTransposeOpAttributes& attributes,
     test.AddInput<float>(szNames[i], input_shapes[i], inputs[i]);
   }
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});  // Disable TensorRT because weight as input is not supported
+
+  
+  test.Run(expect_result, err_str, excluded_provider_types);  // Disable TensorRT because weight as input is not supported
 }
 }  // namespace
+
+TEST(ConvTransposeTest, ConvTranspose_1D) {
+  ConvTransposeOpAttributes attrs = {
+      vector<int64_t>{3},        // kernel_shape
+      {},                        // output_padding
+      {},                        // output_shape
+      vector<int64_t>{0, 0},     // pads
+      vector<int64_t>{1},        // strides
+      vector<int64_t>{1},        // dilations
+      1                          // group
+  };
+  vector<float> X = {0.0f, 1.0f, 2.0f};
+  vector<int64_t> X_shape = {1, 1, 3};
+  vector<float> W = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  vector<int64_t> W_shape = {1, 2, 3};
+  vector<int64_t> Y_shape = {1, 2, 5};
+  auto expected_vals = {0.0f, 1.0f, 3.0f, 3.0f, 2.0f, 0.0f, 1.0f, 3.0f, 3.0f, 2.0f};
+
+  TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+}
 
 TEST(ConvTransposeTest, ConvTranspose_2D) {
   ConvTransposeOpAttributes attrs = {

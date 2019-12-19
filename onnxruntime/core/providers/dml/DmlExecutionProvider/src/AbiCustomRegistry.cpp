@@ -499,10 +499,15 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         registration->requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
         registration->requiredConstantCpuInputs = constantCpuInputCapture;
 
-        (*m_graphNodeFactoryMap)[create_info.kernel_def.get()] = registration;
+        onnxruntime::KernelDef* kernelDef = create_info.kernel_def.get();
+        THROW_IF_NOT_OK(m_kernelRegistry->RegisterCustomKernel(create_info));
+        (*m_graphNodeFactoryMap)[kernelDef] = registration;
     }
-
-    m_kernelRegistry->RegisterCustomKernel(create_info);
+    else
+    {
+        // For backward compatibility, this does not propagate errors
+        m_kernelRegistry->RegisterCustomKernel(create_info);
+    }
 
     return S_OK;
 }

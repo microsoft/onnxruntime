@@ -6,6 +6,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [Python](#Python)
 * [C#](#C)
 * [C/C++](#CC)
+* [Java](#Java)
 ***
  
 ## Python
@@ -38,6 +39,7 @@ For a list of available dockerfiles and published images to help with getting st
 **Inference and Deploy wtih Azure IoT Edge**
   * [Intel OpenVINO](http://aka.ms/onnxruntime-openvino)
   * [NVIDIA TensorRT on Jetson Nano (ARM64)](http://aka.ms/onnxruntime-arm64)
+  * [ONNX Runtime with Azure ML](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md)
 
 **Other**
 * [Running ONNX model tests](./docs/Model_Test.md)
@@ -50,3 +52,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 * [C++ - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
 * [C++ - Inferencing (MNIST)](../samples/c_cxx/MNIST)
+
+## Java
+* [Inference Tutorial](../docs/Java_API.md#getting-started)
+* [MNIST inference](../java/sample/ScoreMNIST.java)

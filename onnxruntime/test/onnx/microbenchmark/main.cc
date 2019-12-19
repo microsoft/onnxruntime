@@ -28,7 +28,7 @@ BENCHMARK(BM_CPUAllocator)->Arg(4)->Arg(sizeof(Tensor));
 
 static void BM_ResolveGraph(benchmark::State& state) {
   std::shared_ptr<onnxruntime::Model> model_copy;
-  auto st = onnxruntime::Model::Load("../models/opset8/test_tiny_yolov2/model.onnx", model_copy);
+  auto st = onnxruntime::Model::Load(ORT_TSTR("../models/opset8/test_tiny_yolov2/model.onnx"), model_copy);
   if (!st.IsOK()) {
     printf("Parse model failed: %s", st.ErrorMessage().c_str());
     abort();

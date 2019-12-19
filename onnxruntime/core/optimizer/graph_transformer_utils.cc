@@ -18,7 +18,14 @@
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/free_dim_override_transformer.h"
+#include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/gelu_approximation.h"
+#include "core/optimizer/layer_norm_fusion.h"
+#include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/attention_fusion.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -41,12 +48,13 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       rules.push_back(onnxruntime::make_unique<EliminateDropout>());
       rules.push_back(onnxruntime::make_unique<FuseReluClip>());
       rules.push_back(onnxruntime::make_unique<ShapeToInitializer>());
-      break;
-
-    case TransformerLevel::Level2:
       rules.push_back(onnxruntime::make_unique<ConvAddFusion>());
       rules.push_back(onnxruntime::make_unique<ConvMulFusion>());
       rules.push_back(onnxruntime::make_unique<ConvBNFusion>());
+      break;
+
+    case TransformerLevel::Level2:
+      // No level2 rules available today
       break;
 
     case TransformerLevel::Level3:
@@ -99,23 +107,34 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> l1_execution_providers = {};
 
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
 
     case TransformerLevel::Level2: {
-      std::unordered_set<std::string> l2_execution_providers = {onnxruntime::kCpuExecutionProvider};
+      std::unordered_set<std::string> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
 
       // create rule based transformer consisting of all the level2 rewrite rules
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l2_execution_providers);
+      rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, cpu_execution_providers);
 
       // create standalone transformers
 #ifndef DISABLE_CONTRIB_OPS
-      transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(l2_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l2_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(l2_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(l2_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_execution_providers));
+
+      std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
+
+      std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<GeluApproximation>(cuda_execution_providers));
 #endif
     } break;
 
@@ -126,7 +145,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
 #endif
-
     } break;
 
     default:

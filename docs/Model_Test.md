@@ -35,7 +35,7 @@ Options:
 	-r [repeat]: Specifies the number of times to repeat    
 	-v: verbose    
 	-n [test_case_name]: Specifies a single test case to run.    
-	-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn' or 'tensorrt'. Default: 'cpu'.    
+	-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl' or 'tensorrt'. Default: 'cpu'.    
 	-x: Use parallel executor, default (without -x): sequential executor.    
 	-h: help    
 

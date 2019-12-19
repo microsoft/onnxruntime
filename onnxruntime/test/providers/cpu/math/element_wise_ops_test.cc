@@ -11,6 +11,55 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(MathOpTest, DimWithZeroHandling) {
+  auto run = [](OpTester& tester) {
+    // exclude NGraph and TensorRT as this isn't handled by those EPs
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
+  };
+
+  // test binary element-wise op broadcasting when there's a dim with value of zero
+  // equal rank
+  OpTester test("Add");
+  test.AddInput<int64_t>("A", {3, 1}, {1, 2, 3});
+  test.AddInput<int64_t>("B", {3, 0}, {});
+  test.AddOutput<int64_t>("C", {3, 0}, {});
+  run(test);
+
+  // zero in shape with smaller rank
+  OpTester test1("Add");
+  test1.AddInput<int64_t>("A", {2, 1, 2}, {1, 2, 3, 4});
+  test1.AddInput<int64_t>("B", {0, 2}, {});
+  test1.AddOutput<int64_t>("C", {2, 0, 2}, {});
+  run(test1);
+
+  // zero in shape with larger rank
+  OpTester test2("Add");
+  test2.AddInput<int64_t>("A", {0, 2, 2}, {});
+  test2.AddInput<int64_t>("B", {1, 2}, {1, 2});
+  test2.AddOutput<int64_t>("C", {0, 2, 2}, {});
+  run(test2);
+
+  // scalar
+  OpTester test3("Add");
+  test3.AddInput<int64_t>("A", {}, {1});
+  test3.AddInput<int64_t>("B", {0}, {});
+  test3.AddOutput<int64_t>("C", {0}, {});
+  run(test3);
+
+  // test that BroadcastLoopSpan also works. Mod uses that
+  OpTester test4("Mod", 10);
+  test4.AddInput<int64_t>("A", {2, 2, 0}, {});
+  test4.AddInput<int64_t>("B", {2, 1}, {1, 2});
+  test4.AddOutput<int64_t>("C", {2, 2, 0}, {});
+  run(test4);
+
+  // test unary op handles it as well
+  OpTester test5("Floor");
+  test5.AddInput<float>("A", {0, 3}, {});
+  test5.AddOutput<float>("B", {0, 3}, {});
+  run(test5);
+}
+
 TEST(MathOpTest, Add_int32) {
   OpTester test("Add");
   test.AddInput<int32_t>("A", {3}, {1, 2, 3});
@@ -296,7 +345,11 @@ TEST(MathOpTest, Sub) {
                         {2.0f, -2.4f, -433.3f,
                          0.0f, -2.0f, -164.0f,
                          0.0f, 0.0f, -20000.0f});
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#else
   test.Run();
+#endif
 }
 
 TEST(MathOpTest, Sub_Broadcast_Scalar) {
@@ -401,7 +454,7 @@ TEST(MathOpTest, Abs_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, 2, -1, -5});
   test.AddOutput<int8_t>("Y", dims, {1, 2, 1, 5});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8, Assertion `regionRanges != nullptr' failed
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8, Assertion `regionRanges != nullptr' failed
 }
 
 TEST(MathOpTest, Abs_int32) {
@@ -429,7 +482,7 @@ TEST(MathOpTest, Neg_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: INT8 is not supported
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8 is not supported
 }
 
 TEST(MathOpTest, Neg_int32) {
@@ -1625,6 +1678,24 @@ TEST(BitShiftOpTest, BroadcastXRight) {
   test.AddInput<uint64_t>("X", {2}, {64, 32});
   test.AddInput<uint64_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<uint64_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastYLeft_Uint8) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint8_t>("X", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<uint8_t>("Y", {2}, {1, 2});
+  test.AddOutput<uint8_t>("Z", {3, 2}, {2, 8, 6, 16, 10, 24});
+  test.Run();
+}
+
+TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint8_t>("X", {2}, {64, 32});
+  test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
   test.Run();
 }
 

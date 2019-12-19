@@ -25,6 +25,7 @@ namespace onnxruntime {
 thread_local int64_t NupharSubgraphUnit::counter = 0;
 
 thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExecutionProvider::tls_realized_dims_;
+int NupharExecutionProvider::global_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
 #if USE_TVM_WITH_LLVM
@@ -57,9 +58,9 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     target_str = default_nuphar_target_str;
   }
 
+  const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   if (target_str == llvm_target_str) {
     // auto detect from CPU ID
-    const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
     if (cpu_id_info.HasAVX512f()) {
       codegen_target_ = CodeGenTarget_AVX512();
     } else if (cpu_id_info.HasAVX2()) {
@@ -81,9 +82,21 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
 
-  CreateTVMTarget();
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+    if ((target_str == "avx512" && !cpu_id_info.HasAVX512f()) ||
+        (target_str == "avx2" && !cpu_id_info.HasAVX2()) ||
+        (target_str == "avx" && !cpu_id_info.HasAVX())) {
+      LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET is not compatible with host machine."
+                               "Target code will be generated, but exectuion will fail!";
+    }
+    // For CPU, use target as host since the tvm_host_target_ is the one used to generate code in TVM
+    tvm_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+    tvm_host_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+  } else {
+    CreateTVMTarget();
+    tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
+  }
 
-  tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
   tvm_ctx_.device_id = 0;  // use the default device id for CPU allocator
 
@@ -113,8 +126,8 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   handle->shape_inference = whole_graph_shape_infer_;
 
-  // TODO: remove
-  handle->enable_per_node_parallelized = info.enable_per_node_parallel;
+  handle->parallel_min_workloads = std::stoi(settings.GetOptionValue(kNupharParallelMinWorkloads));
+
   // TODO: remove
   handle->allow_unaligned_buffers = info.allow_unaligned_buffers;  // TODO remove this
 
@@ -146,7 +159,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     auto s =
         node.ForEachWithIndex(
             node.OutputDefs(),
-            [&](const NodeArg& def, size_t index) {
+            [&](const NodeArg& def, size_t) {
               if (def.Shape())
                 return Status::OK();
               else
@@ -177,7 +190,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   std::vector<std::unique_ptr<ComputeCapability>> results;
 
-  auto is_supported_func = [&](const Node& node) {
+  typedef std::function<bool(const Node&)> IsSupportedFunc;
+  IsSupportedFunc is_supported_func = [&](const Node& node) {
     bool all_shape_defined = true;
     node.ForEachDef([&all_shape_defined](const NodeArg& def, bool /*is_input*/) {
       if (def.Shape() == nullptr) {
@@ -212,27 +226,43 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           }
         }
       }
+      // reject when pooling on symbolic dims, since shape computation does not support it yet
+      it = attrs.find("kernel_shape");
+      ORT_ENFORCE(it != attrs.end());
+      int kernel_rank = it->second.ints_size();
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      int output_rank = output_shape->dim_size();
+      for (int d = output_rank - kernel_rank; d < output_rank; ++d) {
+        if (output_shape->dim(d).has_dim_param()) {
+          return false;
+        }
+      }
     }
 
     if (node.OpType() == "Slice") {
       auto num_inputs = inputs.size();
       ORT_ENFORCE(num_inputs > 0);
       std::vector<int64_t> axes;
+      std::vector<int64_t> steps;
       if (num_inputs > 1) {
         // Slice-10
         bool is_starts_dynamic = !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true);
         bool is_ends_dynamic = !graph_viewer.IsConstantInitializer(inputs[2]->Name(), true);
-
         bool is_axes_dynamic = inputs.size() > 3 && !graph_viewer.IsConstantInitializer(inputs[3]->Name(), true);
-
-        bool has_steps = inputs.size() > 4;
-        if (is_starts_dynamic || is_ends_dynamic || is_axes_dynamic || has_steps)
+        bool is_steps_dynamic = inputs.size() > 4 && !graph_viewer.IsConstantInitializer(inputs[4]->Name(), true);
+        if (is_starts_dynamic || is_ends_dynamic || is_axes_dynamic || is_steps_dynamic)
           return false;
+
+        const ONNX_NAMESPACE::TensorProto* steps_tp = nullptr;
+        bool found_steps = inputs.size() > 4 && graph_viewer.GetInitializedTensor(inputs[4]->Name(), steps_tp);
+        if (found_steps) {
+          GetVectorInt64FromTensorProto(steps, *steps_tp);
+        }
 
         const ONNX_NAMESPACE::TensorProto* axes_tp = nullptr;
         bool found_axes = inputs.size() > 3 && graph_viewer.GetInitializedTensor(inputs[3]->Name(), axes_tp);
         if (found_axes) {
-          GetSliceAxesFromTensorProto(axes, *axes_tp);
+          GetVectorInt64FromTensorProto(axes, *axes_tp);
         }
       } else {
         const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
@@ -247,11 +277,47 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       if (HasUnknownShapeOnAxes(inputs[0], axes))
         return false;
     }
+
+    if (node.OpType() == "Split") {
+      const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
+      auto axis = std::vector<int64_t>(1);
+      auto it = attrs.find("axis");
+      if (it != attrs.end()) {
+        axis[0] = it->second.i();
+      }
+      // check if we have symbolic dimension on axis, as TVM split cannot handle that
+      if (HasUnknownShapeOnAxes(inputs[0], axis))
+        return false;
+    }
+
+    if (IsAliasNode(node)) {
+      // for AliasNode as final output, skip them to avoid potential copy
+      for (auto iter = node.OutputEdgesBegin(); iter != node.OutputEdgesEnd(); ++iter) {
+        if (!is_supported_func(iter->GetNode())) {
+          return false;
+        }
+      }
+    }
+
+    if (node.OpType() == "Transpose") {
+      // When there's symbolic dim in last dim of Transpose output
+      // reject it since it was not able to vectorize inlined ops
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      const auto output_rank = output_shape->dim_size();
+      if (output_rank > 0 && output_shape->dim(output_rank - 1).has_dim_param()) {
+        return false;
+      }
+    }
     return true;
   };
   GraphPartitioner graph_partitioner(is_supported_func);
 
-  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, results).IsOK());
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, global_fused_count_, results).IsOK());
+
+  // reset global_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
+  // this is the time all graph cut should be finished as ORT handles main graph last
+  if (!graph_viewer.IsSubgraph())
+    global_fused_count_ = 0;
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo
@@ -263,6 +329,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
       node->ForEachDef(
           [this, &all_initialized_tensors, &graph_viewer](const NodeArg& def, bool is_input) {
+            if (!is_input)
+              return;
             auto iter = all_initialized_tensors.find(def.Name());
             if (iter != all_initialized_tensors.end()) {
               if (graph_viewer.IsConstantInitializer(def.Name(), true)) {

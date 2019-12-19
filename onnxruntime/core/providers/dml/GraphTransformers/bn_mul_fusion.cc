@@ -5,7 +5,7 @@
 
 #undef OPTIONAL
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h" 
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "bn_mul_fusion.h"
 
@@ -13,14 +13,14 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const onnxruntime::logging::Logger&) const {
   auto& BatchNormalization_node = node;
   const auto& mul_node = *BatchNormalization_node.OutputNodesBegin();
   const auto& BatchNormalization_inputs = BatchNormalization_node.InputDefs();
   const auto& mul_inputs = mul_node.InputDefs();
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_Scale_tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(BatchNormalization_inputs[1]->Name(), BatchNormalization_Scale_tensor_proto)){
+  if (!graph.GetInitializedTensor(BatchNormalization_inputs[1]->Name(), BatchNormalization_Scale_tensor_proto)) {
     return Status::OK();
   }
 
@@ -101,7 +101,7 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
   return Status::OK();
 }
 
-bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const onnxruntime::logging::Logger&) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
@@ -109,7 +109,7 @@ bool BatchNormalizationMulFusion::SatisfyCondition(const Graph& graph, const Nod
 
   const auto& next_node = *node.OutputNodesBegin();
   return !(!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7}) ||
-           next_node.GetInputEdgesCount() != 1 || graph.IsNodeOutputsInGraphOutputs(next_node) ||
+           next_node.GetInputEdgesCount() != 1 || !graph.GetNodeOutputsInGraphOutputs(next_node).empty() ||
            next_node.GetExecutionProviderType() != node.GetExecutionProviderType());
 }
 

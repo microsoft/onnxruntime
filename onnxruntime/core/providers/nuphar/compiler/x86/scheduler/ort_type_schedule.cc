@@ -3,34 +3,111 @@
 
 #include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 
+#include "core/codegen/passes/scheduler/schedule_utils.h"
+#include "core/framework/op_kernel_info.h"
+#include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
-#include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_extern.h"
 #include "core/providers/nuphar/compiler/x86/scheduler/tensorize/intrin_gemv_ll_ir.h"
-#include "core/framework/op_kernel_info.h"
+#include "core/providers/nuphar/compiler/x86/x86_target_info.h"
 #include <tvm/tvm.h>
+#include <tvm/ir_pass.h>
 
 namespace onnxruntime {
 namespace nuphar {
 
+bool TryParallelX86(
+    const tvm::Tensor& tensor,
+    int64_t to_dim,
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  auto compute_op = tensor->op.as<tvm::ComputeOpNode>();
+  if (compute_op == nullptr) {
+    return false;
+  }
+  if (compute_op->attrs.count(kNupharScheduleNoParallel)) {
+    return false;
+  }
+
+  const auto& shape = tensor->shape;
+
+  int rank = gsl::narrow<int>(shape.size());
+  tvm::Array<tvm::IterVar> to_fuse_for_parallel;
+  int64_t rank_to_parallel = (to_dim ? to_dim : rank - 1);
+  for (int64_t i = 0; i < rank_to_parallel && i < gsl::narrow<int64_t>(compute_op->axis.size()); ++i) {
+    tvm::IterVar axis = compute_op->axis[i];
+    auto dom = axis->dom;
+    if (!tvm::ir::Equal(dom->extent, shape[i])) {
+      // only do parallel schedule on axis not being fused or split yet
+      rank_to_parallel = i;
+      break;
+    }
+    to_fuse_for_parallel.push_back(axis);
+  }
+
+  if (to_fuse_for_parallel.size() < 1) {
+    return false;
+  }
+
+  int64_t per_thread_static_dims = 1;
+  for (const auto& reduce_axis : compute_op->reduce_axis) {
+    const int64_t* static_range = tvm::as_const_int(reduce_axis->dom->extent);
+    if (static_range != nullptr) {
+      per_thread_static_dims *= *static_range;
+    }
+  }
+  for (int64_t i = rank_to_parallel; i < rank; ++i) {
+    auto dim = tvm::as_const_int(shape[i]);
+    if (dim != nullptr) {
+      per_thread_static_dims *= *dim;
+    }
+  }
+
+  // skip small per thread workloads, note that symbolic dims are ignored (treated as 1)
+  int64_t workloads_threshold = Promote<NupharCodeGenCtx>(&ctx_codegen)->GetCodeGenHandle()->parallel_min_workloads;
+  if (workloads_threshold <= 0 || per_thread_static_dims < workloads_threshold) {
+    return false;
+  }
+
+  tvm::IterVar parallel_axis;
+  if (to_fuse_for_parallel.size() > 1) {
+    ctx_sched.schedule[tensor->op].fuse(to_fuse_for_parallel, &parallel_axis);
+  } else {
+    parallel_axis = to_fuse_for_parallel[0];
+  }
+  ctx_sched.schedule[tensor->op].parallel(parallel_axis);
+  return true;
+}
+
 bool TryVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx) {
-  // TODO change it to the value from Target
-  int64_t natural_vector_size = 16;
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
+  if (!ShouldTryVectorization(tensor, ctx_sched))
+    return false;
 
-  return TryVectorization(tensor, natural_vector_size, ctx);
+  CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
+  ORT_ENFORCE(target != nullptr);
+  int64_t natural_vector_size = target->NaturalVectorWidth(tensor->dtype.bits());
+
+  // try to use parallel schedule when vectorizing
+  // note that we don't do logic-or in return value here
+  // to make sure vectorization is always tried
+  TryParallelX86(tensor, 0, ctx_codegen, ctx_sched);
+
+  return TryVectorization(tensor, natural_vector_size, ctx_sched);
 }
 
 bool InputRootScheduleWithVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx) {
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched) {
   bool status = false;
   for (auto& t : tensor->op->InputTensors()) {
     if (t->op->InputTensors().size() > 0) {
-      bool status_vec = TryVectorizationX86(t, ctx);
-      bool status_root = InsertRootSchedule(t, ctx);
+      bool status_vec = TryVectorizationX86(t, ctx_codegen, ctx_sched);
+      bool status_root = InsertRootSchedule(t, ctx_sched);
       status = status || status_root || status_vec;
     }
   }
@@ -40,13 +117,13 @@ bool InputRootScheduleWithVectorizationX86(
 bool TVM_SCHEDULER_CLASS(Softmax, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   bool status_softmax_itself = TryInlineSchedule(tensor, ctx_sched);
 
   // compute root the exp since it is reused more than once
   auto& tensor_exp = tensor->op->InputTensors()[0];
-  bool status_vec = TryVectorizationX86(tensor_exp, ctx_sched);
+  bool status_vec = TryVectorizationX86(tensor_exp, ctx_codegen, ctx_sched);
   bool status_root = InsertRootSchedule(tensor_exp, ctx_sched);
   return status_softmax_itself || status_vec || status_root;
 }
@@ -54,14 +131,14 @@ bool TVM_SCHEDULER_CLASS(Softmax, NupharX86OrtOpType)::Evaluate(
 bool TVM_SCHEDULER_CLASS(Split, NupharX86OrtOpType)::Evaluate(
     const tvm::Tensor& tensor,
     const Node*,
-    tvm_codegen::CodeGenContext&,
+    tvm_codegen::CodeGenContext& ctx_codegen,
     tvm_codegen::ScheduleContext& ctx_sched) {
   auto& tensor_split_input = tensor->op->InputTensors()[0];
   // force inline for split since to avoid extra copy
   bool status_split_itself = TryInlineSchedule(tensor, ctx_sched);
 
   // add root for split's inputs to avoid inline of the inputs
-  bool status_vec = TryVectorizationX86(tensor_split_input, ctx_sched);
+  bool status_vec = TryVectorizationX86(tensor_split_input, ctx_codegen, ctx_sched);
   bool status_input_root = InsertRootSchedule(tensor_split_input, ctx_sched);
   return status_split_itself || status_vec || status_input_root;
 }
@@ -172,7 +249,7 @@ static Status ConvScheduleX86(const tvm::Tensor& tensor,
 
   ctx_sched.schedule[tensor->op].reorder({b, oc_chunk, y, xo, ic_chunk, m, n, ic_block, xi, oc_block});
 
-  if (ctx_codegen.GetCodeGenHandle()->enable_per_node_parallelized) {
+  if (ctx_codegen.GetCodeGenHandle()->parallel_min_workloads > 0) {
     tvm::Array<tvm::IterVar> fused_axis;
     fused_axis.push_back(b);
     fused_axis.push_back(oc_chunk);
@@ -182,6 +259,7 @@ static Status ConvScheduleX86(const tvm::Tensor& tensor,
     ctx_sched.schedule[tensor->op].fuse(fused_axis, &parallel_axis);
     ctx_sched.schedule[tensor->op].parallel(parallel_axis);
   }
+
   ctx_sched.schedule[tensor->op].vectorize(oc_block);
 
   return Status::OK();
@@ -239,7 +317,7 @@ static Status MatMul_2DWeight_Schedule(
   ctx_sched.schedule[CC->op].unroll(ki);
   ctx_sched.schedule[CC->op].vectorize(yc);
 
-  if (ctx_codegen.GetCodeGenHandle()->enable_per_node_parallelized) {
+  if (ctx_codegen.GetCodeGenHandle()->parallel_min_workloads > 0) {
     // parallelize
     tvm::Array<tvm::IterVar> fused_axis;
     for (size_t d = 0; d < C_rank - 2; ++d)

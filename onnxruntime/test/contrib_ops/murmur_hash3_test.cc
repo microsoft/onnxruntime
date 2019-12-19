@@ -7,6 +7,15 @@
 namespace onnxruntime {
 namespace test {
 
+TEST(MurmurHash3OpTest, UnsupportedInputType) {
+  OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
+  test.AddInput<double>("X", {1}, {3.});
+  test.AddAttribute<int64_t>("positive", 0);
+  test.AddOutput<int32_t>("Y", {1}, {847579505L});
+  // Unsupported input type
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
 TEST(MurmurHash3OpTest, DefaultSeed) {
   OpTester test("MurmurHash3", 1, onnxruntime::kMSDomain);
   test.AddInput<int32_t>("X", {1}, {3L});

@@ -11,10 +11,14 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
+#include "core/providers/nuphar/scripts/NUPHAR_CACHE_VERSION"
 #include "gsl/gsl"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING // required by VS 2019
 #include <experimental/filesystem>
+#undef _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+#include <atomic>
 #include <fstream>
 namespace fs = std::experimental::filesystem;
 
@@ -27,13 +31,6 @@ static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
   if (!settings.HasOption(kNupharCachePath))
     return false;
 
-  std::string version;
-  if (settings.HasOption(kNupharCacheVersion)) {
-    version = settings.GetOptionValue(kNupharCacheVersion);
-  } else {
-    version = kNupharCacheVersion_Current;
-  }
-
   path = settings.GetOptionValue(kNupharCachePath);
   if (!create && !fs::is_directory(path))
     return false;
@@ -43,7 +40,7 @@ static bool GetOrCreateTVMModuleCacheDirectory(fs::path& path, bool create) {
       throw std::runtime_error("Failed to create directory " + path.string());
     }
 
-  path.append(version);
+  path.append(__NUPHAR_CACHE_VERSION__);
   if (!create && !fs::is_directory(path))
     return false;
 
@@ -78,6 +75,63 @@ static void* GetFuncFromLibrary(const std::string& so_path, const std::string& f
   if (throw_if_not_found && !s.IsOK())
     ORT_ENFORCE(false, "Cannot find ", func_name, " in ", so_path);
   return func;
+}
+
+static void ParseVersion(const char* version, int* major, int* minor, int* patch) {
+  std::stringstream ss(version);
+  std::string val;
+
+  auto ver_num_fn = [](const std::string& val) {
+    ORT_ENFORCE(!val.empty(), "Empty version number");
+    if (val.length() > 1 && val[0] == '0') {
+      ORT_THROW("Invalid version number: ", val);
+    }
+    ORT_ENFORCE(std::all_of(val.begin(), val.end(), [](char c) { return isdigit(c); }),
+                "Invalid version number: ", val);
+    return std::stoi(val);
+  };
+
+  std::getline(ss, val, '.');
+  ORT_ENFORCE(ss.good(), "Invalid version format: ", version);
+  *major = ver_num_fn(val);
+
+  std::getline(ss, val, '.');
+  *minor = ver_num_fn(val);
+
+  std::getline(ss, val);
+  *patch = ver_num_fn(val);
+}
+
+static void VerifyCacheVersion(const std::string& so_path) {
+  static std::atomic<bool> cache_version_checked{false};
+  static std::mutex cache_version_mutex;
+
+  // make sure we only check cache version once
+  if (!cache_version_checked.load(std::memory_order::memory_order_acquire)) {
+    std::lock_guard<std::mutex> lock(cache_version_mutex);
+    if (!cache_version_checked.load(std::memory_order::memory_order_acquire)) {
+      cache_version_checked.store(true, std::memory_order::memory_order_release);
+      // ensure we have _ORTInternal_GetCacheVersion_ function
+      void* f = GetFuncFromLibrary(so_path, "_ORTInternal_GetCacheVersion", /*throw_if_not_found*/ true);
+      ORT_ENFORCE(f, "NULL library function pointer!");
+
+      typedef const char* (*GetVersionFunc)();
+      GetVersionFunc func = reinterpret_cast<GetVersionFunc>(f);
+      const char* cache_version = func();
+      ORT_ENFORCE(cache_version, "Null cache version string!");
+      int cur_major, cur_minor, cur_patch;
+      ParseVersion(__NUPHAR_CACHE_VERSION__, &cur_major, &cur_minor, &cur_patch);
+      int cache_major, cache_minor, cache_patch;
+      ParseVersion(cache_version, &cache_major, &cache_minor, &cache_patch);
+
+      // make version check strict until we have thorough design for compatibility
+      ORT_ENFORCE((cur_major == cache_major) && (cur_minor == cache_minor),
+                  "Current nuphar runtime version (", __NUPHAR_CACHE_VERSION__,
+                  ") doesn't match cached dll version (", cache_version, ")");
+
+      cache_version_checked = true;
+    }
+  }
 }
 
 static bool disable_caching_due_to_checksum_failure = false;
@@ -131,6 +185,8 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   if (!GetCacheSoFilePath(so_path))
     return nullptr;
 
+  VerifyCacheVersion(so_path);
+
   if (!VerifyTVMModuleChecksum(so_path))
     return nullptr;
 
@@ -141,8 +197,6 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   }
   return func;
 }
-
-thread_local int saved_tvm_model_cnt = 0;
 
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module) {
   fs::path path;
@@ -156,7 +210,7 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   if (existing_files.count(filename) == 0 &&
       GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
     existing_files.insert(filename);
-    path.append("cached_" + std::to_string(saved_tvm_model_cnt++) + ".o");
+    path.append(filename + ".o");
     if (fs::exists(path)) {
       LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
       return;
@@ -165,9 +219,75 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   }
 }
 
-std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target) {
+std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target, int64_t parallel_min_workloads) {
   // in C, a function does not allow its name starting with a digit.
-  return NormalizeCppName("_" + subgraph.UniqueId() + " " + codegen_target.GetTargetName());
+  return NormalizeCppName("_" + subgraph.UniqueId() + "_" + codegen_target.GetTargetName() + "_p" + std::to_string(parallel_min_workloads));
+}
+
+bool TryCreateConstantScalar(
+    tvm::Expr& scalar,
+    const Tensor* tensor) {
+  if (!tensor)
+    return false;
+
+  auto num_elements = tensor->Shape().Size();
+  if (num_elements > 1) {
+    // for non-scalar, only fold to constant scalar when all values are identical
+    const auto& dtype = tensor->DataType();
+    auto elem_size = dtype->Size();
+    const void* data = tensor->DataRaw();
+
+#define CHECK_ALL_TENSOR_SAME(T)                                                    \
+  for (int64_t i = 1; i < num_elements; ++i) {                                      \
+    if (reinterpret_cast<const T*>(data)[i] != reinterpret_cast<const T*>(data)[0]) \
+      return false;                                                                 \
+  }
+
+    switch (elem_size) {
+      case 1:
+        CHECK_ALL_TENSOR_SAME(int8_t);
+        break;
+      case 2:
+        CHECK_ALL_TENSOR_SAME(int16_t);
+        break;
+      case 4:
+        CHECK_ALL_TENSOR_SAME(int32_t);
+        break;
+      case 8:
+        CHECK_ALL_TENSOR_SAME(int64_t);
+        break;
+      default:
+        return false;
+    }
+
+#undef CHECK_ALL_TENSOR_SAME
+  }
+
+#define ASSIGN_TVM_SCALAR(tvm_type, tensor_type)                      \
+  if (tensor->IsDataType<tensor_type>()) {                            \
+    scalar = tvm::make_const(tvm_type, *tensor->Data<tensor_type>()); \
+  }
+
+#define ASSIGN_TVM_SCALAR_ELSE(tvm_type, tensor_type) \
+  else ASSIGN_TVM_SCALAR(tvm_type, tensor_type)
+
+  ASSIGN_TVM_SCALAR(HalideIR::Float(32), float)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Float(64), double)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(64), int64_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(32), int32_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(16), int16_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(8), int8_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(64), uint64_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(32), uint32_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(16), uint16_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(8), uint8_t)
+  else {
+    return false;
+  }
+
+#undef ASSIGN_TVM_SCALAR
+
+  return true;
 }
 
 }  // namespace nuphar

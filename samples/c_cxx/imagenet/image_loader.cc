@@ -176,8 +176,8 @@ void InceptionPreprocessing::operator()(_In_ const void* input_data,
   }
   float* float_file_data_pointer;
   int bbox_h_size, bbox_w_size;
-  ORT_THROW_ON_ERROR(LoadImageFromFileAndCrop(image_loader_, file_name.c_str(), central_fraction_,
-                                              &float_file_data_pointer, &bbox_w_size, &bbox_h_size));
+  Ort::ThrowOnError(LoadImageFromFileAndCrop(image_loader_, file_name.c_str(), central_fraction_,
+                                             &float_file_data_pointer, &bbox_w_size, &bbox_h_size));
   auto output_data_ = reinterpret_cast<float*>(output_data);
   ResizeImageInMemory(float_file_data_pointer, output_data_, bbox_h_size, bbox_w_size, out_height_, out_width_,
                       channels_);

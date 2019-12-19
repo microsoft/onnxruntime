@@ -6,10 +6,21 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Squeeze,
+    kOnnxDomain,
+    1, 10,
+    kCudaExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Squeeze);
+
+// explicit support for negative axis.
 ONNX_OPERATOR_KERNEL_EX(
     Squeeze,
     kOnnxDomain,
-    1,
+    11,
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(0, 0)

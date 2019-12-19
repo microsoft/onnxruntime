@@ -1,0 +1,25 @@
+:Ý
+
+A
+BCMatMul_1"MatMul
+3
+C
+DEAddGeluFusion_1"BiasGelu:com.microsoftMatMul_AddGeluFusionZ$
+A
+
+batch
+	seq_len
+xZ
+B
+
+
+€
+€Z
+D
+	
+€b$
+E
+
+batch
+	seq_len
+€B

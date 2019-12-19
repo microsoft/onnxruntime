@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux1_x86_64
+FROM quay.io/pypa/manylinux1_x86_64:latest
 
 ARG PYTHON_VERSION
 ADD scripts /tmp/scripts

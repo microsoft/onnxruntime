@@ -15,6 +15,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
 )
 
 if(MSVC)
@@ -109,7 +110,7 @@ else()
       set(ARM64 TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
       set(X86 TRUE)
-    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
       set(X86_64 TRUE)
     endif()
   endif()
@@ -212,7 +213,7 @@ else()
       if(HAS_AVX512F)
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
       endif()
-      
+
       # AVX512BW support is only available if AVX512F support is present.
       check_cxx_compiler_flag("-mavx512bw" HAS_AVX512BW)
       if(HAS_AVX512BW)
@@ -225,7 +226,7 @@ else()
         }"
         AVX512BW_COMPILES
       )
-      
+
       if(AVX512BW_COMPILES)
         set(mlas_platform_srcs_avx512bw
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512BW.S
@@ -235,12 +236,12 @@ else()
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512BW.S
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Vnni.S
         )
-        
+
         if(HAS_AVX512BW)
           set_source_files_properties(${mlas_platform_srcs_avx512bw} PROPERTIES COMPILE_FLAGS "-mavx512bw")
         endif()
       else() # AVX512BW_COMPILES
-        # 
+        #
         set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512BW_UNSUPPORTED")
       endif() # AVX512BW_COMPILES
     else() # AVX512F_COMPILES

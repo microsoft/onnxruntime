@@ -21,6 +21,10 @@
 #endif
 #include "core/platform/ort_mutex.h"
 
+#if __FreeBSD__
+#include <sys/thr.h> // Use thr_self() syscall under FreeBSD to get thread id
+#endif
+
 namespace onnxruntime {
 namespace logging {
 const char* Category::onnxruntime = "onnxruntime";
@@ -206,6 +210,10 @@ unsigned int GetThreadId() {
   uint64_t tid64;
   pthread_threadid_np(NULL, &tid64);
   return static_cast<unsigned int>(tid64);
+#elif __FreeBSD__
+  long tid;
+  thr_self(&tid);
+  return static_cast<unsigned int>(tid);
 #else
   return static_cast<unsigned int>(syscall(SYS_gettid));
 #endif

@@ -45,8 +45,7 @@ tvm::Tensor Gather(const tvm::Tensor& t,
         ivars.push_back(ovars[i - 1 + indices->shape.size()]);
       }
     }
-    return tvm::ir::Select::make((ivars[axis_t] >= 0) && (ivars[axis_t] < t->shape[axis_t]),
-                                 t(ivars), tvm::make_zero(t->dtype));
+    return t(ivars);
   };
 
   return tvm::compute(output_shape, l, name);

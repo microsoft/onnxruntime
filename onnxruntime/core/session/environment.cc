@@ -10,11 +10,17 @@
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
-#ifdef MICROSOFT_AUTOML
-#include "core/graph/automl_ops/automl_defs.h"
+#ifdef ML_FEATURIZERS
+#include "core/graph/featurizers_ops/featurizers_defs.h"
 #endif
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
+#endif
+
+#include "core/platform/env.h"
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
 #endif
 
 namespace onnxruntime {
@@ -39,7 +45,7 @@ Status Environment::Initialize() {
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSAutoMLDomain, 1, 1);
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
@@ -48,8 +54,8 @@ Status Environment::Initialize() {
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
 #endif
-#ifdef MICROSOFT_AUTOML
-      automl::RegisterAutoMLSchemas();
+#ifdef ML_FEATURIZERS
+      featurizers::RegisterAutoMLSchemas();
 #endif
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
@@ -84,6 +90,10 @@ Internal copy node
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
+
+    // fire off startup telemetry (this call is idempotent)
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogProcessInfo();
 
     is_initialized_ = true;
   } catch (std::exception& ex) {

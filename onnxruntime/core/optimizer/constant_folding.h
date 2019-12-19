@@ -16,8 +16,8 @@ it statically computes parts of the graph that rely only on constant initializer
 */
 class ConstantFolding : public GraphTransformer {
  public:
-  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept :
-    GraphTransformer("ConstantFolding", compatible_execution_providers) {}
+  ConstantFolding(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("ConstantFolding", compatible_execution_providers) {}
 
  private:
   /** Constant folding will not be applied to nodes whose op_type is included in this set.
@@ -25,12 +25,7 @@ class ConstantFolding : public GraphTransformer {
   const std::unordered_set<std::string> excluded_op_types_ =
       {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
-
-  /** Create a TensorProto that has the same value as the given OrtValue
-  and the same type and dimensions as the given NodeArg. */
-  void BuildTensorProtoForInitializer(const OrtValue& ort_value, const NodeArg& constant_node_arg,
-                                      ONNX_NAMESPACE::TensorProto& tensorproto) const;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime

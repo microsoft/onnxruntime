@@ -31,9 +31,6 @@ constexpr const char* default_nuphar_target_str = stackvm_target_str;
 
 // Information needed to construct Nuphar execution providers.
 struct NupharExecutionProviderInfo {
-  // By default, let provider decide the target by passing in empty string.
-  bool enable_per_node_parallel;  // TODO: remove
-
   // this flag set TVM build_config with data_alignment=1, at the cost of performance
   bool allow_unaligned_buffers;
 
@@ -43,10 +40,8 @@ struct NupharExecutionProviderInfo {
   std::string settings;
 
   explicit NupharExecutionProviderInfo(bool unaligned_buffers,
-                                       const std::string& str_settings = "",
-                                       bool per_node_parallel = true)
-      : enable_per_node_parallel(per_node_parallel),
-        allow_unaligned_buffers(unaligned_buffers),
+                                       const std::string& str_settings = "")
+      : allow_unaligned_buffers(unaligned_buffers),
         settings(str_settings) {}
   NupharExecutionProviderInfo() = default;
 };
@@ -158,6 +153,10 @@ class NupharExecutionProvider : public IExecutionProvider {
 
   mutable std::unordered_map<std::string, std::unique_ptr<Tensor>> constant_initializers_used_in_compiled_nodes_;
   mutable std::unordered_map<std::string, int> domain_versions_;
+
+  // used to create unique fused node name, make it static because
+  // subsession may create multiple instances of EPs
+  static int global_fused_count_;
 };
 
 }  // namespace onnxruntime

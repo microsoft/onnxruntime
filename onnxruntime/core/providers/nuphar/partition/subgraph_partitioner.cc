@@ -189,7 +189,9 @@ Status SubgraphPartitioner::Partition(
           bool unused_initializer = false;
           if (t != nullptr) {
             // note for Reshape and Tile, shape/repeats as initializer is not used at runtime
-            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1);
+            // neither for any scalar
+            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1) ||
+                                 t->Shape().Size() == 1;
 
             if (!unused_initializer) {
               subgraph.initializers.emplace(def.Name(), t);
@@ -385,7 +387,7 @@ Status SubgraphPartitioner::Partition(
 
     if (codegen::CodeGenSettings::Instance().HasOption(kNupharDumpFusedNodes)) {
       std::ostringstream stream;
-      stream << "[NUPHAR_DUMP_FUSED_NODES]" << std::endl;
+      stream << "[NUPHAR_DUMP_FUSED_NODES] ID " << subgraph.UniqueId() << std::endl;
       stream << "NupharSubgraphUnit of size " << results.back().nodes.size() << " [";
       for (const auto& n : results.back().nodes) {
         stream << "(" << n->Name() << ", " << n->OpType() << ") ";

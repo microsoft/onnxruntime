@@ -9,9 +9,11 @@
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
 
 using namespace onnxruntime::common;
@@ -299,12 +301,15 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   //no memory pattern, or the pattern is not correct.
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
 
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  {
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  }
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
   // placement new, we don't support it in memory pattern optimization.
-  if (element_type != DataTypeImpl::GetType<std::string>()) {
+  if (!utils::IsDataTypeString(element_type)) {
     TraceAllocate(ort_value_index, size);
   }
 
@@ -356,8 +361,9 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pBuffer, location);
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }
@@ -365,6 +371,14 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
 static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTypeBase& type) {
   auto creator = type.GetCreateFunc();
   ort_value.Init(creator(), &type, type.GetDeleteFunc());
+  return Status::OK();
+}
+
+static Status AllocateTensorSequence (OrtValue& ort_value) {
+  auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+  auto p_tensor_sequence = onnxruntime::make_unique<TensorSeq>();
+  ort_value.Init(p_tensor_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+
   return Status::OK();
 }
 
@@ -452,6 +466,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
+  } else if (ml_type->IsTensorSequenceType()) {
+    return AllocateTensorSequence(ort_value);
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
@@ -506,7 +522,7 @@ void ExecutionFrame::TraceFree(int ort_value_idx) {
       // tensors
       auto ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       // don't trace string tensors
-      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+      if (!utils::IsDataTypeString(ml_data_type)) {
         auto status = planner_->TraceFree(ort_value_idx);
         if (!status.IsOK()) {
           LOGS(session_state_.Logger(), WARNING)

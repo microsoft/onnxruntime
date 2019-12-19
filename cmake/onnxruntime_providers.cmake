@@ -25,14 +25,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
-file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -40,9 +37,9 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
-if(onnxruntime_USE_MKLDNN)
-  set(PROVIDERS_MKLDNN onnxruntime_providers_mkldnn)
-  list(APPEND ONNXRUNTIME_PROVIDER_NAMES mkldnn)
+if(onnxruntime_USE_DNNL)
+  set(PROVIDERS_DNNL onnxruntime_providers_dnnl)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
 endif()
 if(onnxruntime_USE_NGRAPH)
   set(PROVIDERS_NGRAPH onnxruntime_providers_ngraph)
@@ -72,6 +69,10 @@ if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
 endif()
+if(onnxruntime_USE_ACL)
+  set(PROVIDERS_ACL onnxruntime_providers_acl)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -83,18 +84,18 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_USE_AUTOML)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+if (onnxruntime_USE_FEATURIZERS)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_featurizers_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
 endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 
-if (onnxruntime_USE_AUTOML)
-  add_dependencies(onnxruntime_providers automl_featurizers)
-  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
-  target_link_libraries(onnxruntime_providers automl_featurizers)
+if (onnxruntime_USE_FEATURIZERS)
+  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
+  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
 if(HAS_DEPRECATED_COPY)
@@ -115,88 +116,6 @@ add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES}
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
-
-
-if (onnxruntime_USE_MIMALLOC)
-  set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
-  set(mimalloc_output_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/)
-  set(mimalloc_wheel_dir ${mimalloc_output_dir}/onnxruntime/capi/)
-
-  add_definitions(
-    -DUSE_MIMALLOC=1 # used in ONNXRuntime
-    -DMI_OVERRIDE=ON) # used in building MiMalloc
-  include_directories(${mimalloc_root_dir}/include)
-  
-  if(NOT IS_DIRECTORY ${mimalloc_wheel_dir})
-    file(MAKE_DIRECTORY ${mimalloc_wheel_dir})
-  endif()
-  
-  if (WIN32)
-    # The generic MiMalloc CMakeLists.txt project lacks 
-    # the needed hooks to override malloc at runtime on Windows
-    # so we fall back to the specially provided VS solutions (which
-    # do have those hooks)
-    set(mimalloc_output mimalloc-override)
-
-    if(NOT ${CMAKE_GENERATOR_PLATFORM} MATCHES "x64|Win32")
-      message(FATAL_ERROR "MiMalloc doesn't support ARM/ARM64 targets")
-    endif()
-    
-    set(vs_version "vs2019")
-    if (${CMAKE_GENERATOR} MATCHES "Visual Studio [1-5]+ [0-9]+")
-      set(vs_version "vs2017")
-    endif()
-    
-    set(mimalloc_config "Release")
-    if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
-      set(mimalloc_config, "Debug")
-    endif()
-
-    set(mimalloc_target_winsdk ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})
-    if(DEFINED ENV{WindowsSDKVersion})
-      set(mimalloc_target_winsdk $ENV{WindowsSDKVersion})
-    endif()
-    
-    set(mimalloc_deps ${mimalloc_output_dir}mimalloc-redirect.dll)
-    set(mimalloc_platform ${CMAKE_GENERATOR_PLATFORM})
-    if(${CMAKE_GENERATOR_PLATFORM} MATCHES "Win32")
-      set(mimalloc_deps ${mimalloc_output_dir}mimalloc-redirect32.dll)
-      set(mimalloc_platform x86)
-    endif()
-
-    # msbuild throws a fit during a postbuild step when copying files if the source uses backslashes and the destination uses forward slashes
-    STRING(REGEX REPLACE "/" "\\\\" msbuild_converted_output_dir ${mimalloc_output_dir})
-    add_custom_command(OUTPUT ${mimalloc_output} COMMAND msbuild ${mimalloc_root_dir}/ide/${vs_version}/mimalloc.sln
-                      /p:OutDir=${msbuild_converted_output_dir} /p:Platform=${mimalloc_platform} /p:Configuration=${mimalloc_config}
-                      /p:WindowsTargetPlatformVersion=${mimalloc_target_winsdk})
-    add_custom_target(mimalloc_override ALL DEPENDS ${mimalloc_output})
-
-    add_library(mimalloc IMPORTED SHARED STATIC)
-    add_dependencies(mimalloc mimalloc_override)
-    set_target_properties(mimalloc PROPERTIES IMPORTED_LOCATION "${mimalloc_output_dir}${mimalloc_output}.lib")
-
-    # copy the dlls into the directory where setup.py will look for them
-    add_custom_command(TARGET mimalloc_override POST_BUILD
-                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                       ${mimalloc_output_dir}mimalloc-override.dll ${mimalloc_deps}
-                       ${mimalloc_wheel_dir}
-                   )
-
-  else()
-    set(MI_BUILD_TESTS OFF CACHE BOOL "Build mimalloc tests" FORCE)
-    add_subdirectory(${mimalloc_root_dir} EXCLUDE_FROM_ALL)
-    set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-
-    target_compile_definitions(mimalloc PUBLIC MI_USE_CXX=ON)
-
-    # copy the dll into the directory where setup.py will look for it
-    get_target_property(mimalloc_output_name mimalloc OUTPUT_NAME)
-    install(TARGETS mimalloc DESTINATION ${mimalloc_wheel_dir})
-  endif()
-  
-  # TODO: enable linking once mimalloc has been integrated with an allocator class
-  # target_link_libraries(onnxruntime_providers mimalloc)
-endif()
 
 if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
@@ -255,20 +174,20 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
-if (onnxruntime_USE_MKLDNN)
-  file(GLOB_RECURSE onnxruntime_providers_mkldnn_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/mkldnn/*.cc"
+if (onnxruntime_USE_DNNL)
+  file(GLOB_RECURSE onnxruntime_providers_dnnl_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/dnnl/*.cc"
   )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_mkldnn_cc_srcs})
-  add_library(onnxruntime_providers_mkldnn ${onnxruntime_providers_mkldnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_mkldnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
-  add_dependencies(onnxruntime_providers_mkldnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_mkldnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_mkldnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${MKLDNN_INCLUDE_DIR})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/mkldnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
-  set_target_properties(onnxruntime_providers_mkldnn PROPERTIES LINKER_LANGUAGE CXX)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dnnl_cc_srcs})
+  add_library(onnxruntime_providers_dnnl ${onnxruntime_providers_dnnl_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_dnnl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_dnnl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -276,7 +195,7 @@ if (onnxruntime_USE_TENSORRT)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
   include_directories(${PROJECT_SOURCE_DIR}/external/protobuf)
-  set(CUDA_INCLUDE_DIRS ${onnxruntime_CUDA_HOME}/include)
+  set(CUDA_INCLUDE_DIRS ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   set(TENSORRT_ROOT ${onnxruntime_TENSORRT_HOME})
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
@@ -309,11 +228,11 @@ if (onnxruntime_USE_TENSORRT)
     target_sources(getSupportedAPITest PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/getopt.cc)
     target_include_directories(onnx2trt PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/include)
     target_include_directories(getSupportedAPITest PRIVATE ${ONNXRUNTIME_ROOT}/test/win_getopt/mb/include)
-    target_compile_options(nvonnxparser_static PRIVATE /FIio.h)
-    target_compile_options(nvonnxparser PRIVATE /FIio.h)
-    target_compile_options(trt_onnxify PRIVATE /FIio.h)
-    target_compile_options(onnx2trt PRIVATE /FIio.h)
-    target_compile_options(getSupportedAPITest PRIVATE /FIio.h)
+    target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
+    target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+    target_compile_options(trt_onnxify PRIVATE /FIio.h /wd4100)
+    target_compile_options(onnx2trt PRIVATE /FIio.h /wd4100)
+    target_compile_options(getSupportedAPITest PRIVATE /FIio.h /wd4100)
   endif()
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   include_directories(${TENSORRT_INCLUDE_DIR})
@@ -351,7 +270,7 @@ if (onnxruntime_USE_NGRAPH)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_ngraph_cc_srcs})
   add_library(onnxruntime_providers_ngraph ${onnxruntime_providers_ngraph_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_ngraph onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
-  add_dependencies(onnxruntime_providers_ngraph ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_dependencies(onnxruntime_providers_ngraph project_ngraph onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_ngraph PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_ngraph PRIVATE ${ONNXRUNTIME_ROOT} ${ngraph_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_ngraph PROPERTIES LINKER_LANGUAGE CXX)
@@ -363,37 +282,32 @@ if (onnxruntime_USE_NGRAPH)
 endif()
 
 if (onnxruntime_USE_OPENVINO)
-  file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
-  )
-  file(GLOB_RECURSE onnxruntime_providers_openvino_py_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
-  )
-
   # Below variables point to directories within the OpenVINO installation directory
   # whose value is set in INTEL_CVSDK_DIR variable by running the setupvars.sh script
-if (onnxruntime_USE_OPENVINO_BINARY)
-  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.1")
-     message($ENV{INTEL_CVSDK_DIR})
-     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
-     set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
+  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.3")
+    file(GLOB_RECURSE onnxruntime_providers_openvino_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/openvino/*.cc"
+    )
+    file(GLOB_RECURSE onnxruntime_providers_openvino_py_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/openvino/openvino_mo/*.py"
+    )
+
+    set(OPENVINO_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/include)
+    set(OPENVINO_EXTENSIONS_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/src/extension)
+    set(OPENVINO_TBB_INCLUDE_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/include)
     if(WIN32)
      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
-     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)
-	 
+     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)	 
     else()
      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
      set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib)
     endif()
+  else()
+     message(FATAL_ERROR "OpenVINO 2019 R3.1 must be installed with environment variables set before building ONNX Runtime")
   endif()
-  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2018.5")
-     set(OPENVINO_INCLUDE_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/include)
-     set(OPENVINO_LIB_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/ubuntu_16.04/intel64/)
-  endif()
-endif()
 
   find_package(PythonLibs REQUIRED)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
@@ -404,31 +318,36 @@ endif()
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   if (WIN32)
-    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS} ${PYTHONPATH})
+    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_EXTENSIONS_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS} ${PYTHONPATH})
    #${pybind11_INCLUDE_DIRS}
   else()
-    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
+    target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_EXTENSIONS_DIR} ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
   endif()
   
-  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2019.1")
-   if (WIN32)
-    
+   if (WIN32)   
      string(REPLACE "include" "libs" PYTHON_LIB ${PYTHON_INCLUDE_DIRS})	
+	   find_package(InferenceEngine 2.1 REQUIRED)
      set(PYTHON_LIBRARIES ${PYTHON_LIB})
+     set(OPENVINO_CPU_EXTENSION_DIR ${onnxruntime_BINARY_DIR}/ie_cpu_extension/${CMAKE_BUILD_TYPE})
+     set(OPENVINO_CPU_EXTENSION_LIB cpu_extension.dll)
      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996 /wd4244 /wd4267 /wd4099 /wd4551 /wd4505 /wd4515 /wd4706 /wd4456 /w")
+	   set_target_properties(ie_cpu_extension PROPERTIES COMPILE_FLAGS "/wd4244 /wd4456 /wd4458 /wd4701")
      link_directories(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES} ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_DIR} ${OPENVINO_MKL_TINY_DIR} ${PYTHONPATH})
-     target_link_libraries(onnxruntime_providers_openvino $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64/Release/inference_engine.lib)
+     target_link_libraries(onnxruntime_providers_openvino $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64/Release/inference_engine.lib IE::ie_cpu_extension ${PYTHON_LIBRARIES})
      file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR}/${CMAKE_BUILD_TYPE})
    else()
-      link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_DIR} ${OPENVINO_MKL_TINY_DIR})
-      target_link_libraries(onnxruntime_providers_openvino -linference_engine -ltbb ${PYTHON_LIBRARIES})
-      file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
+     find_package(InferenceEngine 2.1 REQUIRED)
+     set(OPENVINO_CPU_EXTENSION_LIB libcpu_extension.so)
+     link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_DIR} ${OPENVINO_MKL_TINY_DIR})
+     if ($ENV{INTEL_CVSDK_DIR} MATCHES "dldt")
+       set(OPENVINO_CPU_EXTENSION_DIR $ENV{INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64)
+     else()
+       set(OPENVINO_CPU_EXTENSION_DIR ${onnxruntime_BINARY_DIR}/ie_cpu_extension)
+       target_compile_options(ie_cpu_extension PRIVATE -Wno-unused-parameter)
+     endif()
+     target_link_libraries(onnxruntime_providers_openvino PRIVATE -linference_engine IE::ie_cpu_extension -ltbb ${PYTHON_LIBRARIES})
+     file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
    endif()
-  endif()
-  if ($ENV{INTEL_CVSDK_DIR} MATCHES "2018.5")
-    link_directories(onnxruntime_providers_openvino ${OPENVINO_LIB_DIR})
-    target_link_libraries(onnxruntime_providers_openvino -linference_engine ${PYTHON_LIBRARIES})
-  endif()
   file(COPY ${onnxruntime_providers_openvino_py_srcs} DESTINATION ${onnxruntime_BINARY_DIR})
 endif()
 
@@ -529,10 +448,23 @@ if (onnxruntime_USE_DML)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
 endif()
 
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_providers_internal.cmake)
+if (onnxruntime_USE_ACL)
+  add_definitions(-DUSE_ACL=1)
+  file(GLOB_RECURSE onnxruntime_providers_acl_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/acl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/acl/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_acl_cc_srcs})
+  add_library(onnxruntime_providers_acl ${onnxruntime_providers_acl_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_acl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
-if(onnxruntime_USE_EIGEN_THREADPOOL)
-    target_compile_definitions(onnxruntime_providers PUBLIC USE_EIGEN_THREADPOOL)
+if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
+  include(onnxruntime_providers_internal.cmake)
 endif()

@@ -71,6 +71,15 @@ void SignBFloat16(const Tensor* input, Tensor* output) {
     return BFloat16(FloatingImpl(fl));
   });
 }
+
+// MLTypeTypeCallDispatcher functor. This is a generic
+// implementation for all types other than MLFloat16 and BFloat16 above.
+template <class T>
+struct CallSignImpl {
+  void operator()(const Tensor* input, Tensor* output) const {
+    EigenMap<T>(*output) = EigenMap<T>(*input).array().cwiseSign();
+  }
+};
 }  // namespace sign_internal
 
 Status Sign::Compute(OpKernelContext* ctx) const {
@@ -79,33 +88,20 @@ Status Sign::Compute(OpKernelContext* ctx) const {
   auto input = ctx->Input<Tensor>(0);
   auto output = ctx->Output(0, input->Shape());
 
-  auto dtype = input->DataType();
-  if (dtype == DataTypeImpl::GetType<float>()) {
-    EigenMap<float>(*output) = EigenMap<float>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
-    EigenMap<double>(*output) = EigenMap<double>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    EigenMap<int8_t>(*output) = EigenMap<int8_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-    EigenMap<int16_t>(*output) = EigenMap<int16_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-    EigenMap<int32_t>(*output) = EigenMap<int32_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-    EigenMap<int64_t>(*output) = EigenMap<int64_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-    EigenMap<uint8_t>(*output) = EigenMap<uint8_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-    EigenMap<uint16_t>(*output) = EigenMap<uint16_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-    EigenMap<uint32_t>(*output) = EigenMap<uint32_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-    EigenMap<uint64_t>(*output) = EigenMap<uint64_t>(*input).array().cwiseSign();
-  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-    SignMLFloat16(input, output);
-  } else if (dtype == DataTypeImpl::GetType<BFloat16>()) {
-    SignBFloat16(input, output);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input datatype");
+  auto dtype = input->GetElementType();
+  switch (dtype) {
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      SignBFloat16(input, output);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      SignMLFloat16(input, output);
+      break;
+    default:
+      utils::MLTypeCallDispatcher<CallSignImpl, float, double, int8_t, uint8_t,
+                                  int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+          t_disp(dtype);
+      t_disp.Invoke(input, output);
+      break;
   }
   return Status::OK();
 }

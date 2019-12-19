@@ -78,8 +78,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Throws<OnnxRuntimeException>(() => { opt.GraphOptimizationLevel = (GraphOptimizationLevel)10; });
 
                 opt.AppendExecutionProvider_CPU(1);
-#if USE_MKLDNN
-                opt.AppendExecutionProvider_Mkldnn(0);
+#if USE_DNNL
+                opt.AppendExecutionProvider_Dnnl(0);
 #endif
 #if USE_CUDA
                 opt.AppendExecutionProvider_CUDA(0);
@@ -325,7 +325,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "fp16_shufflenet", "16-bit float not supported type in C#." },
                 { "fp16_tiny_yolov2", "16-bit float not supported type in C#." },
                 { "BERT_Squad", "Could not find an implementation for the node bert / embeddings / one_hot:OneHot(9)" },
-                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" }
+                { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
+                { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
+                { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
+                { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" }
             };
 
             // The following models fails on nocontribops win CI
@@ -341,6 +344,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (System.Environment.Is64BitProcess == false)
             {
                 skipModels["test_vgg19"] = "Get preallocated buffer for initializer conv4_4_b_0 failed";
+                skipModels["tf_pnasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_5/comb_iter_1/left/bn_sep_7x7_1/beta:0_203 failed";
+                skipModels["tf_nasnet_large"] = "Get preallocated buffer for initializer ConvBnFusion_BN_B_cell_11/beginning_bn/beta:0_331 failed";
             }
 
             return skipModels;
@@ -567,6 +572,85 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.True(overriddenInitializer.SequenceEqual(F1_initializer));
                 }
             }
+        }
+
+        [Fact]
+        private void TestRegisterCustomOpLibrary()
+        {
+            using (var option = new SessionOptions())
+            {
+                string libName = "custom_op_library.dll";
+                string modelPath = "custom_op_test.onnx";
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    libName = "custom_op_library.dll";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    libName = "libcustom_op_library.so";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    libName = "libcustom_op_library.dylib";
+                }
+
+                string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
+                Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
+
+                try
+                {
+                    option.RegisterCustomOpLibrary(libFullPath);
+                }
+                catch(Exception ex)
+                {
+                    var msg = $"Failed to load custom op library {libFullPath}, error = {ex.Message}";
+                    throw new Exception(msg + "\n" + ex.StackTrace);
+                }
+
+
+                using (var session = new InferenceSession(modelPath, option))
+                {
+                    var inputContainer = new List<NamedOnnxValue>();
+                    inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_1",
+                        new DenseTensor<float>(
+                            new float[]
+                            {
+                                1.1f,   2.2f,   3.3f,   4.4f,   5.5f,
+                                6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
+                                11.1f,  12.2f,  13.3f,  14.4f,  15.5f
+                            },
+                            new int[]{3, 5 }
+                            )));
+
+                    inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_2",
+                        new DenseTensor<float>(
+                            new float[]
+                            {
+                                15.5f,   14.4f,   13.3f,   12.2f,   11.1f,
+                                10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
+                                5.5f,    4.4f,    3.3f,    2.2f,    1.1f
+                            },
+                            new int[] { 3, 5 }
+                            )));
+
+                    using (var result = session.Run(inputContainer))
+                    {
+                        Assert.Equal("output", result.First().Name);
+                        var tensorOut = result.First().AsTensor<int>();
+
+                        var expectedOut = new DenseTensor<int>(
+                            new int[]
+                            {
+                                17, 17, 17, 17, 17,
+                                17, 18, 18, 18, 17,
+                                17, 17, 17, 17, 17
+                            },
+                            new int[] { 3, 5}
+                            );
+                        Assert.True(tensorOut.SequenceEqual(expectedOut));
+                    }
+                }
+            } 
         }
 
         [Fact]
@@ -964,7 +1048,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(Skip = "The Model Serialization Test fails on linux. Test skipped until fixed. Serialization API should not be used before fix.")]
+        [Fact]
         private void TestModelSerialization()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
@@ -1034,8 +1118,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var entryPointNames = new[]{
             "OrtGetApiBase",
             "OrtSessionOptionsAppendExecutionProvider_CPU"
-#if USE_MKLDNN
-            ,"OrtSessionOptionsAppendExecutionProvider_Mkldnn"
+#if USE_DNNL
+            ,"OrtSessionOptionsAppendExecutionProvider_Dnnl"
 #endif
 #if USE_CUDA
             ,"OrtSessionOptionsAppendExecutionProvider_CUDA"

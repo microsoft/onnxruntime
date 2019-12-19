@@ -55,7 +55,7 @@ extern "C" {
 #ifdef _WIN32
 #define ORT_TSTR(X) L##X
 #else
-#define ORT_TSTR(X) (X)
+#define ORT_TSTR(X) X
 #endif
 #endif
 
@@ -84,12 +84,12 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,  // maps to c++ type std::string
   ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,      // maps to c type double
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,      // maps to c type uint32_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,      // maps to c type uint64_t
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,          // maps to c type double
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,          // maps to c type uint32_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,          // maps to c type uint64_t
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,       // complex with float32 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,      // complex with float64 real and imaginary components
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16        // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -171,7 +171,8 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
     const char* message);
 
 // Set Graph optimization level.
-// TODO (askhade) Add documentation about which optimizations are enabled for each value.
+// Refer https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
+// for in-depth undersrtanding of Graph Optimizations in ORT
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
@@ -219,8 +220,6 @@ typedef struct OrtApiBase OrtApiBase;
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
 
 struct OrtApi {
-  OrtApiBase base_;
-
   /**
 * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
 */
@@ -247,6 +246,10 @@ struct OrtApi {
                                                       _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
                                                       _In_ const char* logid,
                                                       _Outptr_ OrtEnv** out)NO_EXCEPTION;
+
+  // Platform telemetry events are on by default since they are lightweight.  You can manually turn them off.
+  OrtStatus*(ORT_API_CALL* EnableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DisableTelemetryEvents)(_In_ const OrtEnv* env)NO_EXCEPTION;
 
   // TODO: document the path separator convention? '/' vs '\'
   // TODO: should specify the access characteristics of model_path. Is this read only during the

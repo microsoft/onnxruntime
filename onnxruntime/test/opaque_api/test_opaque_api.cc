@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <core/common/logging/logging.h>
 #include "core/framework/data_types.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
@@ -18,8 +19,6 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
-
-const OrtApi* Ort::g_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
 // Data container used to ferry data through C API
 extern "C" struct ExperimentalDataContainer {
@@ -108,7 +107,7 @@ class OpaqueCApiTestKernel final : public OpKernel {
 
 ONNX_OPERATOR_KERNEL_EX(
     OpaqueCApiTestKernel,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
@@ -132,7 +131,7 @@ static void RegisterCustomKernel() {
   // Registry the schema
   ONNX_TEST_OPERATOR_SCHEMA(OpaqueCApiTestKernel)
       .SetDoc("Replace all of h chars to _ in the original string contained within experimental type")
-      .SetDomain(onnxruntime::kMSAutoMLDomain)
+      .SetDomain(onnxruntime::kMSFeaturizersDomain)
       .SinceVersion(1)
       .Input(
           0,
@@ -154,7 +153,7 @@ static void RegisterCustomKernel() {
   // Register kernel directly to KernelRegistry
   // because we can not create custom ops with Opaque types
   // as input
-  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSAutoMLDomain, 1, OpaqueCApiTestKernel)>;
+  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSFeaturizersDomain, 1, OpaqueCApiTestKernel)>;
   auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
   kernel_registry->Register(fn());
 }
@@ -163,8 +162,7 @@ namespace test {
 
 std::string CreateModel() {
   RegisterCustomKernel();
-
-  Model model("ModelWithOpaque", false);
+  Model model("ModelWithOpaque", false, logging::LoggingManager::DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -181,7 +179,7 @@ std::string CreateModel() {
     outputs.push_back(&output_arg);
 
     auto& node = graph.AddNode("OpaqueCApiTestKernel", "OpaqueCApiTestKernel", "Replace all h to underscore",
-                               inputs, outputs, nullptr, onnxruntime::kMSAutoMLDomain);
+                               inputs, outputs, nullptr, onnxruntime::kMSFeaturizersDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   EXPECT_TRUE(graph.Resolve().IsOK());
@@ -234,7 +232,7 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 
     // No C++ Api to either create a string Tensor or to fill one with string, so we use C
     const char* const input_char_string[] = {input_string.c_str()};
-    ORT_THROW_ON_ERROR(Ort::g_api->FillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
+    Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(container_str), input_char_string, 1U));
 
     // We put this into our container now
     // This container life-span is supposed to eclipse the model running time
