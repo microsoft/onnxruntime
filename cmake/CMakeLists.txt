@@ -84,6 +84,7 @@ option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output 
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
+option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
@@ -716,8 +717,8 @@ include(onnxruntime_mlas.cmake)
 
 if(onnxruntime_USE_AUTOML)
   add_definitions(-DMICROSOFT_AUTOML)
-  # Fetch and build featurizers
-  include(external/featurizers.cmake)
+  # Build shared featurizer library
+  include(onnxruntime_automl_featurizers.cmake)
 endif()
 
 if(WIN32)

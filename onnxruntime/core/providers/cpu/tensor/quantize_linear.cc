@@ -3,7 +3,8 @@
 
 #include "core/providers/cpu/tensor/quantize_linear.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas.h"
+#include <cmath>
+#include <cfenv>
 
 namespace onnxruntime {
 
@@ -104,6 +105,11 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
         .TypeConstraint("y", DataTypeImpl::GetTensorType<int8_t>()),
     QuantizeLinear<int8_t>);
 
+static float RoundHalfToEven(float input) {
+  std::fesetround(FE_TONEAREST);
+  auto result = std::nearbyintf(input);
+  return result;
+}
 template <typename T>
 // formula is Y = X / Scale + ZeroPoint
 Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -112,7 +118,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto& y_zero_point = *ctx->Input<Tensor>(2);
   auto& y = *ctx->Output(0, x.Shape());
   const auto& x_shape = x.Shape();
-
+  
   const float* input = x.template Data<float>();
   T* output = y.template MutableData<T>();
 
@@ -131,7 +137,9 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
     const float scale = *(y_scale.template Data<float>());
     const auto num_of_elements = x_shape.Size();
 
-    MlasQuantizeLinear(input, output, num_of_elements, scale, zero_point);
+    for (int i = 0; i < num_of_elements; ++i) {
+      output[i] = static_cast<T>(clamp(RoundHalfToEven(static_cast<float>(input[i] / scale)) + zero_point, qmin, qmax));
+    }
 
   } else {
     size_t stride = 0;
