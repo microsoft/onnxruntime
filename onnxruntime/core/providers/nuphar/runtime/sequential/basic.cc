@@ -10,9 +10,6 @@
 #include "gsl/gsl"
 #include <tvm/tvm.h>
 
-#include <chrono>
-typedef std::chrono::high_resolution_clock Clock;
-
 namespace onnxruntime {
 namespace nuphar {
 

@@ -13,7 +13,6 @@
 #include "core/codegen/mti/tensor/transpose.h"
 #include "core/codegen/passes/weight_layout/tiling_2d.h"
 #include "core/codegen/passes/weight_layout/transpose_2d.h"
-#include "core/codegen/passes/weight_layout/transpose_pad_2d.h"
 #include "core/common/cpuid_info.h"  // TODO: refactor to control through config
 #include "core/providers/nuphar/common/nuphar_settings.h"
 #include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
@@ -127,8 +126,7 @@ static Status EvaluateMatMulInteger(
         force_no_tensorize = true;
       }
 
-      // Tensorization: AVX2: 8bit GEMM AVX512: 8bit GEMV and GEMM
-      bool isGEMV = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1);
+      // Tensorization: AVX2: 8bit GEMV/GEMM AVX512: 8bit GEMV/GEMM
       bool use_tensorization = !force_mkl && !force_no_tensorize && (feature.hasAVX512 || feature.hasAVX2 || feature.hasAVX);
 
       // Model input option
@@ -160,7 +158,7 @@ static Status EvaluateMatMulInteger(
         bool isScalar = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1) && (embed_dim == 1);
 
         // Tensorization has two layout options: 1) Transpose or 2) Tiling
-        auto layout_key = isScalar ? tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg)) : isGEMV ? tvm_codegen::WeightLayoutTransposePad2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width) : tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width);
+        auto layout_key = isScalar ? tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg)) : tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width);
 
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
