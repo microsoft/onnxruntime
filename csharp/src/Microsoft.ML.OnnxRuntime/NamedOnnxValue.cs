@@ -218,12 +218,22 @@ namespace Microsoft.ML.OnnxRuntime
                                                     ));
 
                     // fill the native tensor, using GetValue(index) from the Tensor<string>
-                    string[] stringsInTensor = new string[tensorValue.Length];
+                    var len = tensorValue.Length;
+                    var stringsInTensor = new IntPtr[len];
+                    var pinnedHandles = new GCHandle[len];
                     for (int i = 0; i < tensorValue.Length; i++)
                     {
-                        stringsInTensor[i] = tensorValue.GetValue(i);
+                        var utf8str = UTF8Encoding.UTF8.GetBytes(tensorValue.GetValue(i) + "\0");
+                        pinnedHandles[i] = GCHandle.Alloc(utf8str, GCHandleType.Pinned);
+                        stringsInTensor[i] = pinnedHandles[i].AddrOfPinnedObject();
                     }
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(nativeTensor, stringsInTensor, (UIntPtr)tensorValue.Length));
+
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtFillStringTensor(nativeTensor, stringsInTensor, (UIntPtr)len));
+                    foreach (var handle in pinnedHandles)
+                    {
+                        handle.Free();
+                    }
+
                 }
                 catch (OnnxRuntimeException e)
                 {
