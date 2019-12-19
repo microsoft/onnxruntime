@@ -1,5 +1,5 @@
 # Building ONNX Runtime
-*Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.*
+*Dockerfiles are available [here](./dockerfiles) to help you get started.*
 
 *Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
@@ -116,7 +116,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 ---
 
 ## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
+Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
 ### Pre-Requisites
 * ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
@@ -159,7 +159,7 @@ Build command:
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu).
+A Dockerfile is available [here](./dockerfiles#cuda).
 
 
 #### Notes
@@ -376,7 +376,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
+Dockerfile instructions are available [here](./dockerfiles#nuphar-public-preview)
 
 ---
 
