@@ -120,6 +120,7 @@ class SymbolicShapeInference:
         self.run_ = True
         self.suggested_merge_ = {}
         self.symbolic_dims_ = {}
+        self.input_symbols_ = {}
         self.auto_merge_ = auto_merge
         self.guess_output_rank_ = guess_output_rank
         self.verbose_ = verbose
@@ -138,7 +139,12 @@ class SymbolicShapeInference:
             if is_literal(s):
                 map_to = s
                 break
-        # when no literals, map to existing symbolic dims
+        # when no literals, map to input symbolic dims, then existing symbolic dims
+        if map_to is None:
+            for s in symbols:
+                if s in self.input_symbols_:
+                    map_to = s
+                    break
         if map_to is None:
             for s in symbols:
                 if type(self.symbolic_dims_[s]) == sympy.Symbol:
@@ -228,6 +234,7 @@ class SymbolicShapeInference:
                 int_dim = is_int.index(1)
                 if self.verbose_ > 0:
                     print('dim {} has been merged with value {}'.format(dims[1 - int_dim], dims[int_dim]))
+                self._check_merged_dims(dims, allow_broadcast=False)
                 return dims[int_dim]
             else:
                 return None
@@ -256,7 +263,13 @@ class SymbolicShapeInference:
             else:
                 new_dim = self._merge_symbols([dim1, dim2])
                 if not new_dim:
-                    print('unsupported broadcast between ' + str(dim1) + ' ' + str(dim2))
+                    # warning about unsupported broadcast when not auto merge
+                    # note that auto merge has the risk of incorrectly merge symbols while one of them being 1
+                    # for example, 'a' = 1, 'b' = 5 at runtime is valid broadcasting, but with auto merge 'a' == 'b'
+                    if self.auto_merge_:
+                        self._add_suggested_merge([dim1, dim2], apply=True)
+                    else:
+                        print('unsupported broadcast between ' + str(dim1) + ' ' + str(dim2))
             new_shape = [new_dim] + new_shape
         return new_shape
 
@@ -618,17 +631,16 @@ class SymbolicShapeInference:
         sympy_shape = self._get_int_values(node)[0]
         vi = self.known_vi_[node.output[0]]
         if sympy_shape is not None:
-            self._update_computed_dims(sympy_shape)
             if type(sympy_shape) != list:
                 sympy_shape = [sympy_shape]
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
-                                                      vi.type.tensor_type.elem_type,
-                                                      get_shape_from_sympy_shape(sympy_shape)))
+            self._update_computed_dims(sympy_shape)
         else:
             # create new dynamic shape
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
-                                                      vi.type.tensor_type.elem_type,
-                                                      self._new_symbolic_shape(self._get_shape_rank(node,0), node)))
+            sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node,0), node)
+
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
+                                                  vi.type.tensor_type.elem_type,
+                                                  get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_Expand(self, node):
         expand_to_shape = self._try_get_value(node, 1)
@@ -813,7 +825,7 @@ class SymbolicShapeInference:
             assert is_literal(shape_rank)
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
                                                       vi.type.tensor_type.elem_type,
-                                                      self._new_symbolic_shape(shape_rank, node)))
+                                                      get_shape_from_sympy_shape(self._new_symbolic_shape(shape_rank, node))))
         else:
             input_shape = self._get_shape(node, 0)
             input_sympy_shape = self._get_sympy_shape(node, 0)
@@ -850,19 +862,36 @@ class SymbolicShapeInference:
 
     def _infer_Resize(self, node):
         vi = self.known_vi_[node.output[0]]
-        if get_opset(self.out_mp_) <= 10: # only support opset 10 Resize for now
+        input_sympy_shape = self._get_sympy_shape(node, 0)
+        if get_opset(self.out_mp_) <= 10:
             scales = self._try_get_value(node, 1)
             if scales is not None:
-                input_sympy_shape = self._get_sympy_shape(node, 0)
                 new_sympy_shape = [sympy.simplify(sympy.floor(d*s)) for d,s in zip(input_sympy_shape, scales)]
                 self._update_computed_dims(new_sympy_shape)
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
                                                           self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                                           get_shape_from_sympy_shape(new_sympy_shape)))
         else:
+            roi = self._try_get_value(node, 1)
+            scales = self._try_get_value(node, 2)
+            sizes = self._try_get_value(node, 3)
+            if sizes is not None:
+                new_sympy_shape = [sympy.simplify(sympy.floor(s)) for s in sizes]
+                self._update_computed_dims(new_sympy_shape)
+            elif roi is not None and scales is not None:
+                rank = len(scales)
+                assert len(roi) == 2*rank
+                roi_start = list(roi)[:rank]
+                roi_end = list(roi)[rank:]
+                scales = list(scales)
+                new_sympy_shape = [sympy.simplify(sympy.floor(d * (end - start) * scale)) for d, start, end, scale in zip(input_sympy_shape, roi_start, roi_end, scales)]
+                self._update_computed_dims(new_sympy_shape)
+            else:
+                new_sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node, 0), node)
+
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0],
                                                       self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                                                      self._new_symbolic_shape(self._get_shape_rank(node, 0), node)))
+                                                      get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_Scan(self, node):
         subgraph = get_attribute(node, 'body')
@@ -1064,16 +1093,16 @@ class SymbolicShapeInference:
         self.sympy_data_ = start_sympy_data
         self.out_mp_.graph.ClearField('value_info')
         self._apply_suggested_merge(graph_input_only=True)
-        input_symbols = set()
+        self.input_symbols_ = set()
         for i in self.out_mp_.graph.input:
             input_dims = i.type.tensor_type.shape.dim
             for i_dim in range(len(input_dims)):
                 if get_dim_from_type_proto(input_dims[i_dim]) is None:
                     # some models use None for symbolic dim in input, replace it with a string
                     input_dims[i_dim].dim_param = self._new_symbolic_dim(i.name, i_dim)
-            input_symbols.update([d for d in get_shape_from_type_proto(i.type) if type(d) == str])
+            self.input_symbols_.update([d for d in get_shape_from_type_proto(i.type) if type(d) == str])
 
-        for s in input_symbols:
+        for s in self.input_symbols_:
             if s in self.suggested_merge_:
                 s_merge = self.suggested_merge_[s]
                 assert s_merge in self.symbolic_dims_
@@ -1166,7 +1195,7 @@ class SymbolicShapeInference:
                             new_shape = self._new_symbolic_shape(out_rank, node, i_o)
                             vi.CopyFrom(helper.make_tensor_value_info(vi.name,
                                                                       self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                                                                      new_shape))
+                                                                      get_shape_from_sympy_shape(new_shape)))
 
                             if self.verbose_ > 0:
                                 if is_unknown_op:

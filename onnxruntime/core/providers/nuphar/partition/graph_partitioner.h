@@ -22,6 +22,7 @@ class GraphPartitioner : public Partitioner {
       : Partitioner(), is_op_type_supported_func_(is_op_type_supported_func) {}
 
   Status Partition(const onnxruntime::GraphViewer& graph,
+                   int& fused_count,
                    std::vector<std::unique_ptr<ComputeCapability>>& result);
 
  private:

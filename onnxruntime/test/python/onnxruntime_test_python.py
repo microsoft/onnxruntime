@@ -66,6 +66,13 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue('[\'InvalidProvider\'] does not contain a subset of available providers' in str(
             context.exception))
 
+    def testSessionProviders(self):
+        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+            # create session from scratch, but constrain it to only use the CPU.
+            sess = onnxrt.InferenceSession(
+                self.get_name("mul_1.onnx"), providers=['CPUExecutionProvider'])
+            self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
+
     def testRunModel(self):
         sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -594,5 +601,28 @@ class TestInferenceSession(unittest.TestCase):
         opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
+    def testLoadingSessionOptionsFromModel(self):
+        try:
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(1)
+            sess = onnxrt.InferenceSession(self.get_name("model_with_valid_ort_config_json.onnx"))
+            session_options = sess.get_session_options()
+            
+            self.assertEqual(session_options.inter_op_num_threads, 5)  # from the ORT config
+            
+            self.assertEqual(session_options.intra_op_num_threads, 2)  # from the ORT config
+
+            self.assertEqual(session_options.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)  # default option (not from the ORT config)
+
+            self.assertEqual(session_options.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)  # from the ORT config
+
+            self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
+            
+        except Exception: 
+            raise
+
+        finally:
+            # Make sure the usage of the feature is disabled after this test
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)       
+        
 if __name__ == '__main__':
     unittest.main()
