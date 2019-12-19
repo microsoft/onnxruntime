@@ -45,8 +45,9 @@ TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
 template <typename T>
 std::vector<T> ToVector(const int* value, int size) {
   std::vector<T> data(size);
-  for (int i = 0; i < size; i++)
+  for (int i = 0; i < size; i++) {
     data[i] = static_cast<T>(value[i]);
+  }
   return data;
 }
 
@@ -81,12 +82,17 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
   RunMatMulIntegerU8S8Test(1, 2, 16);
   RunMatMulIntegerU8S8Test(1, 2, 64);
+  RunMatMulIntegerU8S8Test(1, 8, 36);
+  RunMatMulIntegerU8S8Test(1, 8, 68);
+  RunMatMulIntegerU8S8Test(1, 8, 400);
+  RunMatMulIntegerU8S8Test(1, 512, 1024);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RunMatMulIntegerU8S8Test(2, 2, 40);
   RunMatMulIntegerU8S8Test(2, 48, 33);
   RunMatMulIntegerU8S8Test(2, 51, 40);
+  RunMatMulIntegerU8S8Test(4, 8, 68);
 }
 
 }  // namespace test
