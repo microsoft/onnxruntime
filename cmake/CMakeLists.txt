@@ -392,6 +392,13 @@ if (onnxruntime_USE_TVM)
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
 
+  if (onnxruntime_USE_MKLML)
+    add_dependencies(tvm project_mklml)
+    add_dependencies(tvm_topi project_mklml)
+    add_dependencies(tvm_runtime project_mklml)
+    add_dependencies(nnvm_compiler project_mklml)
+  endif()
+
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dlpack/include
