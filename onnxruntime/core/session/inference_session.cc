@@ -1054,11 +1054,19 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   TraceLoggingWriteStart(ortrun_activity, "OrtRun");
 #endif
   Status retval = Status::OK();
-
+  const Env& env = Env::Default();
   try {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    // check the frequency to send Evalutaion Stop event
+    if (TimeDiffMicroSeconds(time_sent_last_evalutation_start_) > kDurationBetweenSendingEvaluationStart) {
+      env.GetTelemetryProvider().LogEvaluationStart();
+      // reset counters
+      time_sent_last_evalutation_start_ = std::chrono::high_resolution_clock::now();
+      isEvaluationStart = true;
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
@@ -1112,7 +1120,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   // time to send telemetry?
   if (TimeDiffMicroSeconds(time_sent_last_) > kDurationBetweenSending) {
     // send the telemetry
-    const Env& env = Env::Default();
     env.GetTelemetryProvider().LogRuntimePerf(session_id_, total_runs_since_last_, total_run_duration_since_last_);
     // reset counters
     time_sent_last_ = std::chrono::high_resolution_clock::now();
@@ -1121,11 +1128,9 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   }
 
   // check the frequency to send Evalutaion Stop event
-  if (TimeDiffMicroSeconds(time_sent_last_evalutation_stop_) > kDurationBetweenSendingEvaluationStop) {
-    const Env& env = Env::Default();
+  if (isEvaluationStart) {
     env.GetTelemetryProvider().LogEvaluationStop();
-    // reset counters
-    time_sent_last_evalutation_stop_ = std::chrono::high_resolution_clock::now();
+    isEvaluationStart = false;
   }
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
