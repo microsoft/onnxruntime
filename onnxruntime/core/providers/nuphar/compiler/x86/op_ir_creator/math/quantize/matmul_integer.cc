@@ -126,9 +126,8 @@ static Status EvaluateMatMulInteger(
         force_no_tensorize = true;
       }
 
-      // Tensorization: AVX2: 8bit GEMM AVX512: 8bit GEMV and GEMM
-      bool isGEMV = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1);
-      bool use_tensorization = !force_mkl && !force_no_tensorize && (feature.hasAVX512 || (feature.hasAVX2 && !isGEMV) || (!feature.hasAVX2 && feature.hasAVX));
+      // Tensorization: AVX2: 8bit GEMV/GEMM AVX512: 8bit GEMV/GEMM
+      bool use_tensorization = !force_mkl && !force_no_tensorize && (feature.hasAVX512 || feature.hasAVX2 || feature.hasAVX);
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];
@@ -156,14 +155,14 @@ static Status EvaluateMatMulInteger(
         // TVM has known issue when handling tensorization of matmul: [1x1] = [1xK]x[Kx1]
         // and this case is not likely happen in real model
         // so add option to fall back to a general reduction
-        bool isScalar = isGEMV && (embed_dim == 1);
+        bool isScalar = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1) && (embed_dim == 1);
 
         // Tensorization has two layout options: 1) Transpose or 2) Tiling
-        auto layout_key = !isScalar ? tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width)
-                                    : tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
+        auto layout_key = isScalar ? tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg)) : tvm_codegen::WeightLayoutTiling2D::GetKey(TensorProtoDataType(B_NodeArg), vector_width);
+
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
-        tvm::Tensor output_tensor = IMatMulTensorize(A, B_marshalled, batchseq_dim, input_dim, embed_dim, vector_width, name + "_IMatMulTensorizeAVX512");
+        tvm::Tensor output_tensor = IMatMulTensorize(A, B_marshalled, batchseq_dim, input_dim, embed_dim, vector_width, name + "_IMatMulTensorize");
 
         // Post processing output tensor
         tvm::Expr embed_padded = B_marshalled->shape[0];
