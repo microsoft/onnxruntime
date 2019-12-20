@@ -79,21 +79,19 @@ namespace Microsoft.ML.OnnxRuntime
                     var offsets = new UIntPtr[_elementCount];
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
                     var dataBuffer = new byte[strLen.ToUInt64()];
-                    var dataBufferMemory = new Memory<byte>(dataBuffer);
-                    var offsetMemory = new Memory<UIntPtr>(offsets);
-                    var dataBufferPointer = IntPtr.Zero;
-                    var offsetBufferPointer = IntPtr.Zero;
 
-                    using (var dataBufferHandle = dataBufferMemory.Pin())
-                    using (var offsetMemoryHandle = offsetMemory.Pin())
+                    using (var dataBufferHandle = new Memory<byte>(dataBuffer).Pin())
+                    using (var offsetMemoryHandle = new Memory<UIntPtr>(offsets).Pin())
                     {
                         unsafe
                         {
-                            dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
-                            offsetBufferPointer = (IntPtr)offsetMemoryHandle.Pointer;
+                            _dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
+                            NativeApiStatus.VerifySuccess(
+                                NativeMethods.OrtGetStringTensorContent(
+                                _onnxValueHandle, _dataBufferPointer, strLen,
+                                (IntPtr)offsetMemoryHandle.Pointer,
+                                (UIntPtr)_elementCount));
                         }
-                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorContent(_onnxValueHandle, dataBufferPointer, strLen, offsetBufferPointer, (UIntPtr)_elementCount));
-                        _dataBufferPointer = dataBufferPointer;
                         _dataBufferAsString = new string[_elementCount];
 
                         for (var i = 0; i < offsets.Length; i++)
@@ -110,7 +108,9 @@ namespace Microsoft.ML.OnnxRuntime
             catch (Exception e)
             {
                 //TODO: cleanup any partially created state
-                //Do not call ReleaseTensor here. If the constructor has thrown exception, then this NativeOnnxTensorWrapper is not created, so caller should take appropriate action to dispose
+                //Do not call ReleaseTensor here. If the constructor has thrown exception, 
+                //then this NativeOnnxTensorWrapper is not created, so caller should take 
+                //appropriate action to dispose
                 throw e;
             }
             finally
