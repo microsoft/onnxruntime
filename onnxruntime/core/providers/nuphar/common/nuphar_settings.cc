@@ -34,7 +34,6 @@ static const std::unordered_set<std::string> valid_keys = {
     kNupharIMatMulForceMkl,
     kNupharMatmulExec,
     kNupharCachePath,
-    kNupharCacheVersion,
     kNupharCacheSoName,
     kNupharCacheModelChecksum,
     kNupharCacheForceNoJIT,

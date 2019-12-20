@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import hashlib
+import itertools
 from os.path import expanduser
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
@@ -89,6 +90,8 @@ Use the individual flags to only run the specified stages.
     # C-Sharp bindings
     parser.add_argument("--build_csharp", action='store_true', help="Build C#.Net DLL and NuGet package")
 
+    # Java bindings
+    parser.add_argument("--build_java", action='store_true', help="Build Java bindings.")
 
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
@@ -127,7 +130,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
-    parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
+    parser.add_argument("--use_featurizers", action='store_true', help="Build with ML Featurizer support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
@@ -290,12 +293,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),
+                 "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
+                 "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
                  "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
                  "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + ("OFF" if args.use_openblas else "ON"),
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
@@ -497,15 +501,15 @@ def setup_tensorrt_vars(args):
                              "tensorrt_home='{}' valid={}."
                              .format(tensorrt_home, tensorrt_home_valid))
 
-        # Set maximum batch size for TensorRT. The number needs to be no less than maximum batch size in all unit tests
-        os.environ["ORT_TENSORRT_MAX_BATCH_SIZE"] = "13"
-
         # Set maximum workspace size in byte for TensorRT (1GB = 1073741824 bytes)
         os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
-        os.environ["ORT_TENSORRT_MAX_PARSER_ITERATIONS"] = "6"
-
+        os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "1000"
+        
+        # Set minimum subgraph node size in graph partitioning for TensorRT
+        os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
+        
     return tensorrt_home
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
@@ -611,9 +615,6 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           cmd += ['-d', '1']
 
         if config != 'Debug' and os.path.exists(model_dir):
-          # some models in opset9 and above are not supported by TensorRT yet
-          if provider == 'tensorrt':
-            model_dir = os.path.join(model_dir, "opset8")
           cmd.append(model_dir)
         if os.path.exists(onnx_test_data_dir):
           cmd.append(onnx_test_data_dir)
@@ -625,6 +626,33 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
         if enable_parallel_executor_test:
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
+# tensorrt function to run onnx test and model test.
+def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+    for config in configs:
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+           exe = os.path.join(cwd, config, 'onnx_test_runner')
+           model_dir = os.path.join(cwd, "models")
+        else:
+           exe = os.path.join(cwd, 'onnx_test_runner')
+           model_dir = os.path.join(build_dir, "models")
+        cmd_base = ['-e', 'tensorrt', '-j', '1'] 
+
+        #onnx test
+        if os.path.exists(onnx_test_data_dir):
+          onnx_test_cmd = cmd_base + [onnx_test_data_dir]
+          run_subprocess([exe] + onnx_test_cmd, cwd=cwd)
+
+        # model test
+        # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
+        if config != 'Debug' and os.path.exists(model_dir):
+          model_dir_opset8 = os.path.join(model_dir, "opset8")          
+          model_dir_opset8 = glob.glob(os.path.join(model_dir_opset8, "test_*"))
+          model_dir_opset10 = os.path.join(model_dir, "opset10")
+          model_dir_opset10 = glob.glob(os.path.join(model_dir_opset10, "tf_inception_v1"))
+          for dir_path in itertools.chain(model_dir_opset8, model_dir_opset10):
+            model_test_cmd = cmd_base + [dir_path]
+            run_subprocess([exe] + model_test_cmd, cwd=cwd)
 
 # dnnl temporary function for running onnx tests and model tests separately.
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
@@ -653,13 +681,17 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           opset10_model_dir = os.path.join(model_dir, 'opset10')
           opset10_cmd = cmd_base + [opset10_model_dir]
           run_subprocess([exe] + opset7_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
           run_subprocess([exe] + opset8_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
           run_subprocess([exe] + opset9_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
           run_subprocess([exe] + opset10_cmd, cwd=cwd)
-          run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
+
+          # temporarily disable -x invocations on Windows as they
+          # are causing instability in CI
+          if not is_windows():
+            run_subprocess([exe, '-x'] + opset7_cmd, cwd=cwd)
+            run_subprocess([exe, '-x'] + opset8_cmd, cwd=cwd)
+            run_subprocess([exe, '-x'] + opset9_cmd, cwd=cwd)
+            run_subprocess([exe, '-x'] + opset10_cmd, cwd=cwd)
 
 
 # nuphar temporary function for running python tests separately as it requires ONNX 1.5.0
@@ -862,7 +894,7 @@ def main():
     if args.build_wheel or args.enable_server_model_tests:
         args.enable_pybind = True
 
-    if args.build_csharp:
+    if args.build_csharp or args.build_java:
         args.build_shared_lib = True
 
     # Disabling unit tests for VAD-F as FPGA only supports models with NCHW layout
@@ -906,10 +938,18 @@ def main():
             if args.test:
                 log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
                 args.test = False
-          else:
-            toolset = 'host=x64'
-            if (args.msvc_toolset):
-                toolset += ',version=' + args.msvc_toolset
+          else:            
+            if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
+                #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
+                #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
+                #14.16 is MSVC version
+                #141 is MSVC Toolset Version
+                #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
+                toolset = 'v141,host=x64,version=' + args.msvc_toolset
+            elif args.msvc_toolset:
+                toolset = 'host=x64,version=' + args.msvc_toolset
+            else:
+                toolset = 'host=x64'
             if (args.cuda_version):
                 toolset += ',cuda=' + args.cuda_version
 
@@ -962,7 +1002,9 @@ def main():
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'tensorrt', args.enable_multi_device_test, False, 1)
+                tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+              else:
+                tensorrt_run_onnx_tests(build_dir, configs, "")
 
             if args.use_cuda:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           

@@ -129,10 +129,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
 endif()
 
-if(onnxruntime_USE_AUTOML)
+if(onnxruntime_USE_FEATURIZERS)
   list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/automl_ops/*.h"
-    "${TEST_SRC_DIR}/automl_ops/*.cc")
+    "${TEST_SRC_DIR}/featurizers_ops/*.h"
+    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
@@ -218,8 +218,8 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_AUTOML)
-   list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
+if(onnxruntime_USE_FEATURIZERS)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
 endif()
 
 if(onnxruntime_USE_DML)
@@ -806,7 +806,6 @@ list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-
 add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
@@ -820,3 +819,38 @@ else()
   # need to ignore the linker warning 4199, due to some global linker flags failing here
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+
+if (onnxruntime_BUILD_JAVA)
+    message(STATUS "Running Java tests")
+    # Build and run tests
+    set(onnxruntime4j_test_src
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/InferenceTest.java
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/TestHelpers.java
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/OnnxMl.java
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/UtilTest.java
+        )
+
+    # Create test directories
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/java-tests/")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/java-tests/results")
+
+    # Download test dependencies
+    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar)
+        message("Downloading JUnit 5")
+        file(DOWNLOAD https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.5.2/junit-platform-console-standalone-1.5.2.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar EXPECTED_HASH SHA1=8d937d2b461018a876836362b256629f4da5feb1)
+    endif()
+
+    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar)
+        message("Downloading protobuf-java 3.10.0")
+        file(DOWNLOAD https://repo1.maven.org/maven2/com/google/protobuf/protobuf-java/3.10.0/protobuf-java-3.10.0.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar EXPECTED_HASH SHA1=410b61dd0088aab4caa05739558d43df248958c9)
+    endif()
+
+    # Build the test jar
+    add_jar(onnxruntime4j_test SOURCES ${onnxruntime4j_test_src} VERSION ${ORT_VERSION} INCLUDE_JARS ${onnxruntime_jar_name} ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar)
+
+    add_dependencies(onnxruntime4j_test onnxruntime4j_jni onnxruntime4j)
+    get_property(onnxruntime_test_jar_name TARGET onnxruntime4j_test PROPERTY JAR_FILE)
+
+    # Run the tests with JUnit's console launcher
+    add_test(NAME java-api COMMAND ${Java_JAVA_EXECUTABLE} -jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar -cp ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar -cp ${onnxruntime_test_jar_name} -cp ${onnxruntime_jar_binaries_platform} --scan-class-path --fail-if-no-tests --reports-dir=${CMAKE_CURRENT_BINARY_DIR}/java-tests/results --disable-banner WORKING_DIRECTORY ${REPO_ROOT})
+endif()

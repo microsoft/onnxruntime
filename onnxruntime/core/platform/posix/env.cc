@@ -27,7 +27,7 @@ limitations under the License.
 #include <dlfcn.h>
 #include <string.h>
 #include <thread>
-#include <utility> // for std::forward
+#include <utility>  // for std::forward
 #include <vector>
 #include <assert.h>
 
@@ -74,7 +74,7 @@ using ScopedFileDescriptor = ScopedResource<FileDescriptorTraits>;
 
 // non-macro equivalent of TEMP_FAILURE_RETRY, described here:
 // https://www.gnu.org/software/libc/manual/html_node/Interrupted-Primitives.html
-template<typename TFunc, typename... TFuncArgs>
+template <typename TFunc, typename... TFuncArgs>
 long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   long int result;
   do {
@@ -216,8 +216,8 @@ class PosixEnv : public Env {
     }
 
     mapped_memory = MappedMemoryPtr{
-      reinterpret_cast<char*>(mapped_base) + offset_to_page,
-      OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+        reinterpret_cast<char*>(mapped_base) + offset_to_page,
+        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
 
     return Status::OK();
   }
@@ -316,6 +316,12 @@ class PosixEnv : public Env {
   // \brief returns a provider that will handle telemetry on the current platform
   const Telemetry& GetTelemetryProvider() const override {
     return telemetry_provider_;
+  }
+
+  // \brief returns a value for the queried variable name (var_name)
+  std::string GetEnvironmentVar(const std::string& var_name) const override {
+    char* val = getenv(var_name.c_str());
+    return val == NULL ? std::string() : std::string(val);
   }
 
  private:

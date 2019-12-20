@@ -87,9 +87,6 @@ IMatMulExternMKL(const tvm::Tensor& A,
   std::string func_str;
 #ifdef NUPHAR_USE_MKL
   func_str = "tvm.contrib.onnxruntime.imatmul.extern.mkl";
-#else
-  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_MKL!");
-#endif
 
   return topi::detail::make_extern(
       {output_shape}, {tvm::Int(32)},
@@ -105,6 +102,9 @@ IMatMulExternMKL(const tvm::Tensor& A,
                                           embed_dim});
       },
       name, "", {})[0];
+#else
+  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_MKL!");
+#endif
 }
 
 tvm::Tensor
@@ -119,9 +119,6 @@ IMatMulExternAVX2(const tvm::Tensor& A,
   std::string func_str;
 #ifdef NUPHAR_USE_AVX2
   func_str = "tvm.contrib.onnxruntime.imatmul.extern.avx2";
-#else
-  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_AVX2!");
-#endif
 
   return topi::detail::make_extern(
       {output_shape}, {tvm::Int(32)},
@@ -137,6 +134,9 @@ IMatMulExternAVX2(const tvm::Tensor& A,
                                           embed_dim});
       },
       name, "", {})[0];
+#else
+  ORT_NOT_IMPLEMENTED("Not implemented. Please set NUPHAR_USE_AVX2!");
+#endif
 }
 
 }  // namespace nuphar
