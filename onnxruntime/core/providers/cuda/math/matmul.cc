@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "cublas_gemm_algo_selector.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -33,6 +34,8 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+static CublasGemmAlgoSelector gemm_algo_selector;
+
 template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -49,8 +52,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
+  onnxruntime::NodeIndex node_index = this->Node().Index();
+
   if (helper.OutputOffsets().size() == 1) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+    CUBLAS_RETURN_IF_ERROR(cublasGemmAlgoHelper(
+        &gemm_algo_selector,
+        node_index,
         Base::CublasHandle(),
         CUBLAS_OP_N,
         CUBLAS_OP_N,
@@ -79,19 +86,21 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
-  CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
+  CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedAlgoHelper(
+      &gemm_algo_selector,
+      node_index,
       Base::CublasHandle(),
       CUBLAS_OP_N,
       CUBLAS_OP_N,
       static_cast<int>(helper.N()),
       static_cast<int>(helper.M()),
       static_cast<int>(helper.K()),
-      &one,
+      reinterpret_cast<const CudaT*>(&one),
       right_arrays.GpuPtr(),
       static_cast<int>(helper.N()),
       left_arrays.GpuPtr(),
       static_cast<int>(helper.K()),
-      &zero,
+      reinterpret_cast<const CudaT*>(&zero),
       output_arrays.GpuPtr(),
       static_cast<int>(helper.N()),
       static_cast<int>(helper.OutputOffsets().size())));

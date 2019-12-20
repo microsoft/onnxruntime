@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
+#include "core/providers/cuda/math/cublas_gemm_algo_selector.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -30,8 +31,11 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+static CublasGemmAlgoSelector gemm_algo_selector;
+
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {}
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
+}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -69,16 +73,22 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
+  onnxruntime::NodeIndex node_index = this->Node().Index();
+
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+  CUBLAS_RETURN_IF_ERROR(cublasGemmAlgoHelper(
+      const_cast<CublasGemmAlgoSelector*>(&gemm_algo_selector),
+      node_index,
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
       GetConstOnes<CudaT>(m), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n));
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+  CUBLAS_RETURN_IF_ERROR(cublasGemmAlgoHelper(
+      const_cast<CublasGemmAlgoSelector*>(&gemm_algo_selector),
+      node_index,
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
