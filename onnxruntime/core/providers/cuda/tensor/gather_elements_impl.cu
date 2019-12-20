@@ -42,6 +42,7 @@ template <typename Tin>
 void GatherElementsImpl(
     const int64_t rank,
     const void* input_data,
+    const int64_t input_size,
     const int64_t input_dim_along_axis,
     const int64_t* input_strides,
     const Tin* indices_data,
@@ -94,6 +95,7 @@ void GatherElementsImpl(
 template void GatherElementsImpl<int32_t>(
     const int64_t rank,
     const void* input_data,
+    const int64_t input_size,
     const int64_t input_dim_along_axis,
     const int64_t* input_strides,
     const int32_t* indices_data,
@@ -106,6 +108,7 @@ template void GatherElementsImpl<int32_t>(
 template void GatherElementsImpl<int64_t>(
     const int64_t rank,
     const void* input_data,
+    const int64_t input_size,
     const int64_t input_dim_along_axis,
     const int64_t* input_strides,
     const int64_t* indices_data,

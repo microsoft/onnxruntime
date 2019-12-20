@@ -1,5 +1,6 @@
 # Defined as pipeline variables
 # variables:
+#   AgentPoolWin : 'Win-CPU'
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
@@ -8,11 +9,11 @@ parameters:
   DoCompliance: 'false'
 
 jobs: 
-- template: ../../templates/win-ci-2019.yml
+- template: ../../templates/win-ci.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
+    AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --use_winml --use_telemetry --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib --build_csharp --enable_onnx_tests --use_winml'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -23,11 +24,11 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: ../../templates/win-x86-ci-2019.yml
+- template: ../../templates/win-x86-ci.yml
   parameters:
-    AgentPool : 'Win-CPU-2019'
+    AgentPool : $(AgentPoolWin)
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --use_winml --x86 --use_telemetry --cmake_generator "Visual Studio 16 2019"'
+    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_openmp --build_shared_lib  --build_csharp --enable_onnx_tests --use_winml --x86'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -102,7 +103,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: $(AgentPoolWin)
   dependsOn:
   - Windows_CI_Dev
   - Windows_CI_Dev_x86

@@ -115,10 +115,11 @@ common::Status ComputeByType(OpKernelContext* context,
 common::Status ImputerOp::Compute(OpKernelContext* context) const {
   const auto* input_tensor_ptr = context->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor_ptr != nullptr);
-  if (input_tensor_ptr->IsDataType<float>()) {
+  auto input_type = input_tensor_ptr->DataType();
+  if (utils::IsPrimitiveDataType<float>(input_type)) {
     return ComputeByType<float>(context, replaced_value_float_, imputed_values_float_);
   }
-  if (input_tensor_ptr->IsDataType<int64_t>()) {
+  if (utils::IsPrimitiveDataType<int64_t>(input_type)) {
     return ComputeByType<int64_t>(context, replaced_value_int64_, imputed_values_int64_);
   } else {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid type");

@@ -43,9 +43,7 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
   // "Add" inputs have to be of same dimensions.
   bool is_valid_input = true;
   for (int i = 0; i < 3; i++) {
-    if (!utils::HasDimValue(add_input1_shape->dim(i)) ||
-        !utils::HasDimValue(add_input2_shape->dim(i)) ||
-        add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
+    if (add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
       is_valid_input = false;
       break;
     }
@@ -70,11 +68,7 @@ static bool CheckSecondAdd(Node& add, ProviderType providertype) {
     return false;
   }
 
-  return add_input1_shape->dim_size() == 3 &&
-         add_input2_shape->dim_size() == 1 &&
-         utils::HasDimValue(add_input1_shape->dim(2)) &&
-         utils::HasDimValue(add_input2_shape->dim(0)) &&
-         add_input1_shape->dim(2).dim_value() == add_input2_shape->dim(0).dim_value();
+  return add_input1_shape->dim_size() == 3 && add_input2_shape->dim_size() == 1;
 }
 
 /**

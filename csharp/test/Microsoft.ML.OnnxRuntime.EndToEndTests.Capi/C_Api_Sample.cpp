@@ -4,7 +4,6 @@
 
 #include <assert.h>
 #include <onnxruntime_c_api.h>
-#include <cmath>
 #include <stdlib.h>
 #include <stdio.h>
 #include <vector>
@@ -147,7 +146,7 @@ int main(int argc, char* argv[]) {
   // Get pointer to output tensor float values
   float* floatarr;
   CheckStatus(g_ort->GetTensorMutableData(output_tensor, (void**)&floatarr));
-  assert(std::abs(floatarr[0] - 0.000045) < 1e-6);
+  assert(abs(floatarr[0] - 0.000045) < 1e-6);
 
   // score the model, and print scores for first 5 classes
   for (int i = 0; i < 5; i++)

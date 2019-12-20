@@ -1,29 +1,37 @@
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
-
 /* ++
+
+Copyright (c) Microsoft Corporation.  All rights reserved.
+
 Module Name:
+
     TraceLoggingConfig.h
+
 Abstract:
+
     Macro definitions used by this project's TraceLogging ETW providers:
+
     - Configuration macros that select the ETW Provider Groups to be used by
       this project.
     - Constants for tags that are commonly used in Microsoft's
       TraceLogging-based ETW.
+
     Different versions of this file use different definitions for the
     TraceLoggingOption configuration macros. The definitions in this file are
     empty. As a result, providers using this configuration file will not join
     any ETW Provider Groups and will not be given any special treatment by
     group-sensitive ETW listeners.
+
 Environment:
+
     User mode or kernel mode.
+
 --*/
 
 #pragma once
 
 // Configuration macro for use in TRACELOGGING_DEFINE_PROVIDER. The definition
 // in this file configures the provider as a normal (non-telemetry) provider.
-#ifndef ENABLE_TELEMETRY
+#ifndef TraceLoggingOptionMicrosoftTelemetry
 #define TraceLoggingOptionMicrosoftTelemetry() \
     TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)
     // Empty definition for TraceLoggingOptionMicrosoftTelemetry
