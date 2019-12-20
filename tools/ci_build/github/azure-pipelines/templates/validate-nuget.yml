@@ -1,0 +1,12 @@
+parameters:
+  NugetPath: ''
+  PlatformsSupported: ''
+
+steps:
+    - task: CmdLine@1
+      displayName: 'Validate generated Nuget'
+      inputs:
+        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        arguments: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py --nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}}'
+        workingDirectory: "$(Build.SourcesDirectory)"
+      continueOnError: false
