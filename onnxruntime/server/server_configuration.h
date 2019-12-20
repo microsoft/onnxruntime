@@ -39,6 +39,8 @@ class ServerConfiguration {
  public:
   const std::string full_desc = "ONNX Server: host an ONNX model with ONNX Runtime";
   std::string model_path;
+  std::string model_name = "default";
+  std::string model_version = "1";
   std::string address = "0.0.0.0";
   unsigned short http_port = 8001;
   unsigned short grpc_port = 50051;
@@ -49,6 +51,8 @@ class ServerConfiguration {
     desc.add_options()("help,h", "Shows a help message and exits");
     desc.add_options()("log_level", po::value(&log_level_str)->default_value(log_level_str), "Logging level. Allowed options (case sensitive): verbose, info, warning, error, fatal");
     desc.add_options()("model_path", po::value(&model_path)->required(), "Path to ONNX model");
+    desc.add_options()("model_name", po::value(&model_name)->default_value(model_name), "ONNX model name; default: default");
+    desc.add_options()("model_version", po::value(&model_version)->default_value(model_version), "ONNX model version; default: 1");
     desc.add_options()("address", po::value(&address)->default_value(address), "The base HTTP address");
     desc.add_options()("http_port", po::value(&http_port)->default_value(http_port), "HTTP port to listen to requests");
     desc.add_options()("num_http_threads", po::value(&num_http_threads)->default_value(num_http_threads), "Number of http threads");
