@@ -7,6 +7,7 @@
 .. _sphx_glr_auto_examples_plot_dl_keras.py:
 
 
+
 .. _l-example-backend-api-tensorflow:
 
 ONNX Runtime for Keras
@@ -23,7 +24,9 @@ with *onnxruntime*. The conversion requires
 but then only *onnxruntime* is required
 to compute the predictions.
 
-.. code-block:: default
+
+
+.. code-block:: python
 
     import os
     if not os.path.exists('dense121.onnx'):
@@ -44,7 +47,8 @@ to compute the predictions.
 Let's load an image (source: wikipedia).
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     from keras.preprocessing.image import array_to_img, img_to_array, load_img
@@ -67,7 +71,8 @@ Let's load an image (source: wikipedia).
 Let's load the model with onnxruntime.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
     import onnxruntime as rt
     from onnxruntime.capi.onnxruntime_pybind11_state import InvalidGraph
@@ -94,14 +99,15 @@ Let's load the model with onnxruntime.
 
  .. code-block:: none
 
-    The model expects input shape: [1, 224, 224, 3]
+    The model expects input shape: ['N', 224, 224, 3]
     image shape: (960, 1280, 3)
 
 
 Let's resize the image.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     if ok:
@@ -130,7 +136,8 @@ Let's resize the image.
 Let's compute the output.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     if ok:
@@ -150,14 +157,15 @@ Let's compute the output.
 
  .. code-block:: none
 
-    [2.1612221e-05 1.1138325e-06 2.1360850e-06 6.0210859e-06 6.5446152e-06
-     1.0469267e-06 2.2719473e-06 6.1393581e-07 1.0240050e-06 4.2284842e-06]
+    [5.3862054e-06 6.1927537e-08 2.0104133e-07 1.3239808e-06 1.0415122e-06
+     6.7792627e-08 3.1348068e-07 3.2683040e-08 1.0914272e-07 1.1627122e-06]
 
 
 Let's get more comprehensive results.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     if ok:
@@ -179,18 +187,15 @@ Let's get more comprehensive results.
 
  .. code-block:: none
 
-    class_id           name         P
-    0  n09468604         valley  0.687384
-    1  n09193705            alp  0.253060
-    2  n09246464          cliff  0.012631
-    3  n09399592     promontory  0.012037
-    4  n03792972  mountain_tent  0.007539
+    class_id        name         P
+    0  n09468604      valley  0.785549
+    1  n09193705         alp  0.187054
+    2  n09399592  promontory  0.010602
+    3  n09246464       cliff  0.005537
+    4  n02417914        ibex  0.001997
 
 
-
-.. rst-class:: sphx-glr-timing
-
-   **Total running time of the script:** ( 0 minutes  7.400 seconds)
+**Total running time of the script:** ( 0 minutes  56.895 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_dl_keras.py:

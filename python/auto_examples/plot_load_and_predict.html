@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+
+  <title>Load and predict with ONNX Runtime and a very simple model</title>
+
+  <link rel="stylesheet" href="../_static/pyramid.css" type="text/css"/>
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/gallery.css" type="text/css" />
+</head>
+<body>
+<div class="container">
+  <div class="row" style="margin-top: 1rem;">
+    <div id="sidebar" class="col-xs-12 col-sm-3">
+      <a href="../index.html">
+        <img style="margin-bottom: 0.5rem;" class="img-fluid" src="../_static/ONNX_Runtime_icon.png"/>
+      </a>
+      <div id="searchbox" style="display: none" role="search">
+        <form class="form-inline" action="../search.html" method="get">
+          <div class="form-group">
+            <label class="sr-only" for="searchInput">Search</label>
+            <input type="text" class="form-control" name="q" id="searchInput" placeholder="Search">
+          </div>
+          <button type="submit" class="btn btn-secondary" style="display:none">Go</button>
+          <input type="hidden" name="check_keywords" value="yes"/>
+          <input type="hidden" name="area" value="default"/>
+        </form>
+      </div>
+
+      <hr>
+
+        <div id="toc">
+        <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../tutorial.html#step-1-train-a-model-using-your-favorite-framework">Step 1: Train a model using your favorite framework</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorial.html#step-2-convert-or-export-the-model-into-onnx-format">Step 2: Convert or export the model into ONNX format</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorial.html#step-3-load-and-run-the-model-using-onnx-runtime">Step 3: Load and run the model using ONNX Runtime</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#device">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#examples-and-datasets">Examples and datasets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#load-and-run-a-model">Load and run a model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#backend">Backend</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="plot_pipeline.html">Draw a pipeline</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Load and predict with ONNX Runtime and a very simple model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_profiling.html">Profile the execution of a simple model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_backend.html">ONNX Runtime Backend for ONNX</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_metadata.html">Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_dl_keras.html">ONNX Runtime for Keras</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_convert_pipeline_vectorizer.html">Train, convert and predict with ONNX Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_common_errors.html">Common errors with onnxruntime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plot_train_convert_predict.html">Train, convert and predict with ONNX Runtime</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+    </div>
+    <div class="col-xs-12 col-sm-9">
+      <div class="sphx-glr-download-link-note admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-load-and-predict-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+</div>
+<div class="sphx-glr-example-title section" id="load-and-predict-with-onnx-runtime-and-a-very-simple-model">
+<span id="l-example-simple-usage"></span><span id="sphx-glr-auto-examples-plot-load-and-predict-py"></span><h1>Load and predict with ONNX Runtime and a very simple model<a class="headerlink" href="#load-and-predict-with-onnx-runtime-and-a-very-simple-model" title="Permalink to this headline">¶</a></h1>
+<p>This example demonstrates how to load a model and compute
+the output for an input vector. It also shows how to
+retrieve the definition of its inputs and outputs.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="kn">as</span> <span class="nn">rt</span>
+<span class="kn">import</span> <span class="nn">numpy</span>
+<span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
+</pre></div>
+</div>
+<p>Let’s load a very simple model.
+The model is available on github <a class="reference external" href="https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid">onnx…test_sigmoid</a>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;sigmoid.onnx&quot;</span><span class="p">)</span>
+<span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example1</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Let’s see the input name and shape.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">input_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;input name&quot;</span><span class="p">,</span> <span class="n">input_name</span><span class="p">)</span>
+<span class="n">input_shape</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;input shape&quot;</span><span class="p">,</span> <span class="n">input_shape</span><span class="p">)</span>
+<span class="n">input_type</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_inputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">type</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;input type&quot;</span><span class="p">,</span> <span class="n">input_type</span><span class="p">)</span>
+</pre></div>
+</div>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>input name x
+input shape [3, 4, 5]
+input type tensor(float)
+</pre></div>
+</div>
+<p>Let’s see the output name and shape.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">output_name</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;output name&quot;</span><span class="p">,</span> <span class="n">output_name</span><span class="p">)</span>
+<span class="n">output_shape</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;output shape&quot;</span><span class="p">,</span> <span class="n">output_shape</span><span class="p">)</span>
+<span class="n">output_type</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">get_outputs</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">type</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;output type&quot;</span><span class="p">,</span> <span class="n">output_type</span><span class="p">)</span>
+</pre></div>
+</div>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>output name y
+output shape [3, 4, 5]
+output type tensor(float)
+</pre></div>
+</div>
+<p>Let’s compute its outputs (or predictions if it is a machine learned model).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy.random</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">))</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="n">res</span> <span class="o">=</span> <span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
+<span class="k">print</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+</pre></div>
+</div>
+<p class="sphx-glr-script-out">Out:</p>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[array([[[0.61738354, 0.5889719 , 0.6793853 , 0.50794476, 0.6481656 ],
+        [0.63874   , 0.6554151 , 0.70349395, 0.7234402 , 0.5136753 ],
+        [0.5245013 , 0.6156528 , 0.5979552 , 0.50427085, 0.6905146 ],
+        [0.50659853, 0.5972322 , 0.63199735, 0.52700824, 0.5550221 ]],
+
+       [[0.6085912 , 0.60911506, 0.5874832 , 0.62220854, 0.52513546],
+        [0.6714244 , 0.554621  , 0.54446864, 0.50728863, 0.58585966],
+        [0.69436765, 0.6819202 , 0.5424466 , 0.63762194, 0.7102783 ],
+        [0.5940473 , 0.6690069 , 0.6540941 , 0.5415039 , 0.5430267 ]],
+
+       [[0.70212066, 0.60011494, 0.613671  , 0.6573008 , 0.6949564 ],
+        [0.5501859 , 0.65843284, 0.56367683, 0.5267073 , 0.50210917],
+        [0.5226443 , 0.6559813 , 0.62244976, 0.690172  , 0.58052164],
+        [0.55922556, 0.70860493, 0.72129   , 0.5805169 , 0.5123959 ]]],
+      dtype=float32)]
+</pre></div>
+</div>
+<p><strong>Total running time of the script:</strong> ( 0 minutes  0.035 seconds)</p>
+<div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-load-and-predict-py">
+<div class="sphx-glr-download docutils container">
+<a class="reference download internal" href="../_downloads/plot_load_and_predict.py" download=""><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_load_and_predict.py</span></code></a></div>
+<div class="sphx-glr-download docutils container">
+<a class="reference download internal" href="../_downloads/plot_load_and_predict.ipynb" download=""><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_load_and_predict.ipynb</span></code></a></div>
+</div>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
+</div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.0.0/jquery.min.js"
+        integrity="sha384-THPy051/pYDQGanwU6poAc/hOdQxjnOEXzbT+OuUAFqNqFjL+4IGLBgCJC3ZOShY"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.2.0/js/tether.min.js"
+        integrity="sha384-Plbmg8JY28KFelvJVai01l8WyZzrYWG825m+cZ0eDDS1f7d/js6ikvy1+X+guPIB"
+        crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.3/js/bootstrap.min.js"
+        integrity="sha384-ux8v3A6CPtOTqOzMKiuo3d/DomGaaClxFYdCu2HPMBEkf6x2xiDyJ7gkXU0MWwaD"
+        crossorigin="anonymous"></script>
+<script src='https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lunr.js/0.6.0/lunr.min.js"></script>
+<script src="../_static/searchtools.js"></script>
+<script>$('#searchbox').show(0)</script>
+</body>
+</html>

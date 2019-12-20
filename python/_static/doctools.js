@@ -4,11 +4,10 @@
  *
  * Sphinx JavaScript utilities for all documentation.
  *
- * :copyright: Copyright 2007-2019 by the Sphinx team, see AUTHORS.
+ * :copyright: Copyright 2007-2018 by the Sphinx team, see AUTHORS.
  * :license: BSD, see LICENSE for details.
  *
  */
-
 
 /**
  * select a different prefix for underscore
@@ -88,13 +87,14 @@ jQuery.fn.highlightText = function(text, className) {
           node.nextSibling));
         node.nodeValue = val.substr(0, pos);
         if (isInSVG) {
+          var bbox = span.getBBox();
           var rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          var bbox = node.parentElement.getBBox();
-          rect.x.baseVal.value = bbox.x;
+       	  rect.x.baseVal.value = bbox.x;
           rect.y.baseVal.value = bbox.y;
           rect.width.baseVal.value = bbox.width;
           rect.height.baseVal.value = bbox.height;
           rect.setAttribute('class', className);
+          var parentOfText = node.parentNode.parentNode;
           addItems.push({
               "parent": node.parentNode,
               "target": rect});
@@ -150,9 +150,7 @@ var Documentation = {
     this.fixFirefoxAnchorBug();
     this.highlightSearchWords();
     this.initIndexTable();
-    if (DOCUMENTATION_OPTIONS.NAVIGATION_WITH_KEYS) {
-      this.initOnKeyListeners();
-    }
+    
   },
 
   /**
