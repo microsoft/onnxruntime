@@ -15,7 +15,7 @@ TEST(ConfigParsingTests, AllArgs) {
       const_cast<char*>("/path/to/binary"),
       const_cast<char*>("--model_path"), const_cast<char*>("testdata/mul_1.onnx"),
       const_cast<char*>("--model_name"), const_cast<char*>("mul_1"),
-      const_cast<char*>("--model_version"), const_cast<char*>("2"),
+      const_cast<char*>("--model_version"), const_cast<char*>("1"),
       const_cast<char*>("--address"), const_cast<char*>("4.4.4.4"),
       const_cast<char*>("--http_port"), const_cast<char*>("80"),
       const_cast<char*>("--num_http_threads"), const_cast<char*>("1"),
@@ -26,7 +26,7 @@ TEST(ConfigParsingTests, AllArgs) {
   EXPECT_EQ(res, Result::ContinueSuccess);
   EXPECT_EQ(config.model_path, "testdata/mul_1.onnx");
   EXPECT_EQ(config.model_name, "mul_1");
-  EXPECT_EQ(config.model_version, "2");
+  EXPECT_EQ(config.model_version, "1");
   EXPECT_EQ(config.address, "4.4.4.4");
   EXPECT_EQ(config.http_port, 80);
   EXPECT_EQ(config.num_http_threads, 1);
@@ -36,7 +36,7 @@ TEST(ConfigParsingTests, AllArgs) {
 TEST(ConfigParsingTests, Defaults) {
   char* test_argv[] = {
       const_cast<char*>("/path/to/binary"),
-      const_cast<char*>("--model"), const_cast<char*>("testdata/mul_1.onnx"),
+      const_cast<char*>("--model_path"), const_cast<char*>("testdata/mul_1.onnx"),
       const_cast<char*>("--num_http_threads"), const_cast<char*>("3")};
 
   onnxruntime::server::ServerConfiguration config{};
