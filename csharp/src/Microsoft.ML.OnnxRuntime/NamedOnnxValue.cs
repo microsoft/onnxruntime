@@ -237,7 +237,10 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         foreach (var handle in pinnedHandles)
                         {
-                            handle.Free();
+                            if (handle.IsAllocated)
+                            {
+                                handle.Free();
+                            }
                         }
                     }
                 }
