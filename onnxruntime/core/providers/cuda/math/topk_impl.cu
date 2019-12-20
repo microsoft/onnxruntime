@@ -15,8 +15,8 @@ struct KV {
   int64_t val;
 };
 
-#define FROM(idx) (left_dim + (idx) * mid_dim + right_dim)
-#define TO(idx) (left_dim * K / dimension + (idx) * mid_dim + right_dim)
+#define FROM(idx) (left_dim + (idx)*mid_dim + right_dim)
+#define TO(idx) (left_dim * K / dimension + (idx)*mid_dim + right_dim)
 #define TRIVIAL (1 == largest ? type_min : type_max)
 #define BIGGER(n, m) (n.key > m.key ? n : (n.key < m.key ? m : (n.val > m.val ? (1 == largest ? m : n) : (1 == largest ? n : m))))
 #define SMALLER(n, m) (n.key < m.key ? n : (n.key > m.key ? m : (n.val < m.val ? (1 == largest ? m : n) : (1 == largest ? n : m))))
@@ -136,6 +136,61 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
 }
 
 template <typename T>
+__global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t XPT, int64_t bits, bool integer) {
+  auto tid = threadIdx.x;
+  auto bid = blockIdx.x;
+  extern __shared__ char shared_mem[];
+  auto S32 = (int32_t*)(shared_mem);
+  auto S64 = (int64_t*)(shared_mem);
+  auto mid_dim = axis == size - 1 ? 1 : elem_nums[axis + 1];
+  auto left_dim = bid / mid_dim * elem_nums[axis];
+  auto right_dim = axis == size - 1 ? 0 : bid % elem_nums[axis + 1];
+  T Kth = (T)0;
+  int32_t global_positive = 0, global_negative = 0;
+  int32_t& thread_positive = S32[tid << 1];
+  int32_t& thread_negative = S32[(tid << 1) + 1];
+  thread_positive = thread_negative = 0;
+  auto KK = dimension - K + 1;
+  auto offset = tid * XPT;
+  for (int64_t i = 0; i < XPT; ++i) {
+    auto& x = X[FROM(offset + i)];
+    if (x > 0) {
+      ++thread_positive;
+    } else if (x < 0) {
+      ++thread_negative;
+    }
+  }
+  __syncthreads();
+}
+
+template <typename T>
+int64_t CountBits() {
+  auto bits = sizeof(T) << 3;
+  switch (typeid(T).name()[0] - 'a') {
+    case 0: //int8
+    case 3: //double
+    case 5: //float
+    case 8: //int32_t
+    case 11://int64_t
+    case 18://int16_t
+      return bits - 1;
+    default:
+      return bits;
+  }
+}
+
+template <typename T>
+bool Integer() {
+  switch (typeid(T).name()[0] - 'a') {
+    case 3:
+    case 5:
+      return false;
+    default:
+      return true;
+  }
+}
+
+template <typename T>
 Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   auto aligned_K = static_cast<int64_t>(pow(2, ceil(log2(K))));
   auto aligned_dimension = static_cast<int64_t>(pow(2, ceil(log2(dimension))));
@@ -143,22 +198,23 @@ Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t*
     BitonicTopK<T><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<T>)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
     return Status::OK();
   } else {
-    //use some other method here ...
+    auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
+    RadixTopK<T><<<N, GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * sizeof(int64_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, CountBits<T>(), Integer<T>());
     return Status::OK();
   }
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const T* input_x,         \
-                                                   T* output_v,              \
-                                                   int64_t* output_i,        \
-                                                   const int64_t* elem_nums, \
-                                                   size_t size,              \
-                                                   int64_t axis,             \
-                                                   int64_t K,                \
-                                                   int64_t largest,          \
-                                                   int64_t sorted,           \
-                                                   int64_t N,                \
-                                                   int64_t dimension)
+                                                 T* output_v,              \
+                                                 int64_t* output_i,        \
+                                                 const int64_t* elem_nums, \
+                                                 size_t size,              \
+                                                 int64_t axis,             \
+                                                 int64_t K,                \
+                                                 int64_t largest,          \
+                                                 int64_t sorted,           \
+                                                 int64_t N,                \
+                                                 int64_t dimension)
 
 TOPKIMPLE(uint8_t);
 TOPKIMPLE(uint16_t);
@@ -172,4 +228,4 @@ TOPKIMPLE(float);
 TOPKIMPLE(double);
 
 }  // namespace cuda
-}  // namespace onnxruntime
+}  // namespace cuda
