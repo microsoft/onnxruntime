@@ -26,7 +26,7 @@ TEST(ConfigParsingTests, AllArgs) {
   EXPECT_EQ(res, Result::ContinueSuccess);
   EXPECT_EQ(config.model_path, "testdata/mul_1.onnx");
   EXPECT_EQ(config.model_name, "mul_1");
-  EXPECT_EQ(config.model_version, "2);
+  EXPECT_EQ(config.model_version, "2");
   EXPECT_EQ(config.address, "4.4.4.4");
   EXPECT_EQ(config.http_port, 80);
   EXPECT_EQ(config.num_http_threads, 1);
