@@ -1,49 +1,79 @@
-
 <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
 
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>API Summary &#8212; ONNX Runtime 0.5.9994 documentation</title>
-    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
-    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
-    <link rel="stylesheet" type="text/css" href="_static/gallery.css" />
-    <link rel="stylesheet" type="text/css" href="_static/graphviz.css" />
-    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
-    <script type="text/javascript" src="_static/jquery.js"></script>
-    <script type="text/javascript" src="_static/underscore.js"></script>
-    <script type="text/javascript" src="_static/doctools.js"></script>
-    <script type="text/javascript" src="_static/language_data.js"></script>
-    <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Gallery of examples" href="auto_examples/index.html" />
-    <link rel="prev" title="Tutorial" href="tutorial.html" />
-   
-  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
-  
-  
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+  <title>API Summary</title>
 
-  </head><body>
-  
+  <link rel="stylesheet" href="_static/pyramid.css" type="text/css"/>
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="_static/gallery.css" type="text/css" />
+</head>
+<body>
+<div class="container">
+  <div class="row" style="margin-top: 1rem;">
+    <div id="sidebar" class="col-xs-12 col-sm-3">
+      <a href="index.html">
+        <img style="margin-bottom: 0.5rem;" class="img-fluid" src="_static/ONNX_Runtime_icon.png"/>
+      </a>
+      <div id="searchbox" style="display: none" role="search">
+        <form class="form-inline" action="search.html" method="get">
+          <div class="form-group">
+            <label class="sr-only" for="searchInput">Search</label>
+            <input type="text" class="form-control" name="q" id="searchInput" placeholder="Search">
+          </div>
+          <button type="submit" class="btn btn-secondary" style="display:none">Go</button>
+          <input type="hidden" name="check_keywords" value="yes"/>
+          <input type="hidden" name="area" value="default"/>
+        </form>
+      </div>
 
-    <div class="document">
-      <div class="documentwrapper">
-        <div class="bodywrapper">
-          
+      <hr>
 
-          <div class="body" role="main">
-            
-  <div class="section" id="api-summary">
+        <div id="toc">
+        <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="tutorial.html#step-1-train-a-model-using-your-favorite-framework">Step 1: Train a model using your favorite framework</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tutorial.html#step-2-convert-or-export-the-model-into-onnx-format">Step 2: Convert or export the model into ONNX format</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tutorial.html#step-3-load-and-run-the-model-using-onnx-runtime">Step 3: Load and run the model using ONNX Runtime</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Summary</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#device">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#examples-and-datasets">Examples and datasets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#load-and-run-a-model">Load and run a model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#backend">Backend</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="auto_examples/index.html">Gallery of examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_pipeline.html">Draw a pipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_load_and_predict.html">Load and predict with ONNX Runtime and a very simple model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_profiling.html">Profile the execution of a simple model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_backend.html">ONNX Runtime Backend for ONNX</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_metadata.html">Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_dl_keras.html">ONNX Runtime for Keras</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_convert_pipeline_vectorizer.html">Train, convert and predict with ONNX Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_common_errors.html">Common errors with onnxruntime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="auto_examples/plot_train_convert_predict.html">Train, convert and predict with ONNX Runtime</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+    </div>
+    <div class="col-xs-12 col-sm-9">
+      <div class="section" id="api-summary">
 <h1>API Summary<a class="headerlink" href="#api-summary" title="Permalink to this headline">¶</a></h1>
 <p>Summary of public functions and classes exposed
 in <em>ONNX Runtime</em>.</p>
 <div class="contents local topic" id="contents">
 <ul class="simple">
-<li><p><a class="reference internal" href="#device" id="id1">Device</a></p></li>
-<li><p><a class="reference internal" href="#examples-and-datasets" id="id2">Examples and datasets</a></p></li>
-<li><p><a class="reference internal" href="#load-and-run-a-model" id="id3">Load and run a model</a></p></li>
-<li><p><a class="reference internal" href="#backend" id="id4">Backend</a></p></li>
+<li><a class="reference internal" href="#device" id="id1">Device</a></li>
+<li><a class="reference internal" href="#examples-and-datasets" id="id2">Examples and datasets</a></li>
+<li><a class="reference internal" href="#load-and-run-a-model" id="id3">Load and run a model</a></li>
+<li><a class="reference internal" href="#backend" id="id4">Backend</a></li>
 </ul>
 </div>
 <div class="section" id="device">
@@ -54,7 +84,7 @@ such as MKL (Math Kernel Libary). The following function
 indicates the chosen option:</p>
 <dl class="function">
 <dt id="onnxruntime.get_device">
-<code class="sig-prename descclassname">onnxruntime.</code><code class="sig-name descname">get_device</code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; str<a class="headerlink" href="#onnxruntime.get_device" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.</code><code class="descname">get_device</code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; str<a class="headerlink" href="#onnxruntime.get_device" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the device used to compute the prediction (CPU, MKL, …)</p>
 </dd></dl>
 
@@ -66,7 +96,7 @@ used in the documentation. These don’t need to be downloaded
 as they are installed with the package.</p>
 <dl class="function">
 <dt id="onnxruntime.datasets.get_example">
-<code class="sig-prename descclassname">onnxruntime.datasets.</code><code class="sig-name descname">get_example</code><span class="sig-paren">(</span><em class="sig-param">name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/datasets.html#get_example"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.datasets.get_example" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.datasets.</code><code class="descname">get_example</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/datasets.html#get_example"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.datasets.get_example" title="Permalink to this definition">¶</a></dt>
 <dd><p>Retrieves the absolute file name of an example.</p>
 </dd></dl>
 
@@ -78,43 +108,43 @@ The main class <em>InferenceSession</em> wraps these functionalities
 in a single place.</p>
 <dl class="class">
 <dt id="onnxruntime.ModelMetadata">
-<em class="property">class </em><code class="sig-prename descclassname">onnxruntime.</code><code class="sig-name descname">ModelMetadata</code><a class="headerlink" href="#onnxruntime.ModelMetadata" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">onnxruntime.</code><code class="descname">ModelMetadata</code><a class="headerlink" href="#onnxruntime.ModelMetadata" title="Permalink to this definition">¶</a></dt>
 <dd><p>Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
 facilitate the comparison.</p>
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.ModelMetadata.custom_metadata_map">
-<em class="property">property </em><code class="sig-name descname">custom_metadata_map</code><a class="headerlink" href="#onnxruntime.ModelMetadata.custom_metadata_map" title="Permalink to this definition">¶</a></dt>
+<code class="descname">custom_metadata_map</code><a class="headerlink" href="#onnxruntime.ModelMetadata.custom_metadata_map" title="Permalink to this definition">¶</a></dt>
 <dd><p>additional metadata</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.ModelMetadata.description">
-<em class="property">property </em><code class="sig-name descname">description</code><a class="headerlink" href="#onnxruntime.ModelMetadata.description" title="Permalink to this definition">¶</a></dt>
+<code class="descname">description</code><a class="headerlink" href="#onnxruntime.ModelMetadata.description" title="Permalink to this definition">¶</a></dt>
 <dd><p>description of the model</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.ModelMetadata.domain">
-<em class="property">property </em><code class="sig-name descname">domain</code><a class="headerlink" href="#onnxruntime.ModelMetadata.domain" title="Permalink to this definition">¶</a></dt>
+<code class="descname">domain</code><a class="headerlink" href="#onnxruntime.ModelMetadata.domain" title="Permalink to this definition">¶</a></dt>
 <dd><p>ONNX domain</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.ModelMetadata.graph_name">
-<em class="property">property </em><code class="sig-name descname">graph_name</code><a class="headerlink" href="#onnxruntime.ModelMetadata.graph_name" title="Permalink to this definition">¶</a></dt>
+<code class="descname">graph_name</code><a class="headerlink" href="#onnxruntime.ModelMetadata.graph_name" title="Permalink to this definition">¶</a></dt>
 <dd><p>graph name</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.ModelMetadata.producer_name">
-<em class="property">property </em><code class="sig-name descname">producer_name</code><a class="headerlink" href="#onnxruntime.ModelMetadata.producer_name" title="Permalink to this definition">¶</a></dt>
+<code class="descname">producer_name</code><a class="headerlink" href="#onnxruntime.ModelMetadata.producer_name" title="Permalink to this definition">¶</a></dt>
 <dd><p>producer name</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.ModelMetadata.version">
-<em class="property">property </em><code class="sig-name descname">version</code><a class="headerlink" href="#onnxruntime.ModelMetadata.version" title="Permalink to this definition">¶</a></dt>
+<code class="descname">version</code><a class="headerlink" href="#onnxruntime.ModelMetadata.version" title="Permalink to this definition">¶</a></dt>
 <dd><p>version of the model</p>
 </dd></dl>
 
@@ -122,17 +152,17 @@ facilitate the comparison.</p>
 
 <dl class="class">
 <dt id="onnxruntime.InferenceSession">
-<em class="property">class </em><code class="sig-prename descclassname">onnxruntime.</code><code class="sig-name descname">InferenceSession</code><span class="sig-paren">(</span><em class="sig-param">path_or_bytes</em>, <em class="sig-param">sess_options=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">onnxruntime.</code><code class="descname">InferenceSession</code><span class="sig-paren">(</span><em>path_or_bytes</em>, <em>sess_options=None</em>, <em>providers=[]</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession" title="Permalink to this definition">¶</a></dt>
 <dd><p>This is the main class used to run a model.</p>
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.disable_fallback">
-<code class="sig-name descname">disable_fallback</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.disable_fallback"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.disable_fallback" title="Permalink to this definition">¶</a></dt>
+<code class="descname">disable_fallback</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.disable_fallback"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.disable_fallback" title="Permalink to this definition">¶</a></dt>
 <dd><p>Disable session.run() fallback mechanism.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.enable_fallback">
-<code class="sig-name descname">enable_fallback</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.enable_fallback"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.enable_fallback" title="Permalink to this definition">¶</a></dt>
+<code class="descname">enable_fallback</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.enable_fallback"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.enable_fallback" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enable session.Run() fallback mechanism. If session.Run() fails due to an internal Execution Provider failure, reset the Execution Providers
 enabled for this session.
 If GPU is enabled, fall back to CUDAExecutionProvider.
@@ -141,7 +171,7 @@ otherwise fall back to CPUExecutionProvider.</p>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.end_profiling">
-<code class="sig-name descname">end_profiling</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.end_profiling"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.end_profiling" title="Permalink to this definition">¶</a></dt>
+<code class="descname">end_profiling</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.end_profiling"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.end_profiling" title="Permalink to this definition">¶</a></dt>
 <dd><p>End profiling and return results in a file.</p>
 <p>The results are stored in a filename if the option
 <a class="reference internal" href="#onnxruntime.SessionOptions.enable_profiling" title="onnxruntime.SessionOptions.enable_profiling"><code class="xref py py-meth docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions.enable_profiling()</span></code></a>.</p>
@@ -149,47 +179,57 @@ otherwise fall back to CPUExecutionProvider.</p>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.get_inputs">
-<code class="sig-name descname">get_inputs</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_inputs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_inputs" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get_inputs</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_inputs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_inputs" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the inputs metadata as a list of <a class="reference internal" href="#onnxruntime.NodeArg" title="onnxruntime.NodeArg"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.NodeArg</span></code></a>.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.get_modelmeta">
-<code class="sig-name descname">get_modelmeta</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_modelmeta"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_modelmeta" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get_modelmeta</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_modelmeta"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_modelmeta" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the metadata. See <a class="reference internal" href="#onnxruntime.ModelMetadata" title="onnxruntime.ModelMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.ModelMetadata</span></code></a>.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.get_outputs">
-<code class="sig-name descname">get_outputs</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_outputs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_outputs" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get_outputs</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_outputs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_outputs" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the outputs metadata as a list of <a class="reference internal" href="#onnxruntime.NodeArg" title="onnxruntime.NodeArg"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.NodeArg</span></code></a>.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.get_overridable_initializers">
-<code class="sig-name descname">get_overridable_initializers</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_overridable_initializers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_overridable_initializers" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get_overridable_initializers</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_overridable_initializers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_overridable_initializers" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return the inputs (including initializers) metadata as a list of <a class="reference internal" href="#onnxruntime.NodeArg" title="onnxruntime.NodeArg"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.NodeArg</span></code></a>.</p>
 </dd></dl>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.get_providers">
-<code class="sig-name descname">get_providers</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_providers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_providers" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get_providers</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_providers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_providers" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return list of registered execution providers.</p>
 </dd></dl>
 
 <dl class="method">
+<dt id="onnxruntime.InferenceSession.get_session_options">
+<code class="descname">get_session_options</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.get_session_options"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.get_session_options" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the session options. See <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a>.</p>
+</dd></dl>
+
+<dl class="method">
 <dt id="onnxruntime.InferenceSession.run">
-<code class="sig-name descname">run</code><span class="sig-paren">(</span><em class="sig-param">output_names</em>, <em class="sig-param">input_feed</em>, <em class="sig-param">run_options=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.run"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.run" title="Permalink to this definition">¶</a></dt>
+<code class="descname">run</code><span class="sig-paren">(</span><em>output_names</em>, <em>input_feed</em>, <em>run_options=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.run"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the predictions.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>output_names</strong> – name of the outputs</p></li>
-<li><p><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_value</span> <span class="pre">}</span></code></p></li>
-<li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>output_names</strong> – name of the outputs</li>
+<li><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_value</span> <span class="pre">}</span></code></li>
+<li><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</li>
 </ul>
-</dd>
-</dl>
+</td>
+</tr>
+</tbody>
+</table>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="n">output_name</span><span class="p">],</span> <span class="p">{</span><span class="n">input_name</span><span class="p">:</span> <span class="n">x</span><span class="p">})</span>
 </pre></div>
 </div>
@@ -197,13 +237,16 @@ otherwise fall back to CPUExecutionProvider.</p>
 
 <dl class="method">
 <dt id="onnxruntime.InferenceSession.set_providers">
-<code class="sig-name descname">set_providers</code><span class="sig-paren">(</span><em class="sig-param">providers</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.set_providers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.set_providers" title="Permalink to this definition">¶</a></dt>
+<code class="descname">set_providers</code><span class="sig-paren">(</span><em>providers</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/onnxruntime/capi/session.html#InferenceSession.set_providers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#onnxruntime.InferenceSession.set_providers" title="Permalink to this definition">¶</a></dt>
 <dd><p>Register the input list of execution providers. The underlying session is re-created.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>providers</strong> – list of execution providers</p>
-</dd>
-</dl>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>providers</strong> – list of execution providers</td>
+</tr>
+</tbody>
+</table>
 <p>The list of providers is ordered by Priority. For example [‘CUDAExecutionProvider’, ‘CPUExecutionProvider’] means
 execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.</p>
 </dd></dl>
@@ -212,24 +255,24 @@ execute a node using CUDAExecutionProvider if capable, otherwise execute using C
 
 <dl class="class">
 <dt id="onnxruntime.NodeArg">
-<em class="property">class </em><code class="sig-prename descclassname">onnxruntime.</code><code class="sig-name descname">NodeArg</code><a class="headerlink" href="#onnxruntime.NodeArg" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">onnxruntime.</code><code class="descname">NodeArg</code><a class="headerlink" href="#onnxruntime.NodeArg" title="Permalink to this definition">¶</a></dt>
 <dd><p>Node argument definition, for both input and output,
 including arg name, arg type (contains both type and shape).</p>
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.NodeArg.name">
-<em class="property">property </em><code class="sig-name descname">name</code><a class="headerlink" href="#onnxruntime.NodeArg.name" title="Permalink to this definition">¶</a></dt>
+<code class="descname">name</code><a class="headerlink" href="#onnxruntime.NodeArg.name" title="Permalink to this definition">¶</a></dt>
 <dd><p>node name</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.NodeArg.shape">
-<em class="property">property </em><code class="sig-name descname">shape</code><a class="headerlink" href="#onnxruntime.NodeArg.shape" title="Permalink to this definition">¶</a></dt>
+<code class="descname">shape</code><a class="headerlink" href="#onnxruntime.NodeArg.shape" title="Permalink to this definition">¶</a></dt>
 <dd><p>node shape (assuming the node holds a tensor)</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.NodeArg.type">
-<em class="property">property </em><code class="sig-name descname">type</code><a class="headerlink" href="#onnxruntime.NodeArg.type" title="Permalink to this definition">¶</a></dt>
+<code class="descname">type</code><a class="headerlink" href="#onnxruntime.NodeArg.type" title="Permalink to this definition">¶</a></dt>
 <dd><p>node type</p>
 </dd></dl>
 
@@ -237,30 +280,30 @@ including arg name, arg type (contains both type and shape).</p>
 
 <dl class="class">
 <dt id="onnxruntime.RunOptions">
-<em class="property">class </em><code class="sig-prename descclassname">onnxruntime.</code><code class="sig-name descname">RunOptions</code><a class="headerlink" href="#onnxruntime.RunOptions" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">onnxruntime.</code><code class="descname">RunOptions</code><a class="headerlink" href="#onnxruntime.RunOptions" title="Permalink to this definition">¶</a></dt>
 <dd><p>Configuration information for a single Run.</p>
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.RunOptions.log_severity_level">
-<em class="property">property </em><code class="sig-name descname">log_severity_level</code><a class="headerlink" href="#onnxruntime.RunOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
+<code class="descname">log_severity_level</code><a class="headerlink" href="#onnxruntime.RunOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>Log severity level for a particular Run() invocation. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.RunOptions.log_verbosity_level">
-<em class="property">property </em><code class="sig-name descname">log_verbosity_level</code><a class="headerlink" href="#onnxruntime.RunOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
+<code class="descname">log_verbosity_level</code><a class="headerlink" href="#onnxruntime.RunOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>VLOG level if DEBUG build and run_log_severity_level is 0.
 Applies to a particular Run() invocation. Default is 0.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.RunOptions.logid">
-<em class="property">property </em><code class="sig-name descname">logid</code><a class="headerlink" href="#onnxruntime.RunOptions.logid" title="Permalink to this definition">¶</a></dt>
+<code class="descname">logid</code><a class="headerlink" href="#onnxruntime.RunOptions.logid" title="Permalink to this definition">¶</a></dt>
 <dd><p>To identify logs generated by a particular Run() invocation.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.RunOptions.terminate">
-<em class="property">property </em><code class="sig-name descname">terminate</code><a class="headerlink" href="#onnxruntime.RunOptions.terminate" title="Permalink to this definition">¶</a></dt>
+<code class="descname">terminate</code><a class="headerlink" href="#onnxruntime.RunOptions.terminate" title="Permalink to this definition">¶</a></dt>
 <dd><p>Set to True to terminate any currently executing calls that are using this
 RunOptions instance. The individual calls will exit gracefully and return an error status.</p>
 </dd></dl>
@@ -269,74 +312,74 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 
 <dl class="class">
 <dt id="onnxruntime.SessionOptions">
-<em class="property">class </em><code class="sig-prename descclassname">onnxruntime.</code><code class="sig-name descname">SessionOptions</code><a class="headerlink" href="#onnxruntime.SessionOptions" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">onnxruntime.</code><code class="descname">SessionOptions</code><a class="headerlink" href="#onnxruntime.SessionOptions" title="Permalink to this definition">¶</a></dt>
 <dd><p>Configuration information for a session.</p>
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.enable_cpu_mem_arena">
-<em class="property">property </em><code class="sig-name descname">enable_cpu_mem_arena</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_cpu_mem_arena" title="Permalink to this definition">¶</a></dt>
+<code class="descname">enable_cpu_mem_arena</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_cpu_mem_arena" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
 Set this option to false if you don’t want it. Default is True.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.enable_mem_pattern">
-<em class="property">property </em><code class="sig-name descname">enable_mem_pattern</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_mem_pattern" title="Permalink to this definition">¶</a></dt>
+<code class="descname">enable_mem_pattern</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_mem_pattern" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enable the memory pattern optimization. Default is true.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.enable_profiling">
-<em class="property">property </em><code class="sig-name descname">enable_profiling</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_profiling" title="Permalink to this definition">¶</a></dt>
+<code class="descname">enable_profiling</code><a class="headerlink" href="#onnxruntime.SessionOptions.enable_profiling" title="Permalink to this definition">¶</a></dt>
 <dd><p>Enable profiling for this session. Default is false.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.execution_mode">
-<em class="property">property </em><code class="sig-name descname">execution_mode</code><a class="headerlink" href="#onnxruntime.SessionOptions.execution_mode" title="Permalink to this definition">¶</a></dt>
+<code class="descname">execution_mode</code><a class="headerlink" href="#onnxruntime.SessionOptions.execution_mode" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the execution mode. Default is sequential.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.graph_optimization_level">
-<em class="property">property </em><code class="sig-name descname">graph_optimization_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.graph_optimization_level" title="Permalink to this definition">¶</a></dt>
+<code class="descname">graph_optimization_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.graph_optimization_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>Graph optimization level for this session.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.inter_op_num_threads">
-<em class="property">property </em><code class="sig-name descname">inter_op_num_threads</code><a class="headerlink" href="#onnxruntime.SessionOptions.inter_op_num_threads" title="Permalink to this definition">¶</a></dt>
+<code class="descname">inter_op_num_threads</code><a class="headerlink" href="#onnxruntime.SessionOptions.inter_op_num_threads" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the number of threads used to parallelize the execution of the graph (across nodes). Default is 0 to let onnxruntime choose.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.intra_op_num_threads">
-<em class="property">property </em><code class="sig-name descname">intra_op_num_threads</code><a class="headerlink" href="#onnxruntime.SessionOptions.intra_op_num_threads" title="Permalink to this definition">¶</a></dt>
+<code class="descname">intra_op_num_threads</code><a class="headerlink" href="#onnxruntime.SessionOptions.intra_op_num_threads" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the number of threads used to parallelize the execution within nodes. Default is 0 to let onnxruntime choose.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.log_severity_level">
-<em class="property">property </em><code class="sig-name descname">log_severity_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
+<code class="descname">log_severity_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.log_severity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>Log severity level. Applies to session load, initialization, etc.
 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.log_verbosity_level">
-<em class="property">property </em><code class="sig-name descname">log_verbosity_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
+<code class="descname">log_verbosity_level</code><a class="headerlink" href="#onnxruntime.SessionOptions.log_verbosity_level" title="Permalink to this definition">¶</a></dt>
 <dd><p>VLOG level if DEBUG build and session_log_verbosity_level is 0.
 Applies to session load, initialization, etc. Default is 0.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.logid">
-<em class="property">property </em><code class="sig-name descname">logid</code><a class="headerlink" href="#onnxruntime.SessionOptions.logid" title="Permalink to this definition">¶</a></dt>
+<code class="descname">logid</code><a class="headerlink" href="#onnxruntime.SessionOptions.logid" title="Permalink to this definition">¶</a></dt>
 <dd><p>Logger id to use for session output.</p>
 </dd></dl>
 
-<dl class="method">
+<dl class="attribute">
 <dt id="onnxruntime.SessionOptions.optimized_model_filepath">
-<em class="property">property </em><code class="sig-name descname">optimized_model_filepath</code><a class="headerlink" href="#onnxruntime.SessionOptions.optimized_model_filepath" title="Permalink to this definition">¶</a></dt>
+<code class="descname">optimized_model_filepath</code><a class="headerlink" href="#onnxruntime.SessionOptions.optimized_model_filepath" title="Permalink to this definition">¶</a></dt>
 <dd><p>File path to serialize optimized model. By default, optimized model is not serialized if optimized_model_filepath is not provided.</p>
 </dd></dl>
 
@@ -352,68 +395,80 @@ for verification of <em>ONNX</em> specification conformance.
 The following functions are supported:</p>
 <dl class="function">
 <dt id="onnxruntime.backend.is_compatible">
-<code class="sig-prename descclassname">onnxruntime.backend.</code><code class="sig-name descname">is_compatible</code><span class="sig-paren">(</span><em class="sig-param">model</em>, <em class="sig-param">device=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">is_compatible</code><span class="sig-paren">(</span><em>model</em>, <em>device=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return whether the model is compatible with the backend.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> – unused</p></li>
-<li><p><strong>device</strong> – None to use the default device or a string (ex: <cite>‘CPU’</cite>)</p></li>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>model</strong> – unused</li>
+<li><strong>device</strong> – None to use the default device or a string (ex: <cite>‘CPU’</cite>)</li>
 </ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>boolean</p>
-</dd>
-</dl>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">boolean</p>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="function">
 <dt id="onnxruntime.backend.prepare">
-<code class="sig-prename descclassname">onnxruntime.backend.</code><code class="sig-name descname">prepare</code><span class="sig-paren">(</span><em class="sig-param">model</em>, <em class="sig-param">device=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.prepare" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">prepare</code><span class="sig-paren">(</span><em>model</em>, <em>device=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.prepare" title="Permalink to this definition">¶</a></dt>
 <dd><p>Load the model and creates a <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a>
 ready to be used as a backend.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> – ModelProto (returned by <cite>onnx.load</cite>),
-string for a filename or bytes for a serialized model</p></li>
-<li><p><strong>device</strong> – requested device for the computation,
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>model</strong> – ModelProto (returned by <cite>onnx.load</cite>),
+string for a filename or bytes for a serialized model</li>
+<li><strong>device</strong> – requested device for the computation,
 None means the default one which depends on
-the compilation settings</p></li>
-<li><p><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a></p></li>
+the compilation settings</li>
+<li><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a></li>
 </ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p><a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a></p>
-</dd>
-</dl>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a></p>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="function">
 <dt id="onnxruntime.backend.run">
-<code class="sig-prename descclassname">onnxruntime.backend.</code><code class="sig-name descname">run</code><span class="sig-paren">(</span><em class="sig-param">model</em>, <em class="sig-param">inputs</em>, <em class="sig-param">device=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">run</code><span class="sig-paren">(</span><em>model</em>, <em>inputs</em>, <em>device=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the prediction.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> – <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a> returned
-by function <em>prepare</em></p></li>
-<li><p><strong>inputs</strong> – inputs</p></li>
-<li><p><strong>device</strong> – requested device for the computation,
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>model</strong> – <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a> returned
+by function <em>prepare</em></li>
+<li><strong>inputs</strong> – inputs</li>
+<li><strong>device</strong> – requested device for the computation,
 None means the default one which depends on
-the compilation settings</p></li>
-<li><p><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a></p></li>
+the compilation settings</li>
+<li><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a></li>
 </ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>predictions</p>
-</dd>
-</dl>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">predictions</p>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="function">
 <dt id="onnxruntime.backend.supports_device">
-<code class="sig-prename descclassname">onnxruntime.backend.</code><code class="sig-name descname">supports_device</code><span class="sig-paren">(</span><em class="sig-param">device</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.supports_device" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">onnxruntime.backend.</code><code class="descname">supports_device</code><span class="sig-paren">(</span><em>device</em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.supports_device" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check whether the backend is compiled with particular device support.
 In particular it’s used in the testing suite.</p>
 </dd></dl>
@@ -421,77 +476,22 @@ In particular it’s used in the testing suite.</p>
 </div>
 </div>
 
-
-          </div>
-          
-        </div>
-      </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
-        <div class="sphinxsidebarwrapper">
-            <p class="logo"><a href="index.html">
-              <img class="logo" src="_static/ONNX_Runtime_icon.png" alt="Logo"/>
-            </a></p>
-<h1 class="logo"><a href="index.html">ONNX Runtime</a></h1>
-
-
-
-
-
-
-
-
-<h3>Navigation</h3>
-<ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorial</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">API Summary</a></li>
-<li class="toctree-l1"><a class="reference internal" href="auto_examples/index.html">Gallery of examples</a></li>
-</ul>
-
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="tutorial.html" title="previous chapter">Tutorial</a></li>
-      <li>Next: <a href="auto_examples/index.html" title="next chapter">Gallery of examples</a></li>
-  </ul></li>
-</ul>
+    </div>
+  </div>
 </div>
-<div id="searchbox" style="display: none" role="search">
-  <h3 id="searchlabel">Quick search</h3>
-    <div class="searchformwrapper">
-    <form class="search" action="search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" />
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
 
-
-
-
-
-
-
-
-        </div>
-      </div>
-      <div class="clearer"></div>
-    </div>
-    <div class="footer">
-      &copy;2018-2019, Microsoft.
-      
-      |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
-      
-      |
-      <a href="_sources/api_summary.rst.txt"
-          rel="nofollow">Page source</a>
-    </div>
-
-    
-
-    
-  </body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.0.0/jquery.min.js"
+        integrity="sha384-THPy051/pYDQGanwU6poAc/hOdQxjnOEXzbT+OuUAFqNqFjL+4IGLBgCJC3ZOShY"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.2.0/js/tether.min.js"
+        integrity="sha384-Plbmg8JY28KFelvJVai01l8WyZzrYWG825m+cZ0eDDS1f7d/js6ikvy1+X+guPIB"
+        crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.3/js/bootstrap.min.js"
+        integrity="sha384-ux8v3A6CPtOTqOzMKiuo3d/DomGaaClxFYdCu2HPMBEkf6x2xiDyJ7gkXU0MWwaD"
+        crossorigin="anonymous"></script>
+<script src='https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lunr.js/0.6.0/lunr.min.js"></script>
+<script src="_static/searchtools.js"></script>
+<script>$('#searchbox').show(0)</script>
+</body>
 </html>
