@@ -134,8 +134,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     float,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<float_t>()),
-    StringTransformer<float_t>);
+        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<float>()),
+    StringTransformer<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,
@@ -144,8 +144,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     double,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<double_t>()),
-    StringTransformer<double_t>);
+        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<double>()),
+    StringTransformer<double>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     StringTransformer,

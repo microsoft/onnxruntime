@@ -14,25 +14,25 @@ namespace featurizers {
 template <typename T>
 struct OutputTypeMapper {};
 template <>
-struct OutputTypeMapper<int8_t> { using type = float_t; };
+struct OutputTypeMapper<int8_t> { using type = float; };
 template <>
-struct OutputTypeMapper<int16_t> { using type = float_t; };
+struct OutputTypeMapper<int16_t> { using type = float; };
 template <>
-struct OutputTypeMapper<uint8_t> { using type = float_t; };
+struct OutputTypeMapper<uint8_t> { using type = float; };
 template <>
-struct OutputTypeMapper<uint16_t> { using type = float_t; };
+struct OutputTypeMapper<uint16_t> { using type = float; };
 template <>
-struct OutputTypeMapper<float_t> { using type = float_t; };
+struct OutputTypeMapper<float> { using type = float; };
 template <>
-struct OutputTypeMapper<int32_t> { using type = double_t; };
+struct OutputTypeMapper<int32_t> { using type = double; };
 template <>
-struct OutputTypeMapper<int64_t> { using type = double_t; };
+struct OutputTypeMapper<int64_t> { using type = double; };
 template <>
-struct OutputTypeMapper<uint32_t> { using type = double_t; };
+struct OutputTypeMapper<uint32_t> { using type = double; };
 template <>
-struct OutputTypeMapper<uint64_t> { using type = double_t; };
+struct OutputTypeMapper<uint64_t> { using type = double; };
 template <>
-struct OutputTypeMapper<double_t> { using type = double_t; };
+struct OutputTypeMapper<double> { using type = double; };
 
 template <typename InputT>
 class MaxAbsScalarTransformer final : public OpKernel {
@@ -117,8 +117,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     float,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<float_t>()),
-    MaxAbsScalarTransformer<float_t>);
+        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<float>()),
+    MaxAbsScalarTransformer<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MaxAbsScalarTransformer,
@@ -167,8 +167,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     double,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<double_t>()),
-    MaxAbsScalarTransformer<double_t>);
+        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<double>()),
+    MaxAbsScalarTransformer<double>);
 
 }  // namespace featurizers
 }  // namespace onnxruntime
