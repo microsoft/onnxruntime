@@ -23,15 +23,14 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
+      x,                                                                                                                                  \
+      kOnnxDomain,                                                                                                                        \
+      ver,                                                                                                                                \
+      T,                                                                                                                                  \
+      kCudaExecutionProvider,                                                                                                             \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
 #define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                    \
@@ -51,7 +50,7 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   UNARY_ELEMENTWISE_REGISTER_KERNEL(name, ver, T) \
   UNARY_ELEMENTWISE_COMPUTE(name, T)
 
-#define UNARY_LOGICALOP_TYPED(name, ver, T)                    \
+#define UNARY_LOGICALOP_TYPED(name, ver, T)                       \
   UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
   UNARY_ELEMENTWISE_COMPUTE(name, T)
 
@@ -98,6 +97,7 @@ UNARY_OP_HFD(Log, 6)
 UNARY_OP_HFD(Exp, 6)
 UNARY_OP_HFD(Erf, 9)
 UNARY_LOGICALOP_TYPED(Not, 1, bool)
+UNARY_OP_HFD(Round, 11)
 
 }  // namespace cuda
 }  // namespace onnxruntime

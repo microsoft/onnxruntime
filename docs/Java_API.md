@@ -43,10 +43,10 @@ Here is a [complete sample program](../java/sample/ScoreMNIST.java) that runs in
 ## Running on a GPU or with another provider (Optional)
 To enable other execution providers like GPUs simply turn on the appropriate flag on SessionOptions when creating an OrtSession.
 
-   int gpuDeviceId = 0; // The GPU device ID to execute on
-   var sessionOptions = new OrtSession.SessionOptions();
-   sessionOptions.addCUDA(gpuDeviceId);
-   var session = environment.createSession("model.onnx", sessionOptions);
+    int gpuDeviceId = 0; // The GPU device ID to execute on
+    var sessionOptions = new OrtSession.SessionOptions();
+    sessionOptions.addCUDA(gpuDeviceId);
+    var session = environment.createSession("model.onnx", sessionOptions);
 
 The execution providers are preferred in the order they were enabled.
 
