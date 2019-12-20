@@ -14,8 +14,8 @@ namespace test {
 TEST(StringTransformer, Integer_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
-  // State input is needed, but no actual state is required.
-  test.AddInput<uint8_t>("State", {0}, {});
+  // State represents version 1
+  test.AddInput<uint8_t>("State", {4}, {1, 0, 0, 0});
   
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Input", {5}, {1, 3, 5, 7, 9});
@@ -29,8 +29,8 @@ TEST(StringTransformer, Integer_values) {
 TEST(StringTransformer, Double_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
-  // State input is needed, but no actual state is required.
-  test.AddInput<uint8_t>("State", {0}, {});
+  // State represents version 1
+  test.AddInput<uint8_t>("State", {4}, {1, 0, 0, 0});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<double>("Input", {5}, {1, 3, 5, 7, 9});
@@ -44,8 +44,8 @@ TEST(StringTransformer, Double_values) {
 TEST(StringTransformer, Bool_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
-  // State input is needed, but no actual state is required.
-  test.AddInput<uint8_t>("State", {0}, {});
+  // State represents version 1
+  test.AddInput<uint8_t>("State", {4}, {1, 0, 0, 0});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<bool>("Input", {5}, {true, false, false, false, true});
@@ -59,8 +59,8 @@ TEST(StringTransformer, Bool_values) {
 TEST(StringTransformer, String_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
-  // State input is needed, but no actual state is required.
-  test.AddInput<uint8_t>("State", {0}, {});
+  // State represents version 1
+  test.AddInput<uint8_t>("State", {4}, {1, 0, 0, 0});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<std::string>("Input", {5}, {"ONE", "three", "FIVE", "SeVeN", "NINE"});
