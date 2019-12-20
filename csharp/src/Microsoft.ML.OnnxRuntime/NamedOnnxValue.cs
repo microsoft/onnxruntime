@@ -224,7 +224,7 @@ namespace Microsoft.ML.OnnxRuntime
                     pinnedHandles[len] = GCHandle.Alloc(stringsInTensor, GCHandleType.Pinned);
                     try
                     {
-                        for (int i = 0; i < tensorValue.Length; i++)
+                        for (int i = 0; i < len; i++)
                         {
                             var utf8str = UTF8Encoding.UTF8.GetBytes(tensorValue.GetValue(i) + "\0");
                             pinnedHandles[i] = GCHandle.Alloc(utf8str, GCHandleType.Pinned);
