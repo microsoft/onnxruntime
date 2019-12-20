@@ -601,14 +601,14 @@ public:
         std::vector<int32_t> ends;
         std::vector<int32_t> axes;
         std::vector<int32_t> steps;
-        if (7 == opsetVersion)
+        if (opsetVersion == 7)
         {
             // Get starts, ends and axes from attributes
             starts = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Starts);
             ends = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Ends);
             axes = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Axes);
         }
-        else if (10 == opsetVersion)
+        else if (opsetVersion == 10)
         {
             if (operatorInfo.GetConstantInputTensor(1).GetTensorDataType() == MLOperatorTensorDataType::Int32)
             {

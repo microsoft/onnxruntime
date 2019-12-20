@@ -20,9 +20,9 @@ public:
     :   DmlOperator(kernelInfo),
         ConvolutionHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), direction == DML_CONVOLUTION_DIRECTION_BACKWARD, hasDynamicPads)
     {
-        ML_CHECK_VALID_ARGUMENT((hasDynamicPads && kernelInfo.GetInputCount() >= 3) || 
-                            (!hasDynamicPads && kernelInfo.GetInputCount() >= 2));
         uint32_t biasIndex = hasDynamicPads ? 3 : 2;
+        bool hasBiasInput = kernelInfo.GetInputCount() > biasIndex;
+
         std::vector<std::optional<uint32_t>> kernelInputIndices = { 0, 1, biasIndex };
 
         DmlOperator::Initialize(kernelInfo, kernelInputIndices);
@@ -35,8 +35,7 @@ public:
         m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1, TensorAxis::DoNotCoerce, TensorAxis::NoPlacementAdjustment, NonspatialDimensionCount, std::nullopt);
 
         // Bias is optional so only adjust it if it exists.
-        if ((!hasDynamicPads && kernelInfo.GetInputCount() > 2) ||
-            (hasDynamicPads && kernelInfo.GetInputCount() > 3))
+        if (hasBiasInput)
         {
             uint32_t inputDimSize = kernelInfo.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
             ML_CHECK_VALID_ARGUMENT(
@@ -77,7 +76,7 @@ public:
         DML_CONVOLUTION_OPERATOR_DESC convDesc = {};
         convDesc.InputTensor = &inputDescs[0];
         convDesc.FilterTensor = &inputDescs[1];
-        convDesc.BiasTensor = hasDynamicPads ? (kernelInfo.GetInputCount() > 3 ? &inputDescs[3] : nullptr) : (kernelInfo.GetInputCount() > 2 ? &inputDescs[2] : nullptr);
+        convDesc.BiasTensor = hasBiasInput ? &inputDescs[biasIndex] : nullptr;
         convDesc.OutputTensor = &outputDescs[0];
         convDesc.Mode = mode;
         convDesc.Direction = direction;
