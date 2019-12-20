@@ -1670,8 +1670,7 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .FillUsing(QLinearMathDocGenerator("multiplication",
-                                         "output_intermediate (int32) = (A - A_zero_point) * (B - B_zero_point)"
-                                         "\nC (float) = output_intermediate * (A_scale * B_scale)/C_scale + C_zero_point"));
+                                         "C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point"));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearReduceMean)
       .SetDomain(kMSDomain)
@@ -1698,7 +1697,7 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
       .Input(
           2,
           "data_zero_point",
-          "Input zero point. Default value is 0 if it's not specified.  It's a scalar, which means a per-tensor/layer quantization.",
+          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Input(
@@ -1709,7 +1708,7 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
       .Input(
           4,
           "reduced_zero_point",
-          "Output zero point. Default value is 0 if it's not specified.  It's a scalar, which means a per-tensor/layer quantization.",
+          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Output(0, "reduced", "Reduced output tensor.", "T")
@@ -1925,12 +1924,12 @@ Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
       .Input(
           3,
           "y_scale",
-          "Input B's scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
           "tensor(float)")
       .Input(
           4,
           "y_zero_point",
-          "Input B zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
           "T",
           OpSchema::Optional)
       .Output(
