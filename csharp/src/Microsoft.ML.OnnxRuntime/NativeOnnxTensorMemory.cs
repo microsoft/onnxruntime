@@ -80,33 +80,31 @@ namespace Microsoft.ML.OnnxRuntime
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorDataLength(_onnxValueHandle, out strLen));
                     var dataBuffer = new byte[strLen.ToUInt64()];
                     var dataBufferMemory = new Memory<byte>(dataBuffer);
-                    var dataBufferHandle = dataBufferMemory.Pin();
-                    IntPtr dataBufferPointer = IntPtr.Zero;
-
                     var offsetMemory = new Memory<UIntPtr>(offsets);
-                    var offsetMemoryHandle = offsetMemory.Pin();
-                    IntPtr offsetBufferPointer = IntPtr.Zero;
-                    unsafe
-                    {
-                        dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
-                        offsetBufferPointer = (IntPtr)offsetMemoryHandle.Pointer;
-                    }
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorContent(_onnxValueHandle, dataBufferPointer, strLen, offsetBufferPointer, (UIntPtr)_elementCount));
-                    _dataBufferPointer = dataBufferPointer;
-                    _dataBufferAsString = new string[_elementCount];
+                    var dataBufferPointer = IntPtr.Zero;
+                    var offsetBufferPointer = IntPtr.Zero;
 
-                    for (var i = 0; i < offsets.Length; i++)
+                    using (var dataBufferHandle = dataBufferMemory.Pin())
+                    using (var offsetMemoryHandle = offsetMemory.Pin())
                     {
-                        var length = (i == offsets.Length - 1)
-                            ? strLen.ToUInt64() - offsets[i].ToUInt64()
-                            : offsets[i + 1].ToUInt64() - offsets[i].ToUInt64();
-                        // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
-                        _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
-                    }
+                        unsafe
+                        {
+                            dataBufferPointer = (IntPtr)dataBufferHandle.Pointer;
+                            offsetBufferPointer = (IntPtr)offsetMemoryHandle.Pointer;
+                        }
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorContent(_onnxValueHandle, dataBufferPointer, strLen, offsetBufferPointer, (UIntPtr)_elementCount));
+                        _dataBufferPointer = dataBufferPointer;
+                        _dataBufferAsString = new string[_elementCount];
 
-                    // unpin memory
-                    offsetMemoryHandle.Dispose();
-                    dataBufferHandle.Dispose();
+                        for (var i = 0; i < offsets.Length; i++)
+                        {
+                            var length = (i == offsets.Length - 1)
+                                ? strLen.ToUInt64() - offsets[i].ToUInt64()
+                                : offsets[i + 1].ToUInt64() - offsets[i].ToUInt64();
+                            // Onnx specifies strings always in UTF-8, no trailing null, no leading BOM
+                            _dataBufferAsString[i] = Encoding.UTF8.GetString(dataBuffer, (int)offsets[i], (int)length);
+                        }
+                    }
                 }
             }
             catch (Exception e)

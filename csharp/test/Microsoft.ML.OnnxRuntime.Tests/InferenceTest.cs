@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 using System;
@@ -774,11 +774,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var container = new List<NamedOnnxValue>();
                 var tensorIn = new DenseTensor<string>(new string[] {
-                 "ascii",
-                 "cyrillic\u0416\u0468",
-                 "latin\u017E\u1053",
-                 "chinese\u0187\u0175\u2EC7\u2ED5",
-                 "devangari\u0914\u0917" }, new int[] { 1, 5 });
+                 "hello",
+                 "École élémentaire",
+                 "mit freundlichen grüßen",
+                 "Понедельник",
+                 "最好的问候,"+
+                 "नमस्ते," +
+                 "こんにちは," +
+                 "안녕하세요"
+                }, new int[] { 1, 5 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))
