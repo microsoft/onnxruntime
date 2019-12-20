@@ -195,9 +195,7 @@ common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(float* predictions, Tre
       case NODE_MODE::LEAF:
         break;
       default: {
-        std::ostringstream err_msg;
-        err_msg << "Invalid mode of value: " << static_cast<std::underlying_type<NODE_MODE>::type>(root->mode);
-        throw std::runtime_error(err_msg.str());
+        ORT_THROW("Invalid mode of value: ", static_cast<std::underlying_type<NODE_MODE>::type>(root->mode));
       }
     }
   } else {  // Different rules to compare to node thresholds.
@@ -240,9 +238,7 @@ common::Status TreeEnsembleRegressor<T>::ProcessTreeNode(float* predictions, Tre
                      : root->falsenode;
           break;
         default: {
-          std::ostringstream err_msg;
-          err_msg << "Invalid mode of value: " << static_cast<std::underlying_type<NODE_MODE>::type>(root->mode);
-          throw std::runtime_error(err_msg.str());
+          ORT_THROW("Invalid mode of value: ", static_cast<std::underlying_type<NODE_MODE>::type>(root->mode));
         }
       }
       ++loopcount;
