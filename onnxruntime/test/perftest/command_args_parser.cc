@@ -41,6 +41,7 @@ namespace perftest {
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90.\n"
       "\t-v: Show verbose information.\n"
+      "\t-w [warm_up_times]: Specifies the repeated times as warm up. Default:0.\n"
       "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
@@ -52,7 +53,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:w:AMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -108,6 +109,12 @@ namespace perftest {
           return false;
         }
         test_config.run_config.test_mode = TestMode::KFixRepeatedTimesMode;
+        break;
+      case 'w':
+        test_config.run_config.warm_up_times = static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
+        if (test_config.run_config.warm_up_times <= 0) {
+          return false;
+        }
         break;
       case 't':
         test_config.run_config.duration_in_seconds = static_cast<size_t>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));

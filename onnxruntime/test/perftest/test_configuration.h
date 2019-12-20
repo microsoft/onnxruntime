@@ -37,6 +37,7 @@ struct MachineConfig {
 struct RunConfig {
   std::basic_string<ORTCHAR_T> profile_file;
   TestMode test_mode{TestMode::kFixDurationMode};
+  size_t warm_up_times{1};
   size_t repeated_times{1000};
   size_t duration_in_seconds{600};
   size_t concurrent_session_runs{1};

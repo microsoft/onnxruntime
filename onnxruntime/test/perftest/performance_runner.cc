@@ -47,7 +47,10 @@ Status PerformanceRunner::Run() {
   }
 
   // warm up
-  RunOneIteration<true>();
+  const auto& run_config = performance_test_config_.run_config;
+  for (int i = 0; i < static_cast<int>(run_config.warm_up_times); i++) {
+    RunOneIteration<true>();
+  }
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
