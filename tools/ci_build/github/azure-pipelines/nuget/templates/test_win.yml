@@ -25,9 +25,9 @@ jobs:
   - template: win-download-test-data.yml
 
   - task: BatchScript@1
-    displayName: 'Setup VS2017 env vars'
+    displayName: 'Setup VS2019 env vars'
     inputs:
-      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'amd64'
       modifyEnvironment: true
   
