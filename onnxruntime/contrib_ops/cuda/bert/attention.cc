@@ -7,7 +7,6 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
-#include "core/providers/cuda/math/cublas_gemm_algo_selector.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -30,8 +29,6 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-
-static CublasGemmAlgoSelector gemm_algo_selector;
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
@@ -77,9 +74,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmAlgoHelper(
-      const_cast<CublasGemmAlgoSelector*>(&gemm_algo_selector),
-      node_index,
+  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
       GetConstOnes<CudaT>(m), 1,

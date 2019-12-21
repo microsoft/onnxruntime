@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/math/cublas_gemm_algo_selector.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -17,6 +18,9 @@ class MatMul final : public CudaKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  CublasGemmAlgoSelector gemm_algo_selector;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
