@@ -1,72 +1,41 @@
+
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <meta http-equiv="x-ua-compatible" content="ie=edge">
 
-  <title>Train, convert and predict with ONNX Runtime</title>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.1.0 documentation</title>
+    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../_static/gallery.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <script type="text/javascript" src="../_static/language_data.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Common errors with onnxruntime" href="plot_common_errors.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
 
-  <link rel="stylesheet" href="../_static/pyramid.css" type="text/css"/>
-  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-  <link rel="stylesheet" href="../_static/gallery.css" type="text/css" />
-</head>
-<body>
-<div class="container">
-  <div class="row" style="margin-top: 1rem;">
-    <div id="sidebar" class="col-xs-12 col-sm-3">
-      <a href="../index.html">
-        <img style="margin-bottom: 0.5rem;" class="img-fluid" src="../_static/ONNX_Runtime_icon.png"/>
-      </a>
-      <div id="searchbox" style="display: none" role="search">
-        <form class="form-inline" action="../search.html" method="get">
-          <div class="form-group">
-            <label class="sr-only" for="searchInput">Search</label>
-            <input type="text" class="form-control" name="q" id="searchInput" placeholder="Search">
-          </div>
-          <button type="submit" class="btn btn-secondary" style="display:none">Go</button>
-          <input type="hidden" name="check_keywords" value="yes"/>
-          <input type="hidden" name="area" value="default"/>
-        </form>
-      </div>
+  </head><body>
+  
 
-      <hr>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
 
-        <div id="toc">
-        <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../tutorial.html#step-1-train-a-model-using-your-favorite-framework">Step 1: Train a model using your favorite framework</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../tutorial.html#step-2-convert-or-export-the-model-into-onnx-format">Step 2: Convert or export the model into ONNX format</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../tutorial.html#step-3-load-and-run-the-model-using-onnx-runtime">Step 3: Load and run the model using ONNX Runtime</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#device">Device</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#examples-and-datasets">Examples and datasets</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#load-and-run-a-model">Load and run a model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../api_summary.html#backend">Backend</a></li>
-</ul>
-</li>
-<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="plot_pipeline.html">Draw a pipeline</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_load_and_predict.html">Load and predict with ONNX Runtime and a very simple model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_profiling.html">Profile the execution of a simple model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_backend.html">ONNX Runtime Backend for ONNX</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_metadata.html">Metadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_dl_keras.html">ONNX Runtime for Keras</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_convert_pipeline_vectorizer.html">Train, convert and predict with ONNX Runtime</a></li>
-<li class="toctree-l2"><a class="reference internal" href="plot_common_errors.html">Common errors with onnxruntime</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">Train, convert and predict with ONNX Runtime</a></li>
-</ul>
-</li>
-</ul>
-
-        </div>
-    </div>
-    <div class="col-xs-12 col-sm-9">
-      <div class="sphx-glr-download-link-note admonition note">
-<p class="first admonition-title">Note</p>
-<p class="last">Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-train-convert-predict-py"><span class="std std-ref">here</span></a> to download the full example code</p>
+          <div class="body" role="main">
+            
+  <div class="sphx-glr-download-link-note admonition note">
+<p class="admonition-title">Note</p>
+<p>Click <a class="reference internal" href="#sphx-glr-download-auto-examples-plot-train-convert-predict-py"><span class="std std-ref">here</span></a> to download the full example code</p>
 </div>
 <div class="sphx-glr-example-title section" id="train-convert-and-predict-with-onnx-runtime">
 <span id="l-logreg-example"></span><span id="sphx-glr-auto-examples-plot-train-convert-predict-py"></span><h1>Train, convert and predict with ONNX Runtime<a class="headerlink" href="#train-convert-and-predict-with-onnx-runtime" title="Permalink to this headline">¶</a></h1>
@@ -75,10 +44,10 @@ starting with the training of a machine learned model
 to its use in its converted from.</p>
 <div class="contents local topic" id="contents">
 <ul class="simple">
-<li><a class="reference internal" href="#train-a-logistic-regression" id="id1">Train a logistic regression</a></li>
-<li><a class="reference internal" href="#conversion-to-onnx-format" id="id2">Conversion to ONNX format</a></li>
-<li><a class="reference internal" href="#probabilities" id="id3">Probabilities</a></li>
-<li><a class="reference internal" href="#benchmark-with-randomforest" id="id4">Benchmark with RandomForest</a></li>
+<li><p><a class="reference internal" href="#train-a-logistic-regression" id="id1">Train a logistic regression</a></p></li>
+<li><p><a class="reference internal" href="#conversion-to-onnx-format" id="id2">Conversion to ONNX format</a></p></li>
+<li><p><a class="reference internal" href="#probabilities" id="id3">Probabilities</a></p></li>
+<li><p><a class="reference internal" href="#benchmark-with-randomforest" id="id4">Benchmark with RandomForest</a></p></li>
 </ul>
 </div>
 <div class="section" id="train-a-logistic-regression">
@@ -366,30 +335,80 @@ Average 0.00237 min=0.00182 max=0.00326
 <p><strong>Total running time of the script:</strong> ( 0 minutes  49.102 seconds)</p>
 <div class="sphx-glr-footer class sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
 <div class="sphx-glr-download docutils container">
-<a class="reference download internal" href="../_downloads/plot_train_convert_predict.py" download=""><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></div>
+<p><a class="reference download internal" download="" href="../_downloads/d83345a79a181a29892287297803aeec/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
+</div>
 <div class="sphx-glr-download docutils container">
-<a class="reference download internal" href="../_downloads/plot_train_convert_predict.ipynb" download=""><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_train_convert_predict.ipynb</span></code></a></div>
+<p><a class="reference download internal" download="" href="../_downloads/3a0c2ba94405e579c84b6f356705659d/plot_train_convert_predict.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">plot_train_convert_predict.ipynb</span></code></a></p>
+</div>
 </div>
 <p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.readthedocs.io">Gallery generated by Sphinx-Gallery</a></p>
 </div>
 </div>
 
-    </div>
-  </div>
-</div>
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.0.0/jquery.min.js"
-        integrity="sha384-THPy051/pYDQGanwU6poAc/hOdQxjnOEXzbT+OuUAFqNqFjL+4IGLBgCJC3ZOShY"
-        crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.2.0/js/tether.min.js"
-        integrity="sha384-Plbmg8JY28KFelvJVai01l8WyZzrYWG825m+cZ0eDDS1f7d/js6ikvy1+X+guPIB"
-        crossorigin="anonymous"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.3/js/bootstrap.min.js"
-        integrity="sha384-ux8v3A6CPtOTqOzMKiuo3d/DomGaaClxFYdCu2HPMBEkf6x2xiDyJ7gkXU0MWwaD"
-        crossorigin="anonymous"></script>
-<script src='https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lunr.js/0.6.0/lunr.min.js"></script>
-<script src="../_static/searchtools.js"></script>
-<script>$('#searchbox').show(0)</script>
-</body>
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+            <p class="logo"><a href="../index.html">
+              <img class="logo" src="../_static/ONNX_Runtime_icon.png" alt="Logo"/>
+            </a></p>
+<h1 class="logo"><a href="../index.html">ONNX Runtime</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../tutorial.html">Tutorial</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_summary.html">API Summary</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Gallery of examples</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Gallery of examples</a><ul>
+      <li>Previous: <a href="plot_common_errors.html" title="previous chapter">Common errors with onnxruntime</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2018-2019, Microsoft.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
+      
+      |
+      <a href="../_sources/auto_examples/plot_train_convert_predict.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
 </html>
