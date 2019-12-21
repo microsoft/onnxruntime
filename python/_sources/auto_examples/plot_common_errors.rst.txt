@@ -20,7 +20,9 @@ It starts by loading the model trained in example
 trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 
-.. code-block:: default
+
+
+.. code-block:: python
 
     import onnxruntime as rt
     from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
@@ -44,7 +46,8 @@ The first example fails due to *bad types*.
 and cannot handle any other kind of floats.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     try:
@@ -65,14 +68,15 @@ and cannot handle any other kind of floats.
  .. code-block:: none
 
     Unexpected type
-    <class 'onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument'>: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Unexpected input data type. Actual: (class onnxruntime::NonOnnxType<double>) , expected: (class onnxruntime::NonOnnxType<float>)
+    <class 'onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument'>: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Unexpected input data type. Actual: (class onnxruntime::PrimitiveDataType<double>) , expected: (class onnxruntime::PrimitiveDataType<float>)
 
 
 The model fails to return an output if the name
 is misspelled.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     try:
@@ -93,16 +97,15 @@ is misspelled.
  .. code-block:: none
 
     Misspelled output name
-    <class 'onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument'>: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
-     index: 1 Got: 2 Expected: 4
-     Please fix either the inputs or the model.
+    <class 'onnxruntime.capi.onnxruntime_pybind11_state.InvalidArgument'>: [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid Output Name:misspelled
 
 
 The output name is optional, it can be replaced by *None*
 and *onnxruntime* will then return all the outputs.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
@@ -123,15 +126,15 @@ and *onnxruntime* will then return all the outputs.
 
  .. code-block:: none
 
-    [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
-     index: 1 Got: 2 Expected: 4
-     Please fix either the inputs or the model.
+    All outputs
+    [array([0, 0, 0], dtype=int64), [{0: 0.950599730014801, 1: 0.027834169566631317, 2: 0.02156602405011654}, {0: 0.9974970817565918, 1: 5.6299926654901356e-05, 2: 0.0024466661270707846}, {0: 0.9997311234474182, 1: 1.1918064757310276e-07, 2: 0.00026869276189245284}]]
 
 
 The same goes if the input name is misspelled.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     try:
@@ -159,7 +162,8 @@ The same goes if the input name is misspelled.
 dimension is a multiple of the expected input dimension.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     for x in [
@@ -199,22 +203,30 @@ dimension is a multiple of the expected input dimension.
  .. code-block:: none
 
     ERROR with Shape=(4,) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 1 Expected: 2 Please fix either the inputs or the model.
-    Shape=(1, 4) and predicted labels=[array([2], dtype=int64)]
+    ERROR with Shape=(1, 4) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
+     index: 0 Got: 1 Expected: 3
+     index: 1 Got: 4 Expected: 2
+     Please fix either the inputs or the model.
     ERROR with Shape=(2, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
-     index: 1 Got: 2 Expected: 4
+     index: 0 Got: 2 Expected: 3
      Please fix either the inputs or the model.
     ERROR with Shape=(3,) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 1 Expected: 2 Please fix either the inputs or the model.
     ERROR with Shape=(1, 3) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
-     index: 1 Got: 3 Expected: 4
+     index: 0 Got: 1 Expected: 3
+     index: 1 Got: 3 Expected: 2
      Please fix either the inputs or the model.
     ERROR with Shape=(4,) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 1 Expected: 2 Please fix either the inputs or the model.
-    Shape=(1, 4) and predicted probabilities=[{0: 0.1022685095667839, 1: 0.01814863830804825, 2: 0.8795828223228455}]
+    ERROR with Shape=(1, 4) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
+     index: 0 Got: 1 Expected: 3
+     index: 1 Got: 4 Expected: 2
+     Please fix either the inputs or the model.
     ERROR with Shape=(2, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
-     index: 1 Got: 2 Expected: 4
+     index: 0 Got: 2 Expected: 3
      Please fix either the inputs or the model.
     ERROR with Shape=(3,) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 1 Expected: 2 Please fix either the inputs or the model.
     ERROR with Shape=(1, 3) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Got invalid dimensions for input: float_input for the following indices
-     index: 1 Got: 3 Expected: 4
+     index: 0 Got: 1 Expected: 3
+     index: 1 Got: 3 Expected: 2
      Please fix either the inputs or the model.
 
 
@@ -222,7 +234,8 @@ It does not fail either if the number of dimension
 is higher than expects but produces a warning.
 
 
-.. code-block:: default
+
+.. code-block:: python
 
 
     for x in [
@@ -250,10 +263,7 @@ is higher than expects but produces a warning.
     ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 
 
-
-.. rst-class:: sphx-glr-timing
-
-   **Total running time of the script:** ( 0 minutes  0.102 seconds)
+**Total running time of the script:** ( 0 minutes  0.049 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_common_errors.py:

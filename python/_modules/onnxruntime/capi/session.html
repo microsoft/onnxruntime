@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>onnxruntime.capi.session &#8212; ONNX Runtime 0.5.9994 documentation</title>
+    <title>onnxruntime.capi.session &#8212; ONNX Runtime 1.1.0 documentation</title>
     <link rel="stylesheet" href="../../../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/gallery.css" />
@@ -48,34 +48,36 @@
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This is the main class used to run a model.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_or_bytes</span><span class="p">,</span> <span class="n">sess_options</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path_or_bytes</span><span class="p">,</span> <span class="n">sess_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="p">[]):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :param path_or_bytes: filename or serialized model in a byte string</span>
 <span class="sd">        :param sess_options: session options</span>
+<span class="sd">        :param providers: providers to use for session. If empty, will use</span>
+<span class="sd">            all available providers.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span> <span class="o">=</span> <span class="n">path_or_bytes</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="o">=</span> <span class="n">sess_options</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_load_model</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_load_model</span><span class="p">(</span><span class="n">providers</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_enable_fallback</span> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="k">def</span> <span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="p">[]):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span> 
             <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span><span class="p">,</span> <span class="n">C</span><span class="o">.</span><span class="n">get_session_initializer</span><span class="p">())</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span>
-                <span class="n">C</span><span class="o">.</span><span class="n">get_session_initializer</span><span class="p">(),</span> <span class="n">C</span><span class="o">.</span><span class="n">get_session_initializer</span><span class="p">())</span>
-
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">load_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="n">providers</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">else</span> <span class="n">C</span><span class="o">.</span><span class="n">get_default_session_options</span><span class="p">(),</span> 
+                <span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="n">providers</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="n">C</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess_options</span> <span class="k">else</span> <span class="n">C</span><span class="o">.</span><span class="n">get_default_session_options</span><span class="p">(),</span> 
+                <span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+        <span class="c1"># elif isinstance(self._path_or_bytes, tuple):</span>
             <span class="c1"># to remove, hidden trick</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">load_model_no_init</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">providers</span><span class="p">)</span>
+        <span class="c1">#   self._sess.load_model_no_init(self._path_or_bytes[0], providers)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Unable to load from type &#39;</span><span class="si">{0}</span><span class="s2">&#39;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_path_or_bytes</span><span class="p">)))</span>
 
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">load_model</span><span class="p">(</span><span class="n">providers</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">_session_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">session_options</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_inputs_meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">inputs_meta</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_outputs_meta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">outputs_meta</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_overridable_initializers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">overridable_initializers</span>
@@ -98,6 +100,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_model_meta</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_providers</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="InferenceSession.get_session_options"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.InferenceSession.get_session_options">[docs]</a>    <span class="k">def</span> <span class="nf">get_session_options</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s2">&quot;Return the session options. See :class:`onnxruntime.SessionOptions`.&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_session_options</span></div>
 
 <div class="viewcode-block" id="InferenceSession.get_inputs"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.InferenceSession.get_inputs">[docs]</a>    <span class="k">def</span> <span class="nf">get_inputs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="s2">&quot;Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`.&quot;</span>
@@ -235,14 +241,6 @@
     </div>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
-
-
-
-
-
-
-
-
         </div>
       </div>
       <div class="clearer"></div>
@@ -251,8 +249,8 @@
       &copy;2018-2019, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.2.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.3.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.11</a>
       
     </div>
 
