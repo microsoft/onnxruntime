@@ -87,6 +87,30 @@ void WindowsTelemetry::LogProcessInfo() const {
   process_info_logged = true;
 }
 
+void WindowsTelemetry::LogSessionCreationStart() const {
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "SessionCreationStart",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
+void WindowsTelemetry::LogEvaluationStop() const {
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "EvaluationStop",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
+void WindowsTelemetry::LogEvaluationStart() const {
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "EvaluationStart",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                           const std::string& model_producer_version, const std::string& model_domain,
                                           const std::unordered_map<std::string, int>& domain_to_version_map,

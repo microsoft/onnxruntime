@@ -510,6 +510,11 @@ class InferenceSession {
   const long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
 
+  TimePoint time_sent_last_evalutation_start_;
+                                                                      // Event Rate per provider < 20 peak events per second
+  const long long kDurationBetweenSendingEvaluationStart = 1000 * 50; // duration in (us). send a EvaluationStop Event every 50 ms;
+  bool isEvaluationStart = false;
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;
   TraceLoggingActivity<telemetry_provider_handle> session_activity;
