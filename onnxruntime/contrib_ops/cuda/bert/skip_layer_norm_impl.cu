@@ -79,25 +79,25 @@ __global__ void SkipLayerNormKernel(const int ld,
   LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, output);
 }
 
-#define InvokeSkipLayerNormKernelSmall(block_size, bias) \
-  if (bias != nullptr) {                                 \
-    SkipLayerNormKernelSmall<T, block_size, true>        \
-        <<<grid_size, block_size, 0, stream>>>(ld,       \
-                                               input,    \
-                                               skip,     \
-                                               beta,     \
-                                               gamma,    \
-                                               bias,     \
-                                               output);  \
-  } else {                                               \
-    SkipLayerNormKernelSmall<T, block_size, false>       \
-        <<<grid_size, block_size, 0, stream>>>(ld,       \
-                                               input,    \
-                                               skip,     \
-                                               beta,     \
-                                               gamma,    \
-                                               bias,     \
-                                               output);  \
+#define InvokeSkipLayerNormKernel(func, block_size)     \
+  if (bias != nullptr) {                                \
+    func<T, block_size, true>                           \
+        <<<grid_size, block_size, 0, stream>>>(ld,      \
+                                               input,   \
+                                               skip,    \
+                                               beta,    \
+                                               gamma,   \
+                                               bias,    \
+                                               output); \
+  } else {                                              \
+    func<T, block_size, false>                          \
+        <<<grid_size, block_size, 0, stream>>>(ld,      \
+                                               input,   \
+                                               skip,    \
+                                               beta,    \
+                                               gamma,   \
+                                               bias,    \
+                                               output); \
   }
 
 template <typename T>
@@ -115,22 +115,13 @@ bool ComputeSkipLayerNorm(cudaStream_t stream,
   const int grid_size = n / ld;
 
   if (ld <= 32) {
-    InvokeSkipLayerNormKernelSmall(32, bias)
+    InvokeSkipLayerNormKernel(SkipLayerNormKernelSmall, 32)
   } else if (ld <= 128) {
-    constexpr int block_size = 128;
-    InvokeSkipLayerNormKernelSmall(128, bias)
+    InvokeSkipLayerNormKernel(SkipLayerNormKernelSmall, 128)
   } else if (ld == 384) {
-    constexpr int block_size = 384;
-    InvokeSkipLayerNormKernelSmall(384, bias)
+    InvokeSkipLayerNormKernel(SkipLayerNormKernelSmall, 384)
   } else {
-    constexpr int block_size = 256;
-    if (bias != nullptr) {
-      SkipLayerNormKernel<T, block_size, true>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
-    } else {
-      SkipLayerNormKernel<T, block_size, false>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
-    }
+    InvokeSkipLayerNormKernel(SkipLayerNormKernel, 256)
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
