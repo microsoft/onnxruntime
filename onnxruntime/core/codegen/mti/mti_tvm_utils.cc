@@ -113,18 +113,17 @@ tvm::Tensor Promote(const tvm::Expr& expr, const tvm::Array<tvm::Expr>& shape, c
       name);
 }
 
-void DumpTVMModuleToFile(const std::string& filename_prefix, tvm::runtime::Module& module) {
+void DumpTVMModuleToFile(const std::string& filename, tvm::runtime::Module& module) {
   const codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
   if (!settings.HasOption(codegen::CodeGenSettings::kCodeGenDumpModule))
     return;
 
-  static int dump_module_cnt = 0;
   // ISSUE: note that all option values are converted to lower case. It doesn't cause
   // any issue currently, because all supported formats (i.e. file exts) are of lower case.
   // Just keep in mind that we might have issue if somehow we started to support dump
   // formats with upper case, although it's quite unlikely.
   std::string format = settings.GetOptionValue(codegen::CodeGenSettings::kCodeGenDumpModule);
-  std::string module_filename = filename_prefix + "_" + std::to_string(dump_module_cnt++) + "." + format;
+  std::string module_filename = filename + "." + format;
   module->SaveToFile(module_filename, format);
 }
 
