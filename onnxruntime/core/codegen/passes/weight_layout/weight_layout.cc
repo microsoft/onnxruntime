@@ -31,8 +31,8 @@ const std::string WeightLayout::GetKey(
     ONNX_NAMESPACE::TensorProto_DataType proto_type,
     int input_dim,
     float pad_zero) {
-  std::ostringstream key(name);
-  key << "_type_" << static_cast<int>(proto_type);
+  std::ostringstream key;
+  key << name << "_type_" << static_cast<int>(proto_type);
   key << "_dim_" << input_dim;
   key << "_pad_zero_" << pad_zero;
   return NormalizeCppName(key.str());
