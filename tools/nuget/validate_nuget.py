@@ -5,8 +5,6 @@ import argparse
 import sys
 import os
 import zipfile # Available Python 3.2 or higher
-import time
-import subprocess
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNX Runtime create nuget spec script",
