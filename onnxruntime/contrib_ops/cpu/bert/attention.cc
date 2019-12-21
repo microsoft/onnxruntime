@@ -238,7 +238,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       float* x = reinterpret_cast<T*>(scratch_data) + j * D;
       float* y = x;
 
-      float max = FLT_MIN;
+      float max = 0.f;
       for (int i = 0; i < D; i++) {
         if (max < x[i]) max = x[i];
       }
