@@ -9,8 +9,8 @@ namespace Dml
 {
     struct GraphNodeProperties
     {
-        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryRegistration>
-        graphNodeFactoryRegistration;
+        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfo> 
+            internalRegInfo;
 
         // These are currently passed from the partitioning step since the only DML operators current 
         // supporting graph nodes don't customize the order of edges or shapes, other than coercing
