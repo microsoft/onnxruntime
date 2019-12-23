@@ -60,10 +60,12 @@ int main(int argc, char* argv[]) {
 
   const auto env = std::make_shared<server::ServerEnvironment>(config.logging_level, spdlog::sinks_init_list{std::make_shared<spdlog::sinks::stdout_sink_mt>(), std::make_shared<spdlog::sinks::syslog_sink_mt>()});
   auto logger = env->GetAppLogger();
-  logger->info("Model path: {}", config.model_path);
+  logger->info("Model path: {}, ", config.model_path);
+  logger->info("Model name: {}", config.model_name);
+  logger->info("Model version: {}", config.model_version);
 
   try {
-    env->InitializeModel(config.model_path, "default", "1");
+    env->InitializeModel(config.model_path, config.model_name, config.model_version);
     logger->debug("Initialize Model Successfully!");
   } catch (const Ort::Exception& ex) {
     logger->critical("Initialize Model Failed: {} ---- Error: [{}]", ex.GetOrtErrorCode(), ex.what());
