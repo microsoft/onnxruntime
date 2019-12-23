@@ -6,7 +6,6 @@
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
-#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 

@@ -131,6 +131,7 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/pch.h
     ${winml_adapter_dir}/WinMLAdapter.cpp
     ${winml_adapter_dir}/WinMLAdapter.h
+    ${winml_adapter_dir}/WinMLAdapterFactory.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h    
     )
@@ -185,7 +186,7 @@ if (onnxruntime_USE_DML)
 endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
-set(onnxruntime_winml windowsapp.lib -WHOLEARCHIVE:$<TARGET_FILE:winml_adapter>)
+set(onnxruntime_winml windowsapp.lib winml_adapter)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
 
 ###########################

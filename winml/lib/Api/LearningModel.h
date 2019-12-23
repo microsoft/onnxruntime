@@ -4,7 +4,7 @@
 #pragma once
 
 #include "LearningModel.g.h"
-#include "WinMLAdapter.h"
+#include "WinMLAdapterFactory.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 

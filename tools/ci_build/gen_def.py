@@ -57,6 +57,7 @@ with open(args.output_source, 'w') as file:
    file.write("#include <onnxruntime_c_api.h>\n")
    for c in args.config:
       file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c,c))
+   file.write("#include <adapter/WinMLAdapterFactory.h>\n")
    file.write("void* GetFunctionEntryByName(const char* name){\n")
    for symbol in symbols:
       file.write("if(strcmp(name,\"%s\") ==0) return (void*)&%s;\n" % (symbol,symbol))
