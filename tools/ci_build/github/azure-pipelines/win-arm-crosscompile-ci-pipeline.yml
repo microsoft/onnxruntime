@@ -4,6 +4,14 @@ jobs:
   pool: Win-CPU-2019
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    ortPackageId: 'Microsoft.ML.OnnxRuntime'
+  strategy:
+    maxParallel: 2
+    matrix:
+      debug:
+        BuildConfig: 'Debug'
+      release:
+        BuildConfig: 'RelWithDebInfo'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - task: UniversalPackages@0
@@ -26,6 +34,14 @@ jobs:
         filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore nuget packages'
+      inputs:
+        command: restore
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: '$(BuildConfig)'
+        arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(ortPackageId)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
     - task: CmdLine@1
       displayName: 'Generate cmake config and build Debug'
       inputs:
