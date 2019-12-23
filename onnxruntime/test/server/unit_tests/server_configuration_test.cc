@@ -22,7 +22,7 @@ TEST(ConfigParsingTests, AllArgs) {
       const_cast<char*>("--log_level"), const_cast<char*>("info")};
 
   onnxruntime::server::ServerConfiguration config{};
-  Result res = config.ParseInput(11, test_argv);
+  Result res = config.ParseInput(15, test_argv);
   EXPECT_EQ(res, Result::ContinueSuccess);
   EXPECT_EQ(config.model_path, "testdata/mul_1.onnx");
   EXPECT_EQ(config.model_name, "mul_1");
