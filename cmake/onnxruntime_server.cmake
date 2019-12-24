@@ -92,7 +92,11 @@ add_custom_command(
 
 add_library(server_grpc_proto ${grpc_srcs})
 target_include_directories(server_grpc_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}" ${CMAKE_CURRENT_BINARY_DIR}/onnx PRIVATE)
-set(grpc_reflection -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
+if(APPLE)
+  set(grpc_reflection -Wl,-all_load grpc++_reflection -Wl,-noall_load)
+else()
+  set(grpc_reflection -Wl,--whole-archive grpc++_reflection -Wl,--no-whole-archive)
+endif()
 set(grpc_static_libs grpc++ grpcpp_channelz)
 target_link_libraries(server_grpc_proto ${grpc_static_libs})
 add_dependencies(server_grpc_proto server_proto)
