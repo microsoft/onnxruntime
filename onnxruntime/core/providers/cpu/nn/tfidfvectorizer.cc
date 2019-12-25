@@ -388,7 +388,7 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
         } else {
           auto before_insert = impl_->str_set_.size();
           Emplace(impl_->pool_strings_.begin() + start_idx, ngrams, ngram_size, ngram_id, impl_->str_set_);
-          ORT_ENFORCE((before_insert + ngrams) == impl_->str_set_.size(), "poll_strings duplicate ", std::to_string(ngram_size), "-grams detected");
+          ORT_ENFORCE((before_insert + ngrams) == impl_->str_set_.size(), "pool_strings duplicate ", std::to_string(ngram_size), "-grams detected");
         }
       } else {
         ngram_id += ngrams;
