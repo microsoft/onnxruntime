@@ -46,13 +46,13 @@ jobs:
       displayName: 'Generate cmake config and build Debug'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path "C:\Program Files\CMake\bin\cmake.exe" --cmake_generator "Visual Studio 16 2019" --arm --build_shared_lib --use_dml --use_winml'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path "C:\Program Files\CMake\bin\cmake.exe" --cmake_generator "Visual Studio 16 2019" --arm --build_shared_lib --use_winml'
         workingDirectory: "$(Build.BinariesDirectory)"
     - task: CmdLine@1
       displayName: 'Generate cmake config and build Release'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path "C:\Program Files\CMake\bin\cmake.exe" --cmake_generator "Visual Studio 16 2019" --arm --build_shared_lib --use_dml --use_winml'
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path "C:\Program Files\CMake\bin\cmake.exe" --cmake_generator "Visual Studio 16 2019" --arm --build_shared_lib --use_winml'
         workingDirectory: "$(Build.BinariesDirectory)"
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
