@@ -68,7 +68,7 @@ set(grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.cc")
 set(grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/prediction_service.grpc.pb.h")
 
 if(NOT _gRPC_PYTHON_PLUGIN_EXECUTABLE)
-  find_program(_gRPC_PYTHON_PLUGIN_EXECUTABLE grpc_cpp_plugin DOC "The gRPC C++ plugin for protoc")
+  find_program(_gRPC_PYTHON_PLUGIN_EXECUTABLE grpc_python_plugin DOC "The gRPC Python plugin for protoc")
 endif()
 
 add_custom_command(
