@@ -7,7 +7,7 @@
 #include "gtest/gtest.h"
 
 #include "predict.pb.h"
-#include "server/http/json_handling.h"
+#include "http/json_handling.h"
 
 namespace onnxruntime {
 namespace server {
@@ -36,7 +36,7 @@ TEST(JsonDeserializationTests, InvalidData) {
   protobufutil::Status status = onnxruntime::server::GetRequestFromJson(input_json, request);
 
   EXPECT_EQ(protobufutil::error::INVALID_ARGUMENT, status.error_code());
-  EXPECT_EQ("inputs[0].value.raw_data: invalid value \"hello\" for type TYPE_BYTES", status.error_message());
+  EXPECT_EQ("(inputs[0].value.raw_data): invalid value \"hello\" for type TYPE_BYTES", status.error_message()) << status.error_message();
 }
 
 TEST(JsonDeserializationTests, InvalidJson) {

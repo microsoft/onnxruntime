@@ -2,11 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/session/onnxruntime_cxx_api.h"
-
-#include <google/protobuf/stubs/status.h>
-
-#include "core/framework/data_types.h"
+#include "onnxruntime_cxx_api.h"
 
 #include "environment.h"
 #include "predict.pb.h"

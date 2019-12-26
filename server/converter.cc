@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 #include "onnx-ml.pb.h"
 #include "predict.pb.h"
@@ -155,35 +155,6 @@ void MLValueToTensorProto(Ort::Value& ml_value, bool using_raw_data,
       } else {
         for (size_t i = 0, count = elem_count; i < count; ++i) {
           tensor_proto.add_int32_data(data[i]);
-        }
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_FLOAT16: {  // Target: raw_data or int32_data
-      const auto* data = ml_value.GetTensorMutableData<onnxruntime::MLFloat16>();
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(data, sizeof(onnxruntime::MLFloat16) * elem_count);
-      } else {
-        for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(reinterpret_cast<const uint16_t*>(data)[i]);
-        }
-      }
-      break;
-    }
-    case onnx::TensorProto_DataType_BFLOAT16: {  // Target: raw_data or int32_data
-      const auto* data = ml_value.GetTensorMutableData<onnxruntime::BFloat16>();
-
-      std::vector<uint16_t> raw_data;
-      raw_data.reserve(elem_count);
-      for (size_t i = 0; i < elem_count; ++i) {
-        raw_data.push_back(data[i].val);
-      }
-
-      if (using_raw_data) {
-        tensor_proto.set_raw_data(raw_data.data(), raw_data.size() * sizeof(uint16_t));
-      } else {
-        for (size_t i = 0, count = elem_count; i < count; ++i) {
-          tensor_proto.add_int32_data(raw_data[i]);
         }
       }
       break;

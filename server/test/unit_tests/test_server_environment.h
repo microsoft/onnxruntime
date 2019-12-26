@@ -1,7 +1,6 @@
 #pragma once
 
-#include "server/environment.h"
-#include "test/test_environment.h"
+#include "environment.h"
 
 namespace onnxruntime {
 namespace server {

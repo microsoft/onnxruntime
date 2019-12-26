@@ -5,8 +5,8 @@
 
 #include "gtest/gtest.h"
 
-#include "server/executor.h"
-#include "server/http/json_handling.h"
+#include "executor.h"
+#include "http/json_handling.h"
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/sink.h>
 #include <spdlog/sinks/stdout_sinks.h>

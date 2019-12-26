@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include "gtest/gtest.h"
-#include "server/http/core/routes.h"
+#include "http/core/routes.h"
 
 namespace onnxruntime {
 namespace server {

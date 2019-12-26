@@ -2,9 +2,8 @@
 
 #include "gtest/gtest.h"
 
-#include "server/executor.h"
-#include "server/grpc/prediction_service_impl.h"
-#include "test/test_environment.h"
+#include "executor.h"
+#include "grpc/prediction_service_impl.h"
 #include "test_server_environment.h"
 #include "external/server_context_test_spouse.h"
 #include <grpcpp/impl/grpc_library.h>

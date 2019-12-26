@@ -8,7 +8,7 @@
 #include "environment.h"
 #include "predict.pb.h"
 #include "util.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace server {

@@ -2,13 +2,7 @@
 // Licensed under the MIT License.
 
 #include <stdio.h>
-#include "core/common/logging/logging.h"
-#include "core/framework/data_types.h"
-#include "core/session/environment.h"
-#include "core/framework/framework_common.h"
 #include "serializing/mem_buffer.h"
-#include "core/framework/ml_value.h"
-#include "core/framework/tensor.h"
 #include "serializing/tensorprotoutils.h"
 
 #include "onnx-ml.pb.h"

@@ -6,24 +6,12 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/gsl>
-#include "core/framework/data_types.h"
-#include "core/framework/allocator.h"
+#include <sstream>
 #include "onnx-ml.pb.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
-namespace server {
-#ifdef __GNUC__
-constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
-#else
-// On Windows and Mac, this function should always return true
-GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
-inline bool IsLittleEndianOrder() noexcept {
-  static int n = 1;
-  return (*reinterpret_cast<char*>(&n) == 1);
-}
-#endif
+
 
 //From core common
 inline void MakeStringInternal(std::ostringstream& /*ss*/) noexcept {
@@ -56,6 +44,19 @@ inline std::string MakeString(const char* p_str) {
   return p_str;
 }
 
+
+
+namespace server {
+#ifdef __GNUC__
+constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
+#else
+// On Windows and Mac, this function should always return true
+GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
+inline bool IsLittleEndianOrder() noexcept {
+  static int n = 1;
+  return (*reinterpret_cast<char*>(&n) == 1);
+}
+#endif
 std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
@@ -66,17 +67,40 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const onnx::TensorProto& tens
   return tensor_shape_vec;
 }
 
+
+template <size_t alignment>
+static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
+  static constexpr size_t max_allowed = (static_cast<size_t>(1) << (static_cast<size_t>(std::numeric_limits<size_t>::digits >> 1))) - alignment;
+  static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
+  static constexpr size_t alignment_mask = alignment - 1;
+  //Indeed, we only need to check if max_size / nmemb < size
+  //max_allowed is for avoiding unnecessary DIV.
+  if (nmemb >= max_allowed && max_size / nmemb < size) {
+    return false;
+  }
+  if (size >= max_allowed &&
+      nmemb > 0 && max_size / nmemb < size) {
+    return false;
+  }
+  if (alignment == 0)
+    *out = size * nmemb;
+  else
+    *out = (size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
+  return true;
+}
+
+static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
+  return CalcMemSizeForArrayWithAlignment<0>(nmemb, size, out);
+}
+
 // This function doesn't support string tensors
 template <typename T>
 static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length, size_t expected_size,
                                     /*out*/ T* p_data) {
   // allow this low level routine to be somewhat unsafe. assuming it's thoroughly tested and valid
-  GSL_SUPPRESS(type)       // type.1 reinterpret-cast; type.4 C-style casts; type.5 'T result;' is uninitialized;
-  GSL_SUPPRESS(bounds .1)  // pointer arithmetic
-  GSL_SUPPRESS(f .23)      // buff and temp_bytes never tested for nullness and could be gsl::not_null
   {
     size_t expected_size_in_bytes;
-    if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
+    if (!CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
       throw Ort::Exception("size overflow", OrtErrorCode::ORT_FAIL);
     }
     if (raw_data_length != expected_size_in_bytes)
@@ -187,77 +211,11 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
 
   return;
 }
-template <>
-void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                  /*out*/ MLFloat16* p_data, int64_t expected_size) {
-  if (nullptr == p_data) {
-    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
-    if (size == 0) return;
-    throw Ort::Exception("", OrtErrorCode::ORT_INVALID_ARGUMENT);
-  }
-  if (onnx::TensorProto_DataType_FLOAT16 != tensor.data_type()) {
-    throw Ort::Exception("", OrtErrorCode::ORT_INVALID_ARGUMENT);
-  }
 
-  if (raw_data != nullptr) {
-    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
-  }
-
-  if (tensor.int32_data_size() != expected_size)
-    throw Ort::Exception(
-        "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
-
-  constexpr int max_value = std::numeric_limits<uint16_t>::max();
-  for (int i = 0; i < static_cast<int>(expected_size); i++) {
-    int v = tensor.int32_data()[i];
-    if (v < 0 || v > max_value) {
-      throw Ort::Exception(
-          "data overflow", OrtErrorCode::ORT_FAIL);
-    }
-    p_data[i] = MLFloat16(static_cast<uint16_t>(v));
-  }
-
-  return;
-}
-
-template <>
-void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                  /*out*/ BFloat16* p_data, int64_t expected_size) {
-  if (nullptr == p_data) {
-    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
-    if (size == 0)
-      return;
-
-    throw Ort::Exception("", OrtErrorCode::ORT_INVALID_ARGUMENT);
-  }
-  if (onnx::TensorProto_DataType_BFLOAT16 != tensor.data_type()) {
-    throw Ort::Exception("", OrtErrorCode::ORT_INVALID_ARGUMENT);
-  }
-
-  if (raw_data != nullptr) {
-    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
-  }
-
-  if (tensor.int32_data_size() != expected_size)
-    throw Ort::Exception(
-        "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL);
-
-  constexpr int max_value = std::numeric_limits<uint16_t>::max();
-  for (int i = 0; i < static_cast<int>(expected_size); i++) {
-    int v = tensor.int32_data()[i];
-    if (v < 0 || v > max_value) {
-      throw Ort::Exception(
-          "data overflow", OrtErrorCode::ORT_FAIL);
-    }
-    p_data[i] = BFloat16(static_cast<uint16_t>(v));
-  }
-
-  return;
-}
 
 #define CASE_PROTO_TRACE(X, Y)                                                            \
   case onnx::TensorProto_DataType::TensorProto_DataType_##X:                              \
-    if (!IAllocator::CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) { \
+    if (!CalcMemSizeForArrayWithAlignment<alignment>(size, sizeof(Y), out)) { \
       throw Ort::Exception("Invalid TensorProto", OrtErrorCode::ORT_FAIL);                \
     }                                                                                     \
     break;
@@ -270,7 +228,7 @@ void GetSizeInBytesFromTensorProto(const onnx::TensorProto& tensor_proto, size_t
     if (dim < 0 || static_cast<uint64_t>(dim) >= std::numeric_limits<size_t>::max()) {
       throw Ort::Exception("Invalid TensorProto", OrtErrorCode::ORT_FAIL);
     }
-    if (!IAllocator::CalcMemSizeForArray(size, static_cast<size_t>(dim), &size)) {
+    if (!CalcMemSizeForArray(size, static_cast<size_t>(dim), &size)) {
       throw Ort::Exception("Invalid TensorProto", OrtErrorCode::ORT_FAIL);
     }
   }
@@ -286,8 +244,6 @@ void GetSizeInBytesFromTensorProto(const onnx::TensorProto& tensor_proto, size_t
     CASE_PROTO_TRACE(UINT16, uint16_t);
     CASE_PROTO_TRACE(UINT32, uint32_t);
     CASE_PROTO_TRACE(UINT64, uint64_t);
-    CASE_PROTO_TRACE(FLOAT16, MLFloat16);
-    CASE_PROTO_TRACE(BFLOAT16, BFloat16);
     CASE_PROTO_TRACE(STRING, std::string);
     default:
       throw Ort::Exception("", OrtErrorCode::ORT_NOT_IMPLEMENTED);
@@ -401,8 +357,6 @@ void TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuffer
         CASE_PROTO(UINT16, uint16_t);
         CASE_PROTO(UINT32, uint32_t);
         CASE_PROTO(UINT64, uint64_t);
-        CASE_PROTO(FLOAT16, MLFloat16);
-        CASE_PROTO(BFLOAT16, BFloat16);
         case onnx::TensorProto_DataType::TensorProto_DataType_STRING:
           if (preallocated != nullptr) {
             OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);

@@ -3,8 +3,8 @@
 
 #include <google/protobuf/stubs/status.h>
 #include "gtest/gtest.h"
-#include "server/http/core/context.h"
-#include "server/http/util.h"
+#include "http/core/context.h"
+#include "http/util.h"
 
 namespace onnxruntime {
 namespace server {

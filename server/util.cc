@@ -4,7 +4,6 @@
 #include <sstream>
 #include <google/protobuf/stubs/status.h>
 
-#include "core/common/status.h"
 #include "util.h"
 
 namespace onnxruntime {
@@ -15,23 +14,23 @@ namespace protobufutil = google::protobuf::util;
 protobufutil::Status GenerateProtobufStatus(const int& onnx_status, const std::string& message) {
   protobufutil::error::Code code = protobufutil::error::Code::UNKNOWN;
   switch (onnx_status) {
-    case onnxruntime::common::StatusCode::OK:
-    case onnxruntime::common::StatusCode::MODEL_LOADED:
+    case ORT_OK:
+    case ORT_MODEL_LOADED:
       code = protobufutil::error::Code::OK;
       break;
-    case onnxruntime::common::StatusCode::FAIL:
-    case onnxruntime::common::StatusCode::INVALID_ARGUMENT:
-    case onnxruntime::common::StatusCode::INVALID_PROTOBUF:
-    case onnxruntime::common::StatusCode::INVALID_GRAPH:
-    case onnxruntime::common::StatusCode::NO_SUCHFILE:
-    case onnxruntime::common::StatusCode::NO_MODEL:
+    case ORT_FAIL:
+    case ORT_INVALID_ARGUMENT:
+    case ORT_INVALID_PROTOBUF:
+    case ORT_INVALID_GRAPH:
+    case ORT_NO_SUCHFILE:
+    case ORT_NO_MODEL:
       code = protobufutil::error::Code::INVALID_ARGUMENT;
       break;
-    case onnxruntime::common::StatusCode::NOT_IMPLEMENTED:
+    case ORT_NOT_IMPLEMENTED:
       code = protobufutil::error::Code::UNIMPLEMENTED;
       break;
-    case onnxruntime::common::StatusCode::RUNTIME_EXCEPTION:
-    case onnxruntime::common::StatusCode::EP_FAIL:
+    case ORT_RUNTIME_EXCEPTION:
+    case ORT_EP_FAIL:
       code = protobufutil::error::Code::INTERNAL;
       break;
     default:

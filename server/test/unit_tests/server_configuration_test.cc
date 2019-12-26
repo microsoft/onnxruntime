@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 
 #include "gmock/gmock.h"
-#include "server/server_configuration.h"
+#include "server_configuration.h"
 
 namespace onnxruntime {
 namespace server {

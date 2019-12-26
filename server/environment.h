@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 #include <spdlog/spdlog.h>
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
