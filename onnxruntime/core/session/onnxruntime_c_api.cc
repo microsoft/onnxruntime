@@ -972,7 +972,7 @@ static OrtStatus* OrtGetValueImplMapHelper(const OrtValue* p_ml_value, int index
   auto& data = p_ml_value->Get<T>();
   int64_t num_kv_pairs = data.size();
 #if defined(_WIN32) && !defined(_M_AMD64)
-  ORT_ENFORCE(num_kv_pairs < std::numeric_limits<size_t>::max());
+  ORT_ENFORCE(static_cast<uint64_t>(num_kv_pairs) < std::numeric_limits<size_t>::max());
 #endif
   switch (index) {
     case 0: {  // user is requesting keys
@@ -1204,7 +1204,7 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
   auto key_data = key_tensor.Data<KeyType>();
   auto value_data = value_tensor.Data<ValueType>();
   auto len = key_tensor.Shape().Size();
-  ORT_ENFORCE(len >= 0 && len < std::numeric_limits<size_t>::max());
+  ORT_ENFORCE(len >= 0 && static_cast<uint64_t>(len) < std::numeric_limits<size_t>::max());
   size_t num_kv_pairs = static_cast<size_t>(key_tensor.Shape().Size());
   for (size_t n = 0; n < num_kv_pairs; ++n, ++key_data, ++value_data) {
     map_ptr->insert({*key_data, *value_data});
