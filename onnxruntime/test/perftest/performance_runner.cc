@@ -143,6 +143,9 @@ Status PerformanceRunner::ForkJoinRepeat() {
   std::condition_variable cv;
 
   // Fork
+  auto loadRes = counter.load(std::memory_order_seq_cst);
+  loadRes = requests.load(std::memory_order_seq_cst);
+
   for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
     counter++;
     tpool->Schedule([this, &counter, &requests, &m, &cv, &run_config]() {
