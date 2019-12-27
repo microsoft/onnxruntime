@@ -15,30 +15,7 @@ find_package(gRPC REQUIRED)
 set(SERVER_APP_NAME "onnxruntime_server")
 set(onnxruntime_USE_FULL_PROTOBUF ON)
 
-if(NOT WIN32)
-  string(REPLACE "-Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}") # Disable werror for included subdirectories - c-ares<1.15 breaks with -Wall
-  string(REPLACE "-Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-  if(HAS_UNUSED_PARAMETER) # disable warning for unused parameters because (BoringSSL specifically) have unused parameters.
-    string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-parameter")
-    string(APPEND CMAKE_C_FLAGS " -Wno-unused-parameter")
-  endif()
-endif()
-
-if(NOT WIN32)
-  if(onnxruntime_DEV_MODE) # Reenable Werror for our code subdirectories.
-      if(NOT onnxruntime_USE_TVM)
-        string(APPEND CMAKE_CXX_FLAGS " -Werror")
-        string(APPEND CMAKE_C_FLAGS " -Werror")
-      endif()
-  endif()
-  if(HAS_UNUSED_PARAMETER) # reenable warning for unused parameters for our code.
-    string(APPEND CMAKE_CXX_FLAGS " -Wunused-parameter")
-    string(APPEND CMAKE_C_FLAGS " -Wunused-parameter")
-  endif()
-endif()
-
 set(ONNXRUNTIME_SERVER_ROOT ${PROJECT_SOURCE_DIR})
-set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 
 # Generate .h and .cc files from protobuf file
 add_library(server_proto ${ONNXRUNTIME_SERVER_ROOT}/protobuf/predict.proto ${ONNXRUNTIME_SERVER_ROOT}/protobuf/onnx-ml.proto)
@@ -47,7 +24,7 @@ if(WIN32)
 endif()
 target_include_directories(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}/.." ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 target_compile_definitions(server_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_SERVER_ROOT}/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf TARGET server_proto)
+onnxruntime_protobuf_generate(APPEND_PATH ${ONNXRUNTIME_SERVER_ROOT}/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf TARGET server_proto)
 if(NOT WIN32)
   if(HAS_UNUSED_PARAMETER)
      set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/predict.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
