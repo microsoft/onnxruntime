@@ -14,6 +14,9 @@ jobs:
       Python37:
         python.version: '3.7'
         python.dir: '/opt/python/cp37-cp37m'
+      Python37:
+        python.version: '3.8'
+        python.dir: '/opt/python/cp38-cp38'
   steps:
     - template: templates/set-test-data-variables-step.yml
 
@@ -75,6 +78,9 @@ jobs:
       Python37:
         python.version: '3.7'
         python.dir: '/opt/python/cp37-cp37m'
+      Python37:
+        python.version: '3.8'
+        python.dir: '/opt/python/cp38-cp38'
   steps:
     - template: templates/set-test-data-variables-step.yml
 
@@ -131,6 +137,8 @@ jobs:
         python.version: '3.6'
       Python37:
         python.version: '3.7'
+      Python38:
+        python.version: '3.8'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-maxcpucount'
@@ -211,6 +219,8 @@ jobs:
         python.version: '3.6'
       Python37:
         python.version: '3.7'
+      Python38:
+        python.version: '3.8'
   steps:
     - task: UsePythonVersion@0
       inputs: 
