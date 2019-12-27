@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "grpc_app.h"
 #include <grpcpp/health_check_service_interface.h>
 #include <grpcpp/ext/channelz_service_plugin.h>

@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "test_server_environment.h"
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/sink.h>

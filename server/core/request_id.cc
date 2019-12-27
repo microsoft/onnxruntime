@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "request_id.h"
 // boost random is using a deprecated header in 1.69
 // See: https://github.com/boostorg/random/issues/49
