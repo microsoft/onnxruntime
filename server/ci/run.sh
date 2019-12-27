@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+
 cd /build
 cmake -DCMAKE_BUILD_TYPE=Debug /onnxruntime_src
 make -j$(getconf _NPROCESSORS_ONLN)
