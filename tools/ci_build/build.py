@@ -167,8 +167,17 @@ def resolve_executable_path(command_or_path):
 def is_windows():
     return sys.platform.startswith("win")
 
+def get_linux_distro():
+    try:
+        with open('/etc/os-release', 'r') as f:
+            dist_info = dict(line.strip().split('=', 1) for line in f.readlines())
+        return dist_info.get('NAME', '').strip('"'), dist_info.get('VERSION', '').strip('"')
+    except:
+        return '', ''
+
 def is_ubuntu_1604():
-    return platform.linux_distribution()[0] == 'Ubuntu' and platform.linux_distribution()[1] == '16.04'
+    dist, ver = get_linux_distro()
+    return dist == 'Ubuntu' and ver.startswith('16.04')
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
