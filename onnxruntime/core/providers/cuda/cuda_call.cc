@@ -88,6 +88,8 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
                hostname,
                exprString, msg);
       if (THRW) {
+        // clear the error as we're throwing an exception with the error info
+        (void)cudaGetLastError();
         ORT_THROW(str);
       } else {
         LOGS_DEFAULT(ERROR) << str;
