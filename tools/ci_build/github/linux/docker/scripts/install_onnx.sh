@@ -14,13 +14,12 @@ PYTHON_VER=$1
 
 if [[ "$PYTHON_VER" = "3.5" && -d "/opt/python/cp35-cp35m"  ]]; then
    PYTHON_EXE="/opt/python/cp35-cp35m/bin/python3.5"
-   export PATH=/opt/python/cp35-cp35m/bin:$PATH
 elif [[ "$PYTHON_VER" = "3.6" && -d "/opt/python/cp36-cp36m"  ]]; then
    PYTHON_EXE="/opt/python/cp36-cp36m/bin/python3.6"
-   export PATH=/opt/python/cp36-cp36m/bin:$PATH
 elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
-   export PATH=/opt/python/cp37-cp37m/bin:$PATH
+elif [[ "$PYTHON_VER" = "3.8" && -d "/opt/python/cp38-cp38"  ]]; then
+   PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
