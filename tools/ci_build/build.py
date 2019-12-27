@@ -173,7 +173,12 @@ def is_windows():
     return sys.platform.startswith("win")
 
 def is_ubuntu_1604():
-    return platform.linux_distribution()[0] == 'Ubuntu' and platform.linux_distribution()[1] == '16.04'
+    try:
+        with open('/etc/os-release', 'r') as f:
+            dist_info = dict(line.strip().split('=', 1) for line in f.readlines())
+        return dist_info.get('NAME', '').strip('"') == 'Ubuntu' and dist_info.get('VERSION', '').strip('"').startswith('16.04')
+    except:
+        return False
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
