@@ -56,5 +56,5 @@ for v2t in ${version2tag[*]}; do
   mv /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
   mkdir -p /data/onnx/${onnx_tag}
   ${PYTHON_EXE} -m pip install .
-  backend-test-tools generate-data -o /data/onnx/$onnx_tag
+  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
 done
