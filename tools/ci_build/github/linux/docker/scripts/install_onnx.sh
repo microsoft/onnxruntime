@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 # The script is to generate all supported versions of onnx models which will be tested by onnx_test_runner
 # in the end of ci build pipeline. The purpose is to make sure latest onnxruntime has no regressions. Note
