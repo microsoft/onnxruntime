@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 # The script is to generate all supported versions of onnx models which will be tested by onnx_test_runner
 # in the end of ci build pipeline. The purpose is to make sure latest onnxruntime has no regressions. Note
@@ -56,5 +56,6 @@ for v2t in ${version2tag[*]}; do
   mv /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
   mkdir -p /data/onnx/${onnx_tag}
   ${PYTHON_EXE} -m pip install .
+  cd /tmp  
   ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
 done

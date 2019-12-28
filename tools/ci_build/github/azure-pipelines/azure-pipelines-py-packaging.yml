@@ -207,7 +207,7 @@ jobs:
   workspace:
     clean: all
   pool: 'Win-GPU-2019'
-  timeoutInMinutes:  120  
+  timeoutInMinutes:  60  
   variables:
     CUDA_VERSION: '10.0'
     EnvSetupScript: setup_env.bat
@@ -219,8 +219,6 @@ jobs:
         python.version: '3.6'
       Python37:
         python.version: '3.7'
-      Python38:
-        python.version: '3.8'
   steps:
     - task: UsePythonVersion@0
       inputs: 
