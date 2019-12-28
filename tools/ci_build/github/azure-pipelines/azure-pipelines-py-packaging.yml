@@ -20,7 +20,7 @@ jobs:
       Python38:
         python.version: '3.8'
         python.dir: '/opt/python/cp38-cp38'
-        python.include.dir: '/opt/python/cp38-cp38m/include/python3.8'
+        python.include.dir: '/opt/python/cp38-cp38/include/python3.8'
   steps:
     - template: templates/set-test-data-variables-step.yml
 
@@ -88,7 +88,7 @@ jobs:
       Python38:
         python.version: '3.8'
         python.dir: '/opt/python/cp38-cp38'
-        python.include.dir: '/opt/python/cp38-cp38m/include/python3.8'
+        python.include.dir: '/opt/python/cp38-cp38/include/python3.8'
   steps:
     - template: templates/set-test-data-variables-step.yml
 
