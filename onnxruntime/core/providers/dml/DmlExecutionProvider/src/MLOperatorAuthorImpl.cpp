@@ -1503,13 +1503,14 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
   MLOperatorTensorGetter constantInputGetter = [context, winmlProviderCapture, internalOpCapture](uint32_t index) {
     Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = nullptr;
     const onnxruntime::Tensor* tensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
-    THROW_HR_IF_NULL(E_UNEXPECTED, tensor);
-
-    tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-        const_cast<onnxruntime::Tensor*>(tensor),
-        IsAllocationInterface(tensor->Location()),
-        winmlProviderCapture.Get(),
-        internalOpCapture);
+    if (tensor != nullptr)
+    {
+        tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+            const_cast<onnxruntime::Tensor*>(tensor),
+            IsAllocationInterface(tensor->Location()),
+            winmlProviderCapture.Get(),
+            internalOpCapture);
+    }
 
     return tensorWrapper;
   };
@@ -1551,10 +1552,17 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
       m_constantInputTensorContentsOfKernel.resize(context->InputCount());
       for (uint32_t index : m_requiredConstantCpuInputs) {
         MLOperatorTensor tensor = MLOperatorTensor(constantInputGetter(index).Get());
-        m_constantInputTensorContentsOfKernel[index].shape = tensor.GetShape();
-        m_constantInputTensorContentsOfKernel[index].type = tensor.GetTensorDataType();
-        m_constantInputTensorContentsOfKernel[index].data.resize(tensor.GetUnalignedTensorByteSize());
 
+        if (index >= static_cast<uint32_t>(context->InputCount())) {
+          continue;
+        }
+        m_constantInputTensorContentsOfKernel[index].isValid = (tensor.GetInterface() != nullptr);
+
+        if (tensor.GetInterface() != nullptr) {
+          m_constantInputTensorContentsOfKernel[index].shape = tensor.GetShape();
+          m_constantInputTensorContentsOfKernel[index].type = tensor.GetTensorDataType();
+          m_constantInputTensorContentsOfKernel[index].data.resize(tensor.GetUnalignedTensorByteSize());
+        }
         m_constantInputTensorContentsOfKernel[index].data.assign(
             reinterpret_cast<const std::byte*>(tensor.GetByteData()),
             reinterpret_cast<const std::byte*>(tensor.GetByteData()) + tensor.GetUnalignedTensorByteSize());
@@ -1568,15 +1576,25 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
 
     bool requiredCpuInputsChanged = false;
     for (uint32_t index : m_requiredConstantCpuInputs) {
+      if (index >= m_constantInputTensorContentsOfKernel.size()) {
+        continue;
+      }
+
       const TensorContent& lastValue = m_constantInputTensorContentsOfKernel[index];
       MLOperatorTensor currentValue(constantInputGetter(index).Get());
 
-      if (lastValue.shape != currentValue.GetShape() ||
-          lastValue.type != currentValue.GetTensorDataType() ||
-          currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
-          (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0)) {
-        requiredCpuInputsChanged = true;
+      if (lastValue.isValid != (currentValue.GetInterface() != nullptr)) {
         break;
+      }
+
+      if (lastValue.isValid) {
+        if (lastValue.shape != currentValue.GetShape() ||
+            lastValue.type != currentValue.GetTensorDataType() ||
+            currentValue.GetUnalignedTensorByteSize() != lastValue.data.size() ||
+            (memcmp(lastValue.data.data(), currentValue.GetByteData(), lastValue.data.size()) != 0)) {
+          requiredCpuInputsChanged = true;
+          break;
+        }
       }
     }
 
@@ -1775,6 +1793,13 @@ HRESULT STDMETHODCALLTYPE MLKernelInferenceContext::SetOutputTensorShape(
   return S_OK;
 }
 CATCH_RETURN();
+
+MLSupportQueryContext::MLSupportQueryContext(
+        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+        const AttributeMap* defaultAttributes) : 
+    OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter())
+{
+}
 
 bool TryGetStaticShapeIfTensor(
     const onnx::TypeProto* inputProto,

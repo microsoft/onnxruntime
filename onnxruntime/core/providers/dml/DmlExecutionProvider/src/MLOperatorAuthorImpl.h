@@ -531,6 +531,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
 
     struct TensorContent
     {
+        bool isValid;
         std::vector<uint32_t> shape;
         MLOperatorTensorDataType type;
         std::vector<std::byte> data;
@@ -614,6 +615,21 @@ void InferAndVerifyOutputSizes(
     MLOperatorTensorGetter& constantInputGetter,
     const EdgeShapes* inputShapes,
     EdgeShapes& outputShapes);
+
+class MLSupportQueryContext final : public OpNodeInfoWrapper<
+    onnxruntime::ProtoHelperNodeContext,
+    WRL::Base<Microsoft::WRL::ChainInterfaces<IMLOperatorSupportQueryContextPrivate, IMLOperatorAttributes, IMLOperatorAttributes1>>,
+    onnxruntime::null_type>
+{
+ public:
+    MLSupportQueryContext() = delete;
+
+    MLSupportQueryContext(
+            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+            const AttributeMap* defaultAttributes);
+
+    // TODO - ...
+};
 
 onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type);
 std::string ToTypeString(MLOperatorEdgeDescription desc);

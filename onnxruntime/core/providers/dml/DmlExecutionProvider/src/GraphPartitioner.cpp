@@ -172,14 +172,14 @@ namespace Dml
         return true;
     }
 
-    bool NodeTensorTypesSupportedInGraph(const onnxruntime::Node& node, const GraphNodeFactoryRegistration& registration)
+    bool NodeTensorTypesSupportedInGraph(const onnxruntime::Node& node, const InternalRegistrationInfo& registration)
     {
         for (size_t i = 0; i < node.InputDefs().size(); ++i)
         {
             bool isConstantCpuInput = std::find(registration.requiredConstantCpuInputs.begin(), registration.requiredConstantCpuInputs.end(), i) !=
                   registration.requiredConstantCpuInputs.end();
 
-            if (!isConstantCpuInput && !NodeArgSupportedInGraph(node.InputDefs()[i], registration.requiresFloatFormatsExceptConstInputs))
+            if (!isConstantCpuInput && !NodeArgSupportedInGraph(node.InputDefs()[i], registration.graphNodeFactoryRegistration->requiresFloatFormatsExceptConstInputs))
             {
                 return false;
             }
@@ -187,7 +187,7 @@ namespace Dml
 
         for (auto arg : node.OutputDefs())
         {
-            if (!NodeArgSupportedInGraph(arg, registration.requiresFloatFormatsExceptConstInputs))
+            if (!NodeArgSupportedInGraph(arg, registration.graphNodeFactoryRegistration->requiresFloatFormatsExceptConstInputs))
             {
                 return false;
             }
@@ -196,8 +196,31 @@ namespace Dml
         return true;
     }
 
+    bool TryGetTensorDataType(
+        const onnxruntime::NodeArg& nodeArg,
+        _Out_ MLOperatorTensorDataType* onnxElementType
+    )
+    {
+        *onnxElementType = MLOperatorTensorDataType::Undefined;
+
+        const ::onnx::TypeProto* typeProto = nodeArg.TypeAsProto();
+        if (typeProto != nullptr && typeProto->has_tensor_type())
+        {
+            const ::onnx::TypeProto_Tensor& tensorTypeProto = typeProto->tensor_type();
+            if (tensorTypeProto.has_elem_type())
+            {
+                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto.elem_type());
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
+        const std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap,
+        _In_opt_ const InternalRegistrationInfo* regInfo,
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
@@ -209,32 +232,57 @@ namespace Dml
         {
             // Get the tensor element data type for this node, comparing against what the device actually supports.
             // Use the enumeration from the proto instead of nodeArg.Type() which returns a string.
-
-            const ::onnx::TypeProto* typeProto = nodeArg.TypeAsProto();
-            if (typeProto != nullptr && typeProto->has_tensor_type())
+            MLOperatorTensorDataType onnxElementType;
+            if (TryGetTensorDataType(nodeArg, &onnxElementType))
             {
-                const ::onnx::TypeProto_Tensor& tensorTypeProto = typeProto->tensor_type();
-                if (tensorTypeProto.has_elem_type())
+                DML_TENSOR_DATA_TYPE dmlElementType = GetDmlDataTypeFromMlDataTypeNoThrow(onnxElementType);
+                if (dmlElementType != DML_TENSOR_DATA_TYPE_UNKNOWN)
                 {
-                    MLOperatorTensorDataType onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto.elem_type());
-                    DML_TENSOR_DATA_TYPE dmlElementType = GetDmlDataTypeFromMlDataTypeNoThrow(onnxElementType);
-                    if (dmlElementType != DML_TENSOR_DATA_TYPE_UNKNOWN)
+                    if (((1 << dmlElementType) & supportedDeviceDataTypeMask) == 0)
                     {
-                        if ((1 << dmlElementType) & supportedDeviceDataTypeMask)
-                        {
-                            // Leave nodeContainsSupportedDataTypes alone, since data type is supported.
-                            return;
-                        }
+                        nodeContainsSupportedDataTypes = false;
                     }
                 }
             }
-
-            // Else it's not supported (non-tensors, opaque data types, unsupported data types...).
-            nodeContainsSupportedDataTypes = false;
         };
 
         // Check whether the node uses any data types which are unsupported by the device.
         node.ForEachDef(nodeCallback);
+
+        // DML kernels support int64 and uint64 are expected to not *introduce* values out of range, which allows
+        // the temporary trick using strides to emulate 64 bit tensors to work.  If the source is a CPU operator, 
+        // graph input or initializer, it's not safe to assume the input can be represented with 32 bits.
+        if (regInfo)
+        {
+            for (uint32_t i = 0; i < node.InputDefs().size(); ++i) 
+            {
+                const auto* arg = node.InputDefs()[i];
+                MLOperatorTensorDataType onnxElementType;
+                if (arg->Exists() && TryGetTensorDataType(*arg, &onnxElementType))
+                {
+                    if (((onnxElementType == MLOperatorTensorDataType::UInt64) || (onnxElementType == MLOperatorTensorDataType::Int64)))
+                    {
+                        // Look up the input partition.  If it's a graph input or initializer it will be missing
+                        // from the map.  In this case or if the input comes from a CPU partition, it might be 
+                        // out of range.
+                        const std::string& argName = arg->Name();     
+                        auto partitionIter = nodeNameToPartitionMap.find(argName);
+                        if (partitionIter == nodeNameToPartitionMap.end() || !partitionIter->second->IsDmlPartition())
+                        {
+                            // Check if the operator handles the input on the CPU as a constant input
+                            bool isConstantCpuInput = std::find(regInfo->requiredConstantCpuInputs.begin(), regInfo->requiredConstantCpuInputs.end(), i) !=
+                                  regInfo->requiredConstantCpuInputs.end();
+
+                            if (!isConstantCpuInput)
+                            {
+                                nodeContainsSupportedDataTypes = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         return nodeContainsSupportedDataTypes;
     }
@@ -245,7 +293,8 @@ namespace Dml
         const onnxruntime::Node& node,    
         const std::vector<const onnxruntime::KernelRegistry*>& dmlRegistries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
-        const GraphNodeFactoryMap& graphNodeFactoryMap,
+        const InternalRegistrationInfoMap& internalRegInfoMap,
+        const std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
         _Out_ bool* isDmlNode,
@@ -260,11 +309,26 @@ namespace Dml
         for (auto registry : dmlRegistries) 
         {
             const onnxruntime::KernelCreateInfo* createInfo = registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider);
+            if (!createInfo)
+            {
+                continue;
+            }
+
+            auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
+            std::shared_ptr<InternalRegistrationInfo> internalRegInfo;
+            if (regInfoIter != internalRegInfoMap.end())
+            {
+                internalRegInfo = regInfoIter->second;
+                if (internalRegInfo->supportQuery && !internalRegInfo->supportQuery(node))
+                {
+                    continue;
+                }
+            }
 
             // Check whether the node uses any data types which are unsupported by the device.
-            bool nodeContainsSupportedDataTypes = DoesNodeContainSupportedDataTypes(node, supportedDeviceDataTypeMask);
+            bool nodeContainsSupportedDataTypes = DoesNodeContainSupportedDataTypes(node, nodeNameToPartitionMap, internalRegInfo.get(), supportedDeviceDataTypeMask);
 
-            if (createInfo && nodeContainsSupportedDataTypes)
+            if (nodeContainsSupportedDataTypes)
             {
                 *isDmlNode = true;
 
@@ -274,13 +338,17 @@ namespace Dml
 
                 // Ensure that shape information is known statically for the inputs and outputs of the node,
                 // which is required for MLGraph compilation.
-                auto graphNodeFactorMapIter = graphNodeFactoryMap.find(createInfo->kernel_def.get());
-                if (graphNodeFactorMapIter != graphNodeFactoryMap.end() && 
-                    NodeTensorTypesSupportedInGraph(node, *graphNodeFactorMapIter->second))
+                if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration && 
+                    NodeTensorTypesSupportedInGraph(node, *internalRegInfo))
                 {
                     bool requiredCpuInputsConstant = true;
-                    for (uint32_t inputIndex : graphNodeFactorMapIter->second->requiredConstantCpuInputs)
+                    for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
                     {
+                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
+                        {
+                            continue;
+                        }
+
                         const onnx::TensorProto* tensor = nullptr;
                         const std::string& inputName = node.InputDefs()[inputIndex]->Name();
 
@@ -293,7 +361,7 @@ namespace Dml
                         requiredInitializerMap.insert(inputName);
                     }
 
-                    std::optional<uint32_t> requiredInputCount = graphNodeFactorMapIter->second->requiredInputCount;
+                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
                     if (requiredCpuInputsConstant &&
                         TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
                         !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes) &&
@@ -302,7 +370,7 @@ namespace Dml
                         (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                     {
                         *isDmlGraphNode = true;
-                         graphNodeProperty.first->second.graphNodeFactoryRegistration = graphNodeFactorMapIter->second;
+                         graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
                     }
                 }
 
@@ -545,7 +613,7 @@ namespace Dml
     std::vector<std::unique_ptr<GraphPartition>>
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
-        const GraphNodeFactoryMap& graphNodeFactoryMap,
+        const InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
@@ -605,7 +673,8 @@ namespace Dml
                 node,
                 registries,
                 supportedDeviceDataTypeMask,
-                graphNodeFactoryMap,
+                internalRegInfoMap,
+                nodeNameToPartitionMap,
                 graphNodePropertyMap,
                 requiredInitializerMap,
                 /*out*/ &isDmlNode,
@@ -721,7 +790,7 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
-        const GraphNodeFactoryMap& graphNodeFactoryMap,
+        const InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
@@ -736,7 +805,7 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap;
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graph,
-            graphNodeFactoryMap, 
+            internalRegInfoMap, 
             registries,
             supportedDeviceDataTypeMask,
             graphNodePropertyMap, 

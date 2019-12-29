@@ -8,15 +8,8 @@
 import os
 import sys
 import shutil
-import warnings
-# Check these extensions were installed.
-import sphinx_gallery.gen_gallery
-# The package should be installed in a virtual environment.
 import onnxruntime
-# markdown output: it requires two extensions available at:
-# https://github.com/xadupre/sphinx-docfx-yaml
-# https://github.com/xadupre/sphinx-docfx-markdown
-import recommonmark
+# import recommonmark
 
 # -- Project information -----------------------------------------------------
 
@@ -29,6 +22,7 @@ release = version
 # -- General configuration ---------------------------------------------------
 
 extensions = [
+    "alabaster",
     'sphinx.ext.intersphinx',
     'sphinx.ext.imgmath',
     'sphinx.ext.ifconfig',
@@ -37,6 +31,7 @@ extensions = [
     'sphinx.ext.githubpages',
     "sphinx_gallery.gen_gallery",
     'sphinx.ext.autodoc',
+    'sphinx.ext.graphviz',
     "pyquickhelper.sphinxext.sphinx_runpython_extension",
 ]
 
@@ -48,27 +43,17 @@ source_parsers = {
 
 source_suffix = ['.rst'] # , '.md']
 
-# enables markdown output
-try:
-    import docfx_markdown
-    extensions.extend([
-        "docfx_yaml.extension",
-        "docfx_markdown",
-    ])
-    source_suffix.append('md')
-except ImportError:
-    warnings.warn("markdown output is not available")
-
 master_doc = 'index'
 language = "en"
 exclude_patterns = []
-pygments_style = 'sphinx'
+pygments_style = 'default'
 
 # -- Options for HTML output -------------------------------------------------
 
-html_theme = "pyramid"
-html_logo = "../ONNX_Runtime_icon.png"
+html_theme = "alabaster"
+html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ['_static']
+graphviz_output_format = "svg"
 
 # -- Options for intersphinx extension ---------------------------------------
 
@@ -92,10 +77,6 @@ md_link_replace = {
 # -- Setup actions -----------------------------------------------------------
 
 def setup(app):
-    # Placeholder to initialize the folder before
-    # generating the documentation.
-    app.add_stylesheet('_static/gallery.css')
-    
     # download examples for the documentation
     this = os.path.abspath(os.path.dirname(__file__))
     dest = os.path.join(this, "model.onnx")
