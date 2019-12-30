@@ -34,7 +34,7 @@ jobs:
     - task: CmdLine@1
       displayName: 'Generate cmake config and build'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+        filename: python.exe
         arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path "C:\Program Files\CMake\bin\cmake.exe" --cmake_generator "Visual Studio 16 2019" --arm64 --build_shared_lib --use_winml'
         workingDirectory: "$(Build.BinariesDirectory)"
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
