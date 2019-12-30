@@ -41,7 +41,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
                 Assert.Equal(0, opt.IntraOpNumThreads);
                 Assert.Equal(0, opt.InterOpNumThreads);
-                Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_BASIC, opt.GraphOptimizationLevel);
+                Assert.Equal(GraphOptimizationLevel.ORT_ENABLE_ALL, opt.GraphOptimizationLevel);
 
                 // try setting options 
                 opt.ExecutionMode = ExecutionMode.ORT_PARALLEL;
