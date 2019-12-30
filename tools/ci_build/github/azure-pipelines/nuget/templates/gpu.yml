@@ -117,7 +117,7 @@ jobs:
   - template: ../../templates/validate-nuget.yml
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
-      PlatformsSupported: 'win-x64,win-x86,linux-x64'
+      PlatformsSupported: 'win-x64,linux-x64'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
