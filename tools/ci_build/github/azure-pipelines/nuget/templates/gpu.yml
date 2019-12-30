@@ -114,6 +114,11 @@ jobs:
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
 
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64'
+	  
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
     inputs:
