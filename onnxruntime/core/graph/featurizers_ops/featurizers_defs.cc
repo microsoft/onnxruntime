@@ -8,20 +8,20 @@
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 
-#define MS_AUTOML_OPERATOR_SCHEMA(name)                         MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name)    MS_AUTOML_OPERATOR_SCHEMA_UNIQ(Counter, name)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA(name) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ(Counter, name)
 
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ(Counter, name)               \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(    \
-      op_schema_register_once##name##Counter) ONNX_UNUSED =         \
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ(Counter, name)       \
+  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce( \
+      op_schema_register_once##name##Counter) ONNX_UNUSED =      \
       ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
 
-#define MS_AUTOML_OPERATOR_SCHEMA_ELSEWHERE(name, schema_func)                          MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func)     MS_AUTOML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_ELSEWHERE(name, schema_func) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(__COUNTER__, name, schema_func)
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_HELPER_ELSEWHERE(Counter, name, schema_func) MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)
 
-#define MS_AUTOML_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func)    \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(                \
-      op_schema_register_once##name##Counter) ONNX_UNUSED =                     \
+#define MS_FEATURIZERS_OPERATOR_SCHEMA_UNIQ_ELSEWHERE(Counter, name, schema_func) \
+  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce(                  \
+      op_schema_register_once##name##Counter) ONNX_UNUSED =                       \
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
 namespace onnxruntime {
@@ -40,18 +40,18 @@ static void RegisterStringFeaturizerVer1();
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
-void RegisterAutoMLSchemas() {
-    RegisterCatImputerFeaturizerVer1();
-    RegisterDateTimeFeaturizerVer1();
-    RegisterMaxAbsScalarFeaturizerVer1();
-    RegisterStringFeaturizerVer1();
+void RegisterMSFeaturizersSchemas() {
+  RegisterCatImputerFeaturizerVer1();
+  RegisterDateTimeFeaturizerVer1();
+  RegisterMaxAbsScalarFeaturizerVer1();
+  RegisterStringFeaturizerVer1();
 }
 
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 void RegisterCatImputerFeaturizerVer1() {
-    static const char * doc = R"DOC(
+  static const char* doc = R"DOC(
         Imputes (populates) values with the mode (most common value) encountered during
         training. This featurizer supports float and double for most (if not all) frameworks
         due to the existance of NaN in those types. Other types require 'optional' support
@@ -68,47 +68,41 @@ void RegisterCatImputerFeaturizerVer1() {
           execute(2.0) -> 2.0
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(CatImputerTransformer)
-        .SinceVersion(1)
-        .SetDomain(kMSFeaturizersDomain)
-        .SetDoc(doc)
-        .Input(
-            0,
-            "State",
-            "State generated during training that is used for prediction",
-            "tensor(uint8)"
-        )
-        .Input(
-            1,
-            "Input",
-            "No information is available",
-            "T"
-        )
-        .Output(
-            0,
-            "Output",
-            "No information is available",
-            "T"
-        )
-        .TypeConstraint(
-            "T",
-            {"tensor(float)", "tensor(double)", "tensor(string)"},
-            "No information is available"
-        )
-        .TypeAndShapeInferenceFunction(
-            [](ONNX_NAMESPACE::InferenceContext& ctx) {
-                propagateElemTypeFromInputToOutput(ctx, 1, 0);
-                if (!hasNInputShapes(ctx, 1)) {
-                    return;
-                }
-                propagateShapeFromInputToOutput(ctx, 1, 0);
+  MS_FEATURIZERS_OPERATOR_SCHEMA(CatImputerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "tensor(uint8)")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "T")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)", "tensor(double)", "tensor(string)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromInputToOutput(ctx, 1, 0);
+            if (!hasNInputShapes(ctx, 1)) {
+              return;
             }
-        )
-    ;
+            propagateShapeFromInputToOutput(ctx, 1, 0);
+          });
 }
 
 void RegisterDateTimeFeaturizerVer1() {
-    static const char * doc = R"DOC(
+  static const char* doc = R"DOC(
         Extracts various datetime-related values from a UTC time_point.
 
         C++-style pseudo signature:
@@ -142,97 +136,89 @@ void RegisterDateTimeFeaturizerVer1() {
           }
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(DateTimeTransformer)
-        .SinceVersion(1)
-        .SetDomain(kMSFeaturizersDomain)
-        .SetDoc(doc)
-        .Input(
-            0,
-            "State",
-            "State generated during training that is used for prediction",
-            "tensor(uint8)"
-        )
-        .Input(
-            1,
-            "Input",
-            "No information is available",
-            "tensor(int64)"
-        )
-        .Output(0, "year", "No information available", "OutputT0")
-        .Output(1, "month", "No information available", "OutputT1")
-        .Output(2, "day", "No information available", "OutputT1")
-        .Output(3, "hour", "No information available", "OutputT1")
-        .Output(4, "minute", "No information available", "OutputT1")
-        .Output(5, "second", "No information available", "OutputT1")
-        .Output(6, "amPm", "No information available", "OutputT1")
-        .Output(7, "hour12", "No information available", "OutputT1")
-        .Output(8, "dayOfWeek", "No information available", "OutputT1")
-        .Output(9, "dayOfQuarter", "No information available", "OutputT1")
-        .Output(10, "dayOfYear", "No information available", "OutputT2")
-        .Output(11, "weekOfMonth", "No information available", "OutputT2")
-        .Output(12, "quarterOfYear", "No information available", "OutputT1")
-        .Output(13, "halfOfYear", "No information available", "OutputT1")
-        .Output(14, "weekIso", "No information available", "OutputT1")
-        .Output(15, "yearIso", "No information available", "OutputT0")
-        .Output(16, "monthLabel", "No information available", "OutputT3")
-        .Output(17, "amPmLabel", "No information available", "OutputT3")
-        .Output(18, "dayOfWeekLabel", "No information available", "OutputT3")
-        .Output(19, "holidayName", "No information available", "OutputT3")
-        .Output(20, "isPaidTimeOff", "No information available", "OutputT1")
-        .TypeConstraint(
-            "OutputT0",
-            {"tensor(int32)"},
-            "No information is available"
-        )
-        .TypeConstraint(
-            "OutputT1",
-            {"tensor(uint8)"},
-            "No information is available"
-        )
-        .TypeConstraint(
-            "OutputT2",
-            {"tensor(uint16)"},
-            "No information is available"
-        )
-        .TypeConstraint(
-            "OutputT3",
-            {"tensor(string)"},
-            "No information is available"
-        )
-        .TypeAndShapeInferenceFunction(
-            [](ONNX_NAMESPACE::InferenceContext &ctx) {
-                ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-                ctx.getOutputType(1)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(2)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(3)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(4)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(5)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(6)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(7)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(8)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(9)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(10)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT16);
-                ctx.getOutputType(11)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT16);
-                ctx.getOutputType(12)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(13)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(14)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-                ctx.getOutputType(15)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-                ctx.getOutputType(16)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-                ctx.getOutputType(17)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-                ctx.getOutputType(18)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-                ctx.getOutputType(19)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-                ctx.getOutputType(20)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  MS_FEATURIZERS_OPERATOR_SCHEMA(DateTimeTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "tensor(uint8)")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "tensor(int64)")
+      .Output(0, "year", "No information available", "OutputT0")
+      .Output(1, "month", "No information available", "OutputT1")
+      .Output(2, "day", "No information available", "OutputT1")
+      .Output(3, "hour", "No information available", "OutputT1")
+      .Output(4, "minute", "No information available", "OutputT1")
+      .Output(5, "second", "No information available", "OutputT1")
+      .Output(6, "amPm", "No information available", "OutputT1")
+      .Output(7, "hour12", "No information available", "OutputT1")
+      .Output(8, "dayOfWeek", "No information available", "OutputT1")
+      .Output(9, "dayOfQuarter", "No information available", "OutputT1")
+      .Output(10, "dayOfYear", "No information available", "OutputT2")
+      .Output(11, "weekOfMonth", "No information available", "OutputT2")
+      .Output(12, "quarterOfYear", "No information available", "OutputT1")
+      .Output(13, "halfOfYear", "No information available", "OutputT1")
+      .Output(14, "weekIso", "No information available", "OutputT1")
+      .Output(15, "yearIso", "No information available", "OutputT0")
+      .Output(16, "monthLabel", "No information available", "OutputT3")
+      .Output(17, "amPmLabel", "No information available", "OutputT3")
+      .Output(18, "dayOfWeekLabel", "No information available", "OutputT3")
+      .Output(19, "holidayName", "No information available", "OutputT3")
+      .Output(20, "isPaidTimeOff", "No information available", "OutputT1")
+      .TypeConstraint(
+          "OutputT0",
+          {"tensor(int32)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT1",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT2",
+          {"tensor(uint16)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT3",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+            ctx.getOutputType(1)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(2)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(3)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(4)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(5)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(6)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(7)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(8)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(9)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(10)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT16);
+            ctx.getOutputType(11)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT16);
+            ctx.getOutputType(12)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(13)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(14)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+            ctx.getOutputType(15)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+            ctx.getOutputType(16)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+            ctx.getOutputType(17)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+            ctx.getOutputType(18)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+            ctx.getOutputType(19)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+            ctx.getOutputType(20)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
 
-                for(size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-                    *ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
-                }
+            for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+              *ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
             }
-        )
-    ;
+          });
 }
 
 void RegisterMaxAbsScalarFeaturizerVer1() {
-    static const char * doc = R"DOC(
+  static const char* doc = R"DOC(
         Scales input based on the maximum absolute value of all data encountered during training.
 
         C++-style pseudo signature:
@@ -248,63 +234,56 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
           execute(100.0) -> 100 / 4.0
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
-        .SinceVersion(1)
-        .SetDomain(kMSFeaturizersDomain)
-        .SetDoc(doc)
-        .Input(
-            0,
-            "State",
-            "State generated during training that is used for prediction",
-            "tensor(uint8)"
-        )
-        .Input(
-            1,
-            "Input",
-            "No information is available",
-            "InputT"
-        )
-        .Output(
-            0,
-            "Output",
-            "No information is available",
-            "OutputT"
-        )
-        .TypeConstraint(
-            "InputT",
-            {"tensor(int8)", "tensor(int16)", "tensor(uint8)", "tensor(uint16)", "tensor(float)", "tensor(int32)", "tensor(int64)", "tensor(uint32)", "tensor(uint64)", "tensor(double)"},
-            "No information is available"
-        )
-        .TypeConstraint(
-            "OutputT",
-            {"tensor(float)", "tensor(double)"},
-            "No information is available"
-        )
-        .TypeAndShapeInferenceFunction(
-            [](ONNX_NAMESPACE::InferenceContext& ctx) {
-                auto input_elem_type = ctx.getInputType(1)->tensor_type().elem_type();
-                                    if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT8 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-                                ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-                            }                     else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT32 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT64 ||
-        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-                                ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
-                            }
-
-                *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
+  MS_FEATURIZERS_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "tensor(uint8)")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "OutputT")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(int8)", "tensor(int16)", "tensor(uint8)", "tensor(uint16)", "tensor(float)", "tensor(int32)", "tensor(int64)", "tensor(uint32)", "tensor(uint64)", "tensor(double)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT",
+          {"tensor(float)", "tensor(double)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            auto input_elem_type = ctx.getInputType(1)->tensor_type().elem_type();
+            if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT8 ||
+                input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 ||
+                input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16 ||
+                input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+              ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+            } else if (input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+                       input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT64 ||
+                       input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT32 ||
+                       input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT64 ||
+                       input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+              ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
             }
-        )
-    ;
+
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
+          });
 }
 
 void RegisterStringFeaturizerVer1() {
-    static const char * doc = R"DOC(
+  static const char* doc = R"DOC(
         Converts the input into a string representation based on the input's type.
 
         C++-style pseudo signature:
@@ -315,42 +294,36 @@ void RegisterStringFeaturizerVer1() {
           execute(3.14) -> "3.14"
     )DOC";
 
-    MS_AUTOML_OPERATOR_SCHEMA(StringTransformer)
-        .SinceVersion(1)
-        .SetDomain(kMSFeaturizersDomain)
-        .SetDoc(doc)
-        .Input(
-            0,
-            "State",
-            "State generated during training that is used for prediction",
-            "tensor(uint8)"
-        )
-        .Input(
-            1,
-            "Input",
-            "No information is available",
-            "InputT"
-        )
-        .Output(
-            0,
-            "Output",
-            "No information is available",
-            "tensor(string)"
-        )
-        .TypeConstraint(
-            "InputT",
-            {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
-            "No information is available"
-        )
-        .TypeAndShapeInferenceFunction(
-            [](ONNX_NAMESPACE::InferenceContext& ctx) {
-                propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 0);
+  MS_FEATURIZERS_OPERATOR_SCHEMA(StringTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "tensor(uint8)")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "tensor(string)")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 0);
 
-                *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
-            }
-        )
-    ;
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
+          });
 }
 
-} // namespace featurizers
-} // namespace onnxruntime
+}  // namespace featurizers
+}  // namespace onnxruntime

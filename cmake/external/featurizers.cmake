@@ -3,7 +3,7 @@
 # This source code should not depend on the onnxruntime and may be built independently
 
 set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
-set(featurizers_TAG "4df80d5865a9d4e97f6d0b9304d4316115a04d9e")
+set(featurizers_TAG "3f0f9802553944b75015aad098d856b2d17220df")
 
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})
@@ -23,6 +23,7 @@ if (WIN32)
             # Location of CMakeLists.txt
             SOURCE_SUBDIR src/Featurizers
             BINARY_DIR ${featurizers_BINARY_DIR}
+            CMAKE_ARGS -Dfeaturizers_MSVC_STATIC_RUNTIME=${onnxruntime_MSVC_STATIC_RUNTIME}
 #            UPDATE_COMMAND ""
             INSTALL_COMMAND ""
         )

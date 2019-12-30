@@ -203,12 +203,13 @@ class OnnxModelInfo : public TestModelInfo {
     if (!st.IsOK()) {
       ORT_THROW(st.ErrorMessage());
     }
-    google::protobuf::io::FileInputStream f(model_fd);
-    f.SetCloseOnDelete(true);
+
     ONNX_NAMESPACE::ModelProto model_pb;
-    if (!model_pb.ParseFromZeroCopyStream(&f)) {
+    if (!model_pb.ParseFromFileDescriptor(model_fd)) {
+      (void)Env::Default().FileClose(model_fd);
       ORT_THROW("Failed to load model because protobuf parsing failed.");
     }
+    (void)Env::Default().FileClose(model_fd);
 #ifdef __GNUG__
     const RE2::Anchor re2_anchor = RE2::UNANCHORED;
     re2::StringPiece text(model_url);
@@ -233,6 +234,7 @@ class OnnxModelInfo : public TestModelInfo {
       if (!init.has_name()) continue;
       initializer_names.insert(init.name());
     }
+    //Ignore the inputs that are already in initializers
     for (const auto& p : graph.input()) {
       if (!p.has_name()) ORT_THROW("input without name??");
       if (initializer_names.find(p.name()) == initializer_names.end()) input_value_info_.push_back(p);

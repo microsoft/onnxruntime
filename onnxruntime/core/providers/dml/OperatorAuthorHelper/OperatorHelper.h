@@ -299,13 +299,13 @@ class ConvolutionHelperBase
 {
 public:
     enum FilterDims { K };
-    enum InputTensor { X, Filter, Bias };
+    enum InputTensor { X, Filter};
     enum InputDims { N, C, H, W };
 
 public:
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     template<typename Info_t, typename Shape_t>
-    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose) :
+    ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads) :
         m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(0), shape.GetInputTensorShape(1)))
     {
         m_groupCount = info.GetOptionalAttribute<uint32_t>(AttrName::Group, 1);
@@ -316,7 +316,7 @@ public:
         }
         else
         {
-            InitializeKernelAndShapesTransposed(info, shape);
+            InitializeKernelAndShapesTransposed(info, shape, hasDynamicPads);
         }
     }
 
@@ -347,7 +347,7 @@ public:
     
     
     template<typename Info_t, typename Shape_t>
-    void InitializeKernelAndShapesTransposed(const Info_t& info, const Shape_t& shapeInfo)
+    void InitializeKernelAndShapesTransposed(const Info_t& info, const Shape_t& shapeInfo, bool hasDynamicPads)
     {
         std::vector<int> outputShape = info.GetOptionalAttributeVectorInt32(AttrName::OutputShape);
         if (!outputShape.empty())
@@ -363,7 +363,33 @@ public:
 
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount, "Input dimensions must be >= 3");
 
-        ResolvingPadding(inputDimensions);
+        if (hasDynamicPads)
+        {
+            MLOperatorTensor padsTensor = info.GetConstantInputTensor(2);
+            const std::vector<uint32_t>& padsTensorDimensions = padsTensor.GetShape();
+            ML_CHECK_VALID_ARGUMENT(padsTensorDimensions.size() == 1, "Pads dimensions must equal 1");
+            const size_t dimCount = padsTensorDimensions[0];
+            ML_CHECK_VALID_ARGUMENT(dimCount == 2 * NchwSpatialDimensionCount, "Pads count must equal 4");
+            const int64_t* padsData = padsTensor.GetData<int64_t>();
+
+            for (size_t i = 0; i < dimCount; ++i)
+            {
+                ML_CHECK_VALID_ARGUMENT(padsData[i] >= 0, "Padding values must be greater than or equal to 0");
+                if (i < dimCount / 2)
+                {
+                    m_kernel.startPadding[i] = gsl::narrow_cast<uint32_t>(padsData[i]);
+                }
+                else
+                {
+                    m_kernel.endPadding[i - dimCount/2] = gsl::narrow_cast<uint32_t>(padsData[i]);
+                }
+            }
+        }
+        else
+        {
+            ResolvingPadding(inputDimensions);
+        }
+
         m_outputShapes.resize(1);
         m_outputShapes[0] = InitializeKernelOutputDimsTranspose(inputDimensions, m_kernel);
         static_assert(C < NonspatialDimensionCount);
@@ -419,14 +445,21 @@ class ConvHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false) {}
+    ConvHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, false, false) {}
 };
 
 class ConvTransposeHelper : public ConvolutionHelperBase
 {
 public:
     template<typename Info_t, typename Shape_t>
-    ConvTransposeHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true) {}
+    ConvTransposeHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, false) {}
+};
+
+class ConvTransposeWithDynamicPadsHelper : public ConvolutionHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    ConvTransposeWithDynamicPadsHelper(const Info_t& info, const Shape_t& shape) : ConvolutionHelperBase(info, shape, true, true) {}
 };
 
 class GemmHelper
@@ -501,20 +534,138 @@ protected:
     std::vector<int> m_split;
 };
 
-class SliceHelper
+class SliceHelperBase
 {
 public:
+    template<typename Info_t, typename Index_t>
+    void ReadIndexTensors(
+        const Info_t& operatorInfo,
+        std::vector<int32_t>& starts,
+        std::vector<int32_t>& ends,
+        std::vector<int32_t>& axes,
+        std::vector<int32_t>& steps
+    )
+    {
+        // Get starts, ends, optional axes and optional steps from constant inputs.
+        MLOperatorTensor startsTensor = operatorInfo.GetConstantInputTensor(1);
+        const std::vector<uint32_t>& startsTensorDimensions = startsTensor.GetShape();
+        size_t dimCount = startsTensorDimensions[0];
+        const Index_t* startsData = startsTensor.GetData<Index_t>();
+        for (size_t i = 0; i < dimCount; ++i)
+        {
+            starts.push_back(gsl::narrow_cast<int32_t>(startsData[i]));
+        }
+
+        MLOperatorTensor endsTensor = operatorInfo.GetConstantInputTensor(2);
+        const std::vector<uint32_t>& endsTensorDimensions = endsTensor.GetShape();
+        dimCount = endsTensorDimensions[0];
+        const Index_t* endsData = endsTensor.GetData<Index_t>();
+        for (size_t i = 0; i < dimCount; ++i)
+        {
+            ends.push_back(gsl::narrow_cast<int32_t>(endsData[i]));
+        }
+        uint32_t inputCount = operatorInfo.GetInputCount();
+        if (operatorInfo.GetInputCount() > 3)
+        {
+            MLOperatorTensor axesTensor = operatorInfo.GetConstantInputTensor(3);
+            const std::vector<uint32_t>& axesTensorDimensions = axesTensor.GetShape();
+            dimCount = axesTensorDimensions[0];
+            const Index_t* axesData = axesTensor.GetData<Index_t>();
+            for (size_t i = 0; i < dimCount; ++i)
+            {
+                axes.push_back(gsl::narrow_cast<int32_t>(axesData[i]));
+            }
+        }
+
+        if (operatorInfo.GetInputCount() > 4)
+        {
+            MLOperatorTensor stepsTensor = operatorInfo.GetConstantInputTensor(4);
+            const std::vector<uint32_t>& stepsTensorDimensions = stepsTensor.GetShape();
+            dimCount = stepsTensorDimensions[0];
+            const Index_t* stepsData = stepsTensor.GetData<Index_t>();
+            for (size_t i = 0; i < dimCount; ++i)
+            {
+                steps.push_back(gsl::narrow_cast<int32_t>(stepsData[i]));
+            }
+        }
+    }
+
+    template<typename Info_t>
     void Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        );
+        const Info_t& operatorInfo,
+        gsl::span<const DimensionType> inputDimensions,
+        uint32_t opsetVersion
+        )
+    {
+        std::vector<int32_t> starts;
+        std::vector<int32_t> ends;
+        std::vector<int32_t> axes;
+        std::vector<int32_t> steps;
+        if (opsetVersion == 7)
+        {
+            // Get starts, ends and axes from attributes
+            starts = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Starts);
+            ends = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Ends);
+            axes = operatorInfo.GetOptionalAttributeVectorInt32(AttrName::Axes);
+        }
+        else if (opsetVersion == 10)
+        {
+            if (operatorInfo.GetConstantInputTensor(1).GetTensorDataType() == MLOperatorTensorDataType::Int32)
+            {
+                ReadIndexTensors<Info_t, int32_t>(operatorInfo, starts, ends, axes, steps);
+            }
+            else
+            {
+                THROW_HR_IF(E_INVALIDARG, operatorInfo.GetConstantInputTensor(1).GetTensorDataType() != MLOperatorTensorDataType::Int64);
+                ReadIndexTensors<Info_t, int64_t>(operatorInfo, starts, ends, axes, steps);
+            }
+        }
+         
+        ML_CHECK_VALID_ARGUMENT(starts.size() == ends.size(), "'starts' must equal 'ends' in size.");
+        ML_CHECK_VALID_ARGUMENT(axes.empty() || starts.size() == axes.size(), "'axes' must equal 'starts' in size, or 'axes' must be empty.");
+
+        m_outputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
+        m_offsets.resize(m_outputDimensions.size());
+        m_sizes.resize(m_outputDimensions.size());
+        m_strides.resize(m_outputDimensions.size(), 1); // Only a stride of 1 element is supported by ONNX 1.2.
+
+        // Set initial defaults lest 'starts' and 'ends' arrays are shorter than the dimension count.
+        std::copy(inputDimensions.begin(), inputDimensions.begin() + m_outputDimensions.size(), m_sizes.begin());
+
+        // Clamp selected dimensions to given 'starts' and 'ends'.
+        for (int i = 0, ci = gsl::narrow_cast<int>(starts.size()); i < ci; ++i)
+        {
+            int dimIndex = i;
+            if (!axes.empty())
+            {
+                dimIndex = axes[i];
+            }
+            ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
+
+            // Positive values are offsets from 0.
+            // Negative values are offsets from the dimension's size.
+            int dim = gsl::narrow_cast<int>(inputDimensions[dimIndex]);
+            int start = (starts[i] < 0) ? (starts[i] + dim) : starts[i];
+            int end = (ends[i] < 0) ? (ends[i] + dim) : ends[i];
+
+            // Clamp the dimensions to the slice extents.
+            // Clamp negative numbers to 0, per case test_slice_start_out_of_bounds.
+            start = std::max(start, 0);
+            end = std::min(end, dim);
+            int size = std::max(end - start, 0);
+
+            m_outputDimensions[dimIndex] = size;
+            m_offsets[dimIndex] = start;
+            m_sizes[dimIndex] = gsl::narrow_cast<uint32_t>(size);
+        }
+    }
 
     // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
     template<typename Info_t, typename Shape_t>
-    SliceHelper(const Info_t& info, const Shape_t& shape)
+    SliceHelperBase(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
     {
-        Initialize(info, shape.GetInputTensorShape(0));
+        Initialize(info, shape.GetInputTensorShape(0), opsetVersion);
     }
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -525,6 +676,21 @@ protected:
     std::vector<uint32_t> m_sizes;
     std::vector<uint32_t> m_strides;
 };
+
+class SliceHelper : public SliceHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    SliceHelper(const Info_t& info, const Shape_t& shape) : SliceHelperBase(info, shape, 7) {}
+};
+
+class Slice10Helper : public SliceHelperBase
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    Slice10Helper(const Info_t& info, const Shape_t& shape) : SliceHelperBase(info, shape, 10) {}
+};
+
 
 class PaddingHelper
 {
@@ -1098,6 +1264,7 @@ protected:
 
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
+using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
 using ShapeInferenceHelper_AveragePool = PoolingHelper;
 using ShapeInferenceHelper_GlobalAveragePool = GlobalPoolingHelper;
 using ShapeInferenceHelper_MaxPool = PoolingHelper;
@@ -1120,7 +1287,8 @@ using ShapeInferenceHelper_Flatten = FlattenHelper;
 using ShapeInferenceHelper_Split = SplitHelper;
 using ShapeInferenceHelper_Transpose = TransposeHelper;
 using ShapeInferenceHelper_Concat = ConcatHelper;
-using ShapeInferenceHelper_Slice = SliceHelper;
+using ShapeInferenceHelper_Slice7 = SliceHelper;
+using ShapeInferenceHelper_Slice10 = Slice10Helper;
 using ShapeInferenceHelper_Pad = PaddingHelper;
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;

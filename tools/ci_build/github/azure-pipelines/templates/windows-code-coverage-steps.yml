@@ -12,7 +12,7 @@ steps:
   displayName: 'Run Test Coverage'
   inputs:
     filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\run_OpenCppCoverage.ps1'
-    arguments: '-OpenCppCoverageExe:"${{parameters.OpenCppCoverageExe}}" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$false'
+    arguments: '-OpenCppCoverageExe:"${{parameters.OpenCppCoverageExe}}" -SourceRoot:"$(Build.SourcesDirectory)" -BuildRoot:"$(Build.BinariesDirectory)" -LocalBuild:$true'
   continueOnError: ${{parameters.ContinueOnError}}  
 
 - task: PublishCodeCoverageResults@1
@@ -30,11 +30,11 @@ steps:
     arguments: 'install -q --insecure -y mysql-connector-python'
   timeoutInMinutes: 10
 
-- task: BatchScript@1
-  displayName: 'Post code coverage data to the Dashboard'
+- task: PythonScript@0
+  displayName: 'Generate cmake config'
   inputs:
-    filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-    arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_code_coverage_to_dashboard.py --commit_hash=${{parameters.GitCommitHash}} --report_file="$(Build.BinariesDirectory)/Debug/Debug/cobertura.xml" --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"'
+    scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\post_code_coverage_to_dashboard.py'
+    arguments: --commit_hash=${{parameters.GitCommitHash}} --report_file="$(Build.BinariesDirectory)/Debug/Debug/cobertura.xml" --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
     workingFolder: "$(Build.BinariesDirectory)"
   continueOnError: ${{parameters.ContinueOnError}}
   condition: ${{parameters.PostToDashBoard}}

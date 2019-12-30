@@ -13,7 +13,6 @@ def check_distro_info():
     __my_distro__ = ''
     __my_distro_ver__ = ''
     __my_system__ = platform.system().lower()
-    __my_arch__ = platform.architecture()[0].lower()
 
     __OS_RELEASE_FILE__ = '/etc/os-release'
     __LSB_RELEASE_FILE__ = '/etc/lsb-release'
@@ -25,8 +24,6 @@ def check_distro_info():
         if __my_distro_ver__ != '10':
             warnings.warn('Unsupported Windows version (%s). ONNX Runtime supports Windows 10 and above, only.' % __my_distro_ver__)
     elif __my_system__ == 'linux':
-        if __my_arch__ != '64bit':
-            warnings.warn('Unsupported architecture (%s). ONNX Runtime supports 64bit architecture, only.' % __my_arch__)
         ''' Although the 'platform' python module for getting Distro information works well on standard OS images running on real
         hardware, it is not acurate when running on Azure VMs, Git Bash, Cygwin, etc. The returned values for release and version
         are unpredictable for virtualized or emulated environments.

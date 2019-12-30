@@ -17,7 +17,7 @@ TEST(MaxAbsScaler, Int8_values) {
   
   // State from when the transformer was trained. Corresponds to Version 1 and a 
   // scale of 0
-  test.AddInput<uint8_t>("State", {4}, {0, 0, 128, 64});
+  test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 128, 64});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("X", {5}, {-4,3,0,2,-1});
@@ -33,7 +33,7 @@ TEST(MaxAbsScaler, Double_values) {
 
   // State from when the transformer was trained. Corresponds to Version 1 and a
   // scale of 0
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 0, 0, 0, 0, 16, 64});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 64});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<double_t>("X", {5}, {-4, 3, 0, 2, -1});

@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace featurizers {
 
-void RegisterAutoMLSchemas(void);
+void RegisterMSFeaturizersSchemas(void);
 
-} // namespace featurizers
-} // namespace onnxruntime
+}  // namespace featurizers
+}  // namespace onnxruntime

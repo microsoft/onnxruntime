@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace featurizers {
 
-Status RegisterCpuAutoMLKernels(KernelRegistry& kernel_registry);
+Status RegisterCpuMSFeaturizersKernels(KernelRegistry& kernel_registry);
 
-} // namespace featurizers
-} // namespace onnxruntime
+}  // namespace featurizers
+}  // namespace onnxruntime

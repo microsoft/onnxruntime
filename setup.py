@@ -119,7 +119,7 @@ except ImportError as error:
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libdnnl.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   # Openvino Libs
