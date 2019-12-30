@@ -16,7 +16,7 @@ jobs:
     - template: templates/set-test-data-variables-step.yml
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.x'
+        versionSpec: '3.7'
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
