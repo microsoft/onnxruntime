@@ -212,9 +212,9 @@ setup(
         'onnxruntime': data + examples + extra,
     },
     py_modules=python_modules_list,
-    extras_require={
-        'backend': ['onnx>=1.2.3'],
-        'numpy': ['numpy>=1.15.0']
+    install_requires={
+        'onnx>=1.2.3',
+        'numpy>=1.18.0,<2'
     },
     entry_points= {
         'console_scripts': [
@@ -222,9 +222,10 @@ setup(
         ]
     },
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',
