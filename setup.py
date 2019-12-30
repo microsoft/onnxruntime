@@ -212,10 +212,10 @@ setup(
         'onnxruntime': data + examples + extra,
     },
     py_modules=python_modules_list,
-    install_requires={
+    install_requires=[
         'onnx>=1.2.3',
         'numpy>=1.18.0,<2'
-    },
+    ],
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
