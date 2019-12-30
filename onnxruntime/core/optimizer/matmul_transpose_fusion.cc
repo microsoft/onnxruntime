@@ -105,11 +105,11 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       output_defs, {}, kOnnxDomain);
     bool transpose_left = left.first;
     if (node.OpType() == "TransposeMatMul") {
-      transpose_left ^= node.GetAttributes().at("transA").i();
+      transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
     }
     bool transpose_right = right.first;
     if (node.OpType() == "TransposeMatMul") {
-      transpose_right ^= node.GetAttributes().at("transB").i();
+      transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
     }
     matmul_node.AddAttribute("transA", (int64_t)transpose_left);
     matmul_node.AddAttribute("transB", (int64_t)transpose_right);
