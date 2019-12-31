@@ -134,9 +134,53 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
     }
   }
 }
+template <typename T>
+__device__ __inline__ bool Equal(const T& t0, const T& t1) {
+  auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
+  return (double)t2 < 1.0e-10;
+}
 
 template <typename T>
-__global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t XPT, int64_t bits, bool integer) {
+__device__ bool Match(const T* t0, const T* t1, int64_t skip) {
+  return (((*t0) ^ (*t1)) >> skip) == 0;
+}
+
+__device__ bool Match(const float* f0, const float* f1, int64_t skip) {
+  return Match<int32_t>((const int32_t*)f0, (const int32_t*)f1, skip);
+}
+
+__device__ bool Match(const double* f0, const double* f1, int64_t skip) {
+  return Match<int64_t>((const int64_t*)f0, (const int64_t*)f1, skip);
+}
+
+template <typename T>
+__device__ bool Test(const T* t, int64_t bit) {
+  return ((*t) >> bit) & (T)1;
+}
+
+__device__ bool Test(const float* f, int64_t bit) {
+  return Test<int32_t>((const int32_t*)f, bit);
+}
+
+__device__ bool Test(const double* f, int64_t bit) {
+  return Test<int64_t>((const int64_t*)f, bit);
+}
+
+template <typename T>
+__device__ void Set(T* t, int64_t bit) {
+  (*t) |= (T)1 << bit;
+}
+
+__device__ void Set(float* f, int64_t bit) {
+  Set<int32_t>((int32_t*)f, bit);
+}
+
+__device__ void Set(double* f, int64_t bit) {
+  Set<int64_t>((int64_t*)f, bit);
+}
+
+template <typename T>
+__global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t dimension, int64_t XPT) {
   auto tid = threadIdx.x;
   auto bid = blockIdx.x;
   extern __shared__ char shared_mem[];
@@ -147,46 +191,111 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   auto right_dim = axis == size - 1 ? 0 : bid % elem_nums[axis + 1];
   T Kth = (T)0;
   int32_t global_positive = 0, global_negative = 0;
-  int32_t& thread_positive = S32[tid << 1];
-  int32_t& thread_negative = S32[(tid << 1) + 1];
+  auto& thread_positive = S32[tid << 1];
+  auto& thread_negative = S32[(tid << 1) + 1];
   thread_positive = thread_negative = 0;
-  auto KK = dimension - K + 1;
   auto offset = tid * XPT;
   for (int64_t i = 0; i < XPT; ++i) {
-    auto& x = X[FROM(offset + i)];
-    if (x > 0) {
-      ++thread_positive;
-    } else if (x < 0) {
-      ++thread_negative;
+    auto j = offset + i;
+    if (j < dimension) {
+      auto& x = X[FROM(j)];
+      if (x > 0) {
+        ++thread_positive;
+      } else if (x < 0) {
+        ++thread_negative;
+      }
     }
   }
   __syncthreads();
-}
-
-template <typename T>
-int64_t CountBits() {
-  auto bits = sizeof(T) << 3;
-  switch (typeid(T).name()[0] - 'a') {
-    case 0: //int8
-    case 3: //double
-    case 5: //float
-    case 8: //int32_t
-    case 11://int64_t
-    case 18://int16_t
-      return bits - 1;
-    default:
-      return bits;
+  for (int64_t i = 2; i < blockDim.x << 1; i <<= 1) {
+    auto j = tid * (i << 1);
+    auto k = j + i;
+    for (int64_t l = 0; l < 2; ++l) {
+      auto jj = j + l;
+      auto kk = k + l;
+      if (kk < blockDim.x << 1) {
+        S32[jj] += S32[kk];
+      }
+    }
   }
-}
-
-template <typename T>
-bool Integer() {
-  switch (typeid(T).name()[0] - 'a') {
-    case 3:
-    case 5:
-      return false;
-    default:
-      return true;
+  __syncthreads();
+  if (0 == tid) {
+    global_positive = thread_positive;
+    global_negative = thread_negative;
+  }
+  __syncthreads();
+  if (global_positive >= K || K > dimension - global_negative) {
+    T sign = 1;
+    auto KK = K;
+    if (global_positive < KK) {
+      sign = -1;
+      KK = dimension - KK + 1;
+    }
+    auto bits = sizeof(T) << 3;
+    for (int64_t i = bits - 1; i > -1; --i) {
+      S64[tid] = 0;
+      for (int64_t j = 0; i < XPT; ++j) {
+        auto jj = offset + j;
+        if (jj < dimension) {
+          T x = sign * X[FROM(jj)];
+          if (x > 0 && Match(&x, &Kth, i + 1) && Test(&x, i)) ++S64[tid];
+        }
+      }
+      __syncthreads();
+      for (int64_t step = 1; step < blockDim.x; step <<= 1) {
+        auto j = tid * (step << 1);
+        auto k = j + step;
+        if (k < blockDim.x) {
+          S64[j] += S64[k];
+        }
+        __syncthreads();
+      }
+      if (0 == tid) {
+        if (S64[0] >= KK) {
+          Set(&Kth, i);
+        } else {
+          KK -= S64[0];
+        }
+      }
+      __syncthreads();
+    }
+    __syncthreads();
+    if (0 == tid) {
+      Kth = (T)sign * Kth;
+    }
+  }
+  if (0 == tid) {
+    for (int64_t i = 0, j = 0; i < dimension && j < K; ++i) {
+      auto& x = X[FROM(i)];
+      if (1 == largest && x > Kth || 0 == largest && x < Kth || Equal(x, Kth)) {
+        V[j] = x;
+        I[j] = i;
+        ++j;
+      }
+    }
+  }
+  if (1 == sorted) {
+    __syncthreads();
+    for (int64_t len = 1; len < K; len <<= 1) {
+      for (int64_t inc = len; inc > 0; inc >>= 1) {
+        for (int64_t l = 0; l < XPT; ++l) {
+          auto t = tid * XPT + l;
+          auto low = t & (inc - 1);
+          auto i = (t << 1) - low;
+          auto j = i + inc;
+          if (j < K && (1 == largest && V[i] < V[j] || 0 == largest && V[i] > V[j])) {
+            auto vi = V[i];
+            V[i] = V[j];
+            V[j] = vi;
+            auto ii = I[i];
+            I[i] = I[j];
+            I[j] = ii;
+          }
+        }
+        __syncthreads();
+      }
+    }
+    __syncthreads();
   }
 }
 
@@ -194,14 +303,16 @@ template <typename T>
 Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   auto aligned_K = static_cast<int64_t>(pow(2, ceil(log2(K))));
   auto aligned_dimension = static_cast<int64_t>(pow(2, ceil(log2(dimension))));
+  /*
   if (aligned_dimension <= GridDim::maxThreadsPerBlock << 1) {
     BitonicTopK<T><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<T>)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
     return Status::OK();
   } else {
-    auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
-    RadixTopK<T><<<N, GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * sizeof(int64_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, CountBits<T>(), Integer<T>());
-    return Status::OK();
-  }
+  */
+  auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
+  RadixTopK<T><<<N, GridDim::maxThreadsPerBlock, GridDim::maxThreadsPerBlock * sizeof(int64_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT);
+  return Status::OK();
+  //}
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const T* input_x,         \
@@ -228,4 +339,4 @@ TOPKIMPLE(float);
 TOPKIMPLE(double);
 
 }  // namespace cuda
-}  // namespace cuda
+}  // namespace onnxruntime
