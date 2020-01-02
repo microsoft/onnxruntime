@@ -14,13 +14,12 @@ PYTHON_VER=$1
 
 if [[ "$PYTHON_VER" = "3.5" && -d "/opt/python/cp35-cp35m"  ]]; then
    PYTHON_EXE="/opt/python/cp35-cp35m/bin/python3.5"
-   export PATH=/opt/python/cp35-cp35m/bin:$PATH
 elif [[ "$PYTHON_VER" = "3.6" && -d "/opt/python/cp36-cp36m"  ]]; then
    PYTHON_EXE="/opt/python/cp36-cp36m/bin/python3.6"
-   export PATH=/opt/python/cp36-cp36m/bin:$PATH
 elif [[ "$PYTHON_VER" = "3.7" && -d "/opt/python/cp37-cp37m"  ]]; then
    PYTHON_EXE="/opt/python/cp37-cp37m/bin/python3.7"
-   export PATH=/opt/python/cp37-cp37m/bin:$PATH
+elif [[ "$PYTHON_VER" = "3.8" && -d "/opt/python/cp38-cp38"  ]]; then
+   PYTHON_EXE="/opt/python/cp38-cp38/bin/python3.8"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
@@ -57,5 +56,6 @@ for v2t in ${version2tag[*]}; do
   mv /tmp/src/onnx-$onnx_version/tools/repl_protoc-gen-mypy.py /tmp/src/onnx-$onnx_version/tools/protoc-gen-mypy.py
   mkdir -p /data/onnx/${onnx_tag}
   ${PYTHON_EXE} -m pip install .
-  backend-test-tools generate-data -o /data/onnx/$onnx_tag
+  cd /tmp  
+  ${PYTHON_EXE} -m onnx.backend.test.cmd_tools generate-data -o /data/onnx/$onnx_tag
 done
