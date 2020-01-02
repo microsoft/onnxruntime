@@ -120,7 +120,7 @@ except ImportError as error:
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libdnnl.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Intel Libs (Temporary. Can remove when we are building from binary)
   libs.extend(['libinference_engine.so'])
   # Nuphar Libs
@@ -215,19 +215,20 @@ setup(
         'onnxruntime': data + examples + extra,
     },
     py_modules=python_modules_list,
-    extras_require={
-        'backend': ['onnx>=1.2.3'],
-        'numpy': ['numpy>=1.15.0']
-    },
+    install_requires=[
+        'onnx>=1.2.3',
+        'numpy>=1.18.0,<2'
+    ],
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
         ]
     },
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',

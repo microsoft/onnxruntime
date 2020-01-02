@@ -14,7 +14,7 @@ parameters:
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
-  AgentPool: 'Win-CPU'
+  AgentPool: 'Win-CPU-2019'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
 jobs:

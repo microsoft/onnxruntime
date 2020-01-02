@@ -178,6 +178,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Dropout = 10;
         static const int sc_sinceVer_ThresholdedRelu = 10;
         static const int sc_sinceVer_Upsample = 10;
+        static const int sc_sinceVer_Slice = 10;
     } // namespace OnnxOperatorSet10
 
     namespace MsftOperatorSet1
@@ -193,6 +194,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedSum = 1;
         static const int sc_sinceVer_QuantizeLinear = 1;
         static const int sc_sinceVer_DequantizeLinear = 1;
+        static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

@@ -56,21 +56,21 @@ $outputDir = Join-Path $buildDir "OpenCppCoverageResults"
 $modelDir = Join-Path $BuildRoot "models" 
 
 
-# ONNX test runner tests. 
+Write-Host "ONNX test runner tests"
 $onnx_test_runner = Join-Path $buildDir "onnx_test_runner.exe" 
 RunTest $onnx_test_runner ($modelDir) ("binary:"  + (Join-Path $buildDir "onnx_test_runner.cov"))
 
 
-# C-API/Shared-lib test
+Write-Host "C-API/Shared-lib test"
 $shared_lib_test = Join-Path $buildDir "onnxruntime_shared_lib_test.exe"
 RunTest $shared_lib_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_shared_lib_test.cov"))
 
 
-# MLAS test
+Write-Host "MLAS test"
 $mlas_test = Join-Path $buildDir "onnxruntime_mlas_test.exe"
 RunTest $mlas_test @() ("binary:" + (Join-Path $buildDir "onnxruntime_mlas_test.cov"))
 
-# Lotus unit tests
+Write-Host "Lotus unit tests"
 # need to copy the tvm.dll, since it is not in the buildDir path
 if (Test-Path -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -PathType Leaf) {
     Copy-Item -Path $BuildRoot\Debug\external\tvm\Debug\tvm.dll -Destination $buildDir

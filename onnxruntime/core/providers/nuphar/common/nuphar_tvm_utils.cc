@@ -15,7 +15,9 @@
 #include "gsl/gsl"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING  // required by VS 2019
 #include <experimental/filesystem>
+#undef _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <atomic>
 #include <fstream>
 namespace fs = std::experimental::filesystem;
@@ -100,117 +102,102 @@ static void ParseVersion(const char* version, int* major, int* minor, int* patch
   *patch = ver_num_fn(val);
 }
 
-static void VerifyCacheVersion(const std::string& so_path) {
-  static std::atomic<bool> cache_version_checked{false};
-  static std::mutex cache_version_mutex;
+static bool VerifyCacheVersion(const std::string& so_path) {
+  // ensure we have _ORTInternal_GetCacheVersion_ function
+  void* f = GetFuncFromLibrary(so_path, "_ORTInternal_GetCacheVersion", /*throw_if_not_found*/ true);
+  if (f == nullptr)
+    return false;
 
-  // make sure we only check cache version once
-  if (!cache_version_checked.load(std::memory_order::memory_order_acquire)) {
-    std::lock_guard<std::mutex> lock(cache_version_mutex);
-    if (!cache_version_checked.load(std::memory_order::memory_order_acquire)) {
-      cache_version_checked.store(true, std::memory_order::memory_order_release);
-      // ensure we have _ORTInternal_GetCacheVersion_ function
-      void* f = GetFuncFromLibrary(so_path, "_ORTInternal_GetCacheVersion", /*throw_if_not_found*/ true);
-      ORT_ENFORCE(f, "NULL library function pointer!");
+  typedef const char* (*GetVersionFunc)();
+  GetVersionFunc func = reinterpret_cast<GetVersionFunc>(f);
+  const char* cache_version = func();
+  ORT_ENFORCE(cache_version, "Null cache version string!");
+  int cur_major, cur_minor, cur_patch;
+  ParseVersion(__NUPHAR_CACHE_VERSION__, &cur_major, &cur_minor, &cur_patch);
+  int cache_major, cache_minor, cache_patch;
+  ParseVersion(cache_version, &cache_major, &cache_minor, &cache_patch);
 
-      typedef const char* (*GetVersionFunc)();
-      GetVersionFunc func = reinterpret_cast<GetVersionFunc>(f);
-      const char* cache_version = func();
-      ORT_ENFORCE(cache_version, "Null cache version string!");
-      int cur_major, cur_minor, cur_patch;
-      ParseVersion(__NUPHAR_CACHE_VERSION__, &cur_major, &cur_minor, &cur_patch);
-      int cache_major, cache_minor, cache_patch;
-      ParseVersion(cache_version, &cache_major, &cache_minor, &cache_patch);
-
-      // make version check strict until we have thorough design for compatibility
-      ORT_ENFORCE((cur_major == cache_major) && (cur_minor == cache_minor),
-                  "Current nuphar runtime version (", __NUPHAR_CACHE_VERSION__,
-                  ") doesn't match cached dll version (", cache_version, ")");
-
-      cache_version_checked = true;
-    }
+  // make version check strict until we have thorough design for compatibility
+  bool version_match = (cur_major == cache_major) && (cur_minor == cache_minor);
+  if (!version_match) {
+    LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Current nuphar runtime version (" << __NUPHAR_CACHE_VERSION__ << ") doesn't match cached dll version (" << cache_version << ")";
   }
+  return version_match;
 }
-
-static bool disable_caching_due_to_checksum_failure = false;
 
 static bool VerifyTVMModuleChecksum(const std::string& so_path) {
-  static std::string last_so_path;
-  static bool last_checksum_validated = false;
-  static std::mutex checksum_mutex;
-  if (last_so_path != so_path) {
-    std::lock_guard<std::mutex> lock(checksum_mutex);
-    if (last_so_path != so_path) {
-      disable_caching_due_to_checksum_failure = false;  // reset disabled caching for a new file
-      last_so_path = so_path;
-      void* f = GetFuncFromLibrary(so_path, "_ORTInternal_GetCheckSum", /*throw_if_not_found*/ false);
-      if (f) {
-        typedef void (*GetChecksumFunc)(const char*&, size_t&);
-        GetChecksumFunc func = reinterpret_cast<GetChecksumFunc>(f);
-        const char* model_checksum;
-        size_t model_checksum_len;
-        func(model_checksum,
-             model_checksum_len);
+  void* f = GetFuncFromLibrary(so_path, "_ORTInternal_GetCheckSum", /*throw_if_not_found*/ false);
+  if (f) {
+    typedef void (*GetChecksumFunc)(const char*&, size_t&);
+    GetChecksumFunc func = reinterpret_cast<GetChecksumFunc>(f);
+    const char* model_checksum;
+    size_t model_checksum_len;
+    func(model_checksum,
+         model_checksum_len);
 
-        codegen::CodeGenSettings& setting = codegen::CodeGenSettings::Instance();
-        // When checksum is expected by dll/so, user must set environment variable
-        // NUPHAR_CACHE_MODEL_CHECKSUM from md5 digest of running model.
-        // User may choose to run with base model or simplified mode and any match
-        // would be regarded as validated.
-        // Note that checksum validation here is not designed as a security measurement,
-        // so checksum compute is not done inside ORT.
-        last_checksum_validated =
-            setting.OptionMatches(
-                kNupharCacheModelChecksum,
-                std::string(model_checksum, model_checksum_len));
-
-        if (!last_checksum_validated) {
-          LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Cache checksum validation failed, using JIT...";
-          disable_caching_due_to_checksum_failure = true;
-        }
-      } else {
-        // do not validate checksum if dll didn't require it (usually during debugging)
-        // TODO: force checksum validation in final release
-        last_checksum_validated = true;
+    codegen::CodeGenSettings& setting = codegen::CodeGenSettings::Instance();
+    // When checksum is expected by dll/so, user must set environment variable
+    // NUPHAR_CACHE_MODEL_CHECKSUM from md5 digest of running model.
+    // User may choose to run with base model or simplified mode and any match
+    // would be regarded as validated.
+    // Note that checksum validation here is not designed as a security measurement,
+    // so checksum compute is not done inside ORT.
+    if (setting.OptionMatches(
+            kNupharCacheModelChecksum,
+            std::string(model_checksum, model_checksum_len))) {
+      return true;
+    } else {
+      static std::mutex warn_mutex;
+      std::lock_guard<std::mutex> warn_lock(warn_mutex);
+      static std::string last_warned_so_path;
+      if (last_warned_so_path != so_path) {
+        // warning only once for each so_path
+        LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Cache checksum validation failed, using JIT...";
       }
+      return false;
     }
+  } else {
+    // do not validate checksum if dll didn't require it (usually during debugging)
+    // TODO: force checksum validation in final release
+    return true;
   }
-  return last_checksum_validated;
 }
 
-tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name) {
+CacheStatus LoadTVMPackedFuncFromCache(const std::string& func_name, tvm::runtime::PackedFunc& func) {
   std::string so_path;
-  if (!GetCacheSoFilePath(so_path))
-    return nullptr;
+  if (!GetCacheSoFilePath(so_path)) {
+    if (codegen::CodeGenSettings::Instance().HasOption(kNupharCachePath)) {
+      return CacheStatus::Missing;
+    } else {
+      return CacheStatus::NotInUse;
+    }
+  }
 
-  VerifyCacheVersion(so_path);
+  if (!VerifyCacheVersion(so_path)) {
+    return CacheStatus::Mismatch;
+  }
 
   if (!VerifyTVMModuleChecksum(so_path))
-    return nullptr;
+    return CacheStatus::Mismatch;
 
   tvm::runtime::Module module = tvm::runtime::Module::LoadFromFile(so_path);
-  tvm::runtime::PackedFunc func = module.GetFunction(func_name);
+  func = module.GetFunction(func_name);
   if (func == nullptr) {
     LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Cannot find " << func_name << " in cache, using JIT...";
+    return CacheStatus::Missing;
   }
-  return func;
+  return CacheStatus::Found;
 }
 
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module) {
   fs::path path;
 
-  if (disable_caching_due_to_checksum_failure)
-    return;
-
   static std::mutex save_cache_mutex;
-  static std::unordered_set<std::string> existing_files;
   std::lock_guard<std::mutex> lock(save_cache_mutex);
-  if (existing_files.count(filename) == 0 &&
-      GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
-    existing_files.insert(filename);
+  if (GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
     path.append(filename + ".o");
     if (fs::exists(path)) {
-      LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
+      //LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
       return;
     }
     module->SaveToFile(path.string(), "o");
