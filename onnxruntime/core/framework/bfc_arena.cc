@@ -252,8 +252,7 @@ void BFCArena::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
-void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                             size_t num_bytes) {
+void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -272,10 +271,9 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
         // kMaxInternalFragmentation bytes on padding this alloc.
-        const int64_t kMaxInternalFragmentation = 128 << 20;  // 128mb
+        const int64_t kMaxInternalFragmentation = 1024 * 1024;  // 1MB
         if (chunk->size >= rounded_bytes * 2 ||
-            static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxInternalFragmentation) {
+            static_cast<int64_t>(chunk->size) - rounded_bytes >= kMaxInternalFragmentation) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }
