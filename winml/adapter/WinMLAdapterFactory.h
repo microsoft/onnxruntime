@@ -13,7 +13,7 @@ typedef struct IWinMLAdapter IWinMLAdapter;
 extern "C" {
 #endif
 
-__declspec(dllexport) HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter);
+HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter);
 
 #ifdef __cplusplus
 }
