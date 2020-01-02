@@ -56,10 +56,14 @@ with open(args.output, 'w') as file:
 with open(args.output_source, 'w') as file:
    file.write("#include <onnxruntime_c_api.h>\n")
    for c in args.config:
-      file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c,c))
-   file.write("#include <adapter/WinMLAdapterFactory.h>\n")
+      # WinML adapter should not be exported in platforms other than Windows.
+      # Exporting OrtGetWinMLAdapter is exported without issues using .def file
+      # so it isn't necessary to include it in generated_source.c
+      if c != "winml":
+        file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c,c))
    file.write("void* GetFunctionEntryByName(const char* name){\n")
    for symbol in symbols:
-      file.write("if(strcmp(name,\"%s\") ==0) return (void*)&%s;\n" % (symbol,symbol))
+      if symbol != "OrtGetWinMLAdapter":
+        file.write("if(strcmp(name,\"%s\") ==0) return (void*)&%s;\n" % (symbol,symbol))
    file.write("return NULL;\n");
    file.write("}\n");

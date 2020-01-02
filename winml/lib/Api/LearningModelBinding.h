@@ -6,7 +6,7 @@
 #include "LearningModelBinding.g.h"
 
 #include "inc/ILotusValueProviderPrivate.h"
-#include "WinMLAdapterFactory.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 

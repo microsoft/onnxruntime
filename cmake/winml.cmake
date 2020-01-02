@@ -131,7 +131,6 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/pch.h
     ${winml_adapter_dir}/WinMLAdapter.cpp
     ${winml_adapter_dir}/WinMLAdapter.h
-    ${winml_adapter_dir}/WinMLAdapterFactory.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h    
     )

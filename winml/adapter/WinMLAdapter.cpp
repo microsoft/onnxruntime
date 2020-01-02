@@ -33,7 +33,7 @@
 #include "FeatureDescriptorFactory.h"
 #include "core\framework\utils.h"
 #include "core\framework\session_state.h"
-#include "WinMLAdapterFactory.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 using namespace winrt::Windows::AI::MachineLearning;
 
