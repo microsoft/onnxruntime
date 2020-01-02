@@ -214,7 +214,7 @@ setup(
     py_modules=python_modules_list,
     install_requires=[
         'onnx>=1.2.3',
-        'numpy>=1.18.0,<2'
+        'numpy>=1.18.0'
     ],
     entry_points= {
         'console_scripts': [
