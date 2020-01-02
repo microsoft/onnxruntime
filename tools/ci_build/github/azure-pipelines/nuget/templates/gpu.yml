@@ -116,6 +116,7 @@ jobs:
     parameters:
       NugetPath: '$(Build.ArtifactStagingDirectory)'
       PlatformsSupported: 'win-x64,linux-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'

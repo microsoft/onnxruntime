@@ -1,6 +1,7 @@
 parameters:
   NugetPath: ''
   PlatformsSupported: ''
+  VerifyNugetSigning: ''
 
 steps:
     - task: PowerShell@2
@@ -28,6 +29,6 @@ steps:
       displayName: 'Validate Nuget'
       inputs:
         filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py --nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}}'
+        arguments: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py --nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{VerifyNugetSigning}}'
         workingDirectory: "$(Build.BinariesDirectory)"
       continueOnError: false
