@@ -11,7 +11,7 @@ namespace dft = Microsoft::Featurizer::Featurizers;
 namespace onnxruntime {
 namespace test {
 
-TEST(CategoryImputer, Float_values) {
+TEST(FeaturizersTests, CategoryImputer_float_values) {
 
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
@@ -28,7 +28,7 @@ TEST(CategoryImputer, Float_values) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(CategoryImputer, Double_values) {
+TEST(FeaturizersTests, CategoryImputer_double_values) {
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to a
@@ -44,7 +44,7 @@ TEST(CategoryImputer, Double_values) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(CategoryImputer, String_values) {
+TEST(FeaturizersTests, CategoryImputer_string_values) {
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to a

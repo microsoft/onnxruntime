@@ -76,7 +76,7 @@ void RegisterCatImputerFeaturizerVer1() {
           0,
           "State",
           "State generated during training that is used for prediction",
-          "tensor(uint8)")
+          "T0")
       .Input(
           1,
           "Input",
@@ -87,6 +87,10 @@ void RegisterCatImputerFeaturizerVer1() {
           "Output",
           "No information is available",
           "T")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
       .TypeConstraint(
           "T",
           {"tensor(float)", "tensor(double)", "tensor(string)"},
@@ -144,7 +148,7 @@ void RegisterDateTimeFeaturizerVer1() {
           0,
           "State",
           "State generated during training that is used for prediction",
-          "tensor(uint8)")
+          "T0")
       .Input(
           1,
           "Input",
@@ -171,6 +175,10 @@ void RegisterDateTimeFeaturizerVer1() {
       .Output(18, "dayOfWeekLabel", "No information available", "OutputT3")
       .Output(19, "holidayName", "No information available", "OutputT3")
       .Output(20, "isPaidTimeOff", "No information available", "OutputT1")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
       .TypeConstraint(
           "OutputT0",
           {"tensor(int32)"},
@@ -242,7 +250,7 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
           0,
           "State",
           "State generated during training that is used for prediction",
-          "tensor(uint8)")
+          "T0")
       .Input(
           1,
           "Input",
@@ -253,6 +261,10 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
           "Output",
           "No information is available",
           "OutputT")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
       .TypeConstraint(
           "InputT",
           {"tensor(int8)", "tensor(int16)", "tensor(uint8)", "tensor(uint16)", "tensor(float)", "tensor(int32)", "tensor(int64)", "tensor(uint32)", "tensor(uint64)", "tensor(double)"},
@@ -302,7 +314,7 @@ void RegisterStringFeaturizerVer1() {
           0,
           "State",
           "State generated during training that is used for prediction",
-          "tensor(uint8)")
+          "T0")
       .Input(
           1,
           "Input",
@@ -313,6 +325,10 @@ void RegisterStringFeaturizerVer1() {
           "Output",
           "No information is available",
           "tensor(string)")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
       .TypeConstraint(
           "InputT",
           {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
