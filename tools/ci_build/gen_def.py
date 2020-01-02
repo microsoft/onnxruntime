@@ -57,7 +57,7 @@ with open(args.output_source, 'w') as file:
    file.write("#include <onnxruntime_c_api.h>\n")
    for c in args.config:
       # WinML adapter should not be exported in platforms other than Windows.
-      # Exporting OrtGetWinMLAdapter is exported without issues using .def file
+      # Exporting OrtGetWinMLAdapter is exported without issues using .def file when compiling for Windows
       # so it isn't necessary to include it in generated_source.c
       if c != "winml":
         file.write("#include <core/providers/%s/%s_provider_factory.h>\n" % (c,c))
