@@ -52,90 +52,90 @@ def check_if_dlls_are_present(platforms_supported, zip_file):
             raise Exception("Unsupported platform: " + platform)
             
 def check_if_nuget_is_signed(nuget_path):
-	code_sign_summary_file = glob.glob(os.path.join(nuget_path, '*.md'))
-	print(os.path.join(nuget_path)  + '*.md')
-	if (len(code_sign_summary_file) != 1):
-		print('CodeSignSummary files found in path: ')
-		print(code_sign_summary_file)
-		raise Exception('No CodeSignSummary files / more than one CodeSignSummary files found in the given path.')
- 	
-	print('CodeSignSummary file: ' + code_sign_summary_file[0])
-	
-	with open(code_sign_summary_file[0]) as f:
-		contents = f.read()
-		return "Pass" in contents
-
-	return False	
-			
-def main():   
-	args = parse_arguments()
-
-	files = os.listdir(args.nuget_path)
-	nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
-	if (len(nuget_packages_found_in_path) != 1):
-		print('Nuget packages found in path: ')
-		print(nuget_packages_found_in_path)
-		raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
+    code_sign_summary_file = glob.glob(os.path.join(nuget_path, '*.md'))
+    print(os.path.join(nuget_path)  + '*.md')
+    if (len(code_sign_summary_file) != 1):
+        print('CodeSignSummary files found in path: ')
+        print(code_sign_summary_file)
+        raise Exception('No CodeSignSummary files / more than one CodeSignSummary files found in the given path.')
+     
+    print('CodeSignSummary file: ' + code_sign_summary_file[0])
     
-	nuget_file_name = nuget_packages_found_in_path[0]
-	full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
-    
-	exit_code = 0
+    with open(code_sign_summary_file[0]) as f:
+        contents = f.read()
+        return "Pass" in contents
+
+    return False    
             
-	nupkg_copy_name = "NugetCopy" + ".nupkg" 
-	zip_copy_name = "NugetCopy" + ".zip"
-	zip_file = None
+def main():   
+    args = parse_arguments()
+
+    files = os.listdir(args.nuget_path)
+    nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
+    if (len(nuget_packages_found_in_path) != 1):
+        print('Nuget packages found in path: ')
+        print(nuget_packages_found_in_path)
+        raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
+    
+    nuget_file_name = nuget_packages_found_in_path[0]
+    full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
+    
+    exit_code = 0
+            
+    nupkg_copy_name = "NugetCopy" + ".nupkg" 
+    zip_copy_name = "NugetCopy" + ".zip"
+    zip_file = None
 
     # Remove any residual files
-	if check_exists(nupkg_copy_name):
-		os.remove(nupkg_copy_name)
+    if check_exists(nupkg_copy_name):
+        os.remove(nupkg_copy_name)
         
-	if check_exists(zip_copy_name):
-		os.remove(zip_copy_name)
+    if check_exists(zip_copy_name):
+        os.remove(zip_copy_name)
          
     # Do all validations here         
-	try:
-		if not is_windows():
-			raise Exception('Nuget validation is currently supported only on Windows')
+    try:
+        if not is_windows():
+            raise Exception('Nuget validation is currently supported only on Windows')
             
         # Make a copy of the Nuget package
-		print('Making a copy of the Nuget and extracting its contents') 
-		os.system("copy "  + full_nuget_path  + " " + nupkg_copy_name)
+        print('Making a copy of the Nuget and extracting its contents') 
+        os.system("copy "  + full_nuget_path  + " " + nupkg_copy_name)
         
         # Convert nupkg to zip
-		os.rename(nupkg_copy_name, zip_copy_name)
-		zip_file = zipfile.ZipFile(zip_copy_name)
+        os.rename(nupkg_copy_name, zip_copy_name)
+        zip_file = zipfile.ZipFile(zip_copy_name)
         
         # Check if the relevant dlls are present in the Nuget/Zip
-		print('Checking if the Nuget contains relevant dlls')
-		check_if_dlls_are_present(args.platforms_supported, zip_file)
+        print('Checking if the Nuget contains relevant dlls')
+        check_if_dlls_are_present(args.platforms_supported, zip_file)
 
         # Check if the Nuget has been signed
-		if (args.verify_nuget_signing != 'true' and args.verify_nuget_signing != 'false'):
-			raise Exception('Parameter verify_nuget_signing accepts only true or false as an argument');
-			
-		if (args.verify_nuget_signing == 'true'):
-			print('Verifying if Nuget has been signed')
-			if(not check_if_nuget_is_signed(args.nuget_path)):
-				print('Nuget signing verification failed')
-				raise Exception('Nuget signing verification failed')
-		
-	except:
-		exit_code = 1
-        
-	finally:
-		print('Cleaning up after Nuget validation')
+        if (args.verify_nuget_signing != 'true' and args.verify_nuget_signing != 'false'):
+            raise Exception('Parameter verify_nuget_signing accepts only true or false as an argument');
             
-		if zip_file is not None:
-			zip_file.close()
+        if (args.verify_nuget_signing == 'true'):
+            print('Verifying if Nuget has been signed')
+            if(not check_if_nuget_is_signed(args.nuget_path)):
+                print('Nuget signing verification failed')
+                raise Exception('Nuget signing verification failed')
+        
+    except:
+        exit_code = 1
+        
+    finally:
+        print('Cleaning up after Nuget validation')
+            
+        if zip_file is not None:
+            zip_file.close()
 
-		if check_exists(zip_copy_name):
-			os.remove(zip_copy_name)
+        if check_exists(zip_copy_name):
+            os.remove(zip_copy_name)
 
-		if exit_code == 0:
-			print('Nuget validation was successful')
-		else:
-			raise Exception('Nuget validation was unsuccessful')
+        if exit_code == 0:
+            print('Nuget validation was successful')
+        else:
+            raise Exception('Nuget validation was unsuccessful')
         
 if __name__ == "__main__":
     sys.exit(main())
