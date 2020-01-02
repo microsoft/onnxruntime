@@ -134,7 +134,7 @@ TEST(TensorTest, EmptyTensorTest) {
   auto& location = t.Location();
   ASSERT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
+  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtArenaAllocator);
 }
 
 TEST(TensorTest, StringTensorTest) {

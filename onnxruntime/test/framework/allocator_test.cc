@@ -13,7 +13,7 @@ TEST(AllocatorTest, CPUAllocatorTest) {
 
   ASSERT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);
-  EXPECT_EQ(cpu_arena->Info().type, OrtAllocatorType::OrtArenaAllocator);
+  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtArenaAllocator);
 
   size_t size = 1024;
   auto bytes = cpu_arena->Alloc(size);

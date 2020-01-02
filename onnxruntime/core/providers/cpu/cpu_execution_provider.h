@@ -38,9 +38,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
-    InsertAllocator(
-        std::shared_ptr<IArenaAllocator>(
-            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+    InsertAllocator(device_info.factory(0));
 #else
 //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
 #if defined(__amd64__) || defined(_M_AMD64)
@@ -50,10 +48,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 #else
     ORT_UNUSED_PARAMETER(info);
 #endif
-      InsertAllocator(
-          std::shared_ptr<IArenaAllocator>(
-              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
-
+      InsertAllocator(device_info.factory(0));
 #endif
   }
 

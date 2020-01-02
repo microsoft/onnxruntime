@@ -11,8 +11,10 @@ namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   int cuda_device_id = 0;
-  DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
-                                                          [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo default_memory_info(
+      {OrtMemTypeDefault,
+       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       std::numeric_limits<size_t>::max()});
 
   auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
 
@@ -21,21 +23,23 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_STREQ(cuda_arena->Info().name, CUDA);
   EXPECT_EQ(cuda_arena->Info().id, cuda_device_id);
   EXPECT_EQ(cuda_arena->Info().mem_type, OrtMemTypeDefault);
-  EXPECT_EQ(cuda_arena->Info().type, OrtArenaAllocator);
+  EXPECT_EQ(cuda_arena->Info().alloc_type, OrtArenaAllocator);
 
   //test cuda allocation
   auto cuda_addr = cuda_arena->Alloc(size);
   EXPECT_TRUE(cuda_addr);
 
-  DeviceAllocatorRegistrationInfo pinned_memory_info({OrtMemTypeCPUOutput,
-                                                         [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo pinned_memory_info(
+      {OrtMemTypeCPUOutput,
+       [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); },
+       std::numeric_limits<size_t>::max()});
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
   EXPECT_STREQ(pinned_allocator->Info().name, CUDA_PINNED);
   EXPECT_EQ(pinned_allocator->Info().id, 0);
   EXPECT_EQ(pinned_allocator->Info().mem_type, OrtMemTypeCPUOutput);
-  EXPECT_EQ(pinned_allocator->Info().type, OrtArenaAllocator);
+  EXPECT_EQ(pinned_allocator->Info().alloc_type, OrtArenaAllocator);
 
   //test pinned allocation
   auto pinned_addr = pinned_allocator->Alloc(size);
@@ -45,7 +49,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);
   EXPECT_EQ(cpu_arena->Info().mem_type, OrtMemTypeDefault);
-  EXPECT_EQ(cpu_arena->Info().type, OrtArenaAllocator);
+  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtArenaAllocator);
 
   auto cpu_addr_a = cpu_arena->Alloc(size);
   EXPECT_TRUE(cpu_addr_a);
