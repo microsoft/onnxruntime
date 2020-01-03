@@ -85,9 +85,9 @@ struct OrtMemoryInfo {
 
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
-  int id;
-  OrtMemType mem_type;
-  OrtAllocatorType alloc_type;
+  int id = -1;
+  OrtMemType mem_type = OrtMemTypeDefault;
+  OrtAllocatorType alloc_type = Invalid;
   OrtDevice device;
 
   constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,

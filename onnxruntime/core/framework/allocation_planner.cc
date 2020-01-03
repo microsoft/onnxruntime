@@ -707,7 +707,7 @@ class PlannerImpl {
 Status PlannerImpl::CreatePlan() {
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
-  int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
+  int num_ml_values = ort_value_name_idx_map_.MaxIdx();
 
   Initialize(p_graph_nodes.size(), static_cast<size_t>(num_ml_values));
 
