@@ -125,7 +125,7 @@ REGISTER_UNARY_ELEMENTWISE_KERNEL(ArgMin, 11);
 //               size of each reduce.
 template <typename T>
 bool PrepareForReduce(OpKernelContext* ctx,
-                      FastVector<T>& transposedInputData,
+                      FastAllocVector<T>& transposedInputData,
                       Tensor** reducedTensor,
                       int64_t& block_size,
                       int64_t& blocks,
@@ -307,7 +307,7 @@ bool PrepareForReduce(OpKernelContext* ctx,
 
 template <typename T>
 Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -323,7 +323,7 @@ Status ReduceL1<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -339,7 +339,7 @@ Status ReduceL2<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -359,7 +359,7 @@ Status ReduceLogSum<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceLogSumExp<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -383,7 +383,7 @@ Status ReduceLogSumExp<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -407,7 +407,7 @@ Status ReduceMax<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -434,7 +434,7 @@ Status ReduceMean<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -458,7 +458,7 @@ Status ReduceMin<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -474,7 +474,7 @@ Status ReduceProd<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -501,7 +501,7 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -517,7 +517,7 @@ Status ReduceSumSquare<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;
@@ -537,7 +537,7 @@ Status ArgMax<T>::Compute(OpKernelContext* ctx) const {
 
 template <typename T>
 Status ArgMin<T>::Compute(OpKernelContext* ctx) const {
-  FastVector<T> transposedInputData;
+  FastAllocVector<T> transposedInputData;
   int64_t block_size;
   int64_t blocks;
   Tensor* reduced;

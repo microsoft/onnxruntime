@@ -1,9 +1,5 @@
 #pragma once
-#ifdef USE_MIMALLOC
-#include <stdio.h>
 #include <mimalloc.h>
-#include <cassert> // for assert
-#include <limits>  // for max_size
 
 #pragma warning(disable: 4100)
 
@@ -49,7 +45,3 @@ bool operator!=(const allocator_mimalloc<T1>& lhs, const allocator_mimalloc<T2>&
 
 template <typename T>
 using Ty_Alloc = allocator_mimalloc<T>;
-
-#endif
-
-// std::vector<int, Tensor_Alloc<int> > x;

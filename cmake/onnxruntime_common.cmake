@@ -56,19 +56,10 @@ if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
 
-if (onnxruntime_USE_MIMALLOC)
-    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
-        message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
-    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
-        # Some of the non-windows targets see strange runtime failures
-        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
-    else()
-        include(external/mimalloc.cmake)
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
-        list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
-        target_link_libraries(onnxruntime_common mimalloc-static)
-    endif()
-endif()
+include(external/mimalloc.cmake)
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
+list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
+target_link_libraries(onnxruntime_common mimalloc-static)
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface)
 target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}

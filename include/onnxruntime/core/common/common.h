@@ -29,7 +29,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-#include "core/common/vector.h"
 #include <chrono>
 
 #include "core/common/code_location.h"
@@ -37,11 +36,12 @@
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
 
-#ifdef USE_MIMALLOC
-#include <mimalloc.h>
-#endif
+#include "core/common/allocator_mimalloc.h"
 
 namespace onnxruntime {
+
+template <typename T>
+using FastAllocVector = std::vector<T,allocator_mimalloc<T>>;
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 

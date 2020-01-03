@@ -1,7 +1,16 @@
 
 set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
 
-add_definitions(-DUSE_MIMALLOC) # used in ONNXRuntime
+if (onnxruntime_USE_MIMALLOC)
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+        message(WARNING "Ignoring directive to substitute mimalloc in for the default allocator on unimplemented targets")
+    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+        # Some of the non-windows targets see strange runtime failures
+        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
+    else()
+        add_definitions(-DUSE_MIMALLOC) # used in ONNXRuntime
+    endif()
+endif()
 include_directories(${mimalloc_root_dir}/include)
 
 option(MI_OVERRIDE "" OFF)
