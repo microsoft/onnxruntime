@@ -115,14 +115,19 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
     __syncthreads();
     //sort by index ascending
     for (int64_t len = 1; len < aligned_K; len <<= 1) {
+      auto dir = len << 1;
       for (int64_t inc = len; inc > 0; inc >>= 1) {
         auto low = tid & (inc - 1);
         auto i = (tid << 1) - low;
         auto j = i + inc;
-        if (j < aligned_K && S[i].val > S[j].val) {
-          auto tmp = S[i];
-          S[i] = S[j];
-          S[j] = tmp;
+        if (j < aligned_K) {
+          auto reverse = (dir & i) == 0;
+          auto swap = reverse ^ (S[i].val < S[j].val);
+          if (swap) {
+            auto tmp = S[i];
+            S[i] = S[j];
+            S[j] = tmp;
+          }
         }
       }
     }
@@ -137,7 +142,7 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
 template <typename T>
 __device__ __inline__ bool Equal(const T& t0, const T& t1) {
   auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
-  return (double)t2 < 1.0e-2;
+  return (double)t2 < 1.0e-5;
 }
 
 template <typename T>

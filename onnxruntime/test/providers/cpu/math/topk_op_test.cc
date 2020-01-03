@@ -456,5 +456,17 @@ TEST(TopKOperator, SortedSelection) {
   RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
 }
 
+TEST(TopKOperator, BigArraySelection) {
+  std::vector<float> input_vals(10000, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+  std::vector<int64_t> input_dimensions = {10000};
+  std::vector<float> expected_vals(1000, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), 9000.0f);
+  std::vector<int64_t> expected_indices(1000, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 9000);
+  std::vector<int64_t> expected_dimensions = {1000};
+  RunTest(11, 1000, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 0);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
