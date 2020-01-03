@@ -13,7 +13,7 @@ TEST(FeaturizersTests, MinMaxScalarTransformer_int8) {
   OpTester test("MinMaxScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {2}, {1, 9});
+  test.AddInput<uint8_t>("State", {6}, {1, 0, 0, 0, 1, 9});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {1}, {15});
@@ -29,7 +29,7 @@ TEST(FeaturizersTests, MinMaxScalarTransformer_float_t) {
   OpTester test("MinMaxScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 128, 191, 0, 0, 128, 63});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 128, 191, 0, 0, 128, 63});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<float_t>("?1", {1}, {2});
@@ -44,7 +44,7 @@ TEST(FeaturizersTests, MinMaxScalarTransformer_only_one_input) {
   OpTester test("MinMaxScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {2}, {255, 255});
+  test.AddInput<uint8_t>("State", {6}, {1, 0, 0, 0, 255, 255});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {1}, {2});

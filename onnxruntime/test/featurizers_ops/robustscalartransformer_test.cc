@@ -13,7 +13,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering) {
   OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 160, 64, 0, 0, 128, 64});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 160, 64, 0, 0, 128, 64});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
@@ -29,7 +29,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering) {
   OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 0, 0, 0, 0, 128, 64});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 64});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
@@ -45,7 +45,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_zero_scale) 
   OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 0, 0, 0, 0, 0, 0});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {3}, {10, 10, 10});
@@ -61,7 +61,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_no_scaling
   OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 160, 64, 0, 0, 128, 63});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 160, 64, 0, 0, 128, 63});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
@@ -77,7 +77,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_custom_sca
   OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 160, 64, 0, 0, 0, 65});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 160, 64, 0, 0, 0, 65});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
@@ -93,7 +93,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_custom_scali
   OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {0, 0, 0, 0, 0, 0, 0, 65});
+  test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65});
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
