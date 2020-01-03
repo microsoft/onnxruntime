@@ -46,11 +46,11 @@ def remove_duplicate_submodule_hashes(submodules):
         # Submodules that differ only by a / or .git suffix (e.g.: https://github.com/onnx/onnx.git and
         # https://github.com/onnx/onnx/) should be considered the same
         url = submodule.url
-        if url[-4:] == '.git':
-            url = url[:-4]
         if url[-1] == '/':
             url = url[:-1]
-        return str(submodule.head_id) + url
+        if url[-4:] == '.git':
+            url = url[:-4]
+        return url + str(submodule.head_id)
 
     submodules.sort(key=sort_key)
     return [next(key_group[1]) for key_group in itertools.groupby(submodules, key=sort_key)]
