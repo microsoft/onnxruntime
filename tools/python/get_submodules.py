@@ -2,6 +2,7 @@ from operator import attrgetter
 from pathlib import Path
 import argparse
 import configparser
+import itertools
 import json
 import re
 
@@ -40,6 +41,20 @@ def lookup_submodule(repo, submodule_path):
 def process_component(repo):
     return [lookup_submodule(repo, submod) for submod in repo.listall_submodules()]
 
+def remove_duplicate_submodule_hashes(submodules):
+    def sort_key(submodule):
+        # Submodules that differ only by a / or .git suffix (e.g.: https://github.com/onnx/onnx.git and
+        # https://github.com/onnx/onnx/) should be considered the same
+        url = submodule.url
+        if url[-4:] == '.git':
+            url = url[:-4]
+        if url[-1] == '/':
+            url = url[:-1]
+        return str(submodule.head_id) + url
+
+    submodules.sort(key=sort_key)
+    return [next(key_group[1]) for key_group in itertools.groupby(submodules, key=sort_key)]
+
 def recursive_process(base_repo):
     processed_subs = []
     repos_to_process = [base_repo]
@@ -48,7 +63,8 @@ def recursive_process(base_repo):
         submodules = process_component(repo)
         processed_subs.extend(submodules)
         repos_to_process.extend([mod.open() for mod in submodules])
-    return {"Registrations":[format_component(component) for component in processed_subs]}
+    processed_subs = remove_duplicate_submodule_hashes(processed_subs)
+    return {"Registrations": [format_component(component) for component in processed_subs]}
 
 def main(repo_path, output_file):
     repo = pygit2.Repository(repo_path)
