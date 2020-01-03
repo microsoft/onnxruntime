@@ -5,12 +5,18 @@ import configparser
 import itertools
 import json
 import re
+import urllib.parse
 
 import pygit2
 
+def absolute_url(url):
+    # Support relative URLs (see https://github.com/pybind/pybind11/issues/1831)
+    if url.startswith('../'):
+        return urllib.parse.urljoin('https://github.com/microsoft/onnxruntime', url)
+    return url
 
 def format_component(submod):
-    return {"component": {"type": "git", "git": {"commitHash": str(submod.head_id), "repositoryUrl": submod.url}}}
+    return {"component": {"type": "git", "git": {"commitHash": str(submod.head_id), "repositoryUrl": absolute_url(submod.url)}}}
 
 def lookup_submodule(repo, submodule_path):
     submodule = repo.lookup_submodule(submodule_path)
@@ -45,7 +51,7 @@ def remove_duplicate_submodule_hashes(submodules):
     def sort_key(submodule):
         # Submodules that differ only by a / or .git suffix (e.g.: https://github.com/onnx/onnx.git and
         # https://github.com/onnx/onnx/) should be considered the same
-        url = submodule.url
+        url = absolute_url(submodule.url)
         if url[-1] == '/':
             url = url[:-1]
         if url[-4:] == '.git':
