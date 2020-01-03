@@ -35,7 +35,7 @@ using ONNX_NAMESPACE::OPTIONAL;
 static void RegisterCatImputerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
 // static void RegisterHashOneHotVectorizerFeaturizerVer1();
-// static void RegisterImputationMarkerFeaturizerVer1();
+static void RegisterImputationMarkerFeaturizerVer1();
 // static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
 static void RegisterMinMaxScalarFeaturizerVer1();
@@ -50,7 +50,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterCatImputerFeaturizerVer1();
   RegisterDateTimeFeaturizerVer1();
 //  RegisterHashOneHotVectorizerFeaturizerVer1();
-//  RegisterImputationMarkerFeaturizerVer1();
+  RegisterImputationMarkerFeaturizerVer1();
 //  RegisterLabelEncoderFeaturizerVer1();
   RegisterMaxAbsScalarFeaturizerVer1();
   RegisterMinMaxScalarFeaturizerVer1();
@@ -323,58 +323,58 @@ void RegisterDateTimeFeaturizerVer1() {
 //          });
 //}
 
-//void RegisterImputationMarkerFeaturizerVer1() {
-//  static const char* doc = R"DOC(
-//        Returns true if the input is null, false if it is not.
-//
-//        C++-style pseudo signature:
-//          bool execute(std::float_t const &value);
-//          bool execute(std::double_t const &value);
-//          template <typename T> bool execute(std::optional<T> const &value);
-//
-//        Examples:
-//          3.0 -> false
-//          NaN -> true
-//          "foo" -> false
-//          std::optional<std::string>() -> true
-//          std::optional<std::string>("bar") -> false
-//    )DOC";
-//
-//  MS_FEATURIZERS_OPERATOR_SCHEMA(ImputationMarkerTransformer)
-//      .SinceVersion(1)
-//      .SetDomain(kMSFeaturizersDomain)
-//      .SetDoc(doc)
-//      .Input(
-//          0,
-//          "State",
-//          "State generated during training that is used for prediction",
-//          "T0")
-//      .Input(
-//          1,
-//          "Input",
-//          "No information is available",
-//          "InputT")
-//      .Output(
-//          0,
-//          "Output",
-//          "No information is available",
-//          "tensor(bool)")
-//      .TypeConstraint(
-//          "T0",
-//          {"tensor(uint8)"},
-//          "No information is available")
-//      .TypeConstraint(
-//          "InputT",
-//          {"tensor(float)", "tensor(double)", "tensor(string)"},
-//          "No information is available")
-//      .TypeAndShapeInferenceFunction(
-//          [](ONNX_NAMESPACE::InferenceContext& ctx) {
-//            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
-//            if (hasInputShape(ctx, 1)) {
-//              propagateShapeFromInputToOutput(ctx, 1, 0);
-//            }
-//          });
-//}
+void RegisterImputationMarkerFeaturizerVer1() {
+  static const char* doc = R"DOC(
+        Returns true if the input is null, false if it is not.
+
+        C++-style pseudo signature:
+          bool execute(std::float_t const &value);
+          bool execute(std::double_t const &value);
+          template <typename T> bool execute(std::optional<T> const &value);
+
+        Examples:
+          3.0 -> false
+          NaN -> true
+          "foo" -> false
+          std::optional<std::string>() -> true
+          std::optional<std::string>("bar") -> false
+    )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(ImputationMarkerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "tensor(bool)")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(float)", "tensor(double)", "tensor(string)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
+            if (hasInputShape(ctx, 1)) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+          });
+}
 
 //void RegisterLabelEncoderFeaturizerVer1() {
 //  static const char* doc = R"DOC(

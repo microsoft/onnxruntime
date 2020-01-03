@@ -19,7 +19,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering) {
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
 
   // Expected output.
-  test.AddOutput<float>("?2", {5}, {-1.0,-0.5, 0.0, 0.5, 1.0});
+  test.AddOutput<float>("?2", {5}, {-1.0f,-0.5f, 0.0f, 0.5f, 1.0f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -35,7 +35,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering) {
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
 
   // Expected output.
-  test.AddOutput<float>("?2", {5}, {0.25, 0.75, 1.25, 1.75, 2.25});
+  test.AddOutput<float>("?2", {5}, {0.25f, 0.75f, 1.25f, 1.75f, 2.25f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -51,7 +51,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_zero_scale) 
   test.AddInput<int8_t>("?1", {3}, {10, 10, 10});
 
   // Expected output.
-  test.AddOutput<float>("?2", {3}, {10, 10, 10});
+  test.AddOutput<float>("?2", {3}, {10.f, 10.f, 10.f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -67,7 +67,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_no_scaling
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
 
   // Expected output.
-  test.AddOutput<float_t>("?2", {5}, {-4, -2, 0, 2, 4});
+  test.AddOutput<float>("?2", {5}, {-4.f, -2.f, 0.f, 2.f, 4.f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -83,7 +83,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_custom_sca
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
 
   // Expected output.
-  test.AddOutput<float_t>("?2", {5}, {-0.5, -0.25, 0, 0.25, 0.5});
+  test.AddOutput<float>("?2", {5}, {-0.5f, -0.25f, 0.f, 0.25f, 0.5f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
@@ -99,7 +99,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_custom_scali
   test.AddInput<int8_t>("?1", {5}, {1, 3, 5, 7, 9});
 
   // Expected output.
-  test.AddOutput<float_t>("?2", {5}, {0.125, 0.375, 0.625, 0.875, 1.125});
+  test.AddOutput<float>("?2", {5}, {0.125f, 0.375f, 0.625f, 0.875f, 1.125f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }

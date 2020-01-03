@@ -32,7 +32,7 @@ TEST(FeaturizersTests, MinMaxScalarTransformer_float_t) {
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 128, 191, 0, 0, 128, 63});
 
   // We are adding a scalar Tensor in this instance
-  test.AddInput<float_t>("?1", {1}, {2});
+  test.AddInput<float>("?1", {1}, {2.f});
 
   // Expected output.
   test.AddOutput<double>("?2", {1}, {1.5});
