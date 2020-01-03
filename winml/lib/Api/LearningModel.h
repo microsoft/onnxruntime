@@ -4,7 +4,7 @@
 #pragma once
 
 #include "LearningModel.g.h"
-#include "WinMLAdapter.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 

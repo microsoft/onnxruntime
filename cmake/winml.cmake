@@ -185,7 +185,7 @@ if (onnxruntime_USE_DML)
 endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
-set(onnxruntime_winml windowsapp.lib -WHOLEARCHIVE:$<TARGET_FILE:winml_adapter>)
+set(onnxruntime_winml windowsapp.lib winml_adapter)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
 
 ###########################

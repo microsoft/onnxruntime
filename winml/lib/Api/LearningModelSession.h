@@ -8,7 +8,7 @@
 #include "LearningModelBinding.h"
 #include "MLOperatorAuthor.h"
 #include "WinML_Lock.h"
-#include "WinMLAdapter.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
