@@ -97,7 +97,7 @@ TEST(FeaturizersTests, LabelEncodeTransformer_string_throw) {
       {"peach", 5},
       {"orange", 6}};
 
-  auto stream = GetStream<InputType>(index_map, true);
+  auto stream = GetStream<InputType>(index_map, false);
   auto dim = static_cast<int64_t>(stream.size());
 
   test.AddInput<uint8_t>("State", {dim}, stream);
