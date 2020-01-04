@@ -36,7 +36,7 @@ static void RegisterCatImputerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
 // static void RegisterHashOneHotVectorizerFeaturizerVer1();
 static void RegisterImputationMarkerFeaturizerVer1();
-// static void RegisterLabelEncoderFeaturizerVer1();
+static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
 static void RegisterMinMaxScalarFeaturizerVer1();
 // static void RegisterMissingDummiesFeaturizerVer1();
@@ -51,7 +51,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterDateTimeFeaturizerVer1();
 //  RegisterHashOneHotVectorizerFeaturizerVer1();
   RegisterImputationMarkerFeaturizerVer1();
-//  RegisterLabelEncoderFeaturizerVer1();
+  RegisterLabelEncoderFeaturizerVer1();
   RegisterMaxAbsScalarFeaturizerVer1();
   RegisterMinMaxScalarFeaturizerVer1();
 //  RegisterMissingDummiesFeaturizerVer1();
@@ -376,57 +376,57 @@ void RegisterImputationMarkerFeaturizerVer1() {
           });
 }
 
-//void RegisterLabelEncoderFeaturizerVer1() {
-//  static const char* doc = R"DOC(
-//        Returns a unique id for the input based on all values encountered during training.
-//
-//        C++-style pseudo signature:
-//          template <typename T> std::uint32_t execute(T const &value);
-//
-//        Examples:
-//          Assuming the training data of ["A", "B", "C"]...
-//
-//          execute("A") -> 1
-//          execute("B") -> 2
-//          execute("C") -> 3
-//          execute("This value was not seen during training") -> 0
-//    )DOC";
-//
-//  MS_FEATURIZERS_OPERATOR_SCHEMA(LabelEncoderTransformer)
-//      .SinceVersion(1)
-//      .SetDomain(kMSFeaturizersDomain)
-//      .SetDoc(doc)
-//      .Input(
-//          0,
-//          "State",
-//          "State generated during training that is used for prediction",
-//          "T0")
-//      .Input(
-//          1,
-//          "Input",
-//          "No information is available",
-//          "InputT")
-//      .Output(
-//          0,
-//          "Output",
-//          "No information is available",
-//          "tensor(uint32)")
-//      .TypeConstraint(
-//          "T0",
-//          {"tensor(uint8)"},
-//          "No information is available")
-//      .TypeConstraint(
-//          "InputT",
-//          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
-//          "No information is available")
-//      .TypeAndShapeInferenceFunction(
-//          [](ONNX_NAMESPACE::InferenceContext& ctx) {
-//            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT32, 0);
-//            if (hasInputShape(ctx, 1)) {
-//              propagateShapeFromInputToOutput(ctx, 1, 0);
-//            }
-//          });
-//}
+void RegisterLabelEncoderFeaturizerVer1() {
+  static const char* doc = R"DOC(
+        Returns a unique id for the input based on all values encountered during training.
+
+        C++-style pseudo signature:
+          template <typename T> std::uint32_t execute(T const &value);
+
+        Examples:
+          Assuming the training data of ["A", "B", "C"]...
+
+          execute("A") -> 1
+          execute("B") -> 2
+          execute("C") -> 3
+          execute("This value was not seen during training") -> 0
+    )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(LabelEncoderTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "tensor(uint32)")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT32, 0);
+            if (hasInputShape(ctx, 1)) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+          });
+}
 
 void RegisterMaxAbsScalarFeaturizerVer1() {
   static const char* doc = R"DOC(
