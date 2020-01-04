@@ -39,7 +39,7 @@ static void RegisterImputationMarkerFeaturizerVer1();
 static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
 static void RegisterMinMaxScalarFeaturizerVer1();
-// static void RegisterMissingDummiesFeaturizerVer1();
+static void RegisterMissingDummiesFeaturizerVer1();
 static void RegisterRobustScalarFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
 
@@ -54,7 +54,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterLabelEncoderFeaturizerVer1();
   RegisterMaxAbsScalarFeaturizerVer1();
   RegisterMinMaxScalarFeaturizerVer1();
-//  RegisterMissingDummiesFeaturizerVer1();
+  RegisterMissingDummiesFeaturizerVer1();
   RegisterRobustScalarFeaturizerVer1();
   RegisterStringFeaturizerVer1();
 }
@@ -554,58 +554,58 @@ void RegisterMinMaxScalarFeaturizerVer1() {
           });
 }
 
-//void RegisterMissingDummiesFeaturizerVer1() {
-//  static const char* doc = R"DOC(
-//        Returns 1 if the input is null, 0 if it is not.
-//
-//        C++-style pseudo signature:
-//            std::int8_t execute(std::float_t const &value);
-//            std::int8_t execute(std::double_t const &value);
-//            template <typename T> std::int8_t execute(T const &value);
-//
-//        Examples:
-//          1.0 -> 0
-//          NaN -> 1
-//          "foo" -> 0
-//          std::optional<std::string>() -> 1
-//          std::optional<std::string>("bar") -> 0
-//    )DOC";
-//
-//  MS_FEATURIZERS_OPERATOR_SCHEMA(MissingDummiesTransformer)
-//      .SinceVersion(1)
-//      .SetDomain(kMSFeaturizersDomain)
-//      .SetDoc(doc)
-//      .Input(
-//          0,
-//          "State",
-//          "State generated during training that is used for prediction",
-//          "T0")
-//      .Input(
-//          1,
-//          "Input",
-//          "No information is available",
-//          "InputT")
-//      .Output(
-//          0,
-//          "Output",
-//          "No information is available",
-//          "tensor(int8)")
-//      .TypeConstraint(
-//          "T0",
-//          {"tensor(uint8)"},
-//          "No information is available")
-//      .TypeConstraint(
-//          "InputT",
-//          {"tensor(float)", "tensor(double)", "tensor(string)"},
-//          "No information is available")
-//      .TypeAndShapeInferenceFunction(
-//          [](ONNX_NAMESPACE::InferenceContext& ctx) {
-//            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT8, 0);
-//            if (hasInputShape(ctx, 1)) {
-//              propagateShapeFromInputToOutput(ctx, 1, 0);
-//            }
-//          });
-//}
+void RegisterMissingDummiesFeaturizerVer1() {
+  static const char* doc = R"DOC(
+        Returns 1 if the input is null, 0 if it is not.
+
+        C++-style pseudo signature:
+            std::int8_t execute(std::float_t const &value);
+            std::int8_t execute(std::double_t const &value);
+            template <typename T> std::int8_t execute(T const &value);
+
+        Examples:
+          1.0 -> 0
+          NaN -> 1
+          "foo" -> 0
+          std::optional<std::string>() -> 1
+          std::optional<std::string>("bar") -> 0
+    )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(MissingDummiesTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "tensor(int8)")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(float)", "tensor(double)", "tensor(string)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT8, 0);
+            if (hasInputShape(ctx, 1)) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+          });
+}
 
 void RegisterRobustScalarFeaturizerVer1() {
   static const char* doc = R"DOC(
