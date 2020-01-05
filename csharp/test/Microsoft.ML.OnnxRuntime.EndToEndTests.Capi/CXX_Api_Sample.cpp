@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
 
   // print number of model input nodes
   size_t num_input_nodes = session.GetInputCount();
-  std::vector<const char*> input_node_names(num_input_nodes);
+  std::vector<char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                          // Otherwise need vector<vector<>>
 
@@ -126,6 +126,9 @@ int main(int argc, char* argv[]) {
   // Score for class[2] = 0.000125
   // Score for class[3] = 0.001180
   // Score for class[4] = 0.001317
+
+  for (size_t i = 0; i < num_input_nodes; i++)
+    allocator.Free(input_node_names[i]);
   printf("Done!\n");
   return 0;
 }

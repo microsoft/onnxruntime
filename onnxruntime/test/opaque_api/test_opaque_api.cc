@@ -212,11 +212,11 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
     // Expecting one input
     size_t num_input_nodes = session.GetInputCount();
     EXPECT_EQ(num_input_nodes, 1U);
-    const char* input_name = session.GetInputName(0, allocator);
+    char* input_name = session.GetInputName(0, allocator);
 
     size_t num_output_nodes = session.GetOutputCount();
     EXPECT_EQ(num_output_nodes, 1U);
-    const char* output_name = session.GetOutputName(0, allocator);
+    char* output_name = session.GetOutputName(0, allocator);
 
     const char* const input_names[] = {input_name};
     const char* const output_names[] = {output_name};
@@ -266,6 +266,10 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
     str_tensor_value.GetStringTensorContent(actual_result_string.get(), str_len, &offset, 1);
     actual_result_string[str_len] = 0;
     ASSERT_EQ(expected_output.compare(actual_result_string.get()), 0);
+
+    // Free memory
+    allocator.Free(input_name);
+    allocator.Free(output_name);
   } catch (const std::exception& ex) {
     std::cerr << "Exception: " << ex.what() << std::endl;
     ASSERT_TRUE(false);
