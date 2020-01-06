@@ -595,7 +595,6 @@ void RegisterRobustScalarFeaturizerVer1() {
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT32 ||
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT64 ||
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-              ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
             } else {
               fail_type_inference("input 1 is expected to have a accepted type");
@@ -648,7 +647,9 @@ void RegisterStringFeaturizerVer1() {
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 0);
-            propagateShapeFromInputToOutput(ctx, 1, 0);
+            if (hasInputShape(ctx, 1)) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
           });
 }
 
