@@ -162,6 +162,16 @@ class TestInferenceSession(unittest.TestCase):
         t1.join()
         t2.join()
 
+    def testListAsInput(self):
+        sess = onnxrt.InferenceSession(self.get_name("mul_1.onnx"))
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = sess.get_inputs()[0].name
+        res = sess.run([], {input_name: x.tolist()})
+        output_expected = np.array(
+            [[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
+
     def testRunDevice(self):
         device = onnxrt.get_device()
         self.assertTrue('CPU' in device or 'GPU' in device)
