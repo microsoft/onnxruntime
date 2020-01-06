@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 
-# utility 
+# utility
 function(convert_forward_slashes_to_back input output)
     string(REGEX REPLACE "/" "\\\\" backwards ${input})
     set(${output} ${backwards} PARENT_SCOPE)
@@ -99,7 +99,7 @@ function(get_sdk
     set(${output_sdk_version} ${winml_WINDOWS_SDK_VERSION_OVERRIDE} PARENT_SCOPE)
   else()
     message(
-      FATAL_ERROR 
+      FATAL_ERROR
       "Options winml_WINDOWS_SDK_DIR_OVERRIDE and winml_WINDOWS_SDK_VERSION_OVERRIDE must be defined together, or not at all.")
   endif()
 endfunction()

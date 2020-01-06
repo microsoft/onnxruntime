@@ -132,7 +132,7 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/WinMLAdapter.cpp
     ${winml_adapter_dir}/WinMLAdapter.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
-    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h    
+    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
     )
 
 if (onnxruntime_USE_DML)
@@ -159,6 +159,7 @@ add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_precompiled_header(winml_adapter pch.h)
 
 # Includes
+target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
 target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
 target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
@@ -230,6 +231,7 @@ target_compile_definitions(winml_lib_image PRIVATE _SCL_SECURE_NO_WARNINGS)     
 target_precompiled_header(winml_lib_image pch.h)
 
 # Includes
+target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                                                               # windows machine learning generated component headers
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                                                     # windows machine learning generated component headers
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)                                      # windows machine learning generated component headers
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)                                    # sdk cppwinrt headers
@@ -472,6 +474,7 @@ target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 target_link_libraries(winml_dll PRIVATE onecoreuap_apiset.lib)
+target_link_libraries(winml_dll PRIVATE delayimp.lib)
 target_link_libraries(winml_dll PRIVATE ${DBGHELP})
 
 # 1 of 3 projects that fail in link with 'failed to do memory mapped file I/O' (Only release)
