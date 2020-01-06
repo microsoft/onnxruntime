@@ -172,6 +172,13 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+    def testStringListAsInput(self):
+        sess = onnxrt.InferenceSession(self.get_name("identity_string.onnx"))
+        x = np.array(['this', 'is', 'identity', 'test'], dtype=np.str).reshape((2, 2))
+        x_name = sess.get_inputs()[0].name
+        res = sess.run([], {x_name: x.tolist()})
+        np.testing.assert_equal(x, res[0])
+		
     def testRunDevice(self):
         device = onnxrt.get_device()
         self.assertTrue('CPU' in device or 'GPU' in device)
