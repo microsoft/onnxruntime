@@ -51,7 +51,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 #if USE_CUDA
         /// <summary>
-        /// A helper method to constuct a SessionOptions object for CUDA execution
+        /// A helper method to construct a SessionOptions object for CUDA execution
         /// </summary>
         /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider()
@@ -60,7 +60,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to constuct a SessionOptions object for CUDA execution
+        /// A helper method to construct a SessionOptions object for CUDA execution
         /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
