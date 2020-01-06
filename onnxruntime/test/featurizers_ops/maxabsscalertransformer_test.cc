@@ -11,7 +11,7 @@ namespace dft = Microsoft::Featurizer::Featurizers;
 namespace onnxruntime {
 namespace test {
 
-TEST(MaxAbsScaler, Int8_values) {
+TEST(FeaturizersTests, MaxAbsScaler_int8_values) {
 
   OpTester test("MaxAbsScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
@@ -23,12 +23,12 @@ TEST(MaxAbsScaler, Int8_values) {
   test.AddInput<int8_t>("X", {5}, {-4,3,0,2,-1});
 
   // Expected output.
-  test.AddOutput<float_t>("ScaledValues", {5}, {-1,.75,0,.5,-.25});
+  test.AddOutput<float>("ScaledValues", {5}, {-1.f,.75f,0.f,.5f,-.25f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(MaxAbsScaler, Double_values) {
+TEST(FeaturizersTests, MaxAbsScaler_double_values) {
   OpTester test("MaxAbsScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to Version 1 and a
@@ -36,10 +36,10 @@ TEST(MaxAbsScaler, Double_values) {
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 64});
 
   // We are adding a scalar Tensor in this instance
-  test.AddInput<double_t>("X", {5}, {-4, 3, 0, 2, -1});
+  test.AddInput<double>("X", {5}, {-4, 3, 0, 2, -1});
 
   // Expected output.
-  test.AddOutput<double_t>("ScaledValues", {5}, {-1, .75, 0, .5, -.25});
+  test.AddOutput<double>("ScaledValues", {5}, {-1, .75, 0, .5, -.25});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }

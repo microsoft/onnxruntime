@@ -11,7 +11,7 @@ namespace dft = Microsoft::Featurizer::Featurizers;
 namespace onnxruntime {
 namespace test {
 
-TEST(CategoryImputer, Float_values) {
+TEST(FeaturizersTests, CategoryImputer_float_values) {
 
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
@@ -20,15 +20,15 @@ TEST(CategoryImputer, Float_values) {
   test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 192, 63});
 
   // We are adding a scalar Tensor in this instance
-  test.AddInput<float_t>("Input", {5}, {1, std::nanf("1"), std::nanf("1"), 2, std::nanf("1")});
+  test.AddInput<float>("Input", {5}, {1.f, std::nanf("1"), std::nanf("1"), 2.f, std::nanf("1")});
 
   // Expected output.
-  test.AddOutput<float_t>("Output", {5}, {1, 1.5, 1.5, 2, 1.5});
+  test.AddOutput<float>("Output", {5}, {1.f, 1.5f, 1.5f, 2.f, 1.5f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(CategoryImputer, Double_values) {
+TEST(FeaturizersTests, CategoryImputer_double_values) {
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to a
@@ -36,15 +36,15 @@ TEST(CategoryImputer, Double_values) {
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 63});
 
   // We are adding a scalar Tensor in this instance
-  test.AddInput<double_t>("Input", {5}, {1, std::nan("1"), std::nan("1"), 2, std::nan("1")});
+  test.AddInput<double>("Input", {5}, {1., std::nan("1"), std::nan("1"), 2., std::nan("1")});
 
   // Expected output.
-  test.AddOutput<double_t>("Output", {5}, {1, 1.5, 1.5, 2, 1.5});
+  test.AddOutput<double>("Output", {5}, {1., 1.5, 1.5, 2., 1.5});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(CategoryImputer, String_values) {
+TEST(FeaturizersTests, CategoryImputer_string_values) {
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to a

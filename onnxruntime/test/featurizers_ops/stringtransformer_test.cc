@@ -11,7 +11,7 @@ namespace dft = Microsoft::Featurizer::Featurizers;
 namespace onnxruntime {
 namespace test {
 
-TEST(StringTransformer, Integer_values) {
+TEST(FeaturizersTests, StringTransformer_integer_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
   // State represents version 1
@@ -26,7 +26,7 @@ TEST(StringTransformer, Integer_values) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(StringTransformer, Double_values) {
+TEST(FeaturizersTests, StringTransformer_double_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
   // State represents version 1
@@ -41,7 +41,7 @@ TEST(StringTransformer, Double_values) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(StringTransformer, Bool_values) {
+TEST(FeaturizersTests, StringTransformer_bool_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State represents version 1
@@ -56,7 +56,7 @@ TEST(StringTransformer, Bool_values) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(StringTransformer, String_values) {
+TEST(FeaturizersTests, StringTransformer_string_values) {
   OpTester test("StringTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State represents version 1
