@@ -491,7 +491,7 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, Alloc
     int numpy_dtype = OnnxRuntimeTensorToNumpyType(dtype);
 
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(
-        PyArray_FromAny(value.ptr(), PyArray_DescrFromType(NPY_FLOAT32), 0, 0, 0, nullptr));
+        PyArray_FromAny(value.ptr(), PyArray_DescrFromType(numpy_dtype), 0, 0, 0, nullptr));
 
     if (!arr) {
       throw std::runtime_error("Could not create tensor from given input list");
