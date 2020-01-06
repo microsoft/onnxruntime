@@ -6,23 +6,23 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/StringFeaturizer.h"
+#include "Featurizers/LabelEncoderFeaturizer.h"
 #include "Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {
 
 template <typename InputT>
-struct StringTransformerImpl {
+struct LabelEncoderTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::StringTransformer<InputT> transformer(
+    Microsoft::Featurizer::Featurizers::LabelEncoderTransformer<InputT> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::StringTransformer<InputT>(archive);
+          return Microsoft::Featurizer::Featurizers::LabelEncoderTransformer<InputT>(archive);
         }());
 
     // Get the input
@@ -31,7 +31,7 @@ struct StringTransformerImpl {
 
     // Prepare the output
     Tensor* output_tensor(ctx->Output(0, input_tensor->Shape()));
-    std::string* output_data(output_tensor->MutableData<std::string>());
+    std::uint32_t* output_data(output_tensor->MutableData<std::uint32_t>());
 
     // Execute
     const int64_t length(input_tensor->Shape().Size());
@@ -42,13 +42,13 @@ struct StringTransformerImpl {
   }
 };
 
-class StringTransformer final : public OpKernel {
+class LabelEncoderTransformer final : public OpKernel {
  public:
-  explicit StringTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit LabelEncoderTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<StringTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+    utils::MLTypeCallDispatcher<LabelEncoderTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
                                 int64_t, uint64_t, float, double, bool, std::string>
         t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
@@ -57,7 +57,7 @@ class StringTransformer final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    StringTransformer,
+    LabelEncoderTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -75,7 +75,6 @@ ONNX_OPERATOR_KERNEL_EX(
                                    DataTypeImpl::GetTensorType<double>(),
                                    DataTypeImpl::GetTensorType<bool>(),
                                    DataTypeImpl::GetTensorType<std::string>()}),
-    StringTransformer);
-
+    LabelEncoderTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime

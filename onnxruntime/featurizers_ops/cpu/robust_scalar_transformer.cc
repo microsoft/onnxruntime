@@ -6,23 +6,46 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/StringFeaturizer.h"
+#include "Featurizers/RobustScalarFeaturizer.h"
 #include "Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {
 
+template <typename T>
+struct OutputTypeMapper {};
+template <>
+struct OutputTypeMapper<int8_t> { using type = float; };
+template <>
+struct OutputTypeMapper<int16_t> { using type = float; };
+template <>
+struct OutputTypeMapper<uint8_t> { using type = float; };
+template <>
+struct OutputTypeMapper<uint16_t> { using type = float; };
+template <>
+struct OutputTypeMapper<float> { using type = float; };
+template <>
+struct OutputTypeMapper<int32_t> { using type = double; };
+template <>
+struct OutputTypeMapper<int64_t> { using type = double; };
+template <>
+struct OutputTypeMapper<uint32_t> { using type = double; };
+template <>
+struct OutputTypeMapper<uint64_t> { using type = double; };
+template <>
+struct OutputTypeMapper<double> { using type = double; };
+
 template <typename InputT>
-struct StringTransformerImpl {
+struct RobustScalarTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::StringTransformer<InputT> transformer(
+    Microsoft::Featurizer::Featurizers::RobustScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::StringTransformer<InputT>(archive);
+          return Microsoft::Featurizer::Featurizers::RobustScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type>(archive);
         }());
 
     // Get the input
@@ -31,7 +54,7 @@ struct StringTransformerImpl {
 
     // Prepare the output
     Tensor* output_tensor(ctx->Output(0, input_tensor->Shape()));
-    std::string* output_data(output_tensor->MutableData<std::string>());
+    typename OutputTypeMapper<InputT>::type* output_data(output_tensor->MutableData<typename OutputTypeMapper<InputT>::type>());
 
     // Execute
     const int64_t length(input_tensor->Shape().Size());
@@ -42,14 +65,14 @@ struct StringTransformerImpl {
   }
 };
 
-class StringTransformer final : public OpKernel {
+class RobustScalarTransformer final : public OpKernel {
  public:
-  explicit StringTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit RobustScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<StringTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
-                                int64_t, uint64_t, float, double, bool, std::string>
+    utils::MLTypeCallDispatcher<RobustScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double>
         t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
     return Status::OK();
@@ -57,7 +80,7 @@ class StringTransformer final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    StringTransformer,
+    RobustScalarTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -72,10 +95,8 @@ ONNX_OPERATOR_KERNEL_EX(
                                    DataTypeImpl::GetTensorType<int64_t>(),
                                    DataTypeImpl::GetTensorType<uint64_t>(),
                                    DataTypeImpl::GetTensorType<float>(),
-                                   DataTypeImpl::GetTensorType<double>(),
-                                   DataTypeImpl::GetTensorType<bool>(),
-                                   DataTypeImpl::GetTensorType<std::string>()}),
-    StringTransformer);
+                                   DataTypeImpl::GetTensorType<double>()}),
+    RobustScalarTransformer);
 
 }  // namespace featurizers
 }  // namespace onnxruntime
