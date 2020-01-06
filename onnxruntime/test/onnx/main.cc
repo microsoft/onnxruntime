@@ -354,14 +354,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    static const char* cuda_flaky_tests[] = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-    static const char* dml_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn"};
-    static const char* dnnl_disabled_tests[] = {"test_densenet121", "test_resnet18v2", "test_resnet34v2", "test_resnet50v2", "test_resnet101v2",
-                                                "test_resnet101v2", "test_vgg19", "tf_inception_resnet_v2", "tf_inception_v1", "tf_inception_v3", "tf_inception_v4", "tf_mobilenet_v1_1.0_224",
-                                                "tf_mobilenet_v2_1.0_224", "tf_mobilenet_v2_1.4_224", "tf_nasnet_large", "tf_pnasnet_large", "tf_resnet_v1_50", "tf_resnet_v1_101", "tf_resnet_v1_101",
-                                                "tf_resnet_v2_101", "tf_resnet_v2_152"};
-	
-    std::unordered_set<std::string> all_disabled_tests;
+    static const ORTCHAR_T* cuda_flaky_tests[] = {
+        ORT_TSTR("fp16_inception_v1"),
+        ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
+    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn")};
+    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
+                                                     ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                     ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
+                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152")};
+
+    std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests;
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
@@ -373,25 +375,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
-#if defined(__amd64__) || defined(_M_AMD64)
-#else
+#if !defined(__amd64__) && !defined(_M_AMD64)
     //out of memory
-    static const char* x86_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn", "vgg19"};
+    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, all_disabled_tests,
               [&tests](ITestCase* l) { tests.push_back(l); });
-    for (auto it = tests.begin(); it != tests.end();) {
-      auto iter = all_disabled_tests.find((*it)->GetTestCaseName());
-      if (iter != all_disabled_tests.end()) {
-        delete *it;
-        it = tests.erase(it);
-      } else {
-        ++it;
-      }
-    }
 
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
@@ -563,7 +555,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"maxpool_with_argmax_2d_precomputed_pads", "Temporarily disabled pending investigation"});
     broken_tests.insert({"mxnet_arcface", "Temporarily disabled pending investigation"});
     broken_tests.insert({"yolov3", "Temporarily disabled pending investigation"});
     broken_tests.insert({"tf_inception_v2", "Temporarily disabled pending investigation"});

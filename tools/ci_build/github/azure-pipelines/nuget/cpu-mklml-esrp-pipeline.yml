@@ -1,6 +1,5 @@
 # Defined as pipeline variables
 # variables:
-#   AgentPoolWin : 'Win-CPU'
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
@@ -18,5 +17,5 @@ variables:
 jobs: 
 - template: templates/cpu-mklml.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
     DoEsrp: 'true'

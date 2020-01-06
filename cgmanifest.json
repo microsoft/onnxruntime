@@ -247,7 +247,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "commitHash": "fe1790ca0df67173702f70d5646b82f48f412b99",
                "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
             }
          }

@@ -34,8 +34,11 @@ ptrdiff_t OrtStrToPtrDiff(const T* nptr, T** endptr);
 template <>
 inline ptrdiff_t OrtStrToPtrDiff<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
 #ifdef _WIN32
-  // TODO: on x86_32, it should be wcstol
+#ifdef _M_AMD64
   return _wcstoi64(nptr, endptr, 10);
+#else
+  return wcstol(nptr, endptr, 10);
+#endif
 #else
   return wcstol(nptr, endptr, 10);
 #endif
@@ -57,8 +60,11 @@ inline size_t OrtStrftime<wchar_t>(wchar_t* strDest, size_t maxsize, const wchar
 template <>
 inline ptrdiff_t OrtStrToPtrDiff<char>(const char* nptr, char** endptr) {
 #ifdef _WIN32
-  // TODO: on x86_32, it should be strtol
+#ifdef _M_AMD64
   return _strtoi64(nptr, endptr, 10);
+#else
+  return strtol(nptr, endptr, 10);
+#endif
 #else
   return strtol(nptr, endptr, 10);
 #endif
