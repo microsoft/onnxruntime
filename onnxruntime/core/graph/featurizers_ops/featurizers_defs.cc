@@ -34,7 +34,6 @@ using ONNX_NAMESPACE::OPTIONAL;
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
-// static void RegisterHashOneHotVectorizerFeaturizerVer1();
 static void RegisterImputationMarkerFeaturizerVer1();
 static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
@@ -49,7 +48,6 @@ static void RegisterStringFeaturizerVer1();
 void RegisterMSFeaturizersSchemas() {
   RegisterCatImputerFeaturizerVer1();
   RegisterDateTimeFeaturizerVer1();
-//  RegisterHashOneHotVectorizerFeaturizerVer1();
   RegisterImputationMarkerFeaturizerVer1();
   RegisterLabelEncoderFeaturizerVer1();
   RegisterMaxAbsScalarFeaturizerVer1();
@@ -256,72 +254,6 @@ void RegisterDateTimeFeaturizerVer1() {
             }
           });
 }
-
-//void RegisterHashOneHotVectorizerFeaturizerVer1() {
-//  static const char* doc = R"DOC(
-//        Hashes the input to a categorical value, then produces a one hot encoded vector
-//        based on that value.
-//
-//        C++-style pseudo signature:
-//            template <typename T> HashOneHotVectorizerStruct execute(T const &value);
-//
-//        Examples:
-//          Assuming the hashing algorithm...
-//            "A" -> 1
-//            "B" -> 2
-//            "C" -> 5
-//
-//          and 'numCols' set to 8:
-//
-//            execute("A") -> [1, 0, 0, 0, 0, 0, 0, 0]
-//            execute("B") -> [0, 1, 0, 0, 0, 0, 0, 0]
-//            execute("C") -> [0, 0, 0, 0, 1, 0, 0, 0]
-//    )DOC";
-//
-//  MS_FEATURIZERS_OPERATOR_SCHEMA(HashOneHotVectorizerTransformer)
-//      .SinceVersion(1)
-//      .SetDomain(kMSFeaturizersDomain)
-//      .SetDoc(doc)
-//      .Input(
-//          0,
-//          "State",
-//          "State generated during training that is used for prediction",
-//          "T0")
-//      .Input(
-//          1,
-//          "Input",
-//          "No information is available",
-//          "InputT")
-//      .Output(0, "ColIndex", "No information available", "OutputT0")
-//      .Output(1, "NumCols", "No information available", "OutputT0")
-//      .Output(2, "Val", "No information available", "OutputT1")
-//      .TypeConstraint(
-//          "T0",
-//          {"tensor(uint8)"},
-//          "No information is available")
-//      .TypeConstraint(
-//          "InputT",
-//          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
-//          "No information is available")
-//      .TypeConstraint(
-//          "OutputT0",
-//          {"tensor(uint32)"},
-//          "No information is available")
-//      .TypeConstraint(
-//          "OutputT1",
-//          {"tensor(bool)"},
-//          "No information is available")
-//      .TypeAndShapeInferenceFunction(
-//          [](ONNX_NAMESPACE::InferenceContext& ctx) {
-//            ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-//            ctx.getOutputType(1)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-//            ctx.getOutputType(2)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
-//
-//            for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-//              *ctx.getOutputType(i)->mutable_tensor_type()->mutable_shape() = ctx.getInputType(1)->tensor_type().shape();
-//            }
-//          });
-//}
 
 void RegisterImputationMarkerFeaturizerVer1() {
   static const char* doc = R"DOC(
