@@ -485,10 +485,10 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, Alloc
       std::runtime_error("The graph is missing type information needed to construct the ORT tensor");
     }
 
-    //MLDataType dtype = OrtTypeInfo::ElementTypeFromProto(
-    //    static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.tensor_type().elem_type()));
+    MLDataType dtype = OrtTypeInfo::ElementTypeFromProto(
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.tensor_type().elem_type()));
 
-    //int numpy_dtype = OnnxRuntimeTensorToNumpyType(dtype);
+    int numpy_dtype = OnnxRuntimeTensorToNumpyType(dtype);
 
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(
         PyArray_FromAny(value.ptr(), PyArray_DescrFromType(NPY_FLOAT32), 0, 0, 0, nullptr));
