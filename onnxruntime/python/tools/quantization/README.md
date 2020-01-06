@@ -1,12 +1,12 @@
 # Quantization tool Overview
 This tool supports 8 bit linear quantization of an onnx model. quantize() takes a model in ModelProto format and returns the quantized model in ModelProto format.
-Today ORT does not guarantee support for E2E model quantization, meaning all ONNX ops do not have support for 8 bit data types therefore only the suppported ops in the model are quantized. For rest of the ops inputs are reconverted to FP32.
+Today ORT does not guarantee support for E2E model quantization, meaning all ONNX ops do not have support for 8 bit data types therefore only the supported ops in the model are quantized. For rest of the ops inputs are reconverted to FP32.
 
 List of Supported Quantized Ops:
-The following ops were chosen as phase 1 ops because in most of the CNN models these ops consume most amount of compute and power and therefore there is benefit in quatizing these ops to get perf benefits.
+The following ops were chosen as phase 1 ops because in most of the CNN models these ops consume most amount of compute and power and therefore there is benefit in quantizing these ops to get perf benefits.
  * Convolution
  * Matmul
- * Data type agostic ops like transpose, idetity etc ( Note: special quantization is not done for these ops. )
+ * Data type agnostic ops like transpose, identity etc ( Note: special quantization is not done for these ops. )
 
  ## Quantization specifics
  ONNX implements 8 bit linear quantization. During quantization the floating point real values are mapped to a 8 bit quantization space and it is of the form :
@@ -23,7 +23,7 @@ The following ops were chosen as phase 1 ops because in most of the CNN models t
  scale = Abs(data_rage_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
  ```
 
- Zero point represents zero in quantization space. It is important that floaoting point zero value be exactly representable in quantization space. This is because in lot of CNNs, zero padding is used and if after quantization it is not possible to represent 0 uniquely then it will lead to accuracy errors.
+ Zero point represents zero in quantization space. It is important that floating point zero value be exactly representable in quantization space. This is because in lot of CNNs, zero padding is used and if after quantization it is not possible to represent 0 uniquely then it will lead to accuracy errors.
 
 
 ## Quantize an ONNX model
