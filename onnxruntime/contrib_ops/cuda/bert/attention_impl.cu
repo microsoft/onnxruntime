@@ -71,6 +71,11 @@ __device__ inline void Softmax(const int ld, const int num_valid, const T* input
     }
   }
 
+  // e^x is represented as infinity if x is large enough, like 100.f.
+  // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
+  // a math transform as below is leveraged to get a stable softmax:
+  // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
+  // And for convenience, force max to 0.f if all xi are negative
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max());
 
   // Store max value
@@ -114,6 +119,11 @@ __device__ inline void SoftmaxSmall(const int ld, const int num_valid, const T* 
     thread_data = input[index];
   }
 
+  // e^x is represented as infinity if x is large enough, like 100.f.
+  // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
+  // a math transform as below is leveraged to get a stable softmax:
+  // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
+  // And for convenience, force max to 0.f if all xi are negative
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), num_valid);
 
   // Store max value
