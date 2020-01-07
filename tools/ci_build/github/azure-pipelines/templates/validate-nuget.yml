@@ -4,27 +4,11 @@ parameters:
   VerifyNugetSigning: ''
 
 steps:
-    - task: PowerShell@2
-      displayName: 'Download AzCopy (used for download test data script)'
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
       inputs:
-        targetType: 'inline'
-        script: |
-          Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
-
-    - task: CmdLine@1
-      displayName: 'Download Python'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\azcopy.exe'
-        arguments: 'copy https://onnxruntimetestdata.blob.core.windows.net/models/Miniconda3-4.7.10-Windows-x86_64.exe $(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
-      timeoutInMinutes: 10
-
-    - task: CmdLine@1
-      displayName: 'Run python installer'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\Miniconda3-4.7.10-Windows-x86_64.exe'
-        arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
-      timeoutInMinutes: 10
-
+        versionSpec: 3.7
+		
     - task: CmdLine@1
       displayName: 'Validate Nuget'
       inputs:
