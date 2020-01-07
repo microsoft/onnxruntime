@@ -454,7 +454,7 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib delayimp.lib)
   list(APPEND ONNXRUNTIME_LINKER_FLAGS "/DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
 
   # The DML EP requires C++17
