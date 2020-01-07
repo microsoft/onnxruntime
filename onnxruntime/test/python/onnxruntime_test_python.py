@@ -523,7 +523,7 @@ class TestInferenceSession(unittest.TestCase):
         opt = onnxrt.SessionOptions()
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
             # default should be basic optimization
-        opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTEDED
+        opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED)
         sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
         a = np.array([[True, True], [False, False]], dtype=np.bool)
@@ -622,7 +622,7 @@ class TestInferenceSession(unittest.TestCase):
 
         finally:
             # Make sure the usage of the feature is disabled after this test
-            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)       
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)
         
 if __name__ == '__main__':
     unittest.main()
