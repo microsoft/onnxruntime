@@ -444,7 +444,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
-	  {"zfnet512", "disable temporarily"}
 };
 
 #ifdef USE_NGRAPH

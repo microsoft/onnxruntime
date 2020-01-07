@@ -53,7 +53,6 @@ def check_if_dlls_are_present(platforms_supported, zip_file):
             
 def check_if_nuget_is_signed(nuget_path):
     code_sign_summary_file = glob.glob(os.path.join(nuget_path, '*.md'))
-    print(os.path.join(nuget_path)  + '*.md')
     if (len(code_sign_summary_file) != 1):
         print('CodeSignSummary files found in path: ')
         print(code_sign_summary_file)
