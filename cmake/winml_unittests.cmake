@@ -44,7 +44,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest windowsapp ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_telemetry)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
