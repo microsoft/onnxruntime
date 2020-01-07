@@ -76,7 +76,6 @@ struct TestOp {
   }
 };
 
-#if 0
 // test that the status from TestOp is correctly returned from InferenceSession::Run
 TEST(ParallelExecutor, TestStatusPropagation) {
   auto registry = std::make_shared<CustomRegistry>();
@@ -117,7 +116,6 @@ TEST(ParallelExecutor, TestStatusPropagation) {
     tester.Run(OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {kTensorrtExecutionProvider}, nullptr, nullptr, ExecutionMode::ORT_PARALLEL);
   }
 }
-#endif
 
 TEST(ParallelExecutor, TestNullInterOpThreadPool) {
   auto registry = std::make_shared<CustomRegistry>();
