@@ -11,6 +11,10 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
 
+#include "core/framework/winml_adapter_map_type_info.h"
+#include "core/framework/winml_adapter_sequence_type_info.h"
+#include "../../../winml/adapter/winml_adapter_apis.h"
+
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
@@ -23,8 +27,22 @@ namespace on = ONNX_NAMESPACE;
 OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtTensorTypeAndShapeInfo* data1) noexcept : type(type1), data(data1) {
 }
 
+OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtMapTypeInfo* map_type_info) noexcept : type(type1), map_type_info_(map_type_info) {
+}
+
+OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtSequenceTypeInfo* sequence_type_info) noexcept : type(type1), sequence_type_info_(sequence_type_info) {
+}
+
 OrtTypeInfo::~OrtTypeInfo() {
   OrtApis::ReleaseTensorTypeAndShapeInfo(data);
+  
+  namespace winmla = Windows::AI::MachineLearning::Adapter;
+  if (map_type_info_) {
+    winmla::ReleaseMapTypeInfo(map_type_info_);
+  }
+  if (sequence_type_info_) {
+    winmla::ReleaseSequenceTypeInfo(sequence_type_info_);
+  }
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeInfo* input, ONNXType* out) {
@@ -35,6 +53,20 @@ ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeI
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input, const struct OrtTensorTypeAndShapeInfo** out) {
   *out = input->type == ONNX_TYPE_TENSOR ? input->data : nullptr;
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::CastTypeInfoToMapTypeInfo, const OrtTypeInfo* type_info, const OrtMapTypeInfo** out) {
+  API_IMPL_BEGIN
+  *out = input->type == ONNX_TYPE_MAP ? type_info->map_type_info : nullptr;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* type_info, const OrtSequenceTypeInfo** out) {
+  API_IMPL_BEGIN
+  *out = input->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info : nullptr;
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
@@ -208,11 +240,25 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
       return nullptr;
     } break;
     case on::TypeProto::kSequenceType: {
-      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, nullptr);
+      OrtMapTypeInfo* sequence_type_info = nullptr;
+
+      if (auto status = OrtSequenceTypeInfo::FromTypeProto(input, &sequence_type_info))
+      {
+        return status;
+      }
+
+      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
       return nullptr;
     } break;
     case on::TypeProto::kMapType: {
-      *out = new OrtTypeInfo(ONNX_TYPE_MAP, nullptr);
+      OrtMapTypeInfo* map_type_info = nullptr;
+
+      if (auto status = OrtMapTypeInfo::FromTypeProto(input, &map_type_info))
+      {
+        return status;
+      }
+
+      *out = new OrtTypeInfo(ONNX_TYPE_MAP, map_type_info);
       return nullptr;
     } break;
     case on::TypeProto::kOpaqueType: {

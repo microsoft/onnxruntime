@@ -4,6 +4,7 @@
 #pragma once
 #include <atomic>
 #include "core/session/onnxruntime_c_api.h"
+#include "../../winml/adapter/winml_adapter_c_apis.h"
 
 namespace onnxruntime {
 class DataTypeImpl;
@@ -26,6 +27,8 @@ struct OrtTypeInfo {
 
   //owned by this
   OrtTensorTypeAndShapeInfo* data = nullptr;
+  OrtMapTypeInfo* map_type_info = nullptr;
+  OrtSequenceTypeInfo* sequence_type_info = nullptr;
   OrtTypeInfo(const OrtTypeInfo& other) = delete;
   OrtTypeInfo& operator=(const OrtTypeInfo& other) = delete;
 
@@ -36,4 +39,6 @@ struct OrtTypeInfo {
 
  private:
   OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;
+  OrtTypeInfo(ONNXType type, OrtMapTypeInfo* map_type_info) noexcept;
+  OrtTypeInfo(ONNXType type, OrtSequenceTypeInfo* sequence_type_info) noexcept;
 };

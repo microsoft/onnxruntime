@@ -11,8 +11,17 @@ using namespace Windows::AI::MachineLearning;
 
 // ZeroCopyInputStreamWrapper
 ZeroCopyInputStreamWrapper::ZeroCopyInputStreamWrapper(
-    ABI::Windows::Storage::Streams::IRandomAccessStreamReference* stream) {
+    ABI::Windows::Storage::Streams::IRandomAccessStreamReference* stream) :
+      data_(nullptr) {
     winrt::copy_from_abi(stream_, (void*)stream);
+}
+
+// ZeroCopyInputStreamWrapper
+ZeroCopyInputStreamWrapper::ZeroCopyInputStreamWrapper(
+    void* data,
+    int size) : 
+      data_(data),
+      size_(size) {
 }
 
 bool ZeroCopyInputStreamWrapper::Next(
@@ -22,26 +31,35 @@ bool ZeroCopyInputStreamWrapper::Next(
     return false;
   }
 
-  auto content = stream_.OpenReadAsync().get();
+  if (stream_ != nullptr)
+  {
+    auto content = stream_.OpenReadAsync().get();
 
-  wss::Buffer buffer(static_cast<uint32_t>(content.Size()));
-  auto result = content.ReadAsync(
-                           buffer,
-                           buffer.Capacity(),
-                           wss::InputStreamOptions::None)
-                    .get();
+    wss::Buffer buffer(static_cast<uint32_t>(content.Size()));
+    auto result = content.ReadAsync(
+                            buffer,
+                            buffer.Capacity(),
+                            wss::InputStreamOptions::None)
+                      .get();
 
-  bytes_ = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
-#ifdef LAYERING_DONE
-  WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes_, "Model stream is invalid.");
-  WINML_THROW_IF_FAILED_MSG(
-      bytes_->Buffer(reinterpret_cast<byte**>(const_cast<void**>(data))),
-      "Failed to acquire buffer from model stream.");
-#else
-  bytes_->Buffer(reinterpret_cast<byte**>(const_cast<void**>(data)));
-#endif
+    bytes_ = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
+  #ifdef LAYERING_DONE
+    WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes_, "Model stream is invalid.");
+    WINML_THROW_IF_FAILED_MSG(
+        bytes_->Buffer(reinterpret_cast<byte**>(const_cast<void**>(data))),
+        "Failed to acquire buffer from model stream.");
+  #else
+    bytes_->Buffer(reinterpret_cast<byte**>(const_cast<void**>(data)));
+  #endif
 
-  *size = static_cast<uint32_t>(content.Size());
+    *size = static_cast<uint32_t>(content.Size());
+  }
+  else if (data_ != nullptr)
+  {
+    *data = data_;
+    *size = size_;
+  }
+
   finished_reading_ = true;
   return true;
 }

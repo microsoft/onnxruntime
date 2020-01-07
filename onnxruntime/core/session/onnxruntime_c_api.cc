@@ -1452,6 +1452,10 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseCustomOpDomain,
 };
 
+uint32_t GetVersion1Api() {
+  return &ort_api_1;
+}
+
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version > 1)
     return nullptr;

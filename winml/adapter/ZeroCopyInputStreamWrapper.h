@@ -17,6 +17,10 @@ class ZeroCopyInputStreamWrapper : public google::protobuf::io::ZeroCopyInputStr
   ZeroCopyInputStreamWrapper(
       ABI::Windows::Storage::Streams::IRandomAccessStreamReference* stream);
 
+  ZeroCopyInputStreamWrapper(
+      void* data,
+      int size);
+
   // ModelProto load only uses "Next" method
   bool
   Next(
@@ -38,6 +42,9 @@ class ZeroCopyInputStreamWrapper : public google::protobuf::io::ZeroCopyInputStr
   wss::IRandomAccessStreamReference stream_;
   bool finished_reading_ = false;
   winrt::com_ptr<::Windows::Storage::Streams::IBufferByteAccess> bytes_;
+
+  void* data_;
+  int size_;
 };
 
 }  // namespace Windows::AI::MachineLearning
