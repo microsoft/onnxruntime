@@ -9,10 +9,9 @@ steps:
       inputs:
         versionSpec: 3.7
 
-    - task: CmdLine@1
+    - task: PythonScript@0
       displayName: 'Validate Nuget'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py --nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
+        scriptPath: '$(Build.SourcesDirectory)\tools\nuget\validate_nuget.py'
+        arguments: '--nuget_path ${{parameters.NugetPath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
         workingDirectory: "$(Build.BinariesDirectory)"
-      continueOnError: false
