@@ -8,7 +8,7 @@ steps:
       displayName: 'Use Python'
       inputs:
         versionSpec: 3.7
-		
+
     - task: CmdLine@1
       displayName: 'Validate Nuget'
       inputs:
