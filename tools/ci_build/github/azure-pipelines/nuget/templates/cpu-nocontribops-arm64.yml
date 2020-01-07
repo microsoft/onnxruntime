@@ -6,6 +6,7 @@
 parameters:
   DoEsrp: 'false'
 
+jobs:  
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2019'
