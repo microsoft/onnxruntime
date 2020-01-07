@@ -62,7 +62,7 @@ jobs:
     - script: |
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config RelWithDebInfo --enable_onnx_tests
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --use_openmp --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --use_featurizers --config RelWithDebInfo --enable_onnx_tests
       displayName: 'Build and Test MacOS'
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -127,7 +127,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --update --cmake_generator "Visual Studio 16 2019" --use_openmp --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
@@ -148,7 +148,7 @@ jobs:
       displayName: 'test'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --test --cmake_generator "Visual Studio 16 2019" --use_openmp --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
@@ -204,7 +204,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --update --cmake_generator "Visual Studio 16 2019" --use_openmp --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
  
