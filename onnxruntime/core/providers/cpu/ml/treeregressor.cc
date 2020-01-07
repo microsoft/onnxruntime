@@ -366,7 +366,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-            for (int n = 0; n < scores.size(); ++n) {
+            for (int64_t n = 0; n < n_targets_; ++n) {
               if (private_has_scores[n]) {
                 has_scores[n] = private_has_scores[n];
                 scores[n] += private_scores[n];
@@ -377,7 +377,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-            for (int n = 0; n < scores.size(); ++n) {
+            for (int64_t n = 0; n < n_targets_; ++n) {
               if (private_has_scores[n]) {
                 scores[n] = has_scores[n] && (private_scores[n] > scores[n]) ? scores[n] : private_scores[n];
                 has_scores[n] = private_has_scores[n];
@@ -388,7 +388,7 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
 #ifdef USE_OPENMP
 #pragma omp critical
 #endif
-            for (int n = 0; n < scores.size(); ++n) {
+            for (int64_t n = 0; n < n_targets_; ++n) {
               if (private_has_scores[n]) {
                 scores[n] = has_scores[n] && (private_scores[n] < scores[n]) ? scores[n] : private_scores[n];
                 has_scores[n] = private_has_scores[n];
