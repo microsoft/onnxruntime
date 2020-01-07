@@ -377,9 +377,10 @@ common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const
       size_t j;
       int64_t jt;
 
-#ifdef USE_OPENMP
-#pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0, j)
-#endif
+      // Requires a custom aggregator.
+      // #ifdef USE_OPENMP
+      // #pragma omp parallel for firstprivate(scores, has_scores, outputs) private(val, current_weight_0, j)
+      // #endif
       for (int64_t i = 0; i < N; ++i) {
         current_weight_0 = i * stride;
         std::fill(scores.begin(), scores.end(), 0.f);
