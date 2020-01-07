@@ -2,9 +2,7 @@
 # header name as input. The function will generate a .cpp file that includes the header and is used
 # to generate the precompiled header; this source file is added to the target's sources.
 function(target_precompiled_header target_name header_name)
-    # if (MSVC)
-    if (0)
-
+    if (MSVC AND CMAKE_VS_PLATFORM_TOOLSET)
         # The input precompiled header source (i.e. the '.h' file used for the precompiled header).
         set(pch_header_path ${header_name})
         get_filename_component(header_base_name ${header_name} NAME_WE)
