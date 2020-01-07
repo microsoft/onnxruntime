@@ -115,17 +115,22 @@ void GenTreeAndRunTest1(const std::string& aggFunction, bool one_obs) {
   std::vector<float> target_weights = {33.33333f, 16.66666f, 33.33333f, -3.33333f, 16.66666f, -3.333333f};
   std::vector<int64_t> classes = {0, 1};
 
+  std::vector<float> results;
   if (aggFunction == "AVERAGE") {
     test.AddAttribute("aggregate_function", "AVERAGE");
+    results = {63.33333333f / 3, 26.66666667f / 3, 30.0f / 3};
   } else if (aggFunction == "MIN") {
     test.AddAttribute("aggregate_function", "MIN");
+    results = {-3.33333f, -3.33333f, -3.33333f};
   } else if (aggFunction == "MAX") {
     test.AddAttribute("aggregate_function", "MAX");
-  }  // default function is SUM
+    results = {33.33333f, 33.33333f, 16.66666f};
+  } else {  // default function is SUM
+    results = {63.33333333f, 26.66666667f, 30.0f};
+  }
 
   //test data
   std::vector<float> X = {0, 1, 1, 1, 2, 0};
-  std::vector<float> results = {63.33333333f, 26.66666667f, 30.0f};
 
   //add attributes
   test.AddAttribute("nodes_truenodeids", lefts);
@@ -163,7 +168,6 @@ TEST(MLOpTest, TreeRegressorSingleTargetSum) {
   GenTreeAndRunTest1("SUM", true);
 }
 
-/*
 TEST(MLOpTest, TreeRegressorSingleTargetAverage) {
   GenTreeAndRunTest1("AVERAGE", false);
   GenTreeAndRunTest1("AVERAGE", true);
@@ -178,7 +182,6 @@ TEST(MLOpTest, TreeRegressorSingleTargetMax) {
   GenTreeAndRunTest1("MAX", false);
   GenTreeAndRunTest1("MAX", true);
 }
-*/
 
 }  // namespace test
 }  // namespace onnxruntime
