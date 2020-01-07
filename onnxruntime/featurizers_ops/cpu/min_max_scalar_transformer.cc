@@ -6,23 +6,23 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/StringFeaturizer.h"
+#include "Featurizers/MinMaxScalarFeaturizer.h"
 #include "Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {
 
 template <typename InputT>
-struct StringTransformerImpl {
+struct MinMaxScalarTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::StringTransformer<InputT> transformer(
+    Microsoft::Featurizer::Featurizers::MinMaxScalarTransformer<InputT> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::StringTransformer<InputT>(archive);
+          return Microsoft::Featurizer::Featurizers::MinMaxScalarTransformer<InputT>(archive);
         }());
 
     // Get the input
@@ -31,7 +31,7 @@ struct StringTransformerImpl {
 
     // Prepare the output
     Tensor* output_tensor(ctx->Output(0, input_tensor->Shape()));
-    std::string* output_data(output_tensor->MutableData<std::string>());
+    double* output_data(output_tensor->MutableData<double>());
 
     // Execute
     const int64_t length(input_tensor->Shape().Size());
@@ -42,14 +42,14 @@ struct StringTransformerImpl {
   }
 };
 
-class StringTransformer final : public OpKernel {
+class MinMaxScalarTransformer final : public OpKernel {
  public:
-  explicit StringTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit MinMaxScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<StringTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
-                                int64_t, uint64_t, float, double, bool, std::string>
+    utils::MLTypeCallDispatcher<MinMaxScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double>
         t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
     return Status::OK();
@@ -57,7 +57,7 @@ class StringTransformer final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    StringTransformer,
+    MinMaxScalarTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -72,10 +72,7 @@ ONNX_OPERATOR_KERNEL_EX(
                                    DataTypeImpl::GetTensorType<int64_t>(),
                                    DataTypeImpl::GetTensorType<uint64_t>(),
                                    DataTypeImpl::GetTensorType<float>(),
-                                   DataTypeImpl::GetTensorType<double>(),
-                                   DataTypeImpl::GetTensorType<bool>(),
-                                   DataTypeImpl::GetTensorType<std::string>()}),
-    StringTransformer);
-
+                                   DataTypeImpl::GetTensorType<double>()}),
+    MinMaxScalarTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime

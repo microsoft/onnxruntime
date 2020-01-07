@@ -115,7 +115,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint64_t>()),
     DateTimeTransformer);
 
