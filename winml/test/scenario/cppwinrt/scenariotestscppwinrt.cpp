@@ -1,7 +1,6 @@
 #include "testPch.h"
 
 #include <d3dx12.h>
-#include <gtest/gtest.h>
 
 #include "winrt/Windows.Devices.Enumeration.Pnp.h"
 #include "winrt/Windows.Graphics.DirectX.Direct3D11.h"
@@ -450,7 +449,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleCustomCommandQueue()
 }
 
 //pass a Tensor in as an input GPU
-static void ScenarioCppWinrtGpuTest_DISABLED_Scenario9LoadBindEvalInputTensorGPU() {
+static void ScenarioCppWinrtGpuTest_Scenario9LoadBindEvalInputTensorGPU() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -716,7 +715,7 @@ static void ScenarioCppWinrtGpuTest_Scenario20bLoadBindEvalReplacementCustomOper
 }
 
 //! Scenario21: Load two models, set them up to run chained after one another on the same gpu hardware device
-static void ScenarioCppWinrtGpuTest_DISABLED_Scenario21RunModel2ChainZ() {
+static void ScenarioCppWinrtGpuTest_Scenario21RunModel2ChainZ() {
   // load a model, TODO: get a model that has an image descriptor
   std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -795,7 +794,7 @@ bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected) {
   return ((float)errors / size < cMaxErrorRate);
 }
 
-static void ScenarioCppWinrtTest_DISABLED_Scenario22ImageBindingAsCPUTensor() {
+static void ScenarioCppWinrtTest_Scenario22ImageBindingAsCPUTensor() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"fish_720.png";
   std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
@@ -868,7 +867,7 @@ static void ScenarioCppWinrtTest_DISABLED_Scenario22ImageBindingAsCPUTensor() {
   encoder.FlushAsync().get();
 }
 
-static void ScenarioCppWinrtGpuTest_DISABLED_Scenario22ImageBindingAsGPUTensor() {
+static void ScenarioCppWinrtGpuTest_Scenario22ImageBindingAsGPUTensor() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"fish_720.png";
   std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
@@ -1085,7 +1084,7 @@ static void ScenarioCppWinrtGpuTest_MsftQuantizedModels() {
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, filePath));
 }
 
-static void ScenarioCppWinrtGpuTest_DISABLED_SyncVsAsync() {
+static void ScenarioCppWinrtGpuTest_SyncVsAsync() {
   // create model, device and session
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"fns-candy.onnx"));
@@ -1152,7 +1151,7 @@ static void ScenarioCppWinrtGpuTest_DISABLED_SyncVsAsync() {
   std::cout << "Asynchronous time for " << N << " evaluations: " << asyncTime.count() << " milliseconds\n";
 }
 
-static void ScenarioCppWinrtGpuTest_DISABLED_CustomCommandQueueWithFence() {
+static void ScenarioCppWinrtGpuTest_CustomCommandQueueWithFence() {
   static const wchar_t* const modelFileName = L"fns-candy.onnx";
   static const wchar_t* const inputDataImageFileName = L"fish_720.png";
 
@@ -1236,7 +1235,7 @@ static void ScenarioCppWinrtGpuTest_DISABLED_CustomCommandQueueWithFence() {
   EXPECT_EQ(fence->GetCompletedValue(), 2);
 }
 
-static void ScenarioCppWinrtGpuTest_DISABLED_ReuseVideoFrame() {
+static void ScenarioCppWinrtGpuTest_ReuseVideoFrame() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"fish_720.png";
   std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
