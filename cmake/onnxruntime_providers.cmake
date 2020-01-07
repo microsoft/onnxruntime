@@ -431,25 +431,19 @@ if (onnxruntime_USE_DML)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
 
-  if(CMAKE_GENERATOR_PLATFORM)
-    set(dml_platform ${CMAKE_GENERATOR_PLATFORM})
-  else()
-    set(dml_platform ${CMAKE_SYSTEM_PROCESSOR})
-  endif()
-  if(dml_platform STREQUAL "x64" OR dml_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
-    set(dml_platform "x64")
-  elseif(NOT dml_platform STREQUAL "x86")
-    message(FATAL_ERROR "Target platform is not supported by DML")
+  if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
+    message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
   endif()
 
   foreach(file IN LISTS DirectML.dll DirectML.pdb DirectML.Debug.dll DirectML.Debug.pdb)
     add_custom_command(TARGET onnxruntime_providers_dml
       POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/bin/${dml_platform}/${file} $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/bin/${onnxruntime_target_platform}/${file} $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
   endforeach()
 
   function(target_add_dml target)
-    target_link_libraries(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/bin/${dml_platform}/DirectML.lib)
+    target_link_libraries(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/bin/${onnxruntime_target_platform}/DirectML.lib)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/include)
   endfunction()
 
