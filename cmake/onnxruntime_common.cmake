@@ -45,7 +45,7 @@ else()
 endif()
 
 if(CMAKE_GENERATOR_PLATFORM)
-    # Multi-generator build
+    # Multi-platform generator
     set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
 else()
     set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
