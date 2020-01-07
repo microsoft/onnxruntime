@@ -653,5 +653,134 @@ void RegisterStringFeaturizerVer1() {
           });
 }
 
+void RegisterTimeSeriesImputerFeaturizerVer1() {
+  static const char* doc = R"DOC(
+    Imputes rows and column values such that the generated output does not contain any
+    time gaps per grain (based on the time gaps encountered during training) and that
+    all missing column values are populated according to a strategy (forward fill,
+    backward fill, mode, etc.).
+
+    This Featurizer is unique in that it will produce 0:N rows, depending upon the
+    input data.
+
+    C++-style pseudo signature:
+      template <typename... GrainColValueTs, typename... DataColValueTs>
+      std::vector<
+        std::tuple<
+          bool, // true if the row was added
+          std::chrono::system_clock::time_point,
+          std::tuple<GrainColValueTs...>,
+          std::tuple<DataColValueTs...>
+        >
+      > execute(
+        std::chrono::system_clock::time_point const &value,
+        std::tuple<GrainColValueTs...> const &grain,
+        std::tuple<DataColValueTs...> const &colData
+      );
+
+    Examples:
+      During training, the time period was found to be 1 day...
+
+      Input:
+        +------+-------+------------------+-------------------+
+        | time | grain | forward fill col | backward fill col |
+        +======+=======+==================+===================+
+        | 1    | A     | 10               | None              |
+        +------+-------+------------------+-------------------+
+        | 2    | A     | None             | 200               |
+        +------+-------+------------------+-------------------+
+        | 1    | B     | -10              | -100              |
+        +------+-------+------------------+-------------------+
+        | 4    | A     | 40               | 400               |
+        +------+-------+------------------+-------------------+
+        | 6    | A     | 60               | 600               |
+        +------+-------+------------------+-------------------+
+        | 3    | B     | -30              | -300              |
+        +------+-------+------------------+-------------------+
+
+      Output:
+        +-------+------+-------+------------------+-------------------+
+        | Added | time | grain | forward fill col | backward fill col |
+        +=======+======+=======+==================+===================+
+        | false | 1    | A     | 10               | 200 (from 2)      |
+        +-------+------+-------+------------------+-------------------+
+        | false | 2    | A     | 10 (from 1)      | 200               |
+        +-------+------+-------+------------------+-------------------+
+        | true  | 3    | A     | 10 (from 2)      | 400 (from 4)      |
+        +-------+------+-------+------------------+-------------------+
+        | false | 4    | A     | 40               | 400               |
+        +-------+------+-------+------------------+-------------------+
+        | true  | 5    | A     | 40 (from 4)      | 600 (from 6)      |
+        +-------+------+-------+------------------+-------------------+
+        | false | 6    | A     | 60               | 600               |
+        +-------+------+-------+------------------+-------------------+
+        | false | 1    | B     | -10              | -100              |
+        +-------+------+-------+------------------+-------------------+
+        | true  | 2    | B     | -10 (from 1)     | -300 (from 3)     |
+        +-------+------+-------+------------------+-------------------+
+        | false | 3    | B     | -30              | -300              |
+        +-------+------+-------+------------------+-------------------+
+    )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(TimeSeriesImputerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Times",
+          "This is a single dimensional tensor [R], one timestamp per row.",
+          "T1")
+      .Input(
+          2,
+          "Rows",
+          "This is a tensor which carries tabular data."
+          "It is a tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
+          "T2")
+      .Output(
+          0,
+          "Added",
+          "Tensor of boolean with a shape of [IR]. Contains a boolean for each row in the result where true represents added row.",
+          "T3")
+      .Output(
+          1,
+          "OutputTimes",
+          "This is a single dimensional tensor of timestamps of shape [IR], where IR is the number of output rows.",
+          "T1")
+      .Output(
+          2,
+          "Output",
+          "Tensor of shape [IR][C] where IR is the number of rows in the result which can be 0. C is the number of columns."
+          "The type of the result must match the type of Input(2)",
+          "T2")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int64)"},
+          "Represents number of seconds since epoch")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float)", "tensor(double)", "tensor(string)"},
+          "Output data")
+      .TypeConstraint(
+          "T3",
+          {"tensor(bool)"},
+          "Boolean Tensor")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT64, 1);
+            propagateElemTypeFromInputToOutput(ctx, 2, 2);
+          });
+}
+
 }  // namespace featurizers
 }  // namespace onnxruntime
