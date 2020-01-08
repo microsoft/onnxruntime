@@ -66,10 +66,11 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     //Add optional attributes for activations
     if (act_node.OpType() == "LeakyRelu") {
-      NodeAttributes& attrs = const_cast<NodeAttributes&>(act_node.GetAttributes());
-      for (auto& attr : attrs) {
-        attr.second.set_name("leaky_relu_" + attr.first);
-        fused_gemm.AddAttribute("leaky_relu_" + attr.first, attr.second);
+      const NodeAttributes& attrs = act_node.GetAttributes();
+      for (const auto& attr : attrs) {
+        AttributeProto fused_gemm_attr(attr.second);
+        fused_gemm_attr.set_name("leaky_relu_" + attr.first);
+        fused_gemm.AddAttribute("leaky_relu_" + attr.first, fused_gemm_attr);
       }
     }
 
