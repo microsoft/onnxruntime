@@ -16,6 +16,7 @@ ORT_API(void, ReleaseTypeInfo, OrtTypeInfo*);
 ORT_API(void, ReleaseTensorTypeAndShapeInfo, OrtTensorTypeAndShapeInfo*);
 ORT_API(void, ReleaseSessionOptions, OrtSessionOptions*);
 ORT_API(void, ReleaseCustomOpDomain, OrtCustomOpDomain*);
+ORT_API(void, ReleaseModelMetadata, OrtModelMetadata*);
 
 ORT_API_STATUS_IMPL(CreateStatus, OrtErrorCode code, _In_ const char* msg);
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -71,6 +72,10 @@ ORT_API_STATUS_IMPL(SessionGetInputName, _In_ const OrtSession* sess, size_t ind
 ORT_API_STATUS_IMPL(SessionGetOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(SessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator, 
+                    _Outptr_ char* out);
+ORT_API_STATUS_IMPL(SessionGetModelMetadata, _In_ const OrtSession* sess,
+                    _Outptr_ OrtModelMetadata** out);
 
 ORT_API_STATUS_IMPL(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 

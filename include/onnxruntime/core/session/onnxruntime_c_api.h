@@ -156,6 +156,7 @@ ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
 ORT_RUNTIME_CLASS(CustomOpDomain);
+ORT_RUNTIME_CLASS(ModelMetadata);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -376,7 +377,7 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerTypeInfo)(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible to free it.
    */
   OrtStatus*(ORT_API_CALL* SessionGetInputName)(_In_ const OrtSession* sess, size_t index,
                                                 _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
@@ -384,6 +385,18 @@ struct OrtApi {
                                                  _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerName)(_In_ const OrtSession* sess, size_t index,
                                                                  _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+
+  /**
+   * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible to free it.
+   */
+  OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                                                _Out_ char* out)NO_EXCEPTION;
+
+  /**
+   * \param out is a pointer to the newly created object. The pointer should be freed by ReleaseModelMetadata after use.
+   */
+  OrtStatus*(ORT_API_CALL* SessionGetModelMetadata)(_In_ const OrtSession* sess, 
+                                             _Outptr_ OrtModelMetadata** out)NO_EXCEPTION;
 
   /**
    * \return A pointer to the newly created object. The pointer should be freed by OrtReleaseRunOptions after use
@@ -645,6 +658,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
   ORT_CLASS_RELEASE(SessionOptions);
   ORT_CLASS_RELEASE(CustomOpDomain);
+  ORT_CLASS_RELEASE(ModelMetadata);
 };
 
 /*

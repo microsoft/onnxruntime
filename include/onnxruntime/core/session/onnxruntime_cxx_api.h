@@ -53,7 +53,6 @@ template <typename T>
 const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
-
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
 inline const OrtApi& GetApi() { return Global<void>::api_; }
 
@@ -205,10 +204,26 @@ struct Session : Base<OrtSession> {
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
+  char* EndProfiling(OrtAllocator* allocator) const;
+  ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;
+};
+
+struct ModelMetadata : Base<OrtModelMetadata> {
+  explicit ModelMetadata(std::nullptr_t) {}
+  explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}
+
+  /*
+  char* GetProducerName() const;
+  char* GetGraphName() const;
+  char* GetDomain() const;
+  char* GetDescription() const;
+  int64_t GetVersion() const;
+  std::unordered_map<char*, char*> GetCustomMetadataMap() const;
+  */
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {

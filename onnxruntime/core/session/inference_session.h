@@ -56,6 +56,17 @@ class LoggingManager;
   * Pre-defined and custom metadata about the model.
   */
 struct ModelMetadata {
+  ModelMetadata() = default;
+  ModelMetadata(const ModelMetadata& other)
+      : producer_name(other.producer_name), graph_name(other.graph_name), 
+      domain(other.domain), description(other.description), version(other.version), 
+      custom_metadata_map(other.custom_metadata_map) {
+  }
+  ~ModelMetadata() = default;
+  ModelMetadata& operator=(const ModelMetadata&) {
+    throw std::runtime_error("not implemented");
+  }
+
   std::string producer_name;
   std::string graph_name;
   std::string domain;

@@ -278,6 +278,20 @@ inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* 
   return out;
 }
 
+inline char* Session::EndProfiling(OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(Global<void>::api_.SessionEndProfiling(p_, allocator, out));
+  return out;
+}
+
+/*
+inline ModelMetadata Session::GetModelMetadata() const {
+  OrtModelMetadata* out;
+  ThrowOnError(Global<void>::api_.SessionGetModelMetadata(p_, &out));
+  return ModelMetadata{out};
+}
+*/
+
 inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
   ThrowOnError(Global<void>::api_.SessionGetInputTypeInfo(p_, index, &out));

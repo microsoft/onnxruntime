@@ -786,6 +786,28 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerName, _In_ const Or
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                    _Out_ char* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
+  auto profile_file_name = session->EndProfiling();
+  out = StrDup(profile_file_name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* sess,
+                    _Outptr_ OrtModelMetadata** out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  auto p = session->GetModelMetadata();
+  if (!p.first.IsOK())
+    return ToOrtStatus(p.first);
+  *out = reinterpret_cast<OrtModelMetadata*>(new ModelMetadata(*p.second));
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::AllocatorAlloc, _Inout_ OrtAllocator* ptr, size_t size, _Outptr_ void** out) {
   API_IMPL_BEGIN
   *out = ptr->Alloc(ptr, size);
@@ -1385,6 +1407,8 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SessionGetInputName,
     &OrtApis::SessionGetOutputName,
     &OrtApis::SessionGetOverridableInitializerName,
+    &OrtApis::SessionEndProfiling,
+    &OrtApis::SessionGetModelMetadata,
 
     &OrtApis::CreateRunOptions,
     &OrtApis::RunOptionsSetRunLogVerbosityLevel,
@@ -1455,6 +1479,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseTensorTypeAndShapeInfo,
     &OrtApis::ReleaseSessionOptions,
     &OrtApis::ReleaseCustomOpDomain,
+    &OrtApis::ReleaseModelMetadata,
 };
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
