@@ -73,6 +73,14 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
   Tensor* NG = ctx->Output(4, G.Shape());
   Tensor* NW_FP16 = W_FP16 != nullptr ? ctx->Output(5, W_FP16->Shape()) : nullptr;
 
+  // TODO: temporary hack until View is improved (it doesn't work with Alias)
+  if (NW != nullptr)
+    NW->SetByteOffset(W.ByteOffset());
+  if (NG != nullptr)
+    NG->SetByteOffset(G.ByteOffset());
+  if (NW_FP16 != nullptr)
+    NW_FP16->SetByteOffset(W_FP16->ByteOffset());
+
   half* fp16_weights_out = nullptr;
   if (NW_FP16 != nullptr) {
     fp16_weights_out = reinterpret_cast<half*>(NW_FP16->template MutableData<MLFloat16>());

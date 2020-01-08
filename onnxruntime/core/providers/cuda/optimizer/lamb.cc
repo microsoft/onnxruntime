@@ -112,11 +112,21 @@ Status copy_inputs_to_outputs(
     const Tensor& g = *ctx->Input<Tensor>(input_start_index + 1);
     const Tensor& m1 = *ctx->Input<Tensor>(input_start_index + 2);
     const Tensor& m2 = *ctx->Input<Tensor>(input_start_index + 3);
+    const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
     const int output_start_index = group_index * output_group_size;
     Tensor* w_new = ctx->Output(output_start_index, w.Shape());
     Tensor* g_new = ctx->Output(output_start_index + 1, g.Shape());
     Tensor& m1_new = *ctx->Output(output_start_index + 2, m1.Shape());
     Tensor& m2_new = *ctx->Output(output_start_index + 3, m2.Shape());
+    Tensor* w_fp16_new = w_fp16 != nullptr ? ctx->Output(output_start_index + 4, w_fp16->Shape()) : nullptr;
+
+    // TODO: temporary hack until View is improved (it doesn't work with Alias)
+    if (w_new != nullptr)
+      w_new->SetByteOffset(w.ByteOffset());
+    if (g_new != nullptr)
+      g_new->SetByteOffset(g.ByteOffset());
+    if (w_fp16_new != nullptr)
+      w_fp16_new->SetByteOffset(w_fp16->ByteOffset());
 
     if (w_new) {
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, *w_new));
@@ -127,12 +137,8 @@ Status copy_inputs_to_outputs(
     ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
     ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
 
-    const Tensor* w_fp16 = ctx->Input<Tensor>(input_start_index + 4);
-    if (w_fp16) {
-      Tensor* w_fp16_new = ctx->Output(output_start_index + 4, w_fp16->Shape());
-      if (w_fp16_new) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
-      }
+    if (w_fp16_new) {
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*w_fp16, *w_fp16_new));
     }
   }
 
@@ -527,7 +533,15 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM>::ComputeInternal(OpKernelConte
     Tensor* g_new = ctx->Output(output_start_index + 1, g->Shape());
     Tensor* m1_new = ctx->Output(output_start_index + 2, m1->Shape());
     Tensor* m2_new = ctx->Output(output_start_index + 3, m2->Shape());
-    Tensor* w_fp16_new = ctx->Output(output_start_index + 4, w->Shape());
+    Tensor* w_fp16_new = w_fp16 != nullptr ? ctx->Output(output_start_index + 4, w_fp16->Shape()) : nullptr;
+
+    // TODO: temporary hack until View is improved (it doesn't work with Alias)
+    if (w_new != nullptr)
+      w_new->SetByteOffset(w->ByteOffset());
+    if (g_new != nullptr)
+      g_new->SetByteOffset(g->ByteOffset());
+    if (w_fp16_new != nullptr)
+      w_fp16_new->SetByteOffset(w_fp16->ByteOffset());
 
     check_inputs_and_outputs(w, g, m1, m2, w_fp16, w_new, g_new, m1_new, m2_new, w_fp16_new);
 

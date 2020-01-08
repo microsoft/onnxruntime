@@ -140,7 +140,7 @@ Status TrainingSession::AddGistEncoding() {
 Status TrainingSession::BuildLossScalingFactorInput(const float loss_scale, std::string& loss_scale_input_name) {
   const std::string input_name = model_->MainGraph().GenerateNodeArgName("loss_scale");
   GraphAugmenter::GraphDefs defs{};
-  defs.AddInitializers({CreateTensorProto(input_name, loss_scale, {1})});
+  defs.AddInitializers({CreateTensorProto<float>(input_name, loss_scale, {1})});
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(model_->MainGraph(), defs));
   ORT_RETURN_IF_ERROR(DoPostLoadProcessing(*model_));
   loss_scale_input_name = input_name;

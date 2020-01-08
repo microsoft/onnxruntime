@@ -82,6 +82,8 @@ class TrainingRunner {
     bool use_cuda = false;
     // Whether to use NCCL for distributed training.
     bool use_nccl = false;
+    // Whether to partition the optimizer state across nodes for distributed training.
+    bool partition_optimizer = false;
     // Use Gist on CPU.
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.

@@ -69,11 +69,14 @@ Status View::ComputeInternal(OpKernelContext* context) const {
 
   const void* X_data = X->DataRaw();
   for (int i = 0; i < view_count; ++i) {
+    // Outputs are allowed to be unused.
     Tensor* Y = context->Output(i, y_shapes[i]);
-    if (X_data != Y->MutableDataRaw()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "View output is not sharing the underlaying buffer of input");
+    if (Y != nullptr) {
+      if (X_data != Y->MutableDataRaw()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "View output is not sharing the underlaying buffer of input");
+      }
+      Y->SetByteOffset(y_byte_offsets[i]);
     }
-    Y->SetByteOffset(y_byte_offsets[i]);
   }
 
   return Status::OK();

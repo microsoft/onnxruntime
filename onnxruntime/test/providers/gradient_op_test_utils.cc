@@ -176,7 +176,7 @@ void GradientOpTester::Run(
     // rethrow as some tests for error handling expect this
     throw;
   }
-}  // namespace test
+}
 
 void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
                                                std::vector<std::string>& output_names,
@@ -207,7 +207,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
     AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.GetDims(), values.data(), values.size(), true);
   }
 
-  for (auto i = 0; i < gradient_data.size(); ++i) {
+  for (size_t i = 0; i < gradient_data.size(); ++i) {
     feeds[gradient_data[i].def_.Name()] = gradient_data[i].data_;
   }
 }

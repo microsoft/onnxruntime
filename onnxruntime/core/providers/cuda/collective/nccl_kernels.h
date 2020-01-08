@@ -20,10 +20,6 @@ class NcclAllGather final : public NcclKernel {
   explicit NcclAllGather(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  size_t AllGatherCount(const TensorShape& input_shape) const;
-  size_t BroadcastCount(const TensorShape& input_shape) const;
 };
 
 class NcclReduceScatter final : public NcclKernel {
@@ -31,11 +27,6 @@ class NcclReduceScatter final : public NcclKernel {
   explicit NcclReduceScatter(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  TensorShape OutputShape(const TensorShape& input_shape) const;
-  size_t ReduceScatterCount(const TensorShape& input_shape) const;
-  size_t ReduceCount(const TensorShape& input_shape) const;
 };
 
 }  // namespace cuda

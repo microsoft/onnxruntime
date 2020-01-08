@@ -51,6 +51,8 @@ TrainingRunner::TrainingRunner(Parameters params)
   if (!params.weights_to_train.empty())
     ORT_ENFORCE(params.weights_not_to_train.empty());
   ORT_ENFORCE(!params_.training_optimizer_name.empty());
+  if (params.partition_optimizer)
+    ORT_ENFORCE(params.use_nccl, "Optimizer partitioning is only supported with NCCL distributed training.");
 }
 
 Status TrainingRunner::Initialize() {
@@ -570,6 +572,7 @@ Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string
   opt_graph_config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
   opt_graph_config.allreduce_in_fp16 = params_.allreduce_in_fp16;
   opt_graph_config.use_nccl = params_.use_nccl;
+  opt_graph_config.partition_optimizer = params_.partition_optimizer;
 
   opt_graph_config_result = std::move(opt_graph_config);
 
