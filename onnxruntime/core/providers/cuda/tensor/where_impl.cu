@@ -120,6 +120,7 @@ void WhereImpl(
                              T* output_data,                         \
                              size_t count);
 
+SPECIALIZED_IMPL(uint8_t)
 SPECIALIZED_IMPL(int32_t)
 SPECIALIZED_IMPL(int64_t)
 SPECIALIZED_IMPL(float)
