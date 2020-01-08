@@ -9,7 +9,7 @@ namespace winrt::Windows::AI::MachineLearning::implementation
 
 AbiCustomRegistry::AbiCustomRegistry() : 
     m_kernelRegistry(std::make_shared<onnxruntime::CustomRegistry>()),
-    m_graphNodeFactoryMap(std::make_shared<GraphNodeFactoryMap>())
+    m_internalRegInfoMap(std::make_shared<InternalRegistrationInfoMap>())
 {
 }
 
@@ -321,13 +321,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept 
 {
-    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, false, false, false);
+    return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
 }
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     const MLOperatorKernelDescription* opKernel,
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
+    _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
     bool isInternalOperator,
     bool canAliasFirstInput,
     bool supportsGraph,
@@ -449,63 +450,91 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         };
 
     onnxruntime::KernelCreateInfo create_info(builder.Build(), lotusKernelCreateFn);
+    onnxruntime::KernelDef* kernelDef = create_info.kernel_def.get();
 
-    if (supportsGraph)
+    if (isInternalOperator)
     {
+        auto regInfo = std::make_shared<InternalRegistrationInfo>();
+        regInfo->requiredConstantCpuInputs = constantCpuInputCapture;
+
         // Only internal operators support usage in DML graphs
-        if (!isInternalOperator)
+        if (supportsGraph)
+        {
+            GraphNodeFactoryRegistration graphReg;
+            graphReg.factory = 
+                [kernelFactoryCapture,
+                requiresInputShapesAtCreation,
+                requiresOutputShapesAtCreation,
+                shapeInferrerCapture,
+                defaultAttributesCapture,
+                constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
+                {
+                    onnxruntime::ProtoHelperNodeContext nodeContext(node);
+                    onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
+                
+                    // Use the same list of required constant inputs for the shape inferrer and the kernel.
+                    EdgeShapes outputShapes;
+                    InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, nullptr, outputShapes);
+
+                    // Create the kernel while allowing input shape and output shape queries according to options
+                    ComPtr<DmlGraphOpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<DmlGraphOpKernelInfoWrapper>(
+                            &protoHelper,
+                            executionHandle,
+                            true,
+                            &outputShapes,
+                            &defaultAttributesCapture,
+                            graphNodeCreateInfo,
+                            constantCpuInputCapture,
+                            constantInputGetter);
+
+                    Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
+                    THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
+                    kernelInfoWrapper->Close();
+                };
+
+            if (requiredInputCountForGraph)
+            {
+                graphReg.requiredInputCount = *requiredInputCountForGraph;
+            }
+
+            graphReg.requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
+            regInfo->graphNodeFactoryRegistration = graphReg;
+        }
+
+        if (supportQuery)
+        {
+            ComPtr<IMLOperatorSupportQueryPrivate> supportQueryCapture = supportQuery;
+
+            regInfo->supportQuery = [supportQueryCapture, defaultAttributesCapture](const onnxruntime::Node& node)
+            {
+                onnxruntime::ProtoHelperNodeContext nodeContext(node);
+                onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
+                              
+                // Create the kernel while allowing input shape and output shape queries according to options
+                ComPtr<MLSupportQueryContext> supportContext = wil::MakeOrThrow<MLSupportQueryContext>(
+                        &protoHelper,
+                        &defaultAttributesCapture);
+
+                BOOL bSupported = FALSE;
+                THROW_IF_FAILED(supportQueryCapture->QuerySupport(supportContext.Get(), &bSupported));
+                return !!bSupported;
+            };
+        }
+
+        THROW_IF_NOT_OK(m_kernelRegistry->RegisterCustomKernel(create_info));
+        (*m_internalRegInfoMap)[kernelDef] = regInfo;
+    }
+    else
+    {
+        // Currently unsupported for external operators
+        if (canAliasFirstInput || supportsGraph || requiredInputCountForGraph || 
+            requiresFloatFormatsForGraph || requiredConstantCpuInputs)
         {
             THROW_HR(E_INVALIDARG);
         }
 
-        auto registration = std::make_shared<GraphNodeFactoryRegistration>();
-
-        registration->factory = 
-            [kernelFactoryCapture,
-            requiresInputShapesAtCreation,
-            requiresOutputShapesAtCreation,
-            shapeInferrerCapture,
-            defaultAttributesCapture,
-            constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
-            {
-                onnxruntime::ProtoHelperNodeContext nodeContext(node);
-                onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
-                
-                // Use the same list of required constant inputs for the shape inferrer and the kernel.
-                EdgeShapes outputShapes;
-                InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, nullptr, outputShapes);
-
-                // Create the kernel while allowing input shape and output shape queries according to options
-                ComPtr<DmlGraphOpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<DmlGraphOpKernelInfoWrapper>(
-                        &protoHelper,
-                        executionHandle,
-                        true,
-                        &outputShapes,
-                        &defaultAttributesCapture,
-                        graphNodeCreateInfo,
-                        constantCpuInputCapture,
-                        constantInputGetter);
-
-                Microsoft::WRL::ComPtr<IMLOperatorKernel> kernel;
-                THROW_IF_FAILED(kernelFactoryCapture->CreateKernel(kernelInfoWrapper.Get(), kernel.GetAddressOf()));
-                kernelInfoWrapper->Close();
-            };
-
-        if (requiredInputCountForGraph)
-        {
-            registration->requiredInputCount = *requiredInputCountForGraph;
-        }
-
-        registration->requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
-        registration->requiredConstantCpuInputs = constantCpuInputCapture;
-
-        onnxruntime::KernelDef* kernelDef = create_info.kernel_def.get();
-        THROW_IF_NOT_OK(m_kernelRegistry->RegisterCustomKernel(create_info));
-        (*m_graphNodeFactoryMap)[kernelDef] = registration;
-    }
-    else
-    {
-        // For backward compatibility, this does not propagate errors
+        //
+        // For backward compatibility, this does not propagate errors for external operators
         m_kernelRegistry->RegisterCustomKernel(create_info);
     }
 

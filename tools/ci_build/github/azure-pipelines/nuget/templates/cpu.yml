@@ -5,14 +5,20 @@
 
 parameters:
   DoEsrp: 'false'
+  PackageName: 'Microsoft.ML.OnnxRuntime'
   DoCompliance: 'false'
 
 jobs: 
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2019'
+    ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019"'
+    BuildArch: 'x64'
+    msbuildArchitecture: 'amd64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -23,11 +29,16 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: ../../templates/win-x86-ci-2019.yml
+- template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2019'
+    ArtifactName: 'drop-win-x86-zip'
     JobName: 'Windows_CI_Dev_x86'
     BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --enable_onnx_tests --x86 --use_telemetry --cmake_generator "Visual Studio 16 2019"'
+    BuildArch: 'x86'
+    msbuildArchitecture: 'x86'
+    EnvSetupScript: 'setup_env_x86.bat'
+    sln_platform: 'Win32'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -116,7 +127,6 @@ jobs:
     inputs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
 
 
   - task: DownloadPipelineArtifact@0
@@ -124,21 +134,18 @@ jobs:
     inputs:
       artifactName: 'drop-win-x86-zip'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Linux'
     inputs:
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - MacOS'
     inputs:
       artifactName: 'drop-osx'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
 
   - template: bundle_dlls.yml
 
@@ -147,6 +154,12 @@ jobs:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
+
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64,osx-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
