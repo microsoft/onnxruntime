@@ -70,6 +70,7 @@ ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
+ORT_DEFINE_RELEASE(ModelMetadata);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -117,6 +118,7 @@ struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
+struct ModelMetadata;
 
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
