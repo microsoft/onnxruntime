@@ -21,7 +21,7 @@ const OrtApi* GetVersion1Api();
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-static constexpr winmla::WinmlAdapterApi winml_adapter_api_1 = {
+static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   // OrtTypeInfo Casting methods
   &winmla::CastTypeInfoToMapTypeInfo,
   &winmla::CastTypeInfoToSequenceTypeInfo,
@@ -86,9 +86,9 @@ const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(OrtApi* ort_api) NO_EXCEP
 }
 
 ORT_API(void, winmla::ReleaseExecutionProvider, OrtExecutionProvider* ptr) {
-  delete ptr;
+  //delete ptr;
 }
 
 ORT_API(void, winmla::ReleaseOperatorRegistry, OrtOperatorRegistry* ptr) {
-  delete ptr;
+  //delete ptr;
 }

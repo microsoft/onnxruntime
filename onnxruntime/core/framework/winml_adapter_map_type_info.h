@@ -4,6 +4,10 @@
 
 #include "../../winml/adapter/winml_adapter_c_api.h"
 
+namespace ONNX_NAMESPACE {
+class TypeProto;
+}
+
 struct OrtMapTypeInfo {
  public:
   ONNXTensorElementDataType map_key_type_ = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;

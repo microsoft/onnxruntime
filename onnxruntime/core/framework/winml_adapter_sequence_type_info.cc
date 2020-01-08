@@ -32,7 +32,7 @@ OrtStatus* OrtSequenceTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* t
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(winmla::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out)NO_EXCEPTION {
+ORT_API_STATUS_IMPL(winmla::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
   *out = sequence_type_info->sequence_key_type_;
   return nullptr;
 }

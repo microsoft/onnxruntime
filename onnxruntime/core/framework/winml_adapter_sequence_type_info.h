@@ -4,6 +4,10 @@
 
 #include "../../winml/adapter/winml_adapter_c_api.h"
 
+namespace ONNX_NAMESPACE {
+class TypeProto;
+}
+
 struct OrtSequenceTypeInfo {
  public:
   OrtTypeInfo* sequence_key_type_ = nullptr;
