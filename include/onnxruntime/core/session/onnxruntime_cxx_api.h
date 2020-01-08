@@ -205,7 +205,7 @@ struct Session : Base<OrtSession> {
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
   char* EndProfiling(OrtAllocator* allocator) const;
-  ModelMetadata GetModelMetadata() const;
+  // ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
