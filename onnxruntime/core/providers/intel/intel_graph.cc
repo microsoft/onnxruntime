@@ -32,14 +32,12 @@ namespace intel_ep {
 const std::string IntelGraph::log_tag = "[Intel-EP] ";
 
 //TODO: Remove this before production
-bool IsDebugEnabled(){
-
+bool IsDebugEnabled() {
   return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
 }
 
 IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
- : input_indexes_{input_indexes}, device_id_{device_id}, precision_{precision} {
-  
+    : input_indexes_{input_indexes}, device_id_{device_id}, precision_{precision} {
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -100,8 +98,8 @@ InferenceEngine::Precision IntelGraph::ConvertPrecisionONNXToIntel(
 void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network) {
   // Configure input & output
   // Prepare input blobs
-  if (network){
-    if(IsDebugEnabled())
+  if (network) {
+    if (IsDebugEnabled())
       std::cout << "Network is not NULL" << std::endl;
   }
   auto inputInfo = network->getInputsInfo();
@@ -146,7 +144,6 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
 
   int output_idx = 0;
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
-
     // HACK HACK HACK!!!
     // auto precision = ConvertPrecisionONNXToIntel(onnx_output_defs[output_idx]->Type());
     InferenceEngine::Precision precision = InferenceEngine::Precision::FP32;
@@ -202,7 +199,7 @@ void IntelGraph::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* inpu
 
     std::cout << "INPUT VALUES\n";
     float* buf = (float*)graph_input_buffer;
-    for(int i=0; i<10; i++) {
+    for (int i = 0; i < 10; i++) {
       std::cout << *(buf) << std::endl;
     }
   }
@@ -240,10 +237,9 @@ void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_
 
     std::cout << "OUTPUT VALUES\n";
     float* buf = (float*)graph_output_buffer;
-    for(int i=0; i<10; i++) {
+    for (int i = 0; i < 10; i++) {
       std::cout << *(buf) << std::endl;
     }
-
   }
 }
 
@@ -286,7 +282,6 @@ void IntelGraph::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* conte
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
-
   std::cout << "In CreateNgraphFunc" << std::endl;
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -296,17 +291,17 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
   } catch (const std::exception& exp) {
     LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
                         << "Exception while importing model to nGraph: " << std::string(exp.what());
-                        // << " - " << name_ << " - "
+    // << " - " << name_ << " - "
     throw;
   } catch (...) {
     LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
                         << "Unknown exception while importing model to nGraph";
-                        // << " - " << name_ << " - "
+    // << " - " << name_ << " - "
     throw;
   }
 
   //Serializing nGraph function
-  if(IsDebugEnabled()){
+  if (IsDebugEnabled()) {
     std::string json_string = serialize(ng_function, 4);
     std::ofstream out("serialize_function_before_PM.json");
     out << json_string;
@@ -317,17 +312,16 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
   pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
   pass_manager.run_passes(ng_function);
 
-  if (precision_ == InferenceEngine::Precision::FP16)
-  {
-     if(IsDebugEnabled())
-       std::cout << "FP16" << std::endl;
-     //FP16 transformations
-     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
-     ng_function->validate_nodes_and_infer_types();
+  if (precision_ == InferenceEngine::Precision::FP16) {
+    if (IsDebugEnabled())
+      std::cout << "FP16" << std::endl;
+    //FP16 transformations
+    ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
+    ng_function->validate_nodes_and_infer_types();
   }
 
   //Serializing nGraph function
-  if(IsDebugEnabled()){
+  if (IsDebugEnabled()) {
     std::string json_string_pm = serialize(ng_function, 4);
     std::ofstream out_pm("serialize_function_after_PM.json");
     out_pm << json_string_pm;
@@ -343,9 +337,9 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
 }
 
 void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
-    std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto.SerializeToOstream(&outfile);
-    outfile.close();
+  std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+  model_proto.SerializeToOstream(&outfile);
+  outfile.close();
 }
 
 void IntelGraph::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {

@@ -15,26 +15,26 @@
 namespace onnxruntime {
 namespace intel_ep {
 
-    // Singleton class that manages all the backends
-    class BackendManager {
-        public:
-          BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger);
-          void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
-          void ShutdownBackendManager();
+// Singleton class that manages all the backends
+class BackendManager {
+ public:
+  BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger);
+  void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
+  void ShutdownBackendManager();
 
-        private:
-          ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) const;
-          bool ModelHasSymbolicInputDims(const ONNX_NAMESPACE::ModelProto& model_proto) const;
+ private:
+  ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) const;
+  bool ModelHasSymbolicInputDims(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 
-          std::string device_id_;
-          InferenceEngine::Precision precision_;
-          std::string precision_str_;
-          ONNX_NAMESPACE::ModelProto model_proto_;
-          bool has_dynamic_input_shape_ = false;
-          std::shared_ptr<IntelGraph> concrete_backend_;
-          std::map<std::string, std::shared_ptr<IntelGraph>> backend_map_;
-          std::vector<int> input_indexes_;
-    };
+  std::string device_id_;
+  InferenceEngine::Precision precision_;
+  std::string precision_str_;
+  ONNX_NAMESPACE::ModelProto model_proto_;
+  bool has_dynamic_input_shape_ = false;
+  std::shared_ptr<IntelGraph> concrete_backend_;
+  std::map<std::string, std::shared_ptr<IntelGraph>> backend_map_;
+  std::vector<int> input_indexes_;
+};
 
-} // namespace intel_ep
-} // namespace onnxruntime
+}  // namespace intel_ep
+}  // namespace onnxruntime
