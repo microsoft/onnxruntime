@@ -8,6 +8,8 @@
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
+ORT_RUNTIME_CLASS(ExecutionProvider);
+ORT_RUNTIME_CLASS(OperatorRegistry);
 
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
@@ -27,43 +29,44 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* GetSequenceElementType)(_In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   // OrtModel methods
-  OrtStatus*(ORT_API_CALL* CreateModel)(_In_ const ORTCHAR_T* model_path, _Outptr_ OrtModel** out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* CreateModel)(_In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* CreateModel)(_In_ const OrtModel* in, _Outptr_ OrtModel** out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* CreateModel)(ORTCHAR_T* model_path, _Outptr_ OrtModel** out)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetAuthor(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const author, _Out_ size_t* len)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetName(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const name, _Out_ size_t* len)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const domain, _Out_ size_t* len)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetDescription(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const description, _Out_ size_t* len)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetVersion(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetInputCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetOutputCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetInputName(_In_ const OrtModel* model, _Out_ const char** input_name, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetOutputName(_In_ const OrtModel* model, _Out_ const char** output_name, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetInputDescription(_In_ const OrtModel* model, _Out_ const char** input_description, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetOutputDescription(_In_ const OrtModel* model, _Out_ const char** output_description, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetInputTypeInfo(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetOutputTypeInfo(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetMetadataCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* ModelGetMetadata(_In_ const OrtModel* model, _Out_ size_t* count, _Out_ const ORTCHAR_T* const key, _Out_ size_t* key_len, _Out_ const ORTCHAR_T* const value, _Out_ size_t* value_len)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModelFromPath)(_In_ const ORTCHAR_T* model_path, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateModelFromData)(_In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CopyModel)(_In_ const OrtModel* in, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetAuthor)(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const author, _Out_ size_t* len)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetName)(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const name, _Out_ size_t* len)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetDomain)(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const domain, _Out_ size_t* len)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetDescription)(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const description, _Out_ size_t* len)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetVersion)(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetInputCount)(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetOutputCount)(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetInputName)(_In_ const OrtModel* model, _Out_ const char** input_name, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetOutputName)(_In_ const OrtModel* model, _Out_ const char** output_name, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetInputDescription)(_In_ const OrtModel* model, _Out_ const char** input_description, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetOutputDescription)(_In_ const OrtModel* model, _Out_ const char** output_description, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetInputTypeInfo)(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetOutputTypeInfo)(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetMetadataCount)(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelGetMetadata)(_In_ const OrtModel* model, _Out_ size_t* count, _Out_ const ORTCHAR_T* const key, _Out_ size_t* key_len, _Out_ const ORTCHAR_T* const value, _Out_ size_t* value_len)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelCheckIfValid)(_In_ OrtModel* model, _Out_ bool* valid)NO_EXCEPTION;
 
   // OrtSession methods
   OrtStatus*(ORT_API_CALL* CreateSessionWihtoutModel)(_In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionRegisterExecutionProvider)(_In_ OrtSession* session, onnxruntime::IExecutionProvider* provider)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session, onnxruntime::IExecutionProvider* provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionRegisterExecutionProvider)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ OrtOperatorRegistry* registry)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel * model)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const ORTCHAR_T* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
       
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext(onnxruntime::IExecutionProvider * dml_provider)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
   ORT_CLASS_RELEASE(Model);
   ORT_CLASS_RELEASE(MapTypeInfo);
   ORT_CLASS_RELEASE(SequenceTypeInfo);
+  ORT_CLASS_RELEASE(ExecutionProvider);
+  ORT_CLASS_RELEASE(OperatorRegistry);
 };

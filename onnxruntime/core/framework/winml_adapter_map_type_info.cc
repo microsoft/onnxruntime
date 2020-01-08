@@ -5,7 +5,7 @@
 #include "winml_adapter_map_type_info.h"
 #include "onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
-#include "ort_apis.h"
+#include "core/session/ort_apis.h"
 #include "../../../winml/adapter/winml_adapter_apis.h"
 #include "error_code_helper.h"
 
@@ -51,7 +51,7 @@ OrtStatus* OrtMapTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* type_p
 
   // Get the value type of the map
   OrtTypeInfo* map_value_type_info = nullptr;
-  if (auto status = OrtTypeInfo::FromTypeProto(&type_proto_map->value_type(), &map_value_type_info))
+  if (auto status = OrtTypeInfo::FromTypeProto(&type_proto_map.value_type(), &map_value_type_info))
   {
     return status;
   }

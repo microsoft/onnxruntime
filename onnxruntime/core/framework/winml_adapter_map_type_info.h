@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "../../winml/adapter/winml_adapter_c_apis.h"
+#include "../../winml/adapter/winml_adapter_c_api.h"
 
 struct OrtMapTypeInfo {
  public:

@@ -17,11 +17,11 @@
 #include "DmlOrtSessionBuilder.h"
 #endif USE_DML
 
-uint32_t GetVersion1Api();
+const OrtApi* GetVersion1Api();
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-static constexpr OrtApi winml_adapter_api_1 = {
+static constexpr winmla::WinmlAdapterApi winml_adapter_api_1 = {
   // OrtTypeInfo Casting methods
   &winmla::CastTypeInfoToMapTypeInfo,
   &winmla::CastTypeInfoToSequenceTypeInfo,
@@ -37,7 +37,6 @@ static constexpr OrtApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* CreateModel)(_In_ const ORTCHAR_T* model_path, _Outptr_ OrtModel** out)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* CreateModel)(_In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* CreateModel)(_In_ const OrtModel* in, _Outptr_ OrtModel** out)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* CreateModel)(ORTCHAR_T* model_path, _Outptr_ OrtModel** out)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetAuthor(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const author, _Out_ size_t* len)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetName(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const name, _Out_ size_t* len)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const ORTCHAR_T* const domain, _Out_ size_t* len)NO_EXCEPTION;
@@ -73,6 +72,8 @@ static constexpr OrtApi winml_adapter_api_1 = {
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
   &winmla::ReleaseSequenceTypeInfo,
+  &winmla::ReleaseExecutionProvider,
+  &winmla::ReleaseOperatorRegistry
 };
 
 const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(OrtApi* ort_api) NO_EXCEPTION {
@@ -82,4 +83,12 @@ const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(OrtApi* ort_api) NO_EXCEP
   }
 
   return nullptr;
+}
+
+ORT_API(void, winmla::ReleaseExecutionProvider, OrtExecutionProvider* ptr) {
+  delete ptr;
+}
+
+ORT_API(void, winmla::ReleaseOperatorRegistry, OrtOperatorRegistry* ptr) {
+  delete ptr;
 }

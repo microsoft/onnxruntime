@@ -5,7 +5,7 @@
 #include "winml_adapter_sequence_type_info.h"
 #include "onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
-#include "ort_apis.h"
+#include "core/session/ort_apis.h"
 #include "../../../winml/adapter/winml_adapter_apis.h"
 #include "error_code_helper.h"
 
@@ -23,7 +23,7 @@ OrtStatus* OrtSequenceTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* t
 
   auto type_proto_sequence = type_proto->sequence_type();
   OrtTypeInfo* sequence_key_type_info = nullptr;
-  if (auto status = OrtTypeInfo::FromTypeProto(&type_proto_sequence->elem_type(), &sequence_key_type_info))
+  if (auto status = OrtTypeInfo::FromTypeProto(&type_proto_sequence.elem_type(), &sequence_key_type_info))
   {
     return status;
   }
