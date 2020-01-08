@@ -218,7 +218,7 @@ struct OrtApiBase {
 };
 typedef struct OrtApiBase OrtApiBase;
 
-ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION;
+ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
 struct OrtApi {
   /**
