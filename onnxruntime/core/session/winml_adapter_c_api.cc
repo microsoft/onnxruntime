@@ -1,20 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#include "pch.h"
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
-#include "WinMLAdapterErrors.h"
-#include "CustomRegistryHelper.h"
-#include "PheonixSingleton.h"
-#include "LotusEnvironment.h"
-#include "AbiCustomRegistryImpl.h"
 
 #ifdef USE_DML
-#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
-#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
-#include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
-#include "DmlOrtSessionBuilder.h"
+//#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+//#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
+//#include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
 #endif USE_DML
 
 const OrtApi* GetVersion1Api();
@@ -83,12 +76,4 @@ const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(OrtApi* ort_api) NO_EXCEP
   }
 
   return nullptr;
-}
-
-ORT_API(void, winmla::ReleaseExecutionProvider, OrtExecutionProvider* ptr) {
-  //delete ptr;
-}
-
-ORT_API(void, winmla::ReleaseOperatorRegistry, OrtOperatorRegistry* ptr) {
-  //delete ptr;
 }

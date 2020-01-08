@@ -133,9 +133,6 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/WinMLAdapter.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
-	${winml_adapter_dir}/winml_adapter_apis.h
-	${winml_adapter_dir}/winml_adapter_c_api.h
-	${winml_adapter_dir}/winml_adapter_c_api.cpp
     )
 
 if (onnxruntime_USE_DML)

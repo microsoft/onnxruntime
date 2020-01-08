@@ -2,13 +2,11 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "../../winml/adapter/winml_adapter_c_api.h"
-
 struct OrtModel {
  public:
 
  private:
   OrtModel() = default;
-  OrtModel(const OrtMapTypeInfo& other) = delete;
-  OrtModel& operator=(const OrtMapTypeInfo& other) = delete;
+  OrtModel(const OrtModel& other) = delete;
+  OrtModel& operator=(const OrtModel& other) = delete;
 };
