@@ -41,6 +41,7 @@ static void RegisterMinMaxScalarFeaturizerVer1();
 static void RegisterMissingDummiesFeaturizerVer1();
 static void RegisterRobustScalarFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
+static void RegisterTimeSeriesImputerFeaturizerVer1();
 
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
@@ -55,6 +56,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterMissingDummiesFeaturizerVer1();
   RegisterRobustScalarFeaturizerVer1();
   RegisterStringFeaturizerVer1();
+  RegisterTimeSeriesImputerFeaturizerVer1();
 }
 
 // ----------------------------------------------------------------------
@@ -660,7 +662,7 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
     all missing column values are populated according to a strategy (forward fill,
     backward fill, mode, etc.).
 
-    This Featurizer is unique in that it will produce 0:N rows, depending upon the
+    This Featurizer is unique in that it will produce 0:N rows per invocation, depending upon the
     input data.
 
     C++-style pseudo signature:
@@ -734,29 +736,38 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
       .Input(
           1,
           "Times",
-          "This is a single dimensional tensor [R], one timestamp per row.",
+          "Tensor of timestamps [B][R] or [R] where B is number of batches and R number of rows. B is assumed to be 1 for [R].",
           "T1")
       .Input(
           2,
-          "Rows",
-          "This is a tensor which carries tabular data."
-          "It is a tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
+          "Keys",
+          "Composite keys tensor of shape [B][R][K] or [R][K]. R is the same as Input(1)",
+          "T2")
+      .Input(
+          3,
+          "Data",
+          "It is a data tensor of shape [B][R][C] or [R][C] where R - rows and C - columns. R must be the same with Input(1)",
           "T2")
       .Output(
           0,
           "Added",
-          "Tensor of boolean with a shape of [IR]. Contains a boolean for each row in the result where true represents added row.",
+          "Tensor of boolean with a shape of [B][IR] or [IR]. Contains a boolean for each row in the result where true represents added row.",
           "T3")
       .Output(
           1,
-          "OutputTimes",
-          "This is a single dimensional tensor of timestamps of shape [IR], where IR is the number of output rows.",
+          "ImputedTimes",
+          "This is a single dimensional tensor of timestamps of shape [B][IR] or [IR], where IR is the number of output rows.",
           "T1")
       .Output(
           2,
-          "Output",
-          "Tensor of shape [IR][C] where IR is the number of rows in the result which can be 0. C is the number of columns."
-          "The type of the result must match the type of Input(2)",
+          "ImputedKeys",
+          "Contains keys along with the imputed keys. Tensor of shape [B][IR][K] or [IR][K].",
+          "T2")
+      .Output(
+          3,
+          "ImputedData",
+          "Tensor of shape [B][IR][C] or [IR][C] where IR is the number of rows in the output. It will always produce at least R number of rows."
+          "C is the number of columns.",
           "T2")
       .TypeConstraint(
           "T0",
