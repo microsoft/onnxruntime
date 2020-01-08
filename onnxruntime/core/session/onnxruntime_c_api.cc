@@ -1460,7 +1460,7 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
+const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
   return &ort_api_base;
 }
 
