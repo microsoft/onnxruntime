@@ -29,17 +29,11 @@ namespace intel_ep {
           std::string device_id_;
           InferenceEngine::Precision precision_;
           std::string precision_str_;
-          size_t num_inf_reqs_;
-
-          //const logging::Logger& logger_;
-
           ONNX_NAMESPACE::ModelProto model_proto_;
-
           bool has_dynamic_input_shape_ = false;
           std::shared_ptr<IntelGraph> concrete_backend_;
           std::map<std::string, std::shared_ptr<IntelGraph>> backend_map_;
           std::vector<int> input_indexes_;
-
     };
 
 } // namespace intel_ep

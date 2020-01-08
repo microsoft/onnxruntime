@@ -31,9 +31,6 @@ namespace intel_ep {
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 const std::string IntelGraph::log_tag = "[Intel-EP] ";
 
-// InferenceEngine::Core ie_;
-
-
 //TODO: Remove this before production
 bool IsDebugEnabled(){
 
@@ -57,19 +54,22 @@ IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
   // sets number of maximum parallel inferences
   num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
+  InferenceEngine::Core ie;
   ie_cnn_network_ = CreateCNNNetwork(model_proto);
+  // auto unused = CreateCNNNetwork(model_proto);
+  // ie_cnn_network_ = std::make_shared<InferenceEngine::CNNNetwork>(
+  //   ie.ReadNetwork("/home/manohar/Desktop/model-zoo/alexnet/alexnet_fp32/model.xml",
+  //   "/home/manohar/Desktop/model-zoo/alexnet/alexnet_fp32/model.bin"));
+
   SetIODefs(ie_cnn_network_);
 
-  // InferenceEngine::Core ie;
   // Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exeNetwork = ie_.LoadNetwork(*ie_cnn_network_, device_id_);
-  // exec_network_ = ie.LoadNetwork(*ie_cnn_network_, device_id_);
-
-  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
+  InferenceEngine::ExecutableNetwork exe_network_ = ie.LoadNetwork(*ie_cnn_network_, device_id_);
+  LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
   // Create infer request
   for (size_t i = 0; i < num_inf_reqs_; i++) {
-    auto infRequest = exeNetwork.CreateInferRequestPtr();
+    auto infRequest = exe_network_.CreateInferRequestPtr();
 
     infer_requests_.push_back(infRequest);
   }
@@ -98,7 +98,6 @@ InferenceEngine::Precision IntelGraph::ConvertPrecisionONNXToIntel(
 }
 
 void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network) {
-  LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
   // Configure input & output
   // Prepare input blobs
   if (network){
@@ -177,26 +176,9 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
   }
 }
 
-// size_t IntelGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
-//                                    InferenceEngine::SizeVector graph_dims) {
-//   size_t batch_size = 1;
-
-//   // All the inputs and outputs are batched the same way.
-//   // So it is sufficient to use any one of these tensors to deduce the batch size.
-//   const auto& input_shape = ort.GetTensorShape(ort.GetTensorTypeAndShape(input_tensor));
-
-//   if ((input_shape.size() == graph_dims.size() && input_shape[0] > 1 && graph_dims[0] == 1) || (input_shape.size() == graph_dims.size() + 1)) {
-//     batch_size = input_shape[0];
-//   }
-
-//   LOGS_DEFAULT(INFO) << log_tag << "Deduced batch size: " << batch_size;
-
-//   return batch_size;
-// }
-
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[],
+void IntelGraph::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* input_tensors[],
                                      size_t batch_slice_idx,
                                      size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -217,6 +199,12 @@ void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input
 
     // Copy input data into OpenVINO's input buffer
     std::memcpy(graph_input_buffer, batch_memory_offset, input_data_size);
+
+    std::cout << "INPUT VALUES\n";
+    float* buf = (float*)graph_input_buffer;
+    for(int i=0; i<10; i++) {
+      std::cout << *(buf) << std::endl;
+    }
   }
 
   // Start Async inference
@@ -225,7 +213,7 @@ void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[],
+void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_tensors[],
                                         size_t batch_slice_idx,
                                         size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -249,10 +237,17 @@ void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_t
 
     // Copy output results back to ONNX-RT's output buffers
     std::memcpy(batch_memory_offset, graph_output_buffer, output_data_size);
+
+    std::cout << "OUTPUT VALUES\n";
+    float* buf = (float*)graph_output_buffer;
+    for(int i=0; i<10; i++) {
+      std::cout << *(buf) << std::endl;
+    }
+
   }
 }
 
-void IntelGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[],
+void IntelGraph::GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, const OrtValue* input_tensors[],
                                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   size_t input_count = ie_cnn_network->getInputsInfo().size();
 
@@ -261,7 +256,7 @@ void IntelGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context
   }
 }
 
-void IntelGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
+void IntelGraph::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
@@ -353,55 +348,11 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
     outfile.close();
 }
 
-// std::shared_ptr<ONNX_NAMESPACE::ModelProto> AddInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi& ort, OrtKernelContext* context) {
-
-//   size_t num_inputs = ort.KernelContext_GetInputCount(context);
-//   auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
-//   std::string proto_str;
-//   model_proto.SerializeToString(&proto_str);
-//   model_copy->ParseFromString(proto_str);
-//   auto graph_proto = model_copy->mutable_graph();
-
-//   for(size_t i=0; i < num_inputs; i++) {
-//     auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
-//     g_in_shape->clear_dim();
-
-//     auto input_tensor = ort.KernelContext_GetInput(context, i);
-//     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-//     auto tensor_shape = ort.GetTensorShape(tensor_info);
-//     ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-
-//     for(size_t dim=0; dim < tensor_shape.size(); dim++) {
-//       g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
-//     }
-//   }
-
-//   return model_copy;
-// }
-
-void IntelGraph::Infer(Ort::CustomOpApi ort, OrtKernelContext* context) {
+void IntelGraph::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
-
-  // auto model_with_shape_info = AddInputShapeInfo(model_proto, ort, context);
-
-  // if(IsDebugEnabled()) {
-  //   DumpOnnxModelProto(*model_with_shape_info, "subgraph-with-concrete-shape.onnx");
-  //   DumpOnnxModelProto(model_proto, "original-subgraph.onnx");
-  // }
-
-  // InferenceEngine::ExecutableNetwork exec_network_ = ie.LoadNetwork(*ie_cnn_network_, device_id_);
-  // std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
-
-  // // Create infer request
-  // for (size_t i = 0; i < num_inf_reqs_; i++) {
-  //   auto infRequest = exec_network_.CreateInferRequestPtr();
-
-  //   infer_requests_.push_back(infRequest);
-  // }
-  // LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
 
   // Get Input and Output tensors
   size_t input_count = ie_cnn_network_->getInputsInfo().size();

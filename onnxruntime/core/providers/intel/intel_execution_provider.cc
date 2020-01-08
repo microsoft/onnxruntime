@@ -37,53 +37,10 @@ constexpr const char* Intel = "Intel";
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
 
-  //ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
   ORT_UNUSED_PARAMETER(info);
-
   DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel,     OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
   }
-
-
-  /*
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
-  DeviceAllocatorRegistrationInfo default_memory_info{
-    OrtMemTypeDefault,
-    std::move(default_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-
-  auto cpu_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-      NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
-  DeviceAllocatorRegistrationInfo cpu_memory_info{
-    OrtMemTypeCPUOutput,
-    std::move(cpu_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  try {
-    ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
-  } catch (const std::exception& exp) {
-    LOGS_DEFAULT(FATAL) << "Exception while creating nGraph " << info.ng_backend_type << " Backend: " << std::string(exp.what());
-  } catch (...) {
-    LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
-    throw;
-  }
-
-} */
 
 //Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
@@ -617,7 +574,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   static size_t op_counter = 0;
 
   auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
+  meta_def->name = "Intel-EP-subgraph_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
@@ -895,38 +852,3 @@ common::Status IntelExecutionProvider::Compile(
   return Status::OK();
 }
 }  // namespace onnxruntime
-
-/*
-Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node : fused_nodes) {
-    NodeComputeInfo compute_info;
-
-    // Local copy of backend since, class members cannot be captured.
-    auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
-                                     (ComputeContext* context, FunctionState* state)
-    {
-      auto* p = new ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
-      *state = p;
-      return 0;
-    };
-
-    compute_info.release_state_func = [](FunctionState state) {
-      if (state)
-        delete reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-    };
-
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-      return ng_custom_op->Compute(api, context);
-    };
-
-    node_compute_funcs.push_back(compute_info);
-  }
-
-  return Status::OK();
-}
-
-}  // namespace onnxruntime
-*/

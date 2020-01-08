@@ -64,10 +64,10 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
     model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
     if(ModelHasSymbolicInputDims(model_proto_)) {
-      LOGS_DEFAULT(INFO) << "[UEP] Model has symbolic input dims. Defering backend initialization";
+      LOGS_DEFAULT(INFO) << "[Intel-EP] Model has symbolic input dims. Defering backend initialization";
       has_dynamic_input_shape_ = true;
     } else {
-      LOGS_DEFAULT(INFO) << "[UEP] Model has concreate input dims. Initializing backend";
+      LOGS_DEFAULT(INFO) << "[Intel-EP] Model has concreate input dims. Initializing backend";
       has_dynamic_input_shape_ = false;
       concrete_backend_ = std::make_shared<IntelGraph>(model_proto_, input_indexes_, device_id_, precision_);
     }
