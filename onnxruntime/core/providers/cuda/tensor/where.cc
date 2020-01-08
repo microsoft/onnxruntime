@@ -183,6 +183,7 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
 #define SPECIALIZED_COMPUTE(T) \
   SPECIALIZED_COMPUTE_WITH_NAME(T, T)
 
+SPECIALIZED_COMPUTE(uint8_t)
 SPECIALIZED_COMPUTE(int32_t)
 SPECIALIZED_COMPUTE(int64_t)
 SPECIALIZED_COMPUTE(float)
