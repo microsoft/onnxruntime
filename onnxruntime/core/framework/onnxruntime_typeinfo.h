@@ -4,7 +4,7 @@
 #pragma once
 #include <atomic>
 #include "core/session/onnxruntime_c_api.h"
-#include "../winml/adapter/winml_adapter_c_api.h"
+#include "core/session/winml_adapter_c_api.h"
 
 namespace onnxruntime {
 class DataTypeImpl;

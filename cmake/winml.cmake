@@ -8,12 +8,13 @@ include(winml_cppwinrt.cmake)
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
 set(target_folder ONNXRuntime/winml)
+set(winml_adapter_dir ${REPO_ROOT}/winml/adapter)
 set(winml_api_root ${REPO_ROOT}/winml/api)
 set(winml_dll_dir ${REPO_ROOT}/winml/dll)
 set(winml_lib_dir ${REPO_ROOT}/winml/lib)
 set(winml_lib_api_dir ${REPO_ROOT}/winml/lib/api)
-set(winml_adapter_dir ${REPO_ROOT}/winml/adapter)
 set(winml_lib_api_image_dir ${REPO_ROOT}/winml/lib/api.image)
+set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
@@ -115,6 +116,58 @@ set_target_properties(winml_lib_telemetry
 
 # Link libraries
 target_link_libraries(winml_lib_telemetry PRIVATE wil)
+
+###########################
+# Add winml_lib_ort
+###########################
+
+# Add static library that will be archived/linked for both static/dynamic library
+add_library(winml_lib_ort STATIC
+   ${winml_lib_api_ort_dir}/inc/OrtEngineFactory.h
+   ${winml_lib_api_ort_dir}/OrtEngine.h
+   ${winml_lib_api_ort_dir}/OrtEngine.cpp
+   ${winml_lib_api_ort_dir}/pch.h
+  )
+
+# Compiler options
+target_compile_features(winml_lib_ort PRIVATE cxx_std_17)
+target_compile_options(winml_lib_ort PRIVATE /GR- /await /wd4238)
+
+# Compiler definitions
+target_compile_definitions(winml_lib_ort PRIVATE PLATFORM_WINDOWS)
+target_compile_definitions(winml_lib_ort PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
+
+# Specify the usage of a precompiled header
+target_precompiled_header(winml_lib_ort pch.h)
+
+# Includes
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
+
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_core_dir})
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_ort_dir})
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_common_dir}/inc)
+target_include_directories(winml_lib_ort PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+target_include_directories(winml_lib_ort PRIVATE ${ONNXRUNTIME_ROOT})
+
+set_target_properties(winml_lib_ort
+  PROPERTIES
+  FOLDER
+  ${target_folder})
+
+# Add deps
+add_dependencies(winml_lib_ort winml_sdk_cppwinrt)
+add_dependencies(winml_lib_ort winml_api)
+add_dependencies(winml_lib_ort winml_api_native)
+add_dependencies(winml_lib_ort winml_api_native_internal)
+
+# Link libraries
+target_link_libraries(winml_lib_ort PRIVATE wil)
+
 
 ###########################
 # Add winml_adapter
@@ -327,6 +380,7 @@ target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir}/pch)
 target_include_directories(winml_lib_api PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_image_dir}/inc)
+target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_ort_dir}/inc)
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_telemetry_dir}/inc)
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_common_dir}/inc)
 
@@ -470,6 +524,7 @@ target_link_libraries(winml_dll PRIVATE wil)
 #target_link_libraries(winml_dll PRIVATE windowsapp.lib)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
+target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 target_link_libraries(winml_dll PRIVATE onecoreuap_apiset.lib)
 target_link_libraries(winml_dll PRIVATE ${DBGHELP})

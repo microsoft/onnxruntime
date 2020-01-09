@@ -10,6 +10,20 @@
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
 
+#include "OrtEngineFactory.h"
+
+static void test_winml_adapter_c_api(std::string path) {
+  Microsoft::WRL::ComPtr<WinML::IEngine> engine;
+  WINML_THROW_IF_FAILED(CreateOrtEngine(&engine));
+
+  Microsoft::WRL::ComPtr<WinML::IModel> model;
+  engine->CreateModel(path.c_str(), path.size(), &model);
+
+  const char* author;
+  size_t len;
+  WINML_THROW_IF_FAILED(model->GetAuthor(&author, &len));
+}
+
 namespace winrt::Windows::AI::MachineLearning::implementation {
 LearningModel::LearningModel(
     const hstring& path,
@@ -26,8 +40,9 @@ LearningModel::LearningModel(
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(path.c_str(), model_proto_.put()));
 
-  Initialize();
+  test_winml_adapter_c_api(path);
 
+  Initialize();
 }
 WINML_CATCH_ALL
 
@@ -42,7 +57,6 @@ LearningModel::LearningModel(
       model_proto_.put()));
 
   Initialize();
-
 }
 WINML_CATCH_ALL
 
@@ -85,7 +99,7 @@ WINML_CATCH_ALL
 
 wfc::IMapView<hstring, hstring>
 LearningModel::Metadata() try {
-  ABI::Windows::Foundation::Collections::IMapView<HSTRING,HSTRING>* metadata;
+  ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>* metadata;
   wfc::IMapView<hstring, hstring> out;
   WINML_THROW_IF_FAILED(model_info_->GetModelMetadata(&metadata));
   winrt::attach_abi(out, metadata);

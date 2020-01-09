@@ -23,16 +23,17 @@ ORT_API_STATUS_IMPL(GetMapValueType, _In_ OrtMapTypeInfo* map_type_info, _Outptr
 
 // OrtSequenceTypeInfo Accessors
 ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);
-/*
+
 // OrtModel methods
-ORT_API_STATUS_IMPL(CreateModel, _In_ const ORTCHAR_T* model_path, _Outptr_ OrtModel** out);
-ORT_API_STATUS_IMPL(CreateModel, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
-ORT_API_STATUS_IMPL(CreateModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
-ORT_API_STATUS_IMPL(CreateModel, ORTCHAR_T* model_path, _Outptr_ OrtModel** out);
-ORT_API_STATUS_IMPL(ModelGetAuthor, In_ const OrtModel* model, _Out_ const ORTCHAR_T* const author, _Out_ size_t* len);
-ORT_API_STATUS_IMPL(ModelGetName, In_ const OrtModel* model, _Out_ const ORTCHAR_T* const name, _Out_ size_t* len);
-ORT_API_STATUS_IMPL(ModelGetDomain, In_ const OrtModel* model, _Out_ const ORTCHAR_T* const domain, _Out_ size_t* len);
-ORT_API_STATUS_IMPL(ModelGetDescription, In_ const OrtModel* model, _Out_ const ORTCHAR_T* const description, _Out_ size_t* len);
+ORT_API_STATUS_IMPL(CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out);
+ORT_API_STATUS_IMPL(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
+
+/*
+ORT_API_STATUS_IMPL(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
+ORT_API_STATUS_IMPL(ModelGetAuthor, In_ const OrtModel* model, _Out_ const char** const author, _Out_ const size_t* len);
+ORT_API_STATUS_IMPL(ModelGetName, In_ const OrtModel* model, _Out_ const char** const name, _Out_ const size_t* len);
+ORT_API_STATUS_IMPL(ModelGetDomain, In_ const OrtModel* model, _Out_ const char** const domain, _Out_ const size_t* len);
+ORT_API_STATUS_IMPL(ModelGetDescription, In_ const OrtModel* model, _Out_ const char** const description, _Out_ const size_t* len);
 ORT_API_STATUS_IMPL(ModelGetVersion, In_ const OrtModel* model, _Out_ int64_t* version);
 ORT_API_STATUS_IMPL(ModelGetInputCount, In_ const OrtModel* model, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(ModelGetOutputCount, In_ const OrtModel* model, _Out_ size_t* count);
@@ -43,7 +44,7 @@ ORT_API_STATUS_IMPL(ModelGetOutputDescription, In_ const OrtModel* model, _Out_ 
 ORT_API_STATUS_IMPL(ModelGetInputTypeInfo, In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS_IMPL(ModelGetOutputTypeInfo, In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS_IMPL(ModelGetMetadataCount, In_ const OrtModel* model, _Out_ size_t* count);
-ORT_API_STATUS_IMPL(ModelGetMetadata, In_ const OrtModel* model, _Out_ size_t* count, _Out_ const ORTCHAR_T* const key, _Out_ size_t* key_len, _Out_ const ORTCHAR_T* const value, _Out_ size_t* value_len);
+ORT_API_STATUS_IMPL(ModelGetMetadata, In_ const OrtModel* model, _Out_ size_t* count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
 ORT_API_STATUS_IMPL(ModelCheckIfValid, _In_ OrtModel* model, _Out_ bool* valid);
 
 // OrtSession methods
@@ -55,7 +56,7 @@ ORT_API_STATUS_IMPL(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In
 ORT_API_STATUS_IMPL(SessionLoadModel, _In_ OrtSession* session, _In_ OrtModel * model);
 ORT_API_STATUS_IMPL(SessionStartProfiling, _In_ OrtSession* session);
 ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* session);
-ORT_API_STATUS_IMPL(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const ORTCHAR_T* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
+ORT_API_STATUS_IMPL(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
     
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
 ORT_API_STATUS_IMPL(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider * dml_provider);

@@ -6,7 +6,7 @@
 #include "onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "../../../winml/adapter/winml_adapter_apis.h"
+#include "core/session/winml_adapter_apis.h"
 #include "error_code_helper.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
