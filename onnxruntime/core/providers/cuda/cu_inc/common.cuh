@@ -291,8 +291,5 @@ struct GridDim {
   if (id >= N)                                     \
     return;
 
-#define ORT_MAX_32F (3.402823466e+38f)
-#define ORT_LOWEST_32F (-3.402823466e+38f)
-
 }  // namespace cuda
 }  // namespace onnxruntime
