@@ -676,7 +676,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Update shape ranges
       bool dimension_update = false;
       auto trt_builder = trt_state->builder;
-      auto trt_profile = trt_builder->createOptimizationProfile();
+      nvinfer1::IOptimizationProfile* trt_profile = nullptr; //trt_builder->createOptimizationProfile();
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         // TODO: check if getInput indexing is same with binding index
         auto input = trt_state->network->getInput(i);
@@ -714,6 +714,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           }
 
           if (dimension_update) {
+            if (trt_profile == nullptr) {
+              trt_profile = trt_builder->createOptimizationProfile();
+            }
             if (engine.isShapeBinding(i)) {
               std::vector<int32_t> shapes_min(nb_dims), shapes_opt(nb_dims), shapes_max(nb_dims);
               for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -734,6 +737,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
         // TensorRT6 requires optimization profile to be defined for all inputs if any input dimension is symbolic
         if (dynamic_shape) {
+          if (trt_profile == nullptr) {
+            trt_profile = trt_builder->createOptimizationProfile();
+          }
           trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
           trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
           trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
