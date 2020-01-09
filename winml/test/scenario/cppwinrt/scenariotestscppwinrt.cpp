@@ -19,7 +19,6 @@
 #include "DeviceHelpers.h"
 #include "filehelpers.h"
 #include "robuffer.h"
-#include "runtimeParameters.h"
 #include "Windows.AI.MachineLearning.Native.h"
 #include "Windows.Graphics.DirectX.Direct3D11.interop.h"
 #include "windows.ui.xaml.media.dxinterop.h"
@@ -30,6 +29,7 @@
 #include <initguid.h>
 #include <MemoryBuffer.h>
 #include "scenariotestscppwinrt.h"
+#include <iostream>
 #if __has_include("dxcore.h")
 #define ENABLE_DXCORE 1
 #endif
@@ -62,7 +62,7 @@ static void ScenarioCppWinrtGpuSkipEdgeCoreTestSetup() {
   SKIP_EDGECORE
 };
 
-static void ScenarioCppWinrtTest_Sample1() {
+static void Sample1() {
   LearningModel model = nullptr;
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(filePath));
@@ -140,7 +140,7 @@ static void BindFeatures(LearningModelBinding binding, IVectorView<ILearningMode
 }
 
 //! Scenario1 : Load , bind, eval a model using all the system defaults (easy path)
-static void ScenarioCppWinrtTest_Scenario1LoadBindEvalDefault() {
+static void Scenario1LoadBindEvalDefault() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -161,7 +161,7 @@ static void ScenarioCppWinrtTest_Scenario1LoadBindEvalDefault() {
 
 //! Scenario2: Load a model from stream
 //          - winRT, and win32
-static void ScenarioCppWinrtTest_Scenario2LoadModelFromStream() {
+static void Scenario2LoadModelFromStream() {
   // get a stream
   std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
   auto storageFile = StorageFile::GetFileFromPathAsync(path).get();
@@ -173,11 +173,11 @@ static void ScenarioCppWinrtTest_Scenario2LoadModelFromStream() {
   // load a model
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromStreamAsync(streamref).get());
-  EXPECT_TRUE(model != nullptr);
+  WINML_EXPECT_TRUE(model != nullptr);
 }
 
 //! Scenario3: pass a SoftwareBitmap into a model
-static void ScenarioCppWinrtGpuTest_Scenario3SoftwareBitmapInputBinding() {
+static void Scenario3SoftwareBitmapInputBinding() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -219,7 +219,7 @@ winrt::Windows::Foundation::IAsyncOperation<LearningModelEvaluationResult> DoEva
   return session.EvaluateAsync(binding, L"");
 }
 
-static void ScenarioCppWinrtTest_Scenario5AsyncEval() {
+static void Scenario5AsyncEval() {
   auto task = DoEvalAsync();
 
   while (task.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
@@ -233,7 +233,7 @@ static void ScenarioCppWinrtTest_Scenario5AsyncEval() {
 //! Scenario6: use BindInputWithProperties - BitmapBounds, BitmapPixelFormat
 // apparently this scenario is cut for rs5. - not cut, just rewprked. move props
 // to the image value when that is checked in.
-static void ScenarioCppWinrtGpuTest_Scenario6BindWithProperties() {
+static void Scenario6BindWithProperties() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -277,7 +277,7 @@ static void ScenarioCppWinrtGpuTest_Scenario6BindWithProperties() {
 }
 
 //! Scenario7: run eval without creating a binding object
-static void ScenarioCppWinrtTest_Scenario7EvalWithNoBind() {
+static void Scenario7EvalWithNoBind() {
   auto map = winrt::single_threaded_map<hstring, winrt::Windows::Foundation::IInspectable>();
 
   // load a model
@@ -297,7 +297,7 @@ static void ScenarioCppWinrtTest_Scenario7EvalWithNoBind() {
 
 //! Scenario8: choose which device to run the model on - PreferredDeviceType, PreferredDevicePerformance, SetDeviceFromSurface, SetDevice
 // create a session on the default device
-static void ScenarioCppWinrtTest_Scenario8SetDeviceSampleDefault() {
+static void Scenario8SetDeviceSampleDefault() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -307,7 +307,7 @@ static void ScenarioCppWinrtTest_Scenario8SetDeviceSampleDefault() {
 }
 
 // create a session on the CPU device
-static void ScenarioCppWinrtTest_Scenario8SetDeviceSampleCPU() {
+static void Scenario8SetDeviceSampleCPU() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -317,7 +317,7 @@ static void ScenarioCppWinrtTest_Scenario8SetDeviceSampleCPU() {
 }
 
 // create a session on the default DML device
-static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleDefaultDirectX() {
+static void Scenario8SetDeviceSampleDefaultDirectX() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -327,7 +327,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleDefaultDirectX() {
 }
 
 // create a session on the DML device that provides best power
-static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleMinPower() {
+static void Scenario8SetDeviceSampleMinPower() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -337,7 +337,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleMinPower() {
 }
 
 // create a session on the DML device that provides best perf
-static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleMaxPerf() {
+static void Scenario8SetDeviceSampleMaxPerf() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -347,7 +347,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleMaxPerf() {
 }
 
 // create a session on the same device my camera is on
-static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleMyCameraDevice() {
+static void Scenario8SetDeviceSampleMyCameraDevice() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -369,12 +369,12 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleMyCameraDevice() {
     LearningModelDevice dmlDeviceCamera = LearningModelDevice::CreateFromDirect3D11Device(direct3D11Device);
     LearningModelSession dmlSessionCamera(model, dmlDeviceCamera);
   } else {
-    GTEST_SKIP() << "Test skipped because video capture device is missing";
+    WINML_SKIP_TEST("Test skipped because video capture device is missing");
   }
 }
 
 // create a device from D3D11 Device
-static void ScenarioCppWinrtGpuSkipEdgeCoreTest_Scenario8SetDeviceSampleD3D11Device() {
+static void Scenario8SetDeviceSampleD3D11Device() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -386,7 +386,7 @@ static void ScenarioCppWinrtGpuSkipEdgeCoreTest_Scenario8SetDeviceSampleD3D11Dev
       nullptr, D3D_DRIVER_TYPE::D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0,
       D3D11_SDK_VERSION, pD3D11Device.put(), &fl, pContext.put());
   if (FAILED(result)) {
-    GTEST_SKIP() << "Test skipped because d3d11 device is missing";
+    WINML_SKIP_TEST("Test skipped because d3d11 device is missing");
   }
 
   // get dxgiDevice from d3ddevice
@@ -402,7 +402,7 @@ static void ScenarioCppWinrtGpuSkipEdgeCoreTest_Scenario8SetDeviceSampleD3D11Dev
 }
 
 // create a session on the a specific dx device that I chose some other way , note we have to use native interop here and pass a cmd queue
-static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleCustomCommandQueue() {
+static void Scenario8SetDeviceSampleCustomCommandQueue() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -410,7 +410,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleCustomCommandQueue()
   com_ptr<ID3D12Device> pD3D12Device = nullptr;
   DeviceHelpers::AdapterEnumerationSupport support;
   if (FAILED(DeviceHelpers::GetAdapterEnumerationSupport(&support))) {
-    FAIL() << "Unable to load DXGI or DXCore";
+    WINML_LOG_ERROR("Unable to load DXGI or DXCore");
     return;
   }
   HRESULT result = S_OK;
@@ -432,7 +432,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleCustomCommandQueue()
 #endif
 
   if (FAILED(result)) {
-    GTEST_SKIP() << "Test skipped because d3d12 device is missing";
+    WINML_SKIP_TEST("Test skipped because d3d12 device is missing");
     return;
   }
   com_ptr<ID3D12CommandQueue> dxQueue = nullptr;
@@ -449,7 +449,7 @@ static void ScenarioCppWinrtGpuTest_Scenario8SetDeviceSampleCustomCommandQueue()
 }
 
 //pass a Tensor in as an input GPU
-static void ScenarioCppWinrtGpuTest_Scenario9LoadBindEvalInputTensorGPU() {
+static void Scenario9LoadBindEvalInputTensorGPU() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -523,14 +523,14 @@ static void ScenarioCppWinrtGpuTest_Scenario9LoadBindEvalInputTensorGPU() {
   // Testing GetAsD3D12Resource
   com_ptr<ID3D12Resource> pReturnedResource;
   input1imagetensor.as<ITensorNative>()->GetD3D12Resource(pReturnedResource.put());
-  EXPECT_EQ(pReturnedResource.get(), pGPUResource.get());
+  WINML_EXPECT_EQUAL(pReturnedResource.get(), pGPUResource.get());
 
   // Evaluate the model
   winrt::hstring correlationId;
   dmlSessionCustom.EvaluateAsync(modelBinding, correlationId).get();
 }
 
-static void ScenarioCppWinrtGpuTest_Scenario13SingleModelOnCPUandGPU() {
+static void Scenario13SingleModelOnCPUandGPU() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
   LearningModelSession cpuSession(model, LearningModelDevice(LearningModelDeviceKind::Cpu));
@@ -555,7 +555,7 @@ static void ScenarioCppWinrtGpuTest_Scenario13SingleModelOnCPUandGPU() {
 }
 
 // Validates when binding input image with free dimensions, the binding step is executed correctly.
-static void ScenarioCppWinrtGpuTest_Scenario11FreeDimensionsTensor() {
+static void Scenario11FreeDimensionsTensor() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"free_dimensional_image_input.onnx";
   // load a model with expected input size: -1 x -1
   auto model = LearningModel::LoadFromFilePath(filePath);
@@ -573,7 +573,7 @@ static void ScenarioCppWinrtGpuTest_Scenario11FreeDimensionsTensor() {
   session.Evaluate(binding, L"");
 }
 
-static void ScenarioCppWinrtGpuTest_Scenario11FreeDimensionsImage() {
+static void Scenario11FreeDimensionsImage() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"free_dimensional_imageDes.onnx";
   // load a model with expected input size: -1 x -1
   auto model = LearningModel::LoadFromFilePath(filePath);
@@ -619,7 +619,7 @@ void SubmitEval(LearningModel model, SwapChainEntry* sessionBindings, int swapch
 }
 
 //Scenario14:Load single model, run it mutliple times on a single gpu device using a fast swapchain pattern
-static void ScenarioCppWinrtGpuTest_Scenario14RunModelSwapchain() {
+static void Scenario14RunModelSwapchain() {
   const int swapchainentrycount = 3;
   SwapChainEntry sessionBindings[swapchainentrycount];
 
@@ -672,11 +672,11 @@ static void LoadBindEval_CustomOperator_CPU(const wchar_t* fileName) {
   WINML_EXPECT_NO_THROW(session.Evaluate(bindings, correlationId));
 
   auto buffer = outputValue.GetAsVectorView();
-  EXPECT_TRUE(buffer != nullptr);
+  WINML_EXPECT_TRUE(buffer != nullptr);
 }
 
 //! Scenario17 : Control the dev diagnostics features of WinML Tracing
-static void ScenarioCppWinrtTest_Scenario17DevDiagnostics() {
+static void Scenario17DevDiagnostics() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -701,21 +701,20 @@ static void ScenarioCppWinrtTest_Scenario17DevDiagnostics() {
  * even though CPU custom ops shouldn't be dependent on GPU functionality.
  * These should be reclassed to ScenarioCppWinrt once the DML code is decoupled from the custom op code.
 **/
-
 // create a session that loads a model with a branch new operator, register the custom operator, and load/bind/eval
-static void ScenarioCppWinrtGpuTest_Scenario20aLoadBindEvalCustomOperatorCPU() {
+static void Scenario20aLoadBindEvalCustomOperatorCPU() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"noisy_relu.onnx";
   LoadBindEval_CustomOperator_CPU(filePath.c_str());
 }
 
 // create a session that loads a model with an overridden operator, register the replacement custom operator, and load/bind/eval
-static void ScenarioCppWinrtGpuTest_Scenario20bLoadBindEvalReplacementCustomOperatorCPU() {
+static void Scenario20bLoadBindEvalReplacementCustomOperatorCPU() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"relu.onnx";
   LoadBindEval_CustomOperator_CPU(filePath.c_str());
 }
 
 //! Scenario21: Load two models, set them up to run chained after one another on the same gpu hardware device
-static void ScenarioCppWinrtGpuTest_Scenario21RunModel2ChainZ() {
+static void Scenario21RunModel2ChainZ() {
   // load a model, TODO: get a model that has an image descriptor
   std::wstring filePath = FileHelpers::GetModulePath() + L"fns-candy.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -757,9 +756,9 @@ static void ScenarioCppWinrtGpuTest_Scenario21RunModel2ChainZ() {
 bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected) {
   auto softwareBitmapActual = actual.VideoFrame().SoftwareBitmap();
   auto softwareBitmapExpected = expected.VideoFrame().SoftwareBitmap();
-  EXPECT_EQ(softwareBitmapActual.PixelHeight(), softwareBitmapExpected.PixelHeight());
-  EXPECT_EQ(softwareBitmapActual.PixelWidth(), softwareBitmapExpected.PixelWidth());
-  EXPECT_EQ(softwareBitmapActual.BitmapPixelFormat(), softwareBitmapExpected.BitmapPixelFormat());
+  WINML_EXPECT_EQUAL(softwareBitmapActual.PixelHeight(), softwareBitmapExpected.PixelHeight());
+  WINML_EXPECT_EQUAL(softwareBitmapActual.PixelWidth(), softwareBitmapExpected.PixelWidth());
+  WINML_EXPECT_EQUAL(softwareBitmapActual.BitmapPixelFormat(), softwareBitmapExpected.BitmapPixelFormat());
 
   // 4 means 4 channels
   uint32_t size = 4 * softwareBitmapActual.PixelHeight() * softwareBitmapActual.PixelWidth();
@@ -794,7 +793,7 @@ bool VerifyHelper(ImageFeatureValue actual, ImageFeatureValue expected) {
   return ((float)errors / size < cMaxErrorRate);
 }
 
-static void ScenarioCppWinrtTest_Scenario22ImageBindingAsCPUTensor() {
+static void Scenario22ImageBindingAsCPUTensor() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"fish_720.png";
   std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
@@ -854,7 +853,7 @@ static void ScenarioCppWinrtTest_Scenario22ImageBindingAsCPUTensor() {
   bm_softwareBitmap = SoftwareBitmap::Convert(bm_softwareBitmap, BitmapPixelFormat::Bgra8);
   VideoFrame bm_videoFrame = VideoFrame::CreateWithSoftwareBitmap(bm_softwareBitmap);
   ImageFeatureValue bm_imagevalue = ImageFeatureValue::CreateFromVideoFrame(bm_videoFrame);
-  EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
+  WINML_EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
 
   // check the output video frame object by saving output image to disk
   std::wstring outputDataImageFileName = L"out_cpu_tensor_fish_720.jpg";
@@ -867,7 +866,7 @@ static void ScenarioCppWinrtTest_Scenario22ImageBindingAsCPUTensor() {
   encoder.FlushAsync().get();
 }
 
-static void ScenarioCppWinrtGpuTest_Scenario22ImageBindingAsGPUTensor() {
+static void Scenario22ImageBindingAsGPUTensor() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"fish_720.png";
   std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
@@ -1029,7 +1028,7 @@ static void ScenarioCppWinrtGpuTest_Scenario22ImageBindingAsGPUTensor() {
   bm_softwareBitmap = SoftwareBitmap::Convert(bm_softwareBitmap, BitmapPixelFormat::Rgba8);
   VideoFrame bm_videoFrame = VideoFrame::CreateWithSoftwareBitmap(bm_softwareBitmap);
   ImageFeatureValue bm_imagevalue = ImageFeatureValue::CreateFromVideoFrame(bm_videoFrame);
-  EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
+  WINML_EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
 
   //check the output video frame object
   StorageFolder currentfolder = StorageFolder::GetFolderFromPathAsync(modulePath).get();
@@ -1041,7 +1040,7 @@ static void ScenarioCppWinrtGpuTest_Scenario22ImageBindingAsGPUTensor() {
   encoder.FlushAsync().get();
 }
 
-static void ScenarioCppWinrtTest_QuantizedModels() {
+static void QuantizedModels() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"onnxzoo_lotus_inception_v1-dq.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -1060,7 +1059,7 @@ static void ScenarioCppWinrtTest_QuantizedModels() {
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, filePath));
 }
 
-static void ScenarioCppWinrtGpuTest_MsftQuantizedModels() {
+static void MsftQuantizedModels() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"coreml_Resnet50_ImageNet-dq.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -1084,7 +1083,7 @@ static void ScenarioCppWinrtGpuTest_MsftQuantizedModels() {
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, filePath));
 }
 
-static void ScenarioCppWinrtGpuTest_SyncVsAsync() {
+static void SyncVsAsync() {
   // create model, device and session
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"fns-candy.onnx"));
@@ -1151,26 +1150,26 @@ static void ScenarioCppWinrtGpuTest_SyncVsAsync() {
   std::cout << "Asynchronous time for " << N << " evaluations: " << asyncTime.count() << " milliseconds\n";
 }
 
-static void ScenarioCppWinrtGpuTest_CustomCommandQueueWithFence() {
+static void CustomCommandQueueWithFence() {
   static const wchar_t* const modelFileName = L"fns-candy.onnx";
   static const wchar_t* const inputDataImageFileName = L"fish_720.png";
 
   com_ptr<ID3D12Device> d3d12Device;
-  EXPECT_HRESULT_SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), d3d12Device.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), d3d12Device.put_void()));
 
   D3D12_COMMAND_QUEUE_DESC queueDesc = {};
   queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
   com_ptr<ID3D12CommandQueue> queue;
-  EXPECT_HRESULT_SUCCEEDED(d3d12Device->CreateCommandQueue(&queueDesc, __uuidof(ID3D12CommandQueue), queue.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(d3d12Device->CreateCommandQueue(&queueDesc, __uuidof(ID3D12CommandQueue), queue.put_void()));
 
   com_ptr<ID3D12Fence> fence;
-  EXPECT_HRESULT_SUCCEEDED(d3d12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, __uuidof(ID3D12Fence), fence.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(d3d12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, __uuidof(ID3D12Fence), fence.put_void()));
 
   auto devicefactory = get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
 
   com_ptr<::IUnknown> learningModelDeviceUnknown;
-  EXPECT_HRESULT_SUCCEEDED(devicefactory->CreateFromD3D12CommandQueue(queue.get(), learningModelDeviceUnknown.put()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(devicefactory->CreateFromD3D12CommandQueue(queue.get(), learningModelDeviceUnknown.put()));
 
   LearningModelDevice device = nullptr;
   WINML_EXPECT_NO_THROW(learningModelDeviceUnknown.as(device));
@@ -1211,9 +1210,9 @@ static void ScenarioCppWinrtGpuTest_CustomCommandQueueWithFence() {
   // until after the wait is unblocked, and the signal should not complete until model evaluation does. This can
   // only be true if WinML executes the workload on the supplied queue (instead of using its own).
 
-  EXPECT_HRESULT_SUCCEEDED(queue->Wait(fence.get(), 1));
+  WINML_EXPECT_HRESULT_SUCCEEDED(queue->Wait(fence.get(), 1));
 
-  EXPECT_HRESULT_SUCCEEDED(queue->Signal(fence.get(), 2));
+  WINML_EXPECT_HRESULT_SUCCEEDED(queue->Signal(fence.get(), 2));
 
   winrt::hstring correlationId;
   winrt::Windows::Foundation::IAsyncOperation<LearningModelEvaluationResult> asyncOp;
@@ -1222,20 +1221,20 @@ static void ScenarioCppWinrtGpuTest_CustomCommandQueueWithFence() {
   Sleep(1000);  // Give the model a chance to run (which it shouldn't if everything is working correctly)
 
   // Because we haven't unblocked the wait yet, model evaluation must not have completed (nor the fence signal)
-  EXPECT_NE(asyncOp.Status(), winrt::Windows::Foundation::AsyncStatus::Completed);
-  EXPECT_EQ(fence->GetCompletedValue(), 0);
+  WINML_EXPECT_NOT_EQUAL(asyncOp.Status(), winrt::Windows::Foundation::AsyncStatus::Completed);
+  WINML_EXPECT_EQUAL(fence->GetCompletedValue(), 0);
 
   // Unblock the queue
-  EXPECT_HRESULT_SUCCEEDED(fence->Signal(1));
+  WINML_EXPECT_HRESULT_SUCCEEDED(fence->Signal(1));
 
   // Wait for model evaluation to complete
   asyncOp.get();
 
   // The fence must be signaled by now (because model evaluation has completed)
-  EXPECT_EQ(fence->GetCompletedValue(), 2);
+  WINML_EXPECT_EQUAL(fence->GetCompletedValue(), 2);
 }
 
-static void ScenarioCppWinrtGpuTest_ReuseVideoFrame() {
+static void ReuseVideoFrame() {
   std::wstring modulePath = FileHelpers::GetModulePath();
   std::wstring inputImagePath = modulePath + L"fish_720.png";
   std::wstring bmImagePath = modulePath + L"bm_fish_720.jpg";
@@ -1286,12 +1285,12 @@ static void ScenarioCppWinrtGpuTest_ReuseVideoFrame() {
         bm_softwareBitmap = SoftwareBitmap::Convert(bm_softwareBitmap, BitmapPixelFormat::Bgra8);
         VideoFrame bm_videoFrame = VideoFrame::CreateWithSoftwareBitmap(bm_softwareBitmap);
         ImageFeatureValue bm_imagevalue = ImageFeatureValue::CreateFromVideoFrame(bm_videoFrame);
-        EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
+        WINML_EXPECT_TRUE(VerifyHelper(bm_imagevalue, outputTensor));
       }
     }
   }
 }
-static void ScenarioCppWinrtTest_EncryptedStream() {
+static void EncryptedStream() {
   // get a stream
   std::wstring path = FileHelpers::GetModulePath() + L"model.onnx";
   auto storageFile = StorageFile::GetFileFromPathAsync(path).get();
@@ -1309,11 +1308,11 @@ static void ScenarioCppWinrtTest_EncryptedStream() {
   // verify loading the encrypted stream fails appropriately.
   auto encryptedStream = InMemoryRandomAccessStream();
   encryptedStream.WriteAsync(encryptedBuffer).get();
-  EXPECT_THROW_SPECIFIC(LearningModel::LoadFromStream(RandomAccessStreamReference::CreateFromStream(encryptedStream)),
-                        winrt::hresult_error,
-                        [](const winrt::hresult_error& e) -> bool {
-                          return e.code() == E_INVALIDARG;
-                        });
+  WINML_EXPECT_THROW_SPECIFIC(LearningModel::LoadFromStream(RandomAccessStreamReference::CreateFromStream(encryptedStream)),
+                              winrt::hresult_error,
+                              [](const winrt::hresult_error& e) -> bool {
+                                return e.code() == E_INVALIDARG;
+                              });
 
   // now decrypt
   auto decryptedBuffer = winrt::Windows::Security::Cryptography::Core::CryptographicEngine::Decrypt(key, encryptedBuffer, iv);
@@ -1327,7 +1326,7 @@ static void ScenarioCppWinrtTest_EncryptedStream() {
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model));
 }
 
-void DeviceLostRecoveryHelper() {
+static void DeviceLostRecovery() {
   // load a model
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
@@ -1348,7 +1347,7 @@ void DeviceLostRecoveryHelper() {
   // evaluate should fail
   try {
     session.Evaluate(binding, L"");
-    FAIL() << "Evaluate should fail after removing the device";
+    WINML_LOG_ERROR("Evaluate should fail after removing the device");
   } catch (...) {
   }
 
@@ -1357,37 +1356,28 @@ void DeviceLostRecoveryHelper() {
   binding = nullptr;
 
   // create new session and binding and try again!
-  session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
-  binding = LearningModelBinding(session);
+  WINML_EXPECT_NO_THROW(session = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::DirectX)));
+  WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
   BindFeatures(binding, model.InputFeatures());
-  session.Evaluate(binding, L"");
-  exit(0);
+  WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 }
 
-static void ScenarioCppWinrtGpuTestDeathTest_DeviceLostRecovery() {
-  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
-  EXPECT_EXIT(
-      DeviceLostRecoveryHelper(),
-      ::testing::ExitedWithCode(0),
-      "");
-}
-
-static void ScenarioCppWinrtGpuSkipEdgeCoreTest_D2DInterop() {
+static void D2DInterop() {
   // load a model (model.onnx == squeezenet[1,3,224,224])
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
   // create a dx12 device
   com_ptr<ID3D12Device1> device = nullptr;
-  EXPECT_HRESULT_SUCCEEDED(D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device1), device.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device1), device.put_void()));
   // now create a command queue from it
   com_ptr<ID3D12CommandQueue> commandQueue = nullptr;
   D3D12_COMMAND_QUEUE_DESC queueDesc = {};
   queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-  EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&queueDesc, winrt::guid_of<ID3D12CommandQueue>(), commandQueue.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&queueDesc, winrt::guid_of<ID3D12CommandQueue>(), commandQueue.put_void()));
   // create a winml learning device based on that dx12 queue
   auto factory = get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
   com_ptr<::IUnknown> spUnk;
-  EXPECT_HRESULT_SUCCEEDED(factory->CreateFromD3D12CommandQueue(commandQueue.get(), spUnk.put()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(factory->CreateFromD3D12CommandQueue(commandQueue.get(), spUnk.put()));
   auto learningDevice = spUnk.as<LearningModelDevice>();
   // create a winml session from that dx device
   LearningModelSession session(model, learningDevice);
@@ -1400,19 +1390,63 @@ static void ScenarioCppWinrtGpuSkipEdgeCoreTest_D2DInterop() {
   // create a D2D factory
   D2D1_FACTORY_OPTIONS options = {};
   com_ptr<ID2D1Factory> d2dFactory;
-  EXPECT_HRESULT_SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), &options, d2dFactory.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), &options, d2dFactory.put_void()));
   // grab the dxgi surface back from our video frame
   com_ptr<IDXGISurface> dxgiSurface;
   com_ptr<IDirect3DDxgiInterfaceAccess> dxgiInterfaceAccess = frame.Direct3DSurface().as<IDirect3DDxgiInterfaceAccess>();
-  EXPECT_HRESULT_SUCCEEDED(dxgiInterfaceAccess->GetInterface(__uuidof(IDXGISurface), dxgiSurface.put_void()));
+  WINML_EXPECT_HRESULT_SUCCEEDED(dxgiInterfaceAccess->GetInterface(__uuidof(IDXGISurface), dxgiSurface.put_void()));
   // and try and use our surface to create a render targer
   com_ptr<ID2D1RenderTarget> renderTarget;
   D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties();
   props.pixelFormat = D2D1::PixelFormat(
       DXGI_FORMAT_B8G8R8A8_UNORM,
       D2D1_ALPHA_MODE_IGNORE);
-  EXPECT_HRESULT_SUCCEEDED(d2dFactory->CreateDxgiSurfaceRenderTarget(
+  WINML_EXPECT_HRESULT_SUCCEEDED(d2dFactory->CreateDxgiSurfaceRenderTarget(
       dxgiSurface.get(),
       props,
       renderTarget.put()));
+}
+
+const ScenarioTestApi& getapi() {
+  static constexpr ScenarioTestApi api =
+      {
+        ScenarioCppWinrtTestSetup,
+        ScenarioCppWinrtGpuTestSetup,
+        ScenarioCppWinrtGpuSkipEdgeCoreTestSetup,
+        Sample1,
+        Scenario1LoadBindEvalDefault,
+        Scenario2LoadModelFromStream,
+        Scenario5AsyncEval,
+        Scenario7EvalWithNoBind,
+        Scenario8SetDeviceSampleDefault,
+        Scenario8SetDeviceSampleCPU,
+        Scenario17DevDiagnostics,
+        Scenario22ImageBindingAsCPUTensor,
+        QuantizedModels,
+        EncryptedStream,
+        Scenario3SoftwareBitmapInputBinding,
+        Scenario6BindWithProperties,
+        Scenario8SetDeviceSampleDefaultDirectX,
+        Scenario8SetDeviceSampleMinPower,
+        Scenario8SetDeviceSampleMaxPerf,
+        Scenario8SetDeviceSampleMyCameraDevice,
+        Scenario8SetDeviceSampleCustomCommandQueue,
+        Scenario9LoadBindEvalInputTensorGPU,
+        Scenario13SingleModelOnCPUandGPU,
+        Scenario11FreeDimensionsTensor,
+        Scenario11FreeDimensionsImage,
+        Scenario14RunModelSwapchain,
+        Scenario20aLoadBindEvalCustomOperatorCPU,
+        Scenario20bLoadBindEvalReplacementCustomOperatorCPU,
+        Scenario21RunModel2ChainZ,
+        Scenario22ImageBindingAsGPUTensor,
+        MsftQuantizedModels,
+        SyncVsAsync,
+        CustomCommandQueueWithFence,
+        ReuseVideoFrame,
+        DeviceLostRecovery,
+        Scenario8SetDeviceSampleD3D11Device,
+        D2DInterop,
+      };
+  return api;
 }

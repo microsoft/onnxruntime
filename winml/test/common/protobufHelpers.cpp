@@ -1,10 +1,11 @@
-﻿#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+﻿#ifndef _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+#endif
 
 // LotusRT
 #include "core/framework/allocatormgr.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-
 #include "protobufHelpers.h"
 
 #pragma warning(push)
@@ -12,7 +13,6 @@
 #include "onnx/onnx-ml.pb.h"
 #pragma warning(pop)
 
-#include <gtest/gtest.h>
 #include <fstream>
 
 #include "winrt/Windows.Storage.Streams.h"
@@ -66,33 +66,35 @@ bool LoadTensorFromPb(onnx::TensorProto& tensor, std::wstring filePath) {
 
 template <typename DataType>
 std::vector<DataType> GetTypeSpecificDataFromTensorProto(
-  onnx::TensorProto /*tensorProto*/){
+    onnx::TensorProto /*tensorProto*/) {
   static_assert(false, "UNDEFINED! TensorProto methods aren't templated, so add a new template specialization.");
 }
 template <>
 std::vector<float> GetTypeSpecificDataFromTensorProto(
-  onnx::TensorProto tensorProto){
+    onnx::TensorProto tensorProto) {
   return std::vector<float>(std::begin(tensorProto.float_data()), std::end(tensorProto.float_data()));
 }
 template <>
 std::vector<int32_t> GetTypeSpecificDataFromTensorProto(
-  onnx::TensorProto tensorProto){
+    onnx::TensorProto tensorProto) {
   return std::vector<int32_t>(std::begin(tensorProto.int32_data()), std::end(tensorProto.int32_data()));
 }
 template <>
 std::vector<int64_t> GetTypeSpecificDataFromTensorProto(
-  onnx::TensorProto tensorProto){
+    onnx::TensorProto tensorProto) {
   return std::vector<int64_t>(std::begin(tensorProto.int64_data()), std::end(tensorProto.int64_data()));
 }
 
 template <typename DataType>
 std::vector<DataType> GetTensorDataFromTensorProto(
-	onnx::TensorProto tensorProto,
-	uint64_t elementCount) {
+    onnx::TensorProto tensorProto,
+    uint64_t elementCount) {
   if (tensorProto.has_raw_data()) {
     std::vector<DataType> tensorData;
     auto& values = tensorProto.raw_data();
-    EXPECT_EQ(elementCount, values.size() / sizeof(DataType)) << L"TensorProto elementcount should match raw data buffer size in elements.";
+    if (elementCount != values.size() / sizeof(DataType)) {
+        WINML_LOG_ERROR("TensorProto element count should match raw data buffer size in elements.");
+    }
 
     tensorData = std::vector<DataType>(elementCount);
     memcpy(tensorData.data(), values.data(), values.size());
@@ -105,7 +107,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(
 static std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
     onnx::TensorProto tensorProto,
     uint64_t elementCount) {
-  EXPECT_EQ(tensorProto.string_data_size(), elementCount);
+  WINML_EXPECT_EQUAL(tensorProto.string_data_size(), elementCount);
   auto& values = tensorProto.string_data();
   auto returnVector = std::vector<winrt::hstring>(elementCount);
   std::transform(std::begin(values), std::end(values), std::begin(returnVector),
@@ -131,15 +133,15 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
     }
     switch (tensorProto.data_type()) {
       case (onnx::TensorProto::DataType::TensorProto_DataType_FLOAT):
-       return TensorFloat::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount));
+        return TensorFloat::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount));
       case (onnx::TensorProto::DataType::TensorProto_DataType_INT32):
-       return TensorInt32Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<int32_t>(tensorProto, elementCount));
+        return TensorInt32Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<int32_t>(tensorProto, elementCount));
       case (onnx::TensorProto::DataType::TensorProto_DataType_INT64):
-       return TensorInt64Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount));
+        return TensorInt64Bit::CreateFromIterable(tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount));
       case (onnx::TensorProto::DataType::TensorProto_DataType_STRING):
         return TensorString::CreateFromIterable(tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount));
       default:
-        ADD_FAILURE() << L"Tensor type for creating tensor from protobuf file not supported.";
+        WINML_LOG_ERROR("Tensor type for creating tensor from protobuf file not supported.");
         break;
     }
   }
@@ -152,7 +154,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
   onnx::TensorProto tensorProto;
   if (LoadTensorFromPb(tensorProto, filePath)) {
     if (tensorProto.has_data_type()) {
-      EXPECT_EQ(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16, tensorProto.data_type());
+      WINML_EXPECT_EQUAL(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16, tensorProto.data_type());
     } else {
       std::cerr << "Loading unknown TensorProto datatype as TensorFloat16Bit.\n";
     }
@@ -166,7 +168,10 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
     uint32_t sizeInBytes;
     spTensorValueNative->GetBuffer(reinterpret_cast<BYTE**>(&data), &sizeInBytes);
 
-    EXPECT_TRUE(tensorProto.has_raw_data()) << L"Float16 tensor proto buffers are expected to contain raw data.";
+    if (!tensorProto.has_raw_data())
+    {
+      WINML_LOG_ERROR("Float16 tensor proto buffers are expected to contain raw data.");
+    }
 
     auto& raw_data = tensorProto.raw_data();
     auto buff = raw_data.c_str();
