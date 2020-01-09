@@ -676,7 +676,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Update shape ranges
       bool dimension_update = false;
       auto trt_builder = trt_state->builder;
-      nvinfer1::IOptimizationProfile* trt_profile = nullptr; //trt_builder->createOptimizationProfile();
+      nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
         // TODO: check if getInput indexing is same with binding index
         auto input = trt_state->network->getInput(i);
