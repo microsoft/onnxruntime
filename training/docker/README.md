@@ -68,7 +68,10 @@ ONNX Training tensorboard events can be streamed to a local directory for intera
 
 ```
 // Submit an Experiment with tensorboard logging enabled (must not be --mode=perf):
-$ python experiment.py --script_params='--train_batch_size=4 --evaluation_period=10 --log_dir=logs/tensorboard/' --tensorboard_dir='C:/tensorboard'
+$ python experiment.py --script_params='--train_batch_size=4 --display_loss_steps=10 --log_dir=logs/tensorboard/'
+
+// Stream the tensorboard logs locally, or download logs if Experiment is already complete:
+$ python watch_experiment.py --remote_dir='logs/tensorboard/' --local_dir='C:/tensorboard' --run='BERT-ONNX_1578424056_a4b83d75'
 
 // Start Tensorboard locally:
 $ python -m tensorboard.main --logdir C:/tensorboard
