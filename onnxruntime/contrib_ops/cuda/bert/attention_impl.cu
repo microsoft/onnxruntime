@@ -62,7 +62,7 @@ __device__ inline void Softmax(const int ld, const int num_valid, const T* input
   __shared__ float sum_reverse_block;
   __shared__ float max_block;
 
-  float thread_data_max(-CUDART_MAX_NORMAL_F);
+  float thread_data_max(-CUDART_INF_F);
 
   // e^x is represented as infinity if x is large enough, like 100.f.
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
@@ -119,7 +119,7 @@ __device__ inline void SoftmaxSmall(const int ld, const int num_valid, const T* 
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-  float thread_data_max(-CUDART_MAX_NORMAL_F);
+  float thread_data_max(-CUDART_INF_F);
   if (threadIdx.x < num_valid) {
     thread_data_max = input[index];
   }
