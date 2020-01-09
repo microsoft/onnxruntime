@@ -203,9 +203,8 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   auto left_dim = bid / mid_dim * elem_nums[axis];
   auto right_dim = axis == size - 1 ? 0 : bid % elem_nums[axis + 1];
   T Kth = (T)0;
-  int64_t mod = 255;//all_superior = 0;
+  int64_t mod = 255;
   auto offset = (int64_t)tid * XPT;
-  //auto replica_K = K;
   if (0 == tid) {
     *C = 256;
     *replica_K = K;
@@ -214,6 +213,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   typedef BlockScan<uint32_t, THREADS> BlockScan;
   __shared__ typename BlockScan::TempStorage temp_storage;
   __syncthreads();
+  #pragma unroll 
   for (int64_t byte = sizeof(T)-1; byte > -1; --byte) {
     if (tid < 256) H[tid] = 0;
     __syncthreads();
