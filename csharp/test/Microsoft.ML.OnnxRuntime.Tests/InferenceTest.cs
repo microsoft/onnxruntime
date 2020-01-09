@@ -437,83 +437,85 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     {
                         testDataDirNamePattern = "seq_lens*"; // discrepency in data directory
                     }
-                    var testDataDir = modelDir.EnumerateDirectories(testDataDirNamePattern).First();
-                    var inputContainer = new List<NamedOnnxValue>();
-                    var outputContainer = new List<NamedOnnxValue>();
-                    foreach (var f in testDataDir.EnumerateFiles("input_*.pb"))
+                    foreach (var testDataDir in modelDir.EnumerateDirectories(testDataDirNamePattern))
                     {
-                        inputContainer.Add(LoadTensorFromFilePb(f.FullName, inMeta));
-                    }
-                    foreach (var f in testDataDir.EnumerateFiles("output_*.pb"))
-                    {
-                        outputContainer.Add(LoadTensorFromFilePb(f.FullName, session.OutputMetadata));
-                    }
-
-                    using (var resultCollection = session.Run(inputContainer))
-                    {
-                        foreach (var result in resultCollection)
+                        var inputContainer = new List<NamedOnnxValue>();
+                        var outputContainer = new List<NamedOnnxValue>();
+                        foreach (var f in testDataDir.EnumerateFiles("input_*.pb"))
                         {
-                            Assert.True(session.OutputMetadata.ContainsKey(result.Name));
-                            var outputMeta = session.OutputMetadata[result.Name];
-                            NamedOnnxValue outputValue = null;
-                            foreach (var o in outputContainer)
+                            inputContainer.Add(LoadTensorFromFilePb(f.FullName, inMeta));
+                        }
+                        foreach (var f in testDataDir.EnumerateFiles("output_*.pb"))
+                        {
+                            outputContainer.Add(LoadTensorFromFilePb(f.FullName, session.OutputMetadata));
+                        }
+
+                        using (var resultCollection = session.Run(inputContainer))
+                        {
+                            foreach (var result in resultCollection)
                             {
-                                if (o.Name == result.Name)
+                                Assert.True(session.OutputMetadata.ContainsKey(result.Name));
+                                var outputMeta = session.OutputMetadata[result.Name];
+                                NamedOnnxValue outputValue = null;
+                                foreach (var o in outputContainer)
                                 {
-                                    outputValue = o;
-                                    break;
+                                    if (o.Name == result.Name)
+                                    {
+                                        outputValue = o;
+                                        break;
+                                    }
                                 }
-                            }
-                            if (outputValue == null)
-                            {
-                                outputValue = outputContainer.First(); // in case the output data file does not contain the name
-                            }
-                            if (outputMeta.IsTensor)
-                            {
-                                if (outputMeta.ElementType == typeof(float))
+                                if (outputValue == null)
                                 {
-                                    Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new floatComparer());
+                                    outputValue = outputContainer.First(); // in case the output data file does not contain the name
                                 }
-                                else if (outputMeta.ElementType == typeof(int))
+                                if (outputMeta.IsTensor)
                                 {
-                                    Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
-                                }
-                                else if (outputMeta.ElementType == typeof(uint))
-                                {
-                                    Assert.Equal(result.AsTensor<uint>(), outputValue.AsTensor<uint>(), new ExactComparer<uint>());
-                                }
-                                else if (outputMeta.ElementType == typeof(short))
-                                {
-                                    Assert.Equal(result.AsTensor<short>(), outputValue.AsTensor<short>(), new ExactComparer<short>());
-                                }
-                                else if (outputMeta.ElementType == typeof(ushort))
-                                {
-                                    Assert.Equal(result.AsTensor<ushort>(), outputValue.AsTensor<ushort>(), new ExactComparer<ushort>());
-                                }
-                                else if (outputMeta.ElementType == typeof(long))
-                                {
-                                    Assert.Equal(result.AsTensor<long>(), outputValue.AsTensor<long>(), new ExactComparer<long>());
-                                }
-                                else if (outputMeta.ElementType == typeof(ulong))
-                                {
-                                    Assert.Equal(result.AsTensor<ulong>(), outputValue.AsTensor<ulong>(), new ExactComparer<ulong>());
-                                }
-                                else if (outputMeta.ElementType == typeof(byte))
-                                {
-                                    Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
-                                }
-                                else if (outputMeta.ElementType == typeof(bool))
-                                {
-                                    Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
+                                    if (outputMeta.ElementType == typeof(float))
+                                    {
+                                        Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new floatComparer());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(int))
+                                    {
+                                        Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(uint))
+                                    {
+                                        Assert.Equal(result.AsTensor<uint>(), outputValue.AsTensor<uint>(), new ExactComparer<uint>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(short))
+                                    {
+                                        Assert.Equal(result.AsTensor<short>(), outputValue.AsTensor<short>(), new ExactComparer<short>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(ushort))
+                                    {
+                                        Assert.Equal(result.AsTensor<ushort>(), outputValue.AsTensor<ushort>(), new ExactComparer<ushort>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(long))
+                                    {
+                                        Assert.Equal(result.AsTensor<long>(), outputValue.AsTensor<long>(), new ExactComparer<long>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(ulong))
+                                    {
+                                        Assert.Equal(result.AsTensor<ulong>(), outputValue.AsTensor<ulong>(), new ExactComparer<ulong>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(byte))
+                                    {
+                                        Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(bool))
+                                    {
+                                        Assert.Equal(result.AsTensor<bool>(), outputValue.AsTensor<bool>(), new ExactComparer<bool>());
+                                    }
+                                    else
+                                    {
+                                        Assert.True(false, "The TestPretrainedModels does not yet support output of type " + nameof(outputMeta.ElementType));
+                                    }
                                 }
                                 else
                                 {
-                                    Assert.True(false, "The TestPretrainedModels does not yet support output of type " + nameof(outputMeta.ElementType));
+                                    Assert.True(false, "TestPretrainedModel cannot handle non-tensor outputs yet");
                                 }
-                            }
-                            else
-                            {
-                                Assert.True(false, "TestPretrainedModel cannot handle non-tensor outputs yet");
                             }
                         }
                     }
