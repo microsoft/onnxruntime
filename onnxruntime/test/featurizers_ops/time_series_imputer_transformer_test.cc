@@ -14,11 +14,12 @@ namespace onnxruntime {
 namespace test {
 
 inline std::chrono::system_clock::time_point GetTimePoint(std::chrono::system_clock::time_point tp, int unitsToAdd, std::string = "days") {
-  return tp + std::chrono::minutes(unitsToAdd * (3600 * 24));
+  return tp + std::chrono::minutes(unitsToAdd * (60 * 24));
 }
 
 inline int64_t GetTimeInt(std::chrono::system_clock::time_point tp, int unitsToAdd) {
-  return GetTimePoint(tp, unitsToAdd).time_since_epoch().count();
+  using namespace std::chrono;
+  return duration_cast<seconds>(GetTimePoint(tp, unitsToAdd).time_since_epoch()).count();
 }
 
 using InputType = std::tuple<

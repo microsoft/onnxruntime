@@ -24,7 +24,8 @@ inline std::chrono::system_clock::time_point ToTimePoint(int64_t secs) {
 }
 
 inline int64_t ToSecs(const std::chrono::system_clock::time_point& tp) {
-  return tp.time_since_epoch().count();
+  using namespace std::chrono;
+  return duration_cast<seconds>(tp.time_since_epoch()).count();
 }
 
 template <typename T>

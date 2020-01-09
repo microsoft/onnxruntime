@@ -736,7 +736,7 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
       .Input(
           1,
           "Times",
-          "Tensor of timestamps R] where R is a number of rows.",
+          "Tensor of timestamps in seconds since epoch [R] where R is a number of rows.",
           "T1")
       .Input(
           2,
@@ -756,7 +756,7 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
       .Output(
           1,
           "ImputedTimes",
-          "This is a tensor of timestamps of shape [IR], where IR is the number of output rows.",
+          "This is a tensor of timestamps in seconds since epoch of shape [IR], where IR is the number of output rows.",
           "T1")
       .Output(
           2,
