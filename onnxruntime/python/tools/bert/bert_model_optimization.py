@@ -564,6 +564,74 @@ class BertOnnxModel(OnnxModel):
         self.update_graph()
         print("Fused Attention count:", attention_count)
 
+    def fuse_attention_tf(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        attention_count = 0
+
+        for normalize_node in self.get_normalize_nodes():
+            # SkipLayerNormalization has two inputs, and one of them is the
+            # root input for attention.
+            qkv_nodes = None
+            root_input = None
+            for i, input in enumerate(normalize_node.input):
+                if input not in output_name_to_node:
+                    continue
+                children = input_name_to_nodes[input]
+                children_types = sorted([child.op_type for child in children])
+                if children_types != self.normalize_children_types():
+                    qkv_nodes = self.match_parent_path(normalize_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'], [i, 0, 0, 0, 0])
+                else:
+                    root_input = input
+
+            if root_input is None or qkv_nodes is None:
+                continue
+
+            (add_qkv, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+
+            v_nodes = self.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+            if v_nodes is None:
+                continue
+            (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
+
+            qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, 0])
+            if qk_nodes is None:
+                continue
+            (softmax_qk, add_qk, div_qk, matmul_qk) = qk_nodes
+
+            q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+            if q_nodes is None:
+                continue
+            (transpose_q, reshape_q, add_q, matmul_q) = q_nodes
+
+            # TO DO: remove back to back transpose
+            k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0, 0])
+            if k_nodes is None:
+                continue
+            (transpose_k, transpose_k_2, reshape_k, add_k, matmul_k) = k_nodes
+
+            mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0])
+            if mask_nodes is None:
+                continue
+            (mul_mask, sub_mask, cast_mask, unsqueeze_mask, unsqueeze_mask_0) = mask_nodes
+
+            if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
+                mask_index = self.process_mask(unsqueeze_mask_0.input[0])
+                self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, root_input, reshape_qkv.output[0])
+                nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
+                nodes_to_remove.extend(qk_nodes)
+                nodes_to_remove.extend(q_nodes)
+                nodes_to_remove.extend(k_nodes)
+                nodes_to_remove.extend(v_nodes)
+                nodes_to_remove.extend(mask_nodes)
+                attention_count += 1
+
+        self.remove_nodes(nodes_to_remove)
+        self.update_graph()
+        print("Fused Attention count:", attention_count)
+
     def fuse_gelu(self, gelu_op_name):
         self.fuse_gelu_with_elf(gelu_op_name)
         self.fuse_gelu_with_tanh(gelu_op_name)
@@ -933,6 +1001,136 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
 
+    def fuse_reshape_tf_2(self):
+        nodes = self.nodes()
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for reshape_node in self.get_nodes_by_op_type('Reshape'):
+            if reshape_node.input[1] not in output_name_to_node:
+                continue
+            path0 = self.match_parent_path(reshape_node, ['Cast', 'Concat', 'Unsqueeze', 'Mul'], [1, 0, 0, 0], output_name_to_node)
+            if path0 is None:
+                continue
+            cast_node, concat_node, unsqueeze_node, mul_node = path0
+
+            if not len(concat_node.input) == 2:
+                continue
+
+            shape = [0,0]
+
+            if self.get_initializer(concat_node.input[1]):
+                concat_1 = self.get_initializer(concat_node.input[1])
+                shape.extend(numpy_helper.to_array(concat_1))
+            else:
+                continue
+
+            shape_value = np.asarray(shape, dtype=np.int64)
+
+            constant_shape_name = self.create_node_name('Constant', 'constant_shape')
+            new_node = onnx.helper.make_node('Constant',
+                inputs=[],
+                outputs=[constant_shape_name],
+                value=onnx.helper.make_tensor(name='const_tensor',
+                    data_type=TensorProto.INT64,
+                    dims=shape_value.shape,
+                    vals=shape_value))
+            reshape_node.input[1] = constant_shape_name
+            reshape_node.name = self.create_node_name('Reshape', 'Reshape_Fuse')
+            nodes_to_remove.extend([cast_node, concat_node, unsqueeze_node, mul_node])
+            nodes_to_add.append(new_node)
+
+        print("Fused Reshape count:", len(nodes_to_add))
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
+    def fuse_reshape_tf_3(self):
+        nodes = self.nodes()
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for reshape_node in self.get_nodes_by_op_type('Reshape'):
+            parent = self.get_parent(reshape_node, 0)
+            print(parent.op_type)
+            if not parent.op_type == self.normalize_name:
+                continue
+            
+            parent_path = self.match_parent_path(
+                reshape_node,
+                ['Cast', 'Concat', 'Unsqueeze', 'Cast', 'Squeeze', 'Slice', 'Cast', 'Shape'],
+                [1,             0,           0,      0,         0,       0,       0,      0], output_name_to_node)
+
+            if not parent_path is None:
+                nodes_to_remove.extend(parent_path)
+
+            nodes_to_remove.append(reshape_node)
+
+            self.replace_input_of_all_nodes(reshape_node.output[0], reshape_node.input[0])
+
+        print("Fused Reshape count:", len(nodes_to_remove))
+
+        self.remove_nodes(nodes_to_remove)
+        #self.add_nodes(nodes_to_add)
+
+    def fuse_reshape_tf(self):
+        nodes = self.nodes()
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for reshape_node in self.get_nodes_by_op_type('Reshape'):
+            if reshape_node.input[1] not in output_name_to_node:
+                continue
+            path0 = self.match_parent_path(reshape_node, ['Cast', 'Concat'], [1, 0], output_name_to_node)
+            if path0 is None:
+                continue
+            cast_node, concat_node = path0
+
+            if len(concat_node.input) < 3 or len(concat_node.input) > 4:
+                continue
+
+            shape = [0,0]
+
+            if len(shape) != 2:
+                continue
+
+            if len(concat_node.input) == 4 and self.get_initializer(concat_node.input[2]) and self.get_initializer(concat_node.input[3]):
+                concat_2 = self.get_initializer(concat_node.input[2])
+                concat_3 = self.get_initializer(concat_node.input[3])
+                shape.extend(numpy_helper.to_array(concat_2))
+                shape.extend(numpy_helper.to_array(concat_3))
+            else:
+                continue
+
+            shape_value = np.asarray(shape, dtype=np.int64)
+
+            constant_shape_name = self.create_node_name('Constant', 'constant_shape')
+            new_node = onnx.helper.make_node('Constant',
+                inputs=[],
+                outputs=[constant_shape_name],
+                value=onnx.helper.make_tensor(name='const_tensor',
+                    data_type=TensorProto.INT64,
+                    dims=shape_value.shape,
+                    vals=shape_value))
+            reshape_node.input[1] = constant_shape_name
+            reshape_node.name = self.create_node_name('Reshape', 'Reshape_Fuse')
+            nodes_to_remove.extend([cast_node, concat_node])
+            nodes_to_add.append(new_node)
+
+        print("Fused Reshape count:", len(nodes_to_add))
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+
     def fuse_reshape(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
@@ -1109,6 +1307,83 @@ class BertOnnxModel(OnnxModel):
         embed_node = onnx.helper.make_node('EmbedLayerNormalization',
                         inputs=[input_ids, segment_ids, 
                                 word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
+                                normalize_node.input[2], normalize_node.input[3], # gamma and beta
+                                mask_input_name],
+                        outputs=["embed_output", self.mask_indice[mask_input_name]],
+                        name="EmbedLayer")
+
+        embed_node.domain = "com.microsoft"
+        
+        # store inputs for further processing
+        self.bert_inputs = [input_ids, segment_ids, mask_input_name]
+
+        self.replace_input_of_all_nodes(normalize_node.output[0], 'embed_output')
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_node(embed_node)
+        self.update_graph()
+        print("Fused EmbedLayerNormalization count: 1")
+
+    def fuse_embed_layer_tf(self):
+        nodes = self.nodes()
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        if len(self.mask_indice) == 0:
+            print("skip embed layer fusion since mask input is not found")
+            return
+        if len(self.mask_indice) > 1:
+            print("skip embed layer fusion since there are multiple mask inputs found")
+            return
+        mask_input_name = next(iter(self.mask_indice))
+        mask_output_name = self.mask_indice[mask_input_name]
+        mask_node = output_name_to_node[mask_output_name]
+
+        nodes_to_remove = []
+
+        # Find the first normalize node could be embedding layer.
+        normalize_node = None
+        for node in self.get_normalize_nodes():
+            if self.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is not None:
+                if self.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False) is not None:
+                    normalize_node = node
+                    break
+
+        if normalize_node is None:
+            print("Failed to find embedding layer")
+
+        # Here we assume the order of embedding is word_embedding +
+        # position_embedding + segment_embedding.
+        word_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
+        if word_embedding_path is None:
+            print("Failed to find word embedding")
+            return
+        add_node, word_embedding_gather = word_embedding_path
+
+        position_embedding_path = self.match_parent_path(normalize_node, ['Reshape', 'Slice'], [1, 0])
+        if position_embedding_path is None:
+            print("Failed to find position embedding")
+            return
+        position_embedding_reshape, position_embedding_slice = position_embedding_path
+
+        segment_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 1])
+        if segment_embedding_path is None:
+            print("Failed to find segment embedding")
+            return
+        segment_embedding_gather = segment_embedding_path[1]
+
+        input_ids = word_embedding_gather.input[1]
+        segment_ids = segment_embedding_gather.input[1]
+
+        #subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [input_ids], output_name_to_node)
+
+        #nodes_to_remove.extend(subgraph_nodes)
+        nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_reshape, position_embedding_slice])
+        nodes_to_remove.extend([mask_node])
+
+        embed_node = onnx.helper.make_node('EmbedLayerNormalization',
+                        inputs=[input_ids, segment_ids, 
+                                word_embedding_gather.input[0], position_embedding_slice.input[0], segment_embedding_gather.input[0],
                                 normalize_node.input[2], normalize_node.input[3], # gamma and beta
                                 mask_input_name],
                         outputs=["embed_output", self.mask_indice[mask_input_name]],
@@ -1557,10 +1832,15 @@ def main():
     bert_model.fuse_gelu(gelu_op_name)
 
     bert_model.fuse_reshape()
+    bert_model.fuse_reshape_tf()
+    bert_model.fuse_reshape_tf_2()
+    bert_model.fuse_reshape_tf_3()
 
     bert_model.fuse_attention()
+    bert_model.fuse_attention_tf()
 
     bert_model.fuse_embed_layer()
+    bert_model.fuse_embed_layer_tf()
 
     # Fuse Gelu and Add Bias before it.
     bert_model.fuse_add_bias_gelu()
