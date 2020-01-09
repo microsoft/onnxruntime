@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 using System;
@@ -601,7 +601,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     option.RegisterCustomOpLibrary(libFullPath);
                 }
-                catch(Exception ex)
+                catch (Exception ex)
                 {
                     var msg = $"Failed to load custom op library {libFullPath}, error = {ex.Message}";
                     throw new Exception(msg + "\n" + ex.StackTrace);
@@ -619,7 +619,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                 6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
                                 11.1f,  12.2f,  13.3f,  14.4f,  15.5f
                             },
-                            new int[]{3, 5 }
+                            new int[] { 3, 5 }
                             )));
 
                     inputContainer.Add(NamedOnnxValue.CreateFromTensor<float>("input_2",
@@ -645,12 +645,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                 17, 18, 18, 18, 17,
                                 17, 17, 17, 17, 17
                             },
-                            new int[] { 3, 5}
+                            new int[] { 3, 5 }
                             );
                         Assert.True(tensorOut.SequenceEqual(expectedOut));
                     }
                 }
-            } 
+            }
         }
 
         [Fact]
@@ -773,7 +773,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var session = new InferenceSession(modelPath))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<string>(new string[] { "abc", "ced", "def", "", "frozen" }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<string>(new string[] {
+                 "hello",
+                 "École élémentaire",
+                 "mit freundlichen grüßen",
+                 "Понедельник",
+                 "最好的问候,"+
+                 "नमस्ते," +
+                 "こんにちは," +
+                 "안녕하세요"
+                }, new int[] { 1, 5 });
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))

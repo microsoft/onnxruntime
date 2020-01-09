@@ -130,42 +130,127 @@ CudaFunctionOriginalCoordinate GetDeviceOriginalCoordinateFunc(ResizeCoordinateT
   return s_coordinate_tranforms[coordinate_transform_mode];
 }
 
+struct NearestMappingInfo {
+  int origin_;
+  int extrapolate_;
+};
+
 template <typename T>
-__global__ void _ResizeNearestKernel(
+__global__ void _ResizeNearestMappingKernel2D(
+    const int input_height, const int input_width,
+    const int output_height, const int output_width,
+    const float scales_height, const float scales_width,
+    const float roi_start_height, const float roi_end_height,
+    const float roi_start_width, const float roi_end_width,
+    const bool extrapolation_enabled,
+    CudaFunctionOriginalCoordinate transform_coordinate,
+    CudaFunctionNearestPixel calc_nearest_pixel,
+    NearestMappingInfo* dims_mapping) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, output_height + output_width);
+  if (id >= 0 && id < output_height) {  // for Height
+    int dim = id;
+    float orig_coord = transform_coordinate(static_cast<float>(dim), scales_height, static_cast<float>(output_height),
+                                            static_cast<float>(input_height), roi_start_height, roi_end_height);
+    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_height - 1)));
+    dim = calc_nearest_pixel(orig_coord, scales_height < 1);
+    if (dim >= input_height) dim = input_height - 1;
+    if (dim < 0) dim = 0;
+    dims_mapping[id].origin_ = dim;
+  } else {
+    int dim = id - output_height;
+    float orig_coord = transform_coordinate(static_cast<float>(dim), scales_width, static_cast<float>(output_width),
+                                            static_cast<float>(input_width), roi_start_width, roi_end_width);
+    dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_width - 1)));
+    dim = calc_nearest_pixel(orig_coord, scales_width < 1);
+    if (dim >= input_width) dim = input_width - 1;
+    if (dim < 0) dim = 0;
+    dims_mapping[id].origin_ = dim;
+    return;
+  }
+}
+
+template <typename T>
+__global__ void _ResizeNearestMappingKernel(
     const size_t rank,
     const int64_t* input_shape,
     const int64_t* output_shape,
-    const int64_t* input_pitches,
-    const fast_divmod* output_div_pitches,
     const float* scales,
     const float* roi,
+    const size_t total_dim_sum,
+    bool extrapolation_enabled,
+    CudaFunctionOriginalCoordinate transform_coordinate,
+    CudaFunctionNearestPixel calc_nearest_pixel,
+    int64_t* prefix_dim_sum,
+    NearestMappingInfo* dims_mapping) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, total_dim_sum);
+  int64_t dim_sum = 0;
+  for (int axis = 0; axis < rank; ++axis) {
+    if (id == dim_sum) {
+      prefix_dim_sum[axis] = dim_sum;
+    }
+    if (id >= dim_sum && id < dim_sum + output_shape[axis]) {
+      int dim = id - dim_sum;
+      float orig_coord = transform_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
+                                              static_cast<float>(input_shape[axis]), roi[axis], roi[axis + rank]);
+      dims_mapping[id].extrapolate_ = (int)(extrapolation_enabled && (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[axis] - 1)));
+      dim = calc_nearest_pixel(orig_coord, scales[axis] < 1);
+      if (dim >= input_shape[axis]) dim = input_shape[axis] - 1;
+      if (dim < 0) dim = 0;
+      dims_mapping[id].origin_ = dim;
+      return;
+    }
+    dim_sum += output_shape[axis];
+  }
+}
+
+template <typename T, bool UseExtrapolation>
+__global__ void _ResizeNearestKernel2D(
+    const int64_t output_height, const int64_t output_width,
+    const int64_t input_stride_image, const int input_stride_row,
+    const fast_divmod output_stride_image, const fast_divmod output_stride_row,
+    const T* input_data, T* output_data, const size_t N,
+    const T extrapolation_value, const NearestMappingInfo* dims_mapping) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+
+  int imageid, h, w, output_index;
+  output_stride_image.divmod(static_cast<int>(id), imageid, output_index);
+  output_stride_row.divmod(output_index, h, w);
+  if (UseExtrapolation) {
+    if (dims_mapping[h].extrapolate_ + dims_mapping[output_height + w].extrapolate_) {
+      output_data[id] = extrapolation_value;
+      return;
+    }
+  }
+  int input_index = input_stride_image * imageid +
+                    input_stride_row * dims_mapping[h].origin_ +
+                    dims_mapping[output_height + w].origin_;
+  output_data[id] = input_data[input_index];
+}
+
+template <typename T>
+__global__ void _ResizeNearestKernel(
+    const int rank,
+    const int64_t* input_strides,
+    const fast_divmod* output_div_pitches,
     const T* input_data,
     T* output_data,
     const size_t N,
-    bool extrapolation_enabled,
-    float extrapolation_value,
-    CudaFunctionOriginalCoordinate transform_coordinate,
-    CudaFunctionNearestPixel calc_nearest_pixel) {
+    const T extrapolation_value,
+    const int64_t* prefix_dim_sum,
+    const NearestMappingInfo* dims_mapping) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG input_index = 0;
-  CUDA_LONG output_index = id;
 
-  int div, mod;
-  bool extrapolation_occured = false;
-  for (int dim = 0; dim < rank; ++dim) {
-    output_div_pitches[dim].divmod(output_index, div, mod);
-    output_index = mod;
-    float orig_coord = transform_coordinate(static_cast<float>(div), scales[dim], static_cast<float>(output_shape[dim]),
-                                            static_cast<float>(input_shape[dim]), roi[dim], roi[dim + rank]);
-    if (extrapolation_enabled && !extrapolation_occured) {
-      extrapolation_occured = (orig_coord < 0.f || orig_coord > static_cast<float>(input_shape[dim] - 1));
-    }
-    div = calc_nearest_pixel(orig_coord, scales[dim] < 1);
-    if (div >= input_shape[dim]) div = input_shape[dim] - 1;
-    if (div < 0) div = 0;
-    input_index += input_pitches[dim] * div;
+  int output_index = static_cast<int>(id);
+  int input_index = 0;
+  int extrapolation_occured = 0;
+  for (int axis = 0; axis < rank; ++axis) {
+    int dim = 0;
+    output_div_pitches[axis].divmod(output_index, dim, output_index);
+    const NearestMappingInfo& mi = dims_mapping[prefix_dim_sum[axis] + dim];
+    extrapolation_occured += mi.extrapolate_;
+    input_index += input_strides[axis] * mi.origin_;
   }
-  output_data[id] = extrapolation_occured ? static_cast<T>(extrapolation_value) : input_data[input_index];
+  output_data[id] = extrapolation_occured ? extrapolation_value : input_data[input_index];
 }
 
 struct BilinearMappingInfo {
@@ -214,7 +299,7 @@ __global__ void _ResizeBilinearKernel(
     int64_t output_height, int64_t output_width,
     fast_divmod div_output_width, fast_divmod div_output_image,
     const T* input_data, T* output_data, const size_t N,
-    float extrapolation_value,
+    const T extrapolation_value,
     BilinearMappingInfo* dims_mapping) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int bxc, output_image_index;
@@ -254,10 +339,10 @@ __device__ __forceinline__ float CubicInterpolationRowwise(
     const T* image, int x, int y, int input_height, int input_width,
     float coeff0, float coeff1, float coeff2, float coeff3) {
   int row_index = max(0, min(y, input_height - 1)) * input_width;
-  return coeff0 * static_cast<float>(image[row_index + max(0, min(x - 1, input_width - 1))])
-      + coeff1 * static_cast<float>(image[row_index + max(0, min(x, input_width - 1))])
-      + coeff2 * static_cast<float>(image[row_index + max(0, min(x + 1, input_width - 1))])
-      + coeff3 * static_cast<float>(image[row_index + max(0, min(x + 2, input_width - 1))]);
+  return coeff0 * static_cast<float>(image[row_index + max(0, min(x - 1, input_width - 1))]) +
+         coeff1 * static_cast<float>(image[row_index + max(0, min(x, input_width - 1))]) +
+         coeff2 * static_cast<float>(image[row_index + max(0, min(x + 1, input_width - 1))]) +
+         coeff3 * static_cast<float>(image[row_index + max(0, min(x + 2, input_width - 1))]);
 }
 
 struct CubicMappingInfo {
@@ -318,7 +403,7 @@ template <typename T>
 __global__ void _ResizeBiCubicKernel(
     int64_t input_height, int64_t input_width, int64_t output_height, int64_t output_width,
     fast_divmod div_output_width, fast_divmod div_output_image,
-    const T* input_data, T* output_data, const size_t N, float extrapolation_value,
+    const T* input_data, T* output_data, const size_t N, const T extrapolation_value,
     CubicMappingInfo* dims_mapping) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   int bxc, output_image_index, output_x, output_y;
@@ -340,23 +425,105 @@ __global__ void _ResizeBiCubicKernel(
   int x_int = x_info.origin_;
   int y_int = y_info.origin_;
   const T* image = input_data + input_index;
-  output_data[id] = y_info.coeff0_ * CubicInterpolationRowwise(image, x_int, y_int - 1, input_height, input_width, w0, w1, w2, w3)
-      + y_info.coeff1_ * CubicInterpolationRowwise(image, x_int, y_int, input_height, input_width, w0, w1, w2, w3)
-      + y_info.coeff2_ * CubicInterpolationRowwise(image, x_int, y_int + 1, input_height, input_width, w0, w1, w2, w3)
-      + y_info.coeff3_ * CubicInterpolationRowwise(image, x_int, y_int + 2, input_height, input_width, w0, w1, w2, w3);
+  output_data[id] = y_info.coeff0_ * CubicInterpolationRowwise(image, x_int, y_int - 1, input_height, input_width, w0, w1, w2, w3) +
+                    y_info.coeff1_ * CubicInterpolationRowwise(image, x_int, y_int, input_height, input_width, w0, w1, w2, w3) +
+                    y_info.coeff2_ * CubicInterpolationRowwise(image, x_int, y_int + 1, input_height, input_width, w0, w1, w2, w3) +
+                    y_info.coeff3_ * CubicInterpolationRowwise(image, x_int, y_int + 2, input_height, input_width, w0, w1, w2, w3);
 }
 
 size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
                             const std::vector<int64_t>& output_dims) {
   switch (upsample_mode) {
     case UpsampleMode::NN:
-      return 0;
+      return sizeof(int64_t) * output_dims.size() + sizeof(NearestMappingInfo) * std::accumulate(output_dims.begin(), output_dims.end(), 0);
     case UpsampleMode::LINEAR:
       return sizeof(BilinearMappingInfo) * std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, 0);
     case UpsampleMode::CUBIC:
       return sizeof(CubicMappingInfo) * std::accumulate(output_dims.rbegin(), output_dims.rbegin() + 2, 0);
   }
   return 0;
+}
+
+template <typename T>
+void ResizeNearestImpl(
+    const int rank,
+    CudaKernel::CudaAsyncBuffer<int64_t>& input_shape,
+    CudaKernel::CudaAsyncBuffer<int64_t>& output_shape,
+    CudaKernel::CudaAsyncBuffer<int64_t>& input_strides,
+    CudaKernel::CudaAsyncBuffer<fast_divmod>& output_div_pitches,
+    CudaKernel::CudaAsyncBuffer<float>& scales_vals,
+    CudaKernel::CudaAsyncBuffer<float>& roi_vals,
+    const T* input_data,
+    T* output_data,
+    const size_t N,
+    bool extrapolation_enabled,
+    const T extrapolation_value,
+    float cubic_coeff_a,
+    CudaFunctionOriginalCoordinate transform_coordinate,
+    CudaFunctionNearestPixel calc_nearest_pixel,
+    int64_t* prefix_dim_sum,
+    NearestMappingInfo* dims_mapping) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+
+  bool could2d = rank >= 2 &&
+                 transform_coordinate != GetDeviceOriginalCoordinateFunc(ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE) &&
+                 std::all_of(scales_vals.CpuPtr(), scales_vals.CpuPtr() + (rank - 2), [](float v) { return v == 1.0; });
+  if (could2d) {
+    int64_t output_height = output_shape.CpuPtr()[rank - 2];
+    int64_t output_width = output_shape.CpuPtr()[rank - 1];
+    fast_divmod div_output_image = (rank > 2) ? output_div_pitches.CpuPtr()[rank - 3] : fast_divmod(output_height * output_width);
+    int blocksPerDimsMappingGrid = (int)(ceil((output_height + output_width) / 32.0));
+
+    _ResizeNearestMappingKernel2D<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
+        input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
+        output_height, output_width,
+        scales_vals.CpuPtr()[rank - 2], scales_vals.CpuPtr()[rank - 1],
+        roi_vals.CpuPtr()[rank - 2], roi_vals.CpuPtr()[rank - 2 + rank],
+        roi_vals.CpuPtr()[rank - 1], roi_vals.CpuPtr()[rank - 1 + rank],
+        extrapolation_enabled, transform_coordinate, calc_nearest_pixel,
+        dims_mapping);
+    if (extrapolation_enabled) {
+      _ResizeNearestKernel2D<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+          output_height, output_width,
+          input_shape.CpuPtr()[rank - 2] * input_shape.CpuPtr()[rank - 1], input_shape.CpuPtr()[rank - 1],
+          div_output_image, output_div_pitches.CpuPtr()[rank - 2],
+          input_data, output_data, N,
+          extrapolation_value,
+          dims_mapping);
+    } else {
+      _ResizeNearestKernel2D<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+          output_height, output_width,
+          input_shape.CpuPtr()[rank - 2] * input_shape.CpuPtr()[rank - 1], input_shape.CpuPtr()[rank - 1],
+          div_output_image, output_div_pitches.CpuPtr()[rank - 2],
+          input_data, output_data, N,
+          extrapolation_value,
+          dims_mapping);
+    }
+    return;
+  }
+
+  int64_t total_dim_sum = std::accumulate(output_shape.CpuPtr(), output_shape.CpuPtr() + rank, 0);
+  int blocksPerDimsMappingGrid = (int)(ceil(static_cast<double>(total_dim_sum) / 32));
+  input_shape.CopyToGpu();
+  output_shape.CopyToGpu();
+  roi_vals.CopyToGpu();
+  scales_vals.CopyToGpu();
+  input_strides.CopyToGpu();
+  output_div_pitches.CopyToGpu();
+  _ResizeNearestMappingKernel<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
+      rank, input_shape.GpuPtr(), output_shape.GpuPtr(),
+      scales_vals.GpuPtr(), roi_vals.GpuPtr(),
+      total_dim_sum, extrapolation_enabled,
+      transform_coordinate, calc_nearest_pixel,
+      reinterpret_cast<int64_t*>(dims_mapping),
+      reinterpret_cast<NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank));
+  _ResizeNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      rank, input_strides.GpuPtr(), output_div_pitches.GpuPtr(),
+      input_data, output_data, N,
+      extrapolation_value,
+      reinterpret_cast<const int64_t*>(dims_mapping),
+      reinterpret_cast<const NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank));
+  return;
 }
 
 template <typename T>
@@ -373,36 +540,38 @@ void ResizeImpl(
     T* output_data,
     const size_t N,
     bool extrapolation_enabled,
-    float extrapolation_value,
+    const T extrapolation_value,
     float cubic_coeff_a,
     bool exclude_outside,
     ResizeCoordinateTransformationMode coordinate_transform_mode,
     ResizeNearestMode nearest_mode,
     void* dims_mapping) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  bool isSame = std::all_of(scales_vals.CpuPtr(), scales_vals.CpuPtr() + rank, [](float v) { return v == 1.0f; }) &&
+                (coordinate_transform_mode != ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE);
+  if (isSame) {
+    cudaMemcpyAsync(output_data, input_data, N * sizeof(T), cudaMemcpyDeviceToDevice);
+    return;
+  }
+
   CudaFunctionOriginalCoordinate transform_coordinate = GetDeviceOriginalCoordinateFunc(coordinate_transform_mode);
   CudaFunctionNearestPixel calc_nearest_pixel = GetDeviceNearstPixelFunction(nearest_mode);
+  if (upsample_mode == UpsampleMode::NN) {
+    ResizeNearestImpl(
+        rank, input_shape, output_shape, input_strides, output_div_pitches,
+        scales_vals, roi_vals, input_data, output_data, N,
+        extrapolation_enabled, extrapolation_value, cubic_coeff_a,
+        transform_coordinate, calc_nearest_pixel,
+        reinterpret_cast<int64_t*>(dims_mapping),
+        reinterpret_cast<NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank));
+    return;
+  }
+
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   fast_divmod div_output_image = (rank > 2) ? output_div_pitches.CpuPtr()[rank - 3] : fast_divmod(gsl::narrow_cast<int>(N));
   int64_t output_height = output_shape.CpuPtr()[rank - 2];
   int64_t output_width = output_shape.CpuPtr()[rank - 1];
-  int blocksPerDimsMappingGrid = (int)(ceil(static_cast<float>(output_height + output_width) / 32));
-
+  int blocksPerDimsMappingGrid = (int)(ceil((output_height + output_width) / 32.0));
   switch (upsample_mode) {
-    case UpsampleMode::NN:
-      input_shape.CopyToGpu();
-      output_shape.CopyToGpu();
-      roi_vals.CopyToGpu();
-      scales_vals.CopyToGpu();
-      input_strides.CopyToGpu();
-      output_div_pitches.CopyToGpu();
-      _ResizeNearestKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          rank, input_shape.GpuPtr(), output_shape.GpuPtr(),
-          input_strides.GpuPtr(), output_div_pitches.GpuPtr(),
-          scales_vals.GpuPtr(), roi_vals.GpuPtr(),
-          input_data, output_data, N,
-          extrapolation_enabled, extrapolation_value,
-          transform_coordinate, calc_nearest_pixel);
-      return;
     case UpsampleMode::LINEAR:
       _ResizeBilinearCoordinateMapping<T><<<blocksPerDimsMappingGrid, 32, 0>>>(
           input_shape.CpuPtr()[rank - 2], input_shape.CpuPtr()[rank - 1],
@@ -435,7 +604,6 @@ void ResizeImpl(
           output_div_pitches.CpuPtr()[rank - 2], div_output_image,
           input_data, output_data, N, extrapolation_value,
           reinterpret_cast<CubicMappingInfo*>(dims_mapping));
-      // CUDA_CALL(cudaGetLastError());
       return;
   }
 }
@@ -454,7 +622,7 @@ void ResizeImpl(
       T* output_data,                                               \
       const size_t N,                                               \
       bool extrapolation_enabled,                                   \
-      float extrapolation_value,                                    \
+      const T extrapolation_value,                                  \
       float cubic_coeff_a,                                          \
       bool exclude_outside,                                         \
       ResizeCoordinateTransformationMode coordinate_transform_mode, \

@@ -247,7 +247,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "48cb18e5c419ddd23d9badcfe4e9df7bde1979b2",
+               "commitHash": "fe1790ca0df67173702f70d5646b82f48f412b99",
                "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
             }
          }
@@ -443,6 +443,15 @@
             "git": {
                "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
                "repositoryUrl": "https://github.com/nlohmann/json.git"
+            },
+            "type": "git"
+         }
+      }
+      {
+         "component": {
+            "git": {
+               "commitHash": "a11f5002af58a03d5902b13ef65c84cedb499024",
+               "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"
          }

@@ -4,6 +4,7 @@
 #include "dynamicquantizelinear.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
+#include "core/mlas/inc/mlas.h"
 #include <cmath>
 #include <cfenv>
 
@@ -16,7 +17,6 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     DynamicQuantizeLinear<uint8_t>);
-
 
 static float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
@@ -31,12 +31,13 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(x_ptr != nullptr);
   auto& x = *x_ptr;
   const auto* x_data = x.template Data<float>();
+  const auto num_of_elements = x.Shape().Size();
 
   auto& y = *ctx->Output(0, x.Shape());
   std::vector<int64_t> shape({});
   auto& y_scale = *ctx->Output(1, shape);
-  auto& y_zeropoint = *ctx->Output(2, shape); 
-  
+  auto& y_zeropoint = *ctx->Output(2, shape);
+
   // find quantization range min and max
   float qmax = std::numeric_limits<T>::max();
   float qmin = std::numeric_limits<T>::min();
@@ -46,9 +47,9 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   }
 
   // find input range min and max
-  auto min = ConstEigenVectorMap<float>(x_data, x.Shape().Size()).minCoeff();
+  auto min = ConstEigenVectorMap<float>(x_data, num_of_elements).minCoeff();
   min = std::min(min, qmin);
-  auto max = ConstEigenVectorMap<float>(x_data, x.Shape().Size()).maxCoeff();
+  auto max = ConstEigenVectorMap<float>(x_data, num_of_elements).maxCoeff();
   max = std::max(max, qmin);
 
   // find scale and zero point
@@ -63,11 +64,7 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   // quantize the data
   auto* output = y.template MutableData<T>();
-  const auto num_of_elements = x.Shape().Size();
-
-  for (int i = 0; i < num_of_elements; ++i) {
-    output[i] = static_cast<T>(clamp(RoundHalfToEven(static_cast<float>(x_data[i] / scale)) + zero_point, qmin, qmax));
-  }
+  MlasQuantizeLinear(x_data, output, num_of_elements, scale, zero_point);
 
   return Status::OK();
 }

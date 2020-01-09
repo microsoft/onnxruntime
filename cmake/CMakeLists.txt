@@ -55,7 +55,7 @@ option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" O
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
-option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
+option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -99,6 +99,13 @@ if(NOT WIN32)
   if(onnxruntime_ENABLE_INSTRUMENT)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
+  endif()
+else()
+  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
+  if (HAS_D2FH4)
+    message("Enabling /d2FH4-")
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
   endif()
 endif()
 
@@ -211,12 +218,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()
-  if(onnxruntime_BUILD_x86)
-    set (CMAKE_SYSTEM_PROCESSOR "x86")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-  endif()
+  endif()  
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -268,10 +270,14 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 
 # use protobuf as a submodule
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
+endif()
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")	
 set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
@@ -279,6 +285,11 @@ else()
   add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
 endif()
 add_executable(protobuf::protoc ALIAS protoc)
+
+if(UNIX AND onnxruntime_ENABLE_LTO)
+  #https://github.com/protocolbuffers/protobuf/issues/5923
+  target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
+endif()
 include(protobuf_function.cmake)
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
@@ -379,6 +390,13 @@ if (onnxruntime_USE_TVM)
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
 
+  if (onnxruntime_USE_MKLML)
+    add_dependencies(tvm project_mklml)
+    add_dependencies(tvm_topi project_mklml)
+    add_dependencies(tvm_runtime project_mklml)
+    add_dependencies(nnvm_compiler project_mklml)
+  endif()
+
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dlpack/include
@@ -398,6 +416,14 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
+if (APPLE)
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
+  #TODO: fix the warning in ONNX and re-enable this flag
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
+  string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
+endif()
 # ONNX
 add_subdirectory(onnx)
 
@@ -472,6 +498,7 @@ else()
   endif()
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
+  check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
@@ -696,10 +723,10 @@ include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
-if(onnxruntime_USE_AUTOML)
-  add_definitions(-DMICROSOFT_AUTOML)
-  # Build shared featurizer library
-  include(onnxruntime_automl_featurizers.cmake)
+if(onnxruntime_USE_FEATURIZERS)
+  add_definitions(-DML_FEATURIZERS)
+  # Fetch and build featurizers
+  include(external/featurizers.cmake)
 endif()
 
 if(WIN32)
@@ -724,6 +751,11 @@ endif()
 
 if (onnxruntime_BUILD_SERVER)
   include(onnxruntime_server.cmake)
+endif()
+
+if (onnxruntime_BUILD_JAVA)
+  message(STATUS "Java Build is enabled")
+  include(onnxruntime_java.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be
@@ -756,3 +788,4 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+

@@ -74,7 +74,7 @@ TEST(ONNXModelsTest1, bvlc_alexnet_1) {
   std::unique_ptr<ZeroCopyInputStream> raw_input(new FileInputStream(fd));
   std::unique_ptr<CodedInputStream> coded_input(new CodedInputStream(raw_input.get()));
   // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
-  coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
+  coded_input->SetTotalBytesLimit(INT_MAX);
   ModelProto model_proto;
   bool result = model_proto.ParseFromCodedStream(coded_input.get());
   coded_input.reset();
@@ -124,7 +124,7 @@ TEST_P(ONNXModelsTest, LoadFromProtobuf) {
   ASSERT_TRUE(fd > 0);
   std::unique_ptr<ZeroCopyInputStream> raw_input(new FileInputStream(fd));
   std::unique_ptr<CodedInputStream> coded_input(new CodedInputStream(raw_input.get()));
-  coded_input->SetTotalBytesLimit(INT_MAX, INT_MAX);
+  coded_input->SetTotalBytesLimit(INT_MAX);
   std::unique_ptr<ModelProto> model_proto = onnxruntime::make_unique<ModelProto>();
   bool result = model_proto->ParseFromCodedStream(coded_input.get());
   coded_input.reset();

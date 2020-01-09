@@ -3,7 +3,6 @@
 
 # -*- coding: UTF-8 -*-
 import argparse
-import ctypes
 import multiprocessing
 import numpy as np
 import onnx
@@ -73,27 +72,27 @@ def top_n_avg(per_iter_cost, n):
     per_iter_cost.sort()
     return sum(per_iter_cost[:n]) * 1000 / n
 
+def get_num_threads():
+    return os.environ['OMP_NUM_THREADS'] if 'OMP_NUM_THREADS' in os.environ else None
+
 def set_num_threads(num_threads):
-    if os.name == 'nt':
-        try:
-            mkl_rt = ctypes.CDLL('mklml.dll')
-            mkl_rt.MKL_Set_Num_Threads(ctypes.c_int(num_threads))
-            assert mkl_rt.MKL_Get_Max_Threads() == num_threads
-        except:
-            print("Warning: failed to set number of threads for MKL! Default threads setting applied!")
-    elif os.name == 'posix':
-        try:
-            mkl_rt = ctypes.CDLL('libmklml_intel.so')
-            mkl_rt.mkl_set_num_threads(ctypes.byref(ctypes.c_int(num_threads)))
-            assert mkl_rt.mkl_get_max_threads() == num_threads
-        except:
-            print("Warning: failed to set number of threads for MKL! Default threads setting applied!")
+    if num_threads:
+        os.environ['OMP_NUM_THREADS'] = str(num_threads)
     else:
-        raise NotImplementedError
+        del os.environ['OMP_NUM_THREADS']
+
+class ScopedSetNumThreads:
+    def __init__(self, num_threads):
+        self.saved_num_threads_ = get_num_threads()
+        self.num_threads_ = num_threads
+
+    def __enter__(self):
+        set_num_threads(self.num_threads_)
+
+    def __exit__(self, type, value, tb):
+        set_num_threads(self.saved_num_threads_)
 
 def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layers, seq_len, batch_size, top_n=5, min_duration_seconds=10):
-    set_num_threads(num_threads)
-
     model_name = '{}_i{}_h{}_{}_l{}_{}.onnx'.format(rnn_type, input_dim, hidden_dim,
                                                     'bi' if bidirectional else '',
                                                     layers,
@@ -102,33 +101,37 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
     generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_size == 1)
     feeds = {'input':np.random.rand(seq_len, batch_size, input_dim).astype(np.float32)}
 
-    # run original model
-    sess = onnxruntime.InferenceSession(model_name)
+    # run original model in CPU provider, using all threads
+    # there are some local thread pool inside LSTM/GRU CPU kernel
+    # that cannot be controlled by OMP or intra_op_num_threads
+    sess = onnxruntime.InferenceSession(model_name, providers=['CPUExecutionProvider'])
     count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
     avg_rnn = top_n_avg(per_iter_cost, top_n)
-    print('perf_rnn {}: run for {} iterations, top {} avg {} ms'.format(model_name, count, top_n, avg_rnn))
+    print('perf_rnn (with default threads) {}: run for {} iterations, top {} avg {:.3f} ms'.format(model_name, count, top_n, avg_rnn))
 
-    # run Scan model converted from original
-    from .model_editor import convert_to_scan_model
-    from .symbolic_shape_infer import SymbolicShapeInference
-    scan_model_name = os.path.splitext(model_name)[0] + '_scan.onnx'
-    convert_to_scan_model(model_name, scan_model_name)
-    # note that symbolic shape inference is needed because model has symbolic batch dim, thus init_state is ConstantOfShape
-    SymbolicShapeInference.infer_shapes(scan_model_name, scan_model_name)
-    sess = onnxruntime.InferenceSession(scan_model_name)
-    count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
-    avg_scan = top_n_avg(per_iter_cost, top_n)
-    print('perf_scan {}: run for {} iterations, top {} avg {} ms'.format(scan_model_name, count, top_n, avg_scan))
+    # run converted model in Nuphar, using specified threads
+    with ScopedSetNumThreads(num_threads) as scoped_set_num_threads:
+        # run Scan model converted from original in Nuphar
+        from .model_editor import convert_to_scan_model
+        from .symbolic_shape_infer import SymbolicShapeInference
+        scan_model_name = os.path.splitext(model_name)[0] + '_scan.onnx'
+        convert_to_scan_model(model_name, scan_model_name)
+        # note that symbolic shape inference is needed because model has symbolic batch dim, thus init_state is ConstantOfShape
+        SymbolicShapeInference.infer_shapes(scan_model_name, scan_model_name)
+        sess = onnxruntime.InferenceSession(scan_model_name)
+        count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
+        avg_scan = top_n_avg(per_iter_cost, top_n)
+        print('perf_scan (with {} threads) {}: run for {} iterations, top {} avg {:.3f} ms'.format(num_threads, scan_model_name, count, top_n, avg_scan))
 
-    # quantize Scan model to int8
-    from .model_quantizer import convert_matmul_model
-    int8_model_name = os.path.splitext(model_name)[0] + '_int8.onnx'
-    convert_matmul_model(scan_model_name, int8_model_name)
-    SymbolicShapeInference.infer_shapes(int8_model_name, int8_model_name)
-    sess = onnxruntime.InferenceSession(int8_model_name)
-    count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
-    avg_int8 = top_n_avg(per_iter_cost, top_n)
-    print('perf_int8 {}: run for {} iterations, top {} avg {} ms'.format(int8_model_name, count, top_n, avg_int8))
+        # quantize Scan model to int8 and run in Nuphar
+        from .model_quantizer import convert_matmul_model
+        int8_model_name = os.path.splitext(model_name)[0] + '_int8.onnx'
+        convert_matmul_model(scan_model_name, int8_model_name)
+        SymbolicShapeInference.infer_shapes(int8_model_name, int8_model_name)
+        sess = onnxruntime.InferenceSession(int8_model_name)
+        count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
+        avg_int8 = top_n_avg(per_iter_cost, top_n)
+        print('perf_int8 (with {} threads) {}: run for {} iterations, top {} avg {:.3f} ms'.format(num_threads, int8_model_name, count, top_n, avg_int8))
 
     return avg_rnn, avg_scan, avg_int8
 
@@ -179,7 +182,7 @@ def parse_arguments():
   parser.add_argument('--layers', help='Number of layers', type=int, default=4)
   parser.add_argument('--seq_len', help='Sequence length', type=int, default=32)
   parser.add_argument('--batch_size', help='Batch size', type=int, default=1)
-  parser.add_argument('--num_threads', help='Number of MKL threads', type=int, default=1)
+  parser.add_argument('--num_threads', help='Number of MKL threads', type=int, default=multiprocessing.cpu_count())
   parser.add_argument('--top_n', help='Fastest N samples to compute average time', type=int, default=5)
   parser.add_argument('--auto', help='Auto_name (usually CPU type) for auto test to generate (batch_)single|multithread_<auto_name>.csv files', default=None)
   return parser.parse_args()

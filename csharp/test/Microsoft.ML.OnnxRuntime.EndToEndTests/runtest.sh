@@ -7,7 +7,8 @@ SourceRoot=$2
 BuildDir=$3
 export CurrentOnnxRuntimeVersion=$4
 IsMacOS=${5:-false}
-PackageName=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
+# NOTE: PackageName is not PACKAGENAME since this is being called by other scripts that have already switched to the CamelCase version
+PackageName=${PackageName:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
 

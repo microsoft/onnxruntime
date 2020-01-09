@@ -81,7 +81,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                input_strides, output_div_pitches, scales_vals, roi_vals,
                reinterpret_cast<const CudaT*>(X->template Data<T>()),
                reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-               output_count, use_extrapolation_, extrapolation_value_,
+               output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
                cubic_coeff_a_, exclude_outside_,
                coordinate_transform_mode_, nearest_mode_,
                dims_mapping);
@@ -152,7 +152,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     // When sizes input is available directly populate it into the output_dims array.
     ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
                 "Either scales or sizes MUST be provided as input.");
-    ORT_ENFORCE(sizes->Shape().Size() == output_dims.size(),
+    ORT_ENFORCE(sizes->Shape().Size() == static_cast<int64_t>(output_dims.size()),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
     ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);

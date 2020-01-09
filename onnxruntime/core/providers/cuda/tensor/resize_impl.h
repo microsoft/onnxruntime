@@ -28,7 +28,7 @@ void ResizeImpl(
     T* output_data,
     const size_t N,
     bool extrapolation_enabled,
-    float extrapolation_value,
+    const T extrapolation_value,
     float cubic_coeff_a,
     bool exclude_outside,
     onnxruntime::ResizeCoordinateTransformationMode coordinate_transform_mode,

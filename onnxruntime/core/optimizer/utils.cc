@@ -63,7 +63,7 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     const MLFloat16* val = init_const->data<MLFloat16>();
-    float diff = std::abs(math::halfToFloat(val[0].val) - static_cast<float>(expected_value));
+    float diff = std::abs(math::halfToFloat(val[0].val) - math::halfToFloat(math::floatToHalf(expected_value)));
     if (diff > FLT_EPSILON) {
       return false;
     }

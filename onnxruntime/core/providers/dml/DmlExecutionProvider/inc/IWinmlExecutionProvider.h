@@ -94,14 +94,22 @@ namespace winrt::Windows::AI::MachineLearning::implementation
         const void* executionHandle,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
-
+    
     struct GraphNodeFactoryRegistration
     {
         GraphNodeFactory factory;
         std::optional<uint32_t> requiredInputCount;
-        std::vector<uint32_t> requiredConstantCpuInputs;
         bool requiresFloatFormatsExceptConstInputs = false;
     };
 
-    using GraphNodeFactoryMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<GraphNodeFactoryRegistration>>;
+    using KernelSupportQuery = std::function<bool(const onnxruntime::Node& node)>;
+
+    struct InternalRegistrationInfo
+    {
+        std::vector<uint32_t> requiredConstantCpuInputs;
+        std::optional<GraphNodeFactoryRegistration> graphNodeFactoryRegistration;
+        KernelSupportQuery supportQuery;
+    };
+
+    using InternalRegistrationInfoMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<InternalRegistrationInfo>>;
 }

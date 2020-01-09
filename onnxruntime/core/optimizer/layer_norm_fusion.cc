@@ -153,7 +153,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     nodes_to_remove.push_back(add2_node);
-
     // Traceback the add node to find reduceMean --> add
     const Node* p_reduce_mean2 = nullptr;
 
@@ -254,6 +253,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
                                           {}, {}, kOnnxDomain);
+
+    // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
+    if (tensor_proto != nullptr) {
+      if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+        layer_norm_node.AddAttribute("epsilon", initializer->data<float>()[0]);
+      }
+    }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());

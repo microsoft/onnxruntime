@@ -13,14 +13,16 @@ class InferenceSession:
     """
     This is the main class used to run a model.
     """
-    def __init__(self, path_or_bytes, sess_options=None):
+    def __init__(self, path_or_bytes, sess_options=None, providers=[]):
         """
         :param path_or_bytes: filename or serialized model in a byte string
         :param sess_options: session options
+        :param providers: providers to use for session. If empty, will use
+            all available providers.
         """
         self._path_or_bytes = path_or_bytes
         self._sess_options = sess_options
-        self._load_model()
+        self._load_model(providers)
         self._enable_fallback = True
 
     def _load_model(self, providers=[]):
