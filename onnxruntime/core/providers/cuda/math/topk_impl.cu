@@ -21,14 +21,14 @@ struct KV {
   int64_t val;
 };
 
+#define BT GridDim::maxThreadsPerBlock
 #define FROM(idx) (left_dim + (idx)*mid_dim + right_dim)
 #define TO(idx) (left_dim * K / dimension + (idx)*mid_dim + right_dim)
 #define TRIVIAL (1 == largest ? type_min : type_max)
 #define BIGGER(n, m) (n.key > m.key ? n : (n.key < m.key ? m : (n.val > m.val ? (1 == largest ? m : n) : (1 == largest ? n : m))))
 #define SMALLER(n, m) (n.key < m.key ? n : (n.key > m.key ? m : (n.val < m.val ? (1 == largest ? m : n) : (1 == largest ? n : m))))
 #define IS_SMALLER(n, m) (n.key < m.key || !(n.key > m.key) && (1 == largest ? n.val > m.val : n.val < m.val))
-#define MAX(n, m) ((n) >= (m) ? (n) : (m))
-#define MIN(n, m) ((n) <= (m) ? (n) : (m))
+#define LESS(n, m) ((n) <= (m) ? (n) : (m))
 
 template <typename T>
 __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t aligned_K, int64_t largest, int64_t sorted, int64_t dimension, int64_t aligned_dimension, T type_min, T type_max) {
@@ -259,7 +259,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   BlockScan(temp_storage).ExclusiveSum(superior, superior);
   BlockScan(temp_storage).ExclusiveSum(equal, equal);
   auto equal_quota = K - *all_superior - equal;
-  auto output_i = superior + MIN(K - *all_superior, equal);
+  auto output_i = superior + LESS(K - *all_superior, equal);
   for (int64_t xpt_i = 0; xpt_i < XPT; ++xpt_i) {
     auto x_i = offset + xpt_i;
     if (x_i < dimension) {
@@ -318,32 +318,84 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
       }
     }
   }
-} 
+}
 
 template <typename T>
-Status TopKImpl(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+__global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
+  auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis];
+  auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
+  auto input_offset = left + id * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
+  output_v[id] = input_x[input_offset];
+  output_i[id] = id;
+}
+
+template <typename T>
+__global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t offset, int64_t dimension) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, K);
+  auto left = offset / (axis == size - 1 ? 1 : elem_nums[axis + 1]) * elem_nums[axis] * K / dimension;
+  auto right = axis == size - 1 ? 0 : offset % elem_nums[axis + 1];
+  auto output_offset = left + id * (axis == size - 1 ? 1 : elem_nums[axis + 1]) + right;
+  output_v[output_offset] = input_v[id];
+  output_i[output_offset] = input_i[id];
+}
+
+__global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
+  if (id >= K) {
+    output_i[id] = dimension;
+  }
+}
+
+template <typename T>
+Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   auto aligned_K = static_cast<int64_t>(pow(2, ceil(log2(K))));
   auto aligned_dimension = static_cast<int64_t>(pow(2, ceil(log2(dimension))));
   if (aligned_dimension <= GridDim::maxThreadsPerBlock << 1) {
     BitonicTopK<T><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<T>)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
-    return Status::OK();
-  } else {
+  } else if (K <= BT*16 || 0 == sorted) {
     auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
-    #define BT GridDim::maxThreadsPerBlock
-    if (BT*2 >= K) {
+    if (BT*2 >= K || 0 == sorted) {
       RadixTopK<T,BT,2><<<N,BT,259*sizeof(uint32_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
     } else if (BT*4>=K) {
       RadixTopK<T,BT,4><<<N,BT,259*sizeof(uint32_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
     } else if (BT*8>=K) {
       RadixTopK<T,BT,8><<<N,BT,259*sizeof(uint32_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
-    } else if (BT*16>=K) {
+    } else {
       RadixTopK<T,BT,16><<<N,BT,259*sizeof(uint32_t)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
     }
-    return Status::OK();
+  } else {
+    auto input_key_buffer = kernel->GetScratchBuffer<T>(dimension);
+    auto output_key_buffer = kernel->GetScratchBuffer<T>(dimension);
+    auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
+    auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
+    auto input_key = input_key_buffer.get();
+    auto output_key = output_key_buffer.get();
+    auto input_value = input_value_buffer.get();
+    auto output_value = output_value_buffer.get();
+    size_t temp_bytes = 0;
+    CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key, output_key, input_value, output_value, dimension));
+    auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes);
+    auto temp_storage = temp_storage_buffer.get();
+    auto blocksPerGridD = (int)(ceil(static_cast<float>(dimension) / GridDim::maxThreadsPerBlock));
+    auto blocksPerGridK = (int)(ceil(static_cast<float>(K) / GridDim::maxThreadsPerBlock));
+    for (int64_t i = 0; i < N; i++) {
+      FillInput<T><<<blocksPerGridD, GridDim::maxThreadsPerBlock, 0>>>(input_x, input_key, input_value, elem_nums, size, axis, K, i, dimension);
+      CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension) : cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension));
+      if (1 == sorted) {
+        FillOutput<T><<<blocksPerGridK, GridDim::maxThreadsPerBlock, 0>>>(output_key, output_value, output_v, output_i, elem_nums, size, axis, K, i, dimension);
+      } else {  //reorder by ascending index
+        ExcludeOutput<<<blocksPerGridD, GridDim::maxThreadsPerBlock, 0>>>(output_value, K, dimension);
+        CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, output_value, input_value, output_key, input_key, dimension));
+        FillOutput<T><<<blocksPerGridK, GridDim::maxThreadsPerBlock, 0>>>(input_key, input_value, output_v, output_i, elem_nums, size, axis, K, i, dimension);
+      }
+    } 
   }
+  return Status::OK();
 }
 
-#define TOPKIMPLE(T) template Status TopKImpl<T>(const T* input_x,         \
+#define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel, \
+                                                 const T* input_x,         \
                                                  T* output_v,              \
                                                  int64_t* output_i,        \
                                                  const int64_t* elem_nums, \

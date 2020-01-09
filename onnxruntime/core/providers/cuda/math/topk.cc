@@ -42,7 +42,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 #define IS_PRIM_TYPE(T) utils::IsPrimitiveDataType<T>(prim_type)
-#define TOPKIMPL(T) TopKImpl<T>(tensor_X->Data<T>(),                               \
+#define TOPKIMPL(T) TopKImpl<T>(this, tensor_X->Data<T>(),                         \
                                 static_cast<T*>(tensor_V->MutableDataRaw()),       \
                                 static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
                                 elem_nums_cuda.GpuPtr(),                           \
