@@ -13,16 +13,21 @@
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 OrtStatus* OrtModel::CreateOrtModelFromPath(const char* path, size_t len, OrtModel** model) {
+  ORT_UNUSED_PARAMETER(path);
+  ORT_UNUSED_PARAMETER(len);
+  ORT_UNUSED_PARAMETER(model);
   return nullptr;
 }
 
 OrtStatus* OrtModel::CreateOrtModelFromData(void* data, size_t len, OrtModel** model) {
+  ORT_UNUSED_PARAMETER(data);
+  ORT_UNUSED_PARAMETER(len);
+  ORT_UNUSED_PARAMETER(model);
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out) {
-  OrtModel* model;
-  if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, &model))
+  if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, out))
   {
     return status;
   }
@@ -30,8 +35,7 @@ ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, _In_ si
 }
 
 ORT_API_STATUS_IMPL(winmla::CreateModelFromData, void* data, _In_ size_t size, _Outptr_ OrtModel** out) {
-  OrtModel* model;
-  if (auto status = OrtModel::CreateOrtModelFromData(data, size, &model)) {
+  if (auto status = OrtModel::CreateOrtModelFromData(data, size, out)) {
     return status;
   }
   return nullptr;

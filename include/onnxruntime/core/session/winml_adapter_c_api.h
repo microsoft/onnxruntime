@@ -11,11 +11,6 @@ ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 ORT_RUNTIME_CLASS(OperatorRegistry);
 
-struct WinmlAdapterApi;
-typedef struct WinmlAdapterApi WinmlAdapterApi;
-
-ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api)NO_EXCEPTION;
-
 struct WinmlAdapterApi {
   // OrtTypeInfo Casting methods
   OrtStatus*(ORT_API_CALL* CastTypeInfoToMapTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out)NO_EXCEPTION;

@@ -4,6 +4,8 @@
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
 
+#include "core/providers/winml/winml_provider_factory.h"
+
 #ifdef USE_DML
 //#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 //#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"

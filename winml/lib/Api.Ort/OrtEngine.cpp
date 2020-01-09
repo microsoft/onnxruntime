@@ -3,6 +3,8 @@
 #include "OrtEngine.h"
 #include "NamespaceAliases.h"
 
+#include "core/providers/winml/winml_provider_factory.h"
+
 using namespace WinML;
 
 OnnruntimeModel::OnnruntimeModel() : ort_model_(nullptr, nullptr) {
