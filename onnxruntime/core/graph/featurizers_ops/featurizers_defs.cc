@@ -789,7 +789,40 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT64, 1);
+            // Number of output rows is not known
+            auto& output0_shape = *ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+            output0_shape.add_dim();
+            auto& output1_shape = *ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+            output1_shape.add_dim();
+
+            // Keys
             propagateElemTypeFromInputToOutput(ctx, 2, 2);
+            // Keys shape
+            if (hasInputShape(ctx, 2)) {
+              const auto& input2_shape = getInputShape(ctx, 2);
+              if (input2_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting keys to have 2 dimensions");
+              }
+              auto& output2_shape = *ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+              // Unknown number of rows in the output
+              output2_shape.add_dim();
+              // Copy the second dimension
+              *output2_shape.add_dim() = input2_shape.dim(1);
+            }
+
+            // Data shape
+            propagateElemTypeFromInputToOutput(ctx, 3, 3);
+            if (hasInputShape(ctx, 3)) {
+              const auto& input3_shape = getInputShape(ctx, 3);
+              if (input3_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting data to have 2 dimensions");
+              }
+              auto& output3_shape = *ctx.getOutputType(3)->mutable_tensor_type()->mutable_shape();
+              // Unknown number of rows in the output
+              output3_shape.add_dim();
+              // Copy the second dimension
+              *output3_shape.add_dim() = input3_shape.dim(1);
+            }
           });
 }
 

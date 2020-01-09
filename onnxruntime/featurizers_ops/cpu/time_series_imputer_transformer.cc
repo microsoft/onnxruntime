@@ -119,7 +119,7 @@ struct FromStringOptional<std::string> {
 
 template <typename T>
 struct TimeSeriesImputerTransformerImpl {
-  Status operator()(OpKernelContext* ctx, int64_t rows) {
+  void operator()(OpKernelContext* ctx, int64_t rows) {
     const auto& state = *ctx->Input<Tensor>(0);
     const uint8_t* const state_data = state.template Data<uint8_t>();
 
@@ -127,9 +127,8 @@ struct TimeSeriesImputerTransformerImpl {
     const auto& keys = *ctx->Input<Tensor>(2);
     const auto& data = *ctx->Input<Tensor>(2);
 
-    const bool explicit_batch = data.Shape().NumDimensions() == 3;
-    const int64_t keys_per_row = (keys.Shape().NumDimensions() == 2) ? keys.Shape()[1] : keys.Shape()[2];
-    const int64_t columns = (data.Shape().NumDimensions() == 2) ? data.Shape()[1] : data.Shape()[2];
+    const int64_t keys_per_row = keys.Shape()[1];
+    const int64_t columns = data.Shape()[1];
 
     using namespace timeseries_imputer_details;
 
@@ -195,7 +194,6 @@ struct TimeSeriesImputerTransformerImpl {
       data_output = std::transform(imputed_data.cbegin(), imputed_data.cend(), data_output,
                                    FromStringOptional<T>());
     }
-    return Status::OK();
   }
 };
 
