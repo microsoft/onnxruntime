@@ -328,7 +328,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "mlperf_ssd_mobilenet_300", "Could not find file output_0.pb" },
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
-                { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" }
+                { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
             };
 
             // The following models fails on nocontribops win CI
