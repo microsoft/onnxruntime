@@ -125,7 +125,7 @@ struct TimeSeriesImputerTransformerImpl {
 
     const auto& times = *ctx->Input<Tensor>(1);
     const auto& keys = *ctx->Input<Tensor>(2);
-    const auto& data = *ctx->Input<Tensor>(2);
+    const auto& data = *ctx->Input<Tensor>(3);
 
     const int64_t keys_per_row = keys.Shape()[1];
     const int64_t columns = data.Shape()[1];
@@ -164,6 +164,7 @@ struct TimeSeriesImputerTransformerImpl {
       auto tuple_row = std::make_tuple(ToTimePoint(*times_data), std::move(str_keys), std::move(str_data));
 
       transformer.execute(tuple_row, callback_fn);
+      ++times_data;
     }
 
     transformer.flush(callback_fn);
@@ -219,7 +220,7 @@ class TimeSeriesImputerTransformer final : public OpKernel {
 
     const auto& keys = *ctx->Input<Tensor>(2);
     ORT_RETURN_IF_ERROR(CheckBatches(rows, keys.Shape()));
-    const auto& data = *ctx->Input<Tensor>(2);
+    const auto& data = *ctx->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(CheckBatches(rows, data.Shape()));
 
     auto data_type = data.GetElementType();

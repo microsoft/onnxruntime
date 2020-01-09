@@ -214,7 +214,7 @@ void RegisterDateTimeFeaturizerVer1() {
                 case 0:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT32, output);
                   break;
-                case 1: // fall through
+                case 1:  // fall through
                 case 2:
                 case 3:
                 case 4:
@@ -225,11 +225,11 @@ void RegisterDateTimeFeaturizerVer1() {
                 case 9:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
                   break;
-                case 10: // fall through
+                case 10:  // fall through
                 case 11:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT16, output);
                   break;
-                case 12: // fall through
+                case 12:  // fall through
                 case 13:
                 case 14:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
@@ -790,10 +790,10 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT64, 1);
             // Number of output rows is not known
-            auto& output0_shape = *ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
-            output0_shape.add_dim();
-            auto& output1_shape = *ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
-            output1_shape.add_dim();
+            ONNX_NAMESPACE::TensorShapeProto shape_0_1;
+            shape_0_1.add_dim();
+            ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape_0_1);
+            ONNX_NAMESPACE::updateOutputShape(ctx, 1, shape_0_1);
 
             // Keys
             propagateElemTypeFromInputToOutput(ctx, 2, 2);
@@ -803,11 +803,10 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
               if (input2_shape.dim_size() != 2) {
                 fail_shape_inference("Expecting keys to have 2 dimensions");
               }
-              auto& output2_shape = *ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
-              // Unknown number of rows in the output
-              output2_shape.add_dim();
-              // Copy the second dimension
-              *output2_shape.add_dim() = input2_shape.dim(1);
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              shape.add_dim();
+              *shape.add_dim() = input2_shape.dim(1);
+              ONNX_NAMESPACE::updateOutputShape(ctx, 2, shape);
             }
 
             // Data shape
@@ -817,11 +816,10 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
               if (input3_shape.dim_size() != 2) {
                 fail_shape_inference("Expecting data to have 2 dimensions");
               }
-              auto& output3_shape = *ctx.getOutputType(3)->mutable_tensor_type()->mutable_shape();
-              // Unknown number of rows in the output
-              output3_shape.add_dim();
-              // Copy the second dimension
-              *output3_shape.add_dim() = input3_shape.dim(1);
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              shape.add_dim();
+              *shape.add_dim() = input3_shape.dim(1);
+              ONNX_NAMESPACE::updateOutputShape(ctx, 3, shape);
             }
           });
 }

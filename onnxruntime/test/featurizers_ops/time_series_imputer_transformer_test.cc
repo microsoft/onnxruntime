@@ -13,12 +13,12 @@ namespace NS = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace test {
 
-std::chrono::system_clock::time_point GetTimePoint(std::chrono::system_clock::time_point tp, int unitsToAdd, std::string = "days") {
-  return tp + std::chrono::minutes(unitsToAdd * (60 * 24));
+inline std::chrono::system_clock::time_point GetTimePoint(std::chrono::system_clock::time_point tp, int unitsToAdd, std::string = "days") {
+  return tp + std::chrono::minutes(unitsToAdd * (3600 * 24));
 }
 
-int64_t GetTimeInt(std::chrono::system_clock::time_point tp, int unitsToAdd, std::string = "days") {
-  return (tp + std::chrono::minutes(unitsToAdd * (60 * 24))).time_since_epoch().count();
+inline int64_t GetTimeInt(std::chrono::system_clock::time_point tp, int unitsToAdd) {
+  return GetTimePoint(tp, unitsToAdd).time_since_epoch().count();
 }
 
 using InputType = std::tuple<
@@ -52,8 +52,7 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
   return ar.commit();
 }
 
-static void AddInputs (OpTester& test, const std::vector<InputType>& inferenceBatches, std::vector<int64_t>& times,
-  std::vector<std::string>& keys, std::vector<std::string>& data) {
+static void AddInputs (OpTester& test, const std::vector<InputType>& inferenceBatches) {
 
   auto stream = GetStream(
       {inferenceBatches},
@@ -63,6 +62,10 @@ static void AddInputs (OpTester& test, const std::vector<InputType>& inferenceBa
 
   auto dim = static_cast<int64_t>(stream.size());
   test.AddInput<uint8_t>("State", {dim}, stream);
+
+  std::vector<int64_t> times;
+  std::vector<std::string> keys;
+  std::vector<std::string> data;
 
   for (const auto& infb : inferenceBatches) {
     times.push_back(std::get<0>(infb).time_since_epoch().count());
@@ -105,11 +108,8 @@ TEST(FeaturizersTests, RowImputation_1_grain_no_gaps) {
 
   OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
-  std::vector<int64_t> times;
-  std::vector<std::string> keys;
-  std::vector<std::string> data;
-  AddInputs(test, inferenceBatches, times, keys, data);
-  AddOutputs(test, {false, false, false}, {GetTimeInt(now, 0), GetTimeInt(now, 2), GetTimeInt(now, 2)},
+  AddInputs(test, inferenceBatches);
+  AddOutputs(test, {false, false, false}, {GetTimeInt(now, 0), GetTimeInt(now, 1), GetTimeInt(now, 2)},
              {"a", "a", "a"}, {"14.5", "18", "14.5", "12", "15.0", "12"});
 
   test.Run();
