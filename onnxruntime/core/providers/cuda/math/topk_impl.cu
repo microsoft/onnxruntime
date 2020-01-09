@@ -206,14 +206,12 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
   int64_t mod = 255;
   auto offset = (int64_t)tid * XPT;
   if (0 == tid) {
-    *C = 256;
     *replica_K = K;
     *all_superior = 0;
   }
   typedef BlockScan<uint32_t, THREADS> BlockScan;
   __shared__ typename BlockScan::TempStorage temp_storage;
   __syncthreads();
-  #pragma unroll 
   for (int64_t byte = sizeof(T)-1; byte > -1; --byte) {
     if (tid < 256) H[tid] = 0;
     __syncthreads();
@@ -231,13 +229,13 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
     auto h = tid < 256 ? H[1==largest?255-tid:tid] : 0;
     auto sum_h = h;
     BlockScan(temp_storage).ExclusiveSum(sum_h, sum_h);
-    if (sum_h + h >= *replica_K) {
-      atomicMin(C, tid);
-    }
-    __syncthreads();
-    if (*C == tid) {
-      atomicAdd(all_superior, sum_h);
-      atomicSub(replica_K, sum_h);
+    bool match = sum_h + h >= *replica_K;
+    auto radix = match ? tid : 0;
+    BlockScan(temp_storage).InclusiveSum(radix, radix);
+    if (256 > tid && match && radix == tid) {
+      *all_superior += sum_h;
+      *replica_K -= sum_h;
+      *C = radix;
     }
     __syncthreads();
     if (1 == largest) {
@@ -245,11 +243,6 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
     } else {
       SetByte(&Kth, (*C)<<skip);
     }
-    __syncthreads();
-    if (0 == tid) {
-      *C = 256;
-    }
-    __syncthreads();
   }
   uint32_t superior = 0, equal = 0;
   for (int64_t xpt_i = 0; xpt_i < XPT; ++xpt_i) {
