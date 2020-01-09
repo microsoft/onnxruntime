@@ -736,37 +736,37 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
       .Input(
           1,
           "Times",
-          "Tensor of timestamps [B][R] or [R] where B is number of batches and R number of rows. B is assumed to be 1 for [R].",
+          "Tensor of timestamps R] where R is a number of rows.",
           "T1")
       .Input(
           2,
           "Keys",
-          "Composite keys tensor of shape [B][R][K] or [R][K]. R is the same as Input(1)",
+          "Composite keys tensor of shape [R][K]. R is the same as Input(1)",
           "T2")
       .Input(
           3,
           "Data",
-          "It is a data tensor of shape [B][R][C] or [R][C] where R - rows and C - columns. R must be the same with Input(1)",
+          "It is a data tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
           "T2")
       .Output(
           0,
           "Added",
-          "Tensor of boolean with a shape of [B][IR] or [IR]. Contains a boolean for each row in the result where true represents added row.",
+          "Tensor of boolean with a shape of [IR]. Contains a boolean for each row in the result where true represents added row.",
           "T3")
       .Output(
           1,
           "ImputedTimes",
-          "This is a single dimensional tensor of timestamps of shape [B][IR] or [IR], where IR is the number of output rows.",
+          "This is a tensor of timestamps of shape [IR], where IR is the number of output rows.",
           "T1")
       .Output(
           2,
           "ImputedKeys",
-          "Contains keys along with the imputed keys. Tensor of shape [B][IR][K] or [IR][K].",
+          "Contains keys along with the imputed keys. Tensor of shape [IR][K].",
           "T2")
       .Output(
           3,
           "ImputedData",
-          "Tensor of shape [B][IR][C] or [IR][C] where IR is the number of rows in the output. It will always produce at least R number of rows."
+          "Tensor of shape [IR][C] where IR is the number of rows in the output."
           "C is the number of columns.",
           "T2")
       .TypeConstraint(
