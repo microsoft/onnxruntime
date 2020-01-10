@@ -9,6 +9,123 @@
 
 using namespace WinML;
 
+HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* ort_model) {
+  RETURN_HR_IF_NULL(E_INVALIDARG, ort_model);
+
+  const auto winml_adapter_api = engine->UseWinmlAdapterApi();
+
+  // Get Metadata
+  size_t count;
+  if (auto status = winml_adapter_api->ModelGetMetadataCount(ort_model, &count)) {
+    return E_FAIL;
+  }
+
+  const char* metadata_key;
+  size_t metadata_key_len;
+  const char* metadata_value;
+  size_t metadata_value_len;
+  for (size_t i = 0; i < count; i++) {
+    if (auto status = winml_adapter_api->ModelGetMetadata(ort_model, count, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len)) {
+      return E_FAIL;
+    }
+
+    model_metadata_.insert_or_assign(std::string(metadata_key, metadata_key_len), std::string(metadata_value, metadata_value_len));
+  }
+
+
+   WinML::FeatureDescriptorFactory builder(model_metadata_);
+   
+  //// Create inputs
+  //auto inputs = GetInputsWithoutInitializers(*model_proto);
+  //input_features_ = builder.CreateDescriptorsFromValueInfoProtos(inputs);
+
+  //// Create outputs
+  //auto outputs = GetOutputs(*model_proto);
+  //output_features_ = builder.CreateDescriptorsFromValueInfoProtos(outputs);
+
+  const char* out;
+  size_t len;
+
+  if (auto status = winml_adapter_api->ModelGetAuthor(ort_model, &out, &len)) {
+    return E_FAIL;
+  }
+  author_ = std::string(out, len);
+
+  if (auto status = winml_adapter_api->ModelGetName(ort_model, &out, &len)) {
+    return E_FAIL;
+  }
+  name_ = std::string(out, len);
+
+  if (auto status = winml_adapter_api->ModelGetDomain(ort_model, &out, &len)) {
+    return E_FAIL;
+  }
+  domain_ = std::string(out, len);
+
+  if (auto status = winml_adapter_api->ModelGetDescription(ort_model, &out, &len)) {
+    return E_FAIL;
+  }
+  description_ = std::string(out, len);
+
+  if (auto status = winml_adapter_api->ModelGetVersion(ort_model, &version_)) {
+    return E_FAIL;
+  }
+
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetAuthor(const char** out, size_t* len) {
+  *out = author_.c_str();
+  *len = author_.size();
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetName(const char** out, size_t* len) {
+  *out = name_.c_str();
+  *len = name_.size();
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetDomain(const char** out, size_t* len) {
+  *out = domain_.c_str();
+  *len = domain_.size();
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetDescription(const char** out, size_t* len) {
+  *out = description_.c_str();
+  *len = description_.size();
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetVersion(int64_t* out) {
+  *out = version_;
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetModelMetadata(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>** metadata) {
+  std::unordered_map<winrt::hstring, winrt::hstring> map_copy;
+  for (auto& pair : model_metadata_) {
+    auto metadata_key = WinML::Strings::HStringFromUTF8(pair.first);
+    auto metadata_value = WinML::Strings::HStringFromUTF8(pair.second);
+    map_copy.emplace(std::move(metadata_key), std::move(metadata_value));
+  }
+  auto map = winrt::single_threaded_map<winrt::hstring, winrt::hstring>(std::move(map_copy));
+  winrt::attach_abi(map, *metadata);
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetInputFeatures(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) {
+  *features = nullptr;
+  winrt::copy_to_abi(input_features_.GetView(), *(void**)features);
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::GetOutputFeatures(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) {
+  *features = nullptr;
+  winrt::copy_to_abi(output_features_.GetView(), *(void**)features);
+  return E_NOTIMPL;
+}
+
 OnnruntimeModel::OnnruntimeModel() : ort_model_(nullptr, nullptr) {
 }
 
@@ -21,96 +138,14 @@ STDMETHODIMP OnnruntimeModel::RuntimeClassInitialize(OnnxruntimeEngine* engine, 
   return S_OK;
 }
 
-STDMETHODIMP OnnruntimeModel::GetAuthor(const char** out, size_t* len) {
-  auto winml_adapter_api = engine_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->ModelGetAuthor(ort_model_.get(), out, len)) {
-    return E_FAIL;
-  }
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetName(const char** out, size_t* len) {
-  auto winml_adapter_api = engine_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->ModelGetName(ort_model_.get(), out, len)) {
-    return E_FAIL;
-  }
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetDomain(const char** out, size_t* len) {
-  auto winml_adapter_api = engine_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->ModelGetDomain(ort_model_.get(), out, len)) {
-    return E_FAIL;
-  }
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetDescription(const char** out, size_t* len) {
-  auto winml_adapter_api = engine_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->ModelGetDescription(ort_model_.get(), out, len)) {
-    return E_FAIL;
-  }
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetVersion(int64_t* out) {
-  auto winml_adapter_api = engine_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->ModelGetVersion(ort_model_.get(), out)) {
-    return E_FAIL;
-  }
-  return S_OK;
-}
-
-HRESULT OnnruntimeModel::EnsureMetadata() {
-  if (metadata_cache_.has_value() == false) {
-    auto winml_adapter_api = engine_->UseWinmlAdapterApi();
-
-    size_t count;
-    if (auto status = winml_adapter_api->ModelGetMetadataCount(ort_model_.get(), &count)) {
-      return E_FAIL;
-    }
-
-    std::unordered_map<std::string, std::string> metadata;
-
-    const char* metadata_key;
-    size_t metadata_key_len;
-    const char* metadata_value;
-    size_t metadata_value_len;
-    for (size_t i = 0; i < count; i++) {
-      if (auto status = winml_adapter_api->ModelGetMetadata(ort_model_.get(), count, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len)) {
-        return E_FAIL;
-      }
-      metadata.insert_or_assign(std::string(metadata_key, metadata_key_len), std::string(metadata_value, metadata_value_len));
-    }
-
-    metadata_cache_ = std::move(metadata);
+STDMETHODIMP OnnruntimeModel::GetModelInfo(IModelInfo** info) {
+  if (info_ == nullptr) {
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<ModelInfo>(&info_, engine_.Get(), ort_model_.get()));
   }
 
+  info_.CopyTo(info);
+
   return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetModelMetadata(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>** metadata) {
-  RETURN_IF_FAILED(EnsureMetadata());
-
-  std::unordered_map<winrt::hstring, winrt::hstring> map_copy;
-  for (auto& pair : metadata_cache_.value()) {
-    auto metadata_key = WinML::Strings::HStringFromUTF8(pair.first);
-    auto metadata_value = WinML::Strings::HStringFromUTF8(pair.second);
-    map_copy.emplace(std::move(metadata_key), std::move(metadata_value));
-  }
-  auto map = winrt::single_threaded_map<winrt::hstring, winrt::hstring>(std::move(map_copy));
-  winrt::attach_abi(map, *metadata);
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetInputFeatures(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) {
-  RETURN_IF_FAILED(EnsureMetadata());
-  return S_OK;
-}
-
-STDMETHODIMP OnnruntimeModel::GetOutputFeatures(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) {
-  RETURN_IF_FAILED(EnsureMetadata());
-  return E_NOTIMPL;
 }
 
 STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {

@@ -5,7 +5,8 @@
 
 namespace Windows::AI::MachineLearning {
 
-MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
+
+MIDL_INTERFACE("eaae30b5-7381-432d-9730-322136b02371") IModelInfo : IUnknown {
     STDMETHOD(GetAuthor)(const char** out, size_t* len) PURE;
     STDMETHOD(GetName)(const char** out, size_t* len) PURE;
     STDMETHOD(GetDomain)(const char** out, size_t* len) PURE;
@@ -14,7 +15,10 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
     STDMETHOD(GetModelMetadata)(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> ** metadata) PURE;
     STDMETHOD(GetInputFeatures)(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) PURE;
     STDMETHOD(GetOutputFeatures)(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) PURE;
-    
+};
+
+MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
+    STDMETHOD(GetModelInfo)(IModelInfo** info) PURE;
     STDMETHOD(CloneModel)(IModel** copy) PURE;
 };
 

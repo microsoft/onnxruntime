@@ -33,6 +33,7 @@ LearningModel::LearningModel(
   // New adapter
   WINML_THROW_IF_FAILED(CreateOrtEngine(learning_engine_.put()));
   WINML_THROW_IF_FAILED(learning_engine_->CreateModel(path.c_str(), path.size(), model_.put()));
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
 
@@ -73,6 +74,7 @@ LearningModel::LearningModel(
 
   WINML_THROW_IF_FAILED(CreateOrtEngine(learning_engine_.put()));
   WINML_THROW_IF_FAILED(CreateModelFromStream(learning_engine_.get(), stream, model_.put()));
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
 
@@ -80,7 +82,7 @@ hstring
 LearningModel::Author() try {
   const char* out;
   size_t len;
-  WINML_THROW_IF_FAILED(model_->GetAuthor(&out, &len));
+  WINML_THROW_IF_FAILED(model_info_->GetAuthor(&out, &len));
   return WinML::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
@@ -89,7 +91,7 @@ hstring
 LearningModel::Name() try {
   const char* out;
   size_t len;
-  WINML_THROW_IF_FAILED(model_->GetName(&out, &len));
+  WINML_THROW_IF_FAILED(model_info_->GetName(&out, &len));
   return WinML::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
@@ -98,7 +100,7 @@ hstring
 LearningModel::Domain() try {
   const char* out;
   size_t len;
-  WINML_THROW_IF_FAILED(model_->GetDomain(&out, &len));
+  WINML_THROW_IF_FAILED(model_info_->GetDomain(&out, &len));
   return WinML::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
@@ -107,7 +109,7 @@ hstring
 LearningModel::Description() try {
   const char* out;
   size_t len;
-  WINML_THROW_IF_FAILED(model_->GetDescription(&out, &len));
+  WINML_THROW_IF_FAILED(model_info_->GetDescription(&out, &len));
   return WinML::Strings::HStringFromUTF8(out);
 }
 WINML_CATCH_ALL
@@ -115,7 +117,7 @@ WINML_CATCH_ALL
 int64_t
 LearningModel::Version() try {
   int64_t version;
-  WINML_THROW_IF_FAILED(model_->GetVersion(&version));
+  WINML_THROW_IF_FAILED(model_info_->GetVersion(&version));
   return version;
 }
 WINML_CATCH_ALL
@@ -124,7 +126,7 @@ wfc::IMapView<hstring, hstring>
 LearningModel::Metadata() try {
   ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>* metadata;
   wfc::IMapView<hstring, hstring> out;
-  WINML_THROW_IF_FAILED(model_->GetModelMetadata(&metadata));
+  WINML_THROW_IF_FAILED(model_info_->GetModelMetadata(&metadata));
   winrt::attach_abi(out, metadata);
   return out;
 }
@@ -149,7 +151,7 @@ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::InputFeatures() try {
   ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features;
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor> out;
-  WINML_THROW_IF_FAILED(model_->GetInputFeatures(&features));
+  WINML_THROW_IF_FAILED(model_info_->GetInputFeatures(&features));
   winrt::attach_abi(out, features);
   return out;
 }
@@ -159,7 +161,7 @@ wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::OutputFeatures() try {
   ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features;
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor> out;
-  WINML_THROW_IF_FAILED(model_->GetOutputFeatures(&features));
+  WINML_THROW_IF_FAILED(model_info_->GetOutputFeatures(&features));
   winrt::attach_abi(out, features);
   return out;
 }

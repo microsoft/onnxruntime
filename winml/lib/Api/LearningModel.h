@@ -111,6 +111,7 @@ struct LearningModel : LearningModelT<LearningModel> {
  private:
   com_ptr<WinML::IEngine> learning_engine_;
   com_ptr<WinML::IModel> model_;
+  com_ptr<WinML::IModelInfo> model_info_;
 
   com_ptr<winmla::IWinMLAdapter> adapter_;
   com_ptr<winmla::IModelProto> model_proto_;
