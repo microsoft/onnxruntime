@@ -357,7 +357,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
         ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
-    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"),  ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn")};
+    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn")};
     static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
@@ -398,25 +398,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
-  // clang-format off
 
-  struct BrokenTest
-  {
+  struct BrokenTest {
     std::string test_name_;
     std::string reason_;
-    std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
+    std::set<std::string> broken_versions_ = {};  // apply to all versions if empty
     BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {}
-    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) :
-      test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
-    bool operator < (const struct BrokenTest& test) const {
-        return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
+    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
+    bool operator<(const struct BrokenTest& test) const {
+      return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
     }
   };
 
   std::set<BrokenTest> broken_tests = {
       {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
+      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
+      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
@@ -443,100 +440,100 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
-};
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+  };
 
-#ifdef USE_NGRAPH
-  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip", "not implemented yet for opset 11"});
-  broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-  broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-  broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-  broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-  broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#endif
+  if (enable_ngraph) {
+    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
+    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip", "not implemented yet for opset 11"});
+    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
+    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
+    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
+    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
+    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
+    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
+    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
+    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_DNNL
-  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
-  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
-  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
-  broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
-  broken_tests.insert({"candy", "result mismatch"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
-  broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
-  broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
-  broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
-  broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"}); 
-  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#endif
+  if (enable_dnnl) {
+    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
+    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
+    broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+    broken_tests.insert({"candy", "result mismatch"});
+    broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
+    broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
+    broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
+    broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
+    broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_OPENVINO
-  broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
-  broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
-  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
-  broken_tests.insert({"scan_sum", "disable temporarily"});
-  broken_tests.insert({"scan9_sum", "disable temporarily"});
-  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  if (enable_openvino) {
+    broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
+    broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
+    broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+    broken_tests.insert({"scan_sum", "disable temporarily"});
+    broken_tests.insert({"scan9_sum", "disable temporarily"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
-  broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
-  broken_tests.insert({"div", "will be fixed in the next release"});
+    broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+    broken_tests.insert({"div", "will be fixed in the next release"});
 #ifdef OPENVINO_CONFIG_GPU_FP16
-  broken_tests.insert({"div", "will be fixed in the next release"});
+    broken_tests.insert({"div", "will be fixed in the next release"});
 #endif
 #endif
-#endif
+  }
 
-#ifdef USE_NNAPI
-  broken_tests.insert({"scan9_sum", "Error with the extra graph"});
-  broken_tests.insert({"scan_sum", "Error with the extra graph"});
-  broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
-  broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#endif
+  if (enable_nnapi) {
+    broken_tests.insert({"scan9_sum", "Error with the extra graph"});
+    broken_tests.insert({"scan_sum", "Error with the extra graph"});
+    broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
+    broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_TENSORRT
-  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
-  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
-  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
-  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
-  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#endif
+  if (enable_tensorrt) {
+    broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+    broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+    broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+    broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_CUDA
-  broken_tests.insert({"candy", "result mismatch"});
-  broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
-  broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
-  broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
-  broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#endif
+  if (enable_cuda) {
+    broken_tests.insert({"candy", "result mismatch"});
+    broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
+    broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_DML
-  if (enable_dml)
-  {
+  if (enable_dml) {
     broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
     broken_tests.insert({"operator_permute2", "Test requires 6D Transpose, which isn't supported by DirectML"});
     broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
@@ -560,8 +557,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
   }
-#endif
-  // clang-format on
 
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
