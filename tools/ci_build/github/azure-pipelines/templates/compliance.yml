@@ -12,11 +12,10 @@ steps:
   continueOnError: true
 
 - task: DeleteFiles@1
-  displayName: 'Remove prevoius build output'
+  displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
   inputs:
-    SourceFolder:$(Build.BinariesDirectory)\RelWithDebInfo
-    contents: |
-      !(*.exe|*.log)
+    SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+    Contents: '!(*.exe|*.log)'
       
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
