@@ -18,10 +18,10 @@ public:
 	OnnruntimeModel();
 
     HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngine* engine, _In_ UniqueOrtModel&& ort_model);
-    STDMETHOD(GetAuthor)(const char** out, const size_t* len);
-    STDMETHOD(GetName)(const char** out, const size_t* len);
-    STDMETHOD(GetDomain)(const char** out, const size_t* len);
-    STDMETHOD(GetDescription)(const char** out, const size_t* len);
+    STDMETHOD(GetAuthor)(const char** out, size_t* len);
+    STDMETHOD(GetName)(const char** out, size_t* len);
+    STDMETHOD(GetDomain)(const char** out, size_t* len);
+    STDMETHOD(GetDescription)(const char** out, size_t* len);
     STDMETHOD(GetVersion)(int64_t* out);
     STDMETHOD(GetModelMetadata)(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> ** metadata);
     STDMETHOD(GetInputFeatures)(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features);
@@ -29,8 +29,13 @@ public:
     STDMETHOD(CloneModel)(IModel** copy);
 
 private:
+    HRESULT EnsureMetadata();
+
+private:
     UniqueOrtModel ort_model_;
     Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
+
+    std::optional<std::unordered_map<std::string, std::string>> metadata_cache_;
 };
 
 class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<

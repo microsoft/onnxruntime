@@ -28,13 +28,14 @@ ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequ
 ORT_API_STATUS_IMPL(CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out);
 ORT_API_STATUS_IMPL(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
 
+
+//ORT_API_STATUS_IMPL(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
+ORT_API_STATUS_IMPL(ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len);
+ORT_API_STATUS_IMPL(ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len);
+ORT_API_STATUS_IMPL(ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len);
+ORT_API_STATUS_IMPL(ModelGetDescription, _In_ const OrtModel* model, _Out_ const char** const description, _Out_ size_t* len);
+ORT_API_STATUS_IMPL(ModelGetVersion, _In_ const OrtModel* model, _Out_ int64_t* version);
 /*
-ORT_API_STATUS_IMPL(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
-ORT_API_STATUS_IMPL(ModelGetAuthor, In_ const OrtModel* model, _Out_ const char** const author, _Out_ const size_t* len);
-ORT_API_STATUS_IMPL(ModelGetName, In_ const OrtModel* model, _Out_ const char** const name, _Out_ const size_t* len);
-ORT_API_STATUS_IMPL(ModelGetDomain, In_ const OrtModel* model, _Out_ const char** const domain, _Out_ const size_t* len);
-ORT_API_STATUS_IMPL(ModelGetDescription, In_ const OrtModel* model, _Out_ const char** const description, _Out_ const size_t* len);
-ORT_API_STATUS_IMPL(ModelGetVersion, In_ const OrtModel* model, _Out_ int64_t* version);
 ORT_API_STATUS_IMPL(ModelGetInputCount, In_ const OrtModel* model, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(ModelGetOutputCount, In_ const OrtModel* model, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(ModelGetInputName, In_ const OrtModel* model, _Out_ const char** input_name, _Out_ size_t* count);
@@ -43,8 +44,10 @@ ORT_API_STATUS_IMPL(ModelGetInputDescription, In_ const OrtModel* model, _Out_ c
 ORT_API_STATUS_IMPL(ModelGetOutputDescription, In_ const OrtModel* model, _Out_ const char** output_description, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(ModelGetInputTypeInfo, In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS_IMPL(ModelGetOutputTypeInfo, In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
-ORT_API_STATUS_IMPL(ModelGetMetadataCount, In_ const OrtModel* model, _Out_ size_t* count);
-ORT_API_STATUS_IMPL(ModelGetMetadata, In_ const OrtModel* model, _Out_ size_t* count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
+*/
+ORT_API_STATUS_IMPL(ModelGetMetadataCount, _In_ const OrtModel* model, _Out_ size_t* count);
+ORT_API_STATUS_IMPL(ModelGetMetadata, _In_ const OrtModel* model, _Out_ size_t count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
+/*
 ORT_API_STATUS_IMPL(ModelCheckIfValid, _In_ OrtModel* model, _Out_ bool* valid);
 
 // OrtSession methods

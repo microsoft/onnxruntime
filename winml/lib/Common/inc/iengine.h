@@ -6,10 +6,10 @@
 namespace Windows::AI::MachineLearning {
 
 MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
-    STDMETHOD(GetAuthor)(const char** out, const size_t* len) PURE;
-    STDMETHOD(GetName)(const char** out, const size_t* len) PURE;
-    STDMETHOD(GetDomain)(const char** out, const size_t* len) PURE;
-    STDMETHOD(GetDescription)(const char** out, const size_t* len) PURE;
+    STDMETHOD(GetAuthor)(const char** out, size_t* len) PURE;
+    STDMETHOD(GetName)(const char** out, size_t* len) PURE;
+    STDMETHOD(GetDomain)(const char** out, size_t* len) PURE;
+    STDMETHOD(GetDescription)(const char** out, size_t* len) PURE;
     STDMETHOD(GetVersion)(int64_t* out) PURE ;
     STDMETHOD(GetModelMetadata)(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING> ** metadata) PURE;
     STDMETHOD(GetInputFeatures)(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features) PURE;

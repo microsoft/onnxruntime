@@ -124,6 +124,8 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 # Add static library that will be archived/linked for both static/dynamic library
 add_library(winml_lib_ort STATIC
    ${winml_lib_api_ort_dir}/inc/OrtEngineFactory.h
+   ${winml_lib_api_ort_dir}/FeatureDescriptorFactory.h
+   ${winml_lib_api_ort_dir}/FeatureDescriptorFactory.cpp
    ${winml_lib_api_ort_dir}/OrtEngine.h
    ${winml_lib_api_ort_dir}/OrtEngine.cpp
    ${winml_lib_api_ort_dir}/pch.h

@@ -6,6 +6,12 @@
 #include "LearningModel.g.h"
 #include "core/providers/winml/winml_provider_factory.h"
 
+#include "iengine.h"
+
+namespace Windows::AI::MachineLearning {
+	struct IEngine;
+}
+
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
 struct LearningModel : LearningModelT<LearningModel> {
@@ -97,16 +103,17 @@ struct LearningModel : LearningModelT<LearningModel> {
   winmla::IModelProto* CopyModelProto();
 
  private:
-  void Initialize();
   void LogCreationEvent(bool fromStream = false);
   void ModelUseFP16(
       winml::ILearningModelFeatureDescriptor descriptor,
       bool& use_fp16);
 
  private:
+  com_ptr<WinML::IEngine> learning_engine_;
+  com_ptr<WinML::IModel> model_;
+
   com_ptr<winmla::IWinMLAdapter> adapter_;
   com_ptr<winmla::IModelProto> model_proto_;
-  com_ptr<winmla::IModelInfo> model_info_;
   ILearningModelOperatorProvider operator_provider_;
 };
 

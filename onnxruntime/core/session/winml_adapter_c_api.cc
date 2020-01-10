@@ -4,8 +4,6 @@
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
 
-#include "core/providers/winml/winml_provider_factory.h"
-
 #ifdef USE_DML
 //#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 //#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -32,11 +30,11 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::CreateModelFromPath,
   &winmla::CreateModelFromData,  
   nullptr, // OrtStatus*(ORT_API_CALL* CreateModel)(_In_ const OrtModel* in, _Outptr_ OrtModel** out)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetAuthor(_In_ const OrtModel* model, _Out_ const char* const author, _Out_ size_t* len)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetName(_In_ const OrtModel* model, _Out_ const char* const name, _Out_ size_t* len)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const char* const domain, _Out_ size_t* len)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetDescription(_In_ const OrtModel* model, _Out_ const char* const description, _Out_ size_t* len)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetVersion(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
+  &winmla::ModelGetAuthor,
+  &winmla::ModelGetName, // OrtStatus*(ORT_API_CALL* ModelGetName(_In_ const OrtModel* model, _Out_ const char* const name, _Out_ size_t* len)NO_EXCEPTION;
+  &winmla::ModelGetDomain, // OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const char* const domain, _Out_ size_t* len)NO_EXCEPTION;
+  &winmla::ModelGetDescription, // OrtStatus*(ORT_API_CALL* ModelGetDescription(_In_ const OrtModel* model, _Out_ const char* const description, _Out_ size_t* len)NO_EXCEPTION;
+  &winmla::ModelGetVersion, // OrtStatus*(ORT_API_CALL* ModelGetVersion(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputName(_In_ const OrtModel* model, _Out_ const char** input_name, _Out_ size_t* count)NO_EXCEPTION;
@@ -45,8 +43,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputDescription(_In_ const OrtModel* model, _Out_ const char** output_description, _Out_ size_t* count)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputTypeInfo(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputTypeInfo(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetMetadataCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetMetadata(_In_ const OrtModel* model, _Out_ size_t* count, _Out_ const char* const key, _Out_ size_t* key_len, _Out_ const char* const value, _Out_ size_t* value_len)NO_EXCEPTION;
+  &winmla::ModelGetMetadataCount,
+  &winmla::ModelGetMetadata, 
   nullptr, // OrtStatus*(ORT_API_CALL* ModelCheckIfValid)(_In_ OrtModel* model, _Out_ bool* valid)NO_EXCEPTION;
 
   // OrtSession methods
