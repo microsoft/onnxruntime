@@ -33,6 +33,19 @@ jobs:
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
+  - task: PowerShell@1
+    displayName: 'Set CUDA path'
+    inputs:
+      scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+      arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
+
+  - task: PowerShell@2
+    displayName: 'Download AzCopy (used for download test data script)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
+
   - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
