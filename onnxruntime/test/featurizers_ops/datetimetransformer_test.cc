@@ -15,6 +15,8 @@ namespace test {
 
 TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_04) {
   const time_t date = 217081624;
+  char buffer[1024];
+  std::cout << "Time: " << ctime_s(buffer, sizeof(buffer), &date) << std::endl;
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
@@ -76,6 +78,7 @@ TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_04) {
 
 TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_05) {
   const time_t date = 217081625;
+  const auto date_tp = SysClock::from_time_t(date);
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
@@ -86,7 +89,7 @@ TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_05) {
   test.AddInput<int64_t>("Date", {1}, {date});
 
   dft::DateTimeTransformer dt("", "");
-  dft::TimePoint tp(dt.execute(date));
+  dft::TimePoint tp(dt.execute(date_tp));
   ASSERT_EQ(tp.year, 1976);
   ASSERT_EQ(tp.month, dft::TimePoint::NOVEMBER);
   ASSERT_EQ(tp.day, 17);
@@ -137,7 +140,9 @@ TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_05) {
 
 TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17__12_27_05_and_past_1976_nov_17_12_27_04) {
   const time_t date1 = 217081625;
+  const auto date1_tp = SysClock::from_time_t(date1);
   const time_t date2 = 217081624;
+  const auto date2_tp = SysClock::from_time_t(date2);
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
@@ -148,8 +153,8 @@ TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17__12_27_05_and_past_1
   test.AddInput<int64_t>("Date", {2}, {date1, date2});
 
   dft::DateTimeTransformer dt("", "");
-  dft::TimePoint tp1(dt.execute(date1));
-  dft::TimePoint tp2(dt.execute(date2));
+  dft::TimePoint tp1(dt.execute(date1_tp));
+  dft::TimePoint tp2(dt.execute(date2_tp));
 
   // Date1
   ASSERT_EQ(tp1.year, 1976);
@@ -225,6 +230,7 @@ TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17__12_27_05_and_past_1
 
 TEST(FeaturizersTests, DateTimeTransformer_future_2025_june_30) {
   const time_t date = 1751241600;
+  const auto date_tp = std::chrono::system_clock::from_time_t(date);
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
@@ -235,7 +241,7 @@ TEST(FeaturizersTests, DateTimeTransformer_future_2025_june_30) {
   test.AddInput<int64_t>("Date", {1}, {date});
 
   dft::DateTimeTransformer dt("", "");
-  dft::TimePoint tp = dt.execute(date);
+  dft::TimePoint tp = dt.execute(date_tp);
   ASSERT_EQ(tp.year, 2025);
   ASSERT_EQ(tp.month, dft::TimePoint::JUNE);
   ASSERT_EQ(tp.day, 30);
