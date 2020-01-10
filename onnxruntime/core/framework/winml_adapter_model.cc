@@ -13,20 +13,9 @@
 #include <io.h>
 #include <fcntl.h>
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
-//
-//static std::vector<const char*> GetAllNodeOutputs(const onnx::ModelProto& model_proto) {
-//  std::vector<const char*> nodes_outputs;
-//  auto& graph = model_proto.graph();
-//  auto& nodes = graph.node();
-//  for (auto& node : nodes) {
-//    for (auto& node_output : node.output()) {
-//      nodes_outputs.push_back(node_output.c_str());
-//    }
-//  }
-//  return nodes_outputs;
-//}
 
 static std::vector<const char*> GetInitializers(const onnx::ModelProto& model_proto) {
   std::vector<const char*> initializers;
@@ -88,57 +77,34 @@ class ModelInfo {
   std::string description_;
   int64_t version_;
   std::vector<std::pair<std::string, std::string>> model_metadata_;
-  //wfc::IVector<winml::ILearningModelFeatureDescriptor> input_features_;
-  //wfc::IVector<winml::ILearningModelFeatureDescriptor> output_features_;
+  std::vector<const onnx::ValueInfoProto*> input_features_;
+  std::vector<const onnx::ValueInfoProto*> output_features_;
 
  private:
   void Initialize(const onnx::ModelProto* model_proto) {
-    // metadata
     for (auto& prop : model_proto->metadata_props()) {
       model_metadata_.push_back(std::make_pair(prop.key(), prop.value()));
     }
+    
+    input_features_ = GetInputsWithoutInitializers(*model_proto);
+    output_features_ = ::GetOutputs(*model_proto);
 
-    //WinML::FeatureDescriptorFactory builder(model_metadata_);
-
-    // Create inputs
-    auto inputs = GetInputsWithoutInitializers(*model_proto);
-    //input_features_ = builder.CreateDescriptorsFromValueInfoProtos(inputs);
-
-    // Create outputs
-    auto outputs = ::GetOutputs(*model_proto);
-    //output_features_ = builder.CreateDescriptorsFromValueInfoProtos(outputs);
-
-    // author
     auto has_producer_name = model_proto->has_producer_name();
-    author_ = has_producer_name
-                  ? model_proto->producer_name()
-                  : "";
+    author_ = has_producer_name ? model_proto->producer_name() : "";
 
-    // domain
     auto has_domain = model_proto->has_domain();
-    domain_ = has_domain
-                  ? model_proto->domain()
-                  : "";
+    domain_ = has_domain ? model_proto->domain() : "";
 
-    // name
     auto has_graph = model_proto->has_graph();
     auto graph_has_name = model_proto->graph().has_name();
     auto is_name_available = has_graph && graph_has_name;
-    name_ = is_name_available
-                ? model_proto->graph().name()
-                : "";
+    name_ = is_name_available ? model_proto->graph().name() : "";
 
-    // description
     auto has_description = model_proto->has_doc_string();
-    description_ = has_description
-                       ? model_proto->doc_string()
-                       : "";
+    description_ = has_description ? model_proto->doc_string() : "";
 
-    // version
     auto has_version = model_proto->has_model_version();
-    version_ = has_version
-                   ? model_proto->model_version()
-                   : 0;
+    version_ = has_version ? model_proto->model_version() : 0;
   }
 };
 
@@ -273,6 +239,54 @@ ORT_API_STATUS_IMPL(winmla::ModelGetMetadata, const OrtModel* model, size_t coun
   *key_len = model->UseModelInfo()->model_metadata_[count].first.size();
   *value = model->UseModelInfo()->model_metadata_[count].second.c_str();
   *value_len = model->UseModelInfo()->model_metadata_[count].second.size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetInputCount, const OrtModel* model, size_t* count) {
+  *count = model->UseModelInfo()->input_features_.size();
+  return nullptr; 
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputCount, const OrtModel* model, size_t* count) {
+  *count = model->UseModelInfo()->output_features_.size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetInputName, const OrtModel* model, size_t index, const char** input_name, size_t* count) {
+  *input_name = model->UseModelInfo()->input_features_[index]->name().c_str();
+  *count = model->UseModelInfo()->input_features_[index]->name().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t index, const char** output_name, size_t* count) {
+  *output_name = model->UseModelInfo()->output_features_[index]->name().c_str();
+  *count = model->UseModelInfo()->output_features_[index]->name().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, const OrtModel* model, size_t index, const char** input_description, size_t* count) {
+  *input_description = model->UseModelInfo()->input_features_[index]->doc_string().c_str();
+  *count = model->UseModelInfo()->input_features_[index]->doc_string().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, const OrtModel* model, size_t index, const char** output_description, size_t* count) {
+  *output_description = model->UseModelInfo()->output_features_[index]->doc_string().c_str();
+  *count = model->UseModelInfo()->output_features_[index]->doc_string().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetInputTypeInfo, const OrtModel* model, size_t index, OrtTypeInfo** type_info) {
+  if (auto status = OrtTypeInfo::FromTypeProto(&model->UseModelInfo()->input_features_[index]->type(), type_info)) {
+    return status;
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputTypeInfo, const OrtModel* model, size_t index, OrtTypeInfo** type_info) {
+  if (auto status = OrtTypeInfo::FromTypeProto(&model->UseModelInfo()->output_features_[index]->type(), type_info)) {
+    return status;
+  }
   return nullptr;
 }
 

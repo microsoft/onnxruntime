@@ -9,6 +9,46 @@
 
 using namespace WinML;
 
+struct feature_helper_functions {
+  using FnGetCount = decltype(WinmlAdapterApi::ModelGetInputCount);
+  FnGetCount GetCount;
+
+  using FnGetName = decltype(WinmlAdapterApi::ModelGetInputName);
+  FnGetName GetName;
+
+  using FnGetDescription = decltype(WinmlAdapterApi::ModelGetInputDescription);
+  FnGetDescription GetDescription;
+
+  using FnGetTypeInfo = decltype(WinmlAdapterApi::ModelGetInputTypeInfo);
+  FnGetTypeInfo GetTypeInfo;
+};
+
+HRESULT CreateFeatureDescriptors(
+    const feature_helper_functions* feature_helpers,
+    OrtModel* ort_model,
+    std::vector<FeatureDescriptor>& descriptors) {
+  size_t count;
+  if (auto status = feature_helpers->GetCount(ort_model, &count)) {
+    return E_FAIL;
+  }
+
+  for (size_t i = 0; i < count; i++) {
+    FeatureDescriptor descriptor;
+    if (auto status = feature_helpers->GetName(ort_model, i, &descriptor.name_, &descriptor.name_length_)) {
+      return E_FAIL;
+    }
+    if (auto status = feature_helpers->GetDescription(ort_model, i, &descriptor.description, &descriptor.description_length_)) {
+      return E_FAIL;
+    }
+    if (auto status = feature_helpers->GetTypeInfo(ort_model, i, &descriptor.type_info_)) {
+      return E_FAIL;
+    }
+
+    descriptors.push_back(descriptor);
+  }
+  return S_OK;
+}
+
 HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* ort_model) {
   RETURN_HR_IF_NULL(E_INVALIDARG, ort_model);
 
@@ -32,16 +72,30 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* o
     model_metadata_.insert_or_assign(std::string(metadata_key, metadata_key_len), std::string(metadata_value, metadata_value_len));
   }
 
+  WinML::FeatureDescriptorFactory builder(model_metadata_);
 
-   WinML::FeatureDescriptorFactory builder(model_metadata_);
-   
-  //// Create inputs
-  //auto inputs = GetInputsWithoutInitializers(*model_proto);
-  //input_features_ = builder.CreateDescriptorsFromValueInfoProtos(inputs);
+  static const feature_helper_functions input_helpers = {
+      winml_adapter_api->ModelGetInputCount,
+      winml_adapter_api->ModelGetInputName,
+      winml_adapter_api->ModelGetInputDescription,
+      winml_adapter_api->ModelGetInputTypeInfo
+  };
 
-  //// Create outputs
-  //auto outputs = GetOutputs(*model_proto);
-  //output_features_ = builder.CreateDescriptorsFromValueInfoProtos(outputs);
+  // Create inputs
+  std::vector<FeatureDescriptor> inputs;
+  RETURN_IF_FAILED(CreateFeatureDescriptors(&input_helpers, ort_model, inputs));
+  input_features_ = builder.CreateLearningModelFeatureDescriptors(inputs);
+
+  // Create outputs
+  static const feature_helper_functions output_helpers = {
+      winml_adapter_api->ModelGetOutputCount,
+      winml_adapter_api->ModelGetOutputName,
+      winml_adapter_api->ModelGetOutputDescription,
+      winml_adapter_api->ModelGetOutputTypeInfo};
+
+  std::vector<FeatureDescriptor> outputs;
+  RETURN_IF_FAILED(CreateFeatureDescriptors(&output_helpers, ort_model, outputs));
+  output_features_ = builder.CreateLearningModelFeatureDescriptors(outputs);
 
   const char* out;
   size_t len;

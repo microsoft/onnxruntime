@@ -570,7 +570,7 @@ FeatureDescriptorFactory::FeatureDescriptorFactory(
     const std::unordered_map<std::string, std::string>& metadata) : metadata_(metadata) {}
 
 wfc::IVector<winml::ILearningModelFeatureDescriptor>
-FeatureDescriptorFactory::CreateLearningModelFeatureDescriptors(const std::vector<const FeatureDescriptor>& descriptors) {
+FeatureDescriptorFactory::CreateLearningModelFeatureDescriptors(const std::vector<FeatureDescriptor>& descriptors) {
   auto features =
       winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 /*

@@ -35,14 +35,14 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ModelGetDomain, // OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const char* const domain, _Out_ size_t* len)NO_EXCEPTION;
   &winmla::ModelGetDescription, // OrtStatus*(ORT_API_CALL* ModelGetDescription(_In_ const OrtModel* model, _Out_ const char* const description, _Out_ size_t* len)NO_EXCEPTION;
   &winmla::ModelGetVersion, // OrtStatus*(ORT_API_CALL* ModelGetVersion(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputCount(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputName(_In_ const OrtModel* model, _Out_ const char** input_name, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputName(_In_ const OrtModel* model, _Out_ const char** output_name, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputDescription(_In_ const OrtModel* model, _Out_ const char** input_description, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputDescription(_In_ const OrtModel* model, _Out_ const char** output_description, _Out_ size_t* count)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetInputTypeInfo(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelGetOutputTypeInfo(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  &winmla::ModelGetInputCount,
+  &winmla::ModelGetOutputCount,
+  &winmla::ModelGetInputName,
+  &winmla::ModelGetOutputName,
+  &winmla::ModelGetInputDescription,
+  &winmla::ModelGetOutputDescription,
+  &winmla::ModelGetInputTypeInfo,
+  &winmla::ModelGetOutputTypeInfo,
   &winmla::ModelGetMetadataCount,
   &winmla::ModelGetMetadata, 
   nullptr, // OrtStatus*(ORT_API_CALL* ModelCheckIfValid)(_In_ OrtModel* model, _Out_ bool* valid)NO_EXCEPTION;

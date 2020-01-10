@@ -8,11 +8,12 @@
 
 namespace Windows::AI::MachineLearning {
 
-struct FeatureDescriptor
-{
+struct FeatureDescriptor {
   const char* name_;
+  size_t name_length_;
   const char* description;
-  const OrtTypeInfo* type_info_;
+  size_t description_length_;
+  OrtTypeInfo* type_info_;
 };
 
 struct FeatureDescriptorFactory {
@@ -21,7 +22,7 @@ struct FeatureDescriptorFactory {
 
   wfc::IVector<winml::ILearningModelFeatureDescriptor>
   CreateLearningModelFeatureDescriptors(
-      const std::vector<const FeatureDescriptor>& descriptors);
+      const std::vector<FeatureDescriptor>& descriptors);
 
  private:
   const std::unordered_map<std::string, std::string>& metadata_;
