@@ -779,7 +779,7 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
           "Represents number of seconds since epoch")
       .TypeConstraint(
           "T2",
-          {"tensor(float)", "tensor(double)", "tensor(string)"},
+          {"tensor(string)"},
           "Output data")
       .TypeConstraint(
           "T3",

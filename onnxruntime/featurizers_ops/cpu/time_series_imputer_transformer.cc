@@ -45,7 +45,6 @@ struct ToString<std::string> {
 template <typename T>
 struct ToStringOptional {
   nonstd::optional<std::string> operator()(T val) const {
-    // static_assert(std::numeric_limits<T>::has_quiet_NaN(), "Accept only types supporting NaN");
     nonstd::optional<std::string> result;
     if (std::isnan(val)) {
       return result;
@@ -187,10 +186,10 @@ struct TimeSeriesImputerTransformerImpl {
       *time_output++ = ToSecs(std::get<1>(out));
       const auto& imputed_keys = std::get<2>(out);
       ORT_ENFORCE(static_cast<int64_t>(imputed_keys.size()) == keys_per_row,
-        "resulting number of keys: " , imputed_keys.size(), " expected: ", keys_per_row);
+                  "resulting number of keys: ", imputed_keys.size(), " expected: ", keys_per_row);
       const auto& imputed_data = std::get<3>(out);
       ORT_ENFORCE(static_cast<int64_t>(imputed_data.size()) == columns,
-        "resulting number of columns: ", imputed_data.size(), " expected: ", columns);
+                  "resulting number of columns: ", imputed_data.size(), " expected: ", columns);
       keys_output = std::transform(imputed_keys.cbegin(), imputed_keys.cend(), keys_output,
                                    FromString<T>());
       data_output = std::transform(imputed_data.cbegin(), imputed_data.cend(), data_output,
@@ -227,7 +226,7 @@ class TimeSeriesImputerTransformer final : public OpKernel {
     auto data_type = data.GetElementType();
     ORT_RETURN_IF_NOT(keys.GetElementType() == data_type, "Keys and data must have the same datatype");
 
-    utils::MLTypeCallDispatcher<TimeSeriesImputerTransformerImpl, float, double, std::string> t_disp(data_type);
+    utils::MLTypeCallDispatcher<TimeSeriesImputerTransformerImpl, std::string> t_disp(data_type);
     t_disp.Invoke(ctx, rows);
     return Status::OK();
   }
@@ -241,9 +240,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),
-                               DataTypeImpl::GetTensorType<double>(),
-                               DataTypeImpl::GetTensorType<std::string>()}),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<std::string>()),
     TimeSeriesImputerTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime

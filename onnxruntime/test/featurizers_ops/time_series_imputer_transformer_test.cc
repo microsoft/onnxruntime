@@ -17,9 +17,9 @@ inline std::chrono::system_clock::time_point GetTimePoint(std::chrono::system_cl
   return tp + std::chrono::minutes(unitsToAdd * (60 * 24));
 }
 
-inline int64_t GetTimeInt(std::chrono::system_clock::time_point tp, int unitsToAdd) {
+inline int64_t GetTimeSecs(std::chrono::system_clock::time_point tp) {
   using namespace std::chrono;
-  return duration_cast<seconds>(GetTimePoint(tp, unitsToAdd).time_since_epoch()).count();
+  return time_point_cast<seconds>(tp).time_since_epoch().count();
 }
 
 using InputType = std::tuple<
@@ -35,7 +35,7 @@ using TransformedType = std::vector<
         std::vector<nonstd::optional<std::string>>>>;
 
 std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches,
-                               std::vector<NS::TypeId> colsToImputeDataTypes,
+                               const std::vector<NS::TypeId>& colsToImputeDataTypes,
                                bool supressError, NS::Featurizers::Components::TimeSeriesImputeStrategy tsImputeStrategy) {
   using KeyT = std::vector<std::string>;
   using ColsToImputeT = std::vector<nonstd::optional<std::string>>;
@@ -53,13 +53,14 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
   return ar.commit();
 }
 
-static void AddInputs (OpTester& test, const std::vector<InputType>& inferenceBatches) {
-
+static void AddInputs(OpTester& test, const std::vector<std::vector<InputType>>& trainingBatches,
+                      const std::vector<InputType>& inferenceBatches, const std::vector<NS::TypeId>& colsToImputeDataTypes,
+                      bool supressError, NS::Featurizers::Components::TimeSeriesImputeStrategy tsImputeStrategy) {
   auto stream = GetStream(
-      {inferenceBatches},
-      {NS::TypeId::Float64, NS::TypeId::Float64},
-      false,
-      NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
+      trainingBatches,
+      colsToImputeDataTypes,
+      supressError,
+      tsImputeStrategy);
 
   auto dim = static_cast<int64_t>(stream.size());
   test.AddInput<uint8_t>("State", {dim}, stream);
@@ -68,8 +69,9 @@ static void AddInputs (OpTester& test, const std::vector<InputType>& inferenceBa
   std::vector<std::string> keys;
   std::vector<std::string> data;
 
+  using namespace std::chrono;
   for (const auto& infb : inferenceBatches) {
-    times.push_back(std::get<0>(infb).time_since_epoch().count());
+    times.push_back(time_point_cast<seconds>(std::get<0>(infb)).time_since_epoch().count());
     keys.insert(keys.end(), std::get<1>(infb).cbegin(), std::get<1>(infb).cend());
     std::transform(std::get<2>(infb).cbegin(), std::get<2>(infb).cend(), std::back_inserter(data),
                    [](const nonstd::optional<std::string>& opt) -> std::string {
@@ -86,22 +88,28 @@ static void AddInputs (OpTester& test, const std::vector<InputType>& inferenceBa
   test.AddInput<std::string>("Data", {static_cast<int64_t>(times.size()), static_cast<int64_t>(data.size() / times.size())}, data);
 }
 
-void AddOutputs(OpTester& test, const std::initializer_list<bool>& added, const std::initializer_list<int64_t>& times,
-  const std::vector<std::string>& keys, const std::vector<std::string>& data) {
-
+void AddOutputs(OpTester& test, const std::initializer_list<bool>& added, const std::initializer_list<std::chrono::system_clock::time_point>& times,
+                const std::vector<std::string>& keys, const std::vector<std::string>& data) {
   ASSERT_TRUE(keys.size() % times.size() == 0);
   ASSERT_TRUE(data.size() % times.size() == 0);
+
+  std::vector<int64_t> times_int64;
+  std::transform(times.begin(), times.end(), std::back_inserter(times_int64), GetTimeSecs);
+
   test.AddOutput<bool>("Added", {static_cast<int64_t>(added.size())}, added);
-  test.AddOutput<int64_t>("ImputedTimes", {static_cast<int64_t>(times.size())}, times);
+  test.AddOutput<int64_t>("ImputedTimes", {static_cast<int64_t>(times.size())}, times_int64);
   test.AddOutput<std::string>("ImputedKeys", {static_cast<int64_t>(times.size()), static_cast<int64_t>(keys.size() / times.size())}, keys);
   test.AddOutput<std::string>("ImputedData", {static_cast<int64_t>(times.size()), static_cast<int64_t>(data.size() / times.size())}, data);
 }
 
 TEST(FeaturizersTests, RowImputation_1_grain_no_gaps) {
   std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
-  auto tuple_1 = std::make_tuple(GetTimePoint(now, 0), std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
-  auto tuple_2 = std::make_tuple(GetTimePoint(now, 1), std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
-  auto tuple_3 = std::make_tuple(GetTimePoint(now, 2), std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"15.0", nonstd::optional<std::string>{}});
+  auto tp_0 = GetTimePoint(now, 0);
+  auto tp_1 = GetTimePoint(now, 1);
+  auto tp_2 = GetTimePoint(now, 2);
+  auto tuple_1 = std::make_tuple(tp_0, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_2 = std::make_tuple(tp_1, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_3 = std::make_tuple(tp_2, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"15.0", nonstd::optional<std::string>{}});
 
   std::vector<InputType> inferenceBatches = {tuple_1,
                                              tuple_2,
@@ -109,9 +117,80 @@ TEST(FeaturizersTests, RowImputation_1_grain_no_gaps) {
 
   OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
-  AddInputs(test, inferenceBatches);
-  AddOutputs(test, {false, false, false}, {GetTimeInt(now, 0), GetTimeInt(now, 1), GetTimeInt(now, 2)},
+  AddInputs(test, {inferenceBatches}, inferenceBatches,
+            {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
+  AddOutputs(test, {false, false, false}, {tp_0, tp_1, tp_2},
              {"a", "a", "a"}, {"14.5", "18", "14.5", "12", "15.0", "12"});
+
+  test.Run();
+}
+
+TEST(FeaturizersTests, RowImputation_1_grain_2_gaps) {
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+  auto tp_0 = GetTimePoint(now, 0);
+  auto tp_1 = GetTimePoint(now, 1);
+  auto tp_2 = GetTimePoint(now, 2);
+  auto tp_3 = GetTimePoint(now, 3);
+
+  auto tuple_0 = std::make_tuple(tp_0, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_1 = std::make_tuple(tp_1, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_3 = std::make_tuple(tp_3, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "15.0"});
+
+  OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  AddInputs(test, {{tuple_0, tuple_1}}, {tuple_0, tuple_3},
+            {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
+
+  AddOutputs(test, {false, true, true, false}, {tp_0, tp_1, tp_2, tp_3},
+             {"a", "a", "a", "a"}, {"14.5", "18", "14.5", "18", "14.5", "18", "14.5", "15.0"});
+  test.Run();
+}
+
+TEST(FeaturizersTests, RowImputation_2_grains_no_gaps_input_interleaved) {
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+  auto tp_0 = GetTimePoint(now, 0);
+  auto tp_1 = GetTimePoint(now, 1);
+  auto tp_5 = GetTimePoint(now, 5);
+  auto tp_6 = GetTimePoint(now, 6);
+
+  auto tuple_0 = std::make_tuple(tp_0, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_5 = std::make_tuple(tp_5, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_5_inf = std::make_tuple(GetTimePoint(now, 5), std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{"114.5", "118"});
+  auto tuple_1 = std::make_tuple(tp_1, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_6 = std::make_tuple(tp_6, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_6_inf = std::make_tuple(GetTimePoint(now, 6), std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "112"});
+
+  OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  AddInputs(test, {{tuple_0, tuple_5, tuple_1, tuple_6}}, {tuple_0, tuple_5_inf, tuple_1, tuple_6_inf},
+            {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
+
+  AddOutputs(test, {false, false, false, false}, {tp_0, tp_5, tp_1, tp_6},
+             {"a", "b", "a", "b"}, {"14.5", "18", "114.5", "118", "14.5", "12", "114.5", "112"});
+  test.Run();
+}
+
+TEST(FeaturizersTests, RowImputation_2_grains_1_gap_input_interleaved) {
+  std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+  auto tp_0 = GetTimePoint(now, 0);
+  auto tp_1 = GetTimePoint(now, 1);
+  auto tp_2 = GetTimePoint(now, 2);
+  auto tp_5 = GetTimePoint(now, 5);
+  auto tp_6 = GetTimePoint(now, 6);
+  auto tp_7 = GetTimePoint(now, 7);
+
+  auto tuple_0 = std::make_tuple(tp_0, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_2 = std::make_tuple(GetTimePoint(now, 2), std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_5 = std::make_tuple(tp_5, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{"14.5", "18"});
+  auto tuple_5_inf = std::make_tuple(tp_5, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{"114.5", "118"});
+  auto tuple_1 = std::make_tuple(tp_1, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_6 = std::make_tuple(tp_6, std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
+  auto tuple_7 = std::make_tuple(GetTimePoint(now, 7), std::vector<std::string>{"b"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "112"});
+
+  OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  AddInputs(test, {{tuple_0, tuple_5, tuple_1, tuple_6}}, {tuple_0, tuple_5_inf, tuple_2, tuple_7},
+            {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
+
+  AddOutputs(test, {false, false, true, false, true, false}, {tp_0, tp_5, tp_1, tp_2, tp_6, tp_7},
+             {"a", "b", "a", "a", "b", "b"}, {"14.5", "18", "114.5", "118", "14.5", "18", "14.5", "12", "114.5", "118", "114.5", "112"});
 
   test.Run();
 }
