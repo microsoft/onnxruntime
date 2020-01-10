@@ -31,7 +31,7 @@ To expose it a new preprocessing function to the command line, you'll need to "r
 
 ### End-to-end example
 
-Say you want to quantize a model `/models/mymodel.onnx` that has been trained with a subset of the ILSVRC ImageNet dataset.  In what follows it is assumed that you have either the dataset or a sample you deem significant to use as a calibration set --  one way to get this is to use [a script from PaddlePaddle](https://github.com/PaddlePaddle/models/blob/develop/fluid/image_classification/data/ILSVRC2012/download_imagenet2012.sh) to fetch it.  Assume that the images from the dataset are in the `/tmp/data/ilsvrc12` directory (note you don't need the labels to quantize, but they are useful to validate/verify the results of the quantization).  You can then run
+Say you want to quantize a model `/models/mymodel.onnx` that has been trained with a subset of the ILSVRC ImageNet dataset.  In what follows it is assumed that you have either the dataset or a sample you deem significant to use as a calibration set --  one way to get a proxy for ImageNet is to follow a "fake" imageset as [this notebook from MLPerf](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/GettingStarted.ipynb) provides.  Assume that the images from the dataset are in the `/tmp/data/ilsvrc12` directory (note you don't need the labels to quantize, but they are useful to validate/verify the results of the quantization).  You can then run
 
 ```
 python calibrate.py \
