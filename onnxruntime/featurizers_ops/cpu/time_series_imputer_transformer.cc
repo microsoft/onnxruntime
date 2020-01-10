@@ -3,7 +3,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
-#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
 #include <cstdlib>
@@ -226,8 +225,7 @@ class TimeSeriesImputerTransformer final : public OpKernel {
     auto data_type = data.GetElementType();
     ORT_RETURN_IF_NOT(keys.GetElementType() == data_type, "Keys and data must have the same datatype");
 
-    utils::MLTypeCallDispatcher<TimeSeriesImputerTransformerImpl, std::string> t_disp(data_type);
-    t_disp.Invoke(ctx, rows);
+    TimeSeriesImputerTransformerImpl<std::string>()(ctx, rows);
     return Status::OK();
   }
 };
