@@ -1,3 +1,6 @@
+using VoidTest = void (*)();
+using SetupTest = VoidTest;
+
 #ifdef BUILD_GOOGLE_TEST
 #include "googleTestMacros.h"
 #else

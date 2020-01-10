@@ -1,6 +1,4 @@
 #include "test.h"
-using VoidTest = void(*)();
-using SetupTest = VoidTest;
 struct CustomOpsTestApi
 {
     SetupTest CustomOpsScenarioTestSetup;
