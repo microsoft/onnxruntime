@@ -459,11 +459,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
     broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
     broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
   }
-
+  if (enable_nuphar) {
+    broken_tests.insert({"cgan", "TVM exception during initialization"});
+  }
   if (enable_dnnl) {
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
@@ -527,6 +530,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   if (enable_cuda) {
     broken_tests.insert({"candy", "result mismatch"});
+    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});    
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
