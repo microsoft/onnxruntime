@@ -939,7 +939,7 @@ def main():
               else:
                 tensorrt_run_onnx_tests(build_dir, configs, "")
 
-            if args.use_cuda:
+            if args.use_cuda and not args.use_tensorrt:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
 
             if args.use_ngraph:
