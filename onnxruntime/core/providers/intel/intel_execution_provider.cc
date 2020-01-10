@@ -130,6 +130,14 @@ bool IsDimensionSupported(const Node* node) {
     if (input_dims + axes.size() > 5)
       return false;
   }
+
+  if(node->OpType() == "Softmax"){
+
+    auto attributes = node->GetAttributes();
+    auto axis = attributes["axis"].i();
+    if(input_dims - axis != 1)
+      return false;
+  }
   return true;
 }
 
@@ -160,6 +168,10 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "CumSum",
     "LogSoftmax",
     "MeanVarianceNormalization",
+    "QuantizeLinear",
+    "DequantizeLinear",
+    "QLinearConv",
+    "InstanceNormalization", // ngraph reshape v0
     "Scan",
     "Split", //ngraph v1, ov v0
     "LpNormalization",
@@ -191,6 +203,8 @@ bool IsUnsupportedOp(std::string name, std::string device){
     "Acosh",
     "Asin",
     "Asinh",
+    "HardSigmoid",
+    "Softsign"
     "Atan",
     "Atanh",
     "Cos",
@@ -216,9 +230,6 @@ bool IsUnsupportedOp(std::string name, std::string device){
   return unsupported_ops.find(name) != unsupported_ops.end();
 }
 
-static constexpr int GetPairingFunctionValue(int a, int b){
-  return  ((a+b)*(a+b+1))/2 + b;
-}
 // Returns true only if op is in a mode that is not currently supported
 static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
   const auto& optype = node->OpType();
@@ -252,7 +263,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
     if(!IsDimensionSupported(node))
       return true;
-    //TODO: Make this better
   } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
       for (size_t i = 0; i < node->InputDefs().size(); i++) {
           if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
@@ -283,6 +293,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         if(GetInputCount(node, initializers) == 0)
           return true;
       }
+  } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
+    if(GetInputCount(node, initializers) == 1)
+      return true;
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
     const auto& depth_arg = node->InputDefs()[1];
@@ -300,6 +313,9 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
 
+  } else if (optype == "Softmax") {
+    if(!IsDimensionSupported(node))
+      return true;
   } else if (optype == "Unsqueeze") {
     if(!IsDimensionSupported(node))
       return true;
@@ -348,26 +364,30 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     }
   } else if (optype == "Cast") {
 
+      using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+      const auto supportedCasts = std::set<std::pair<onnx_dtype, onnx_dtype>>{
+        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
+        {onnx_dtype::TensorProto_DataType_INT16, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT16},
+        {onnx_dtype::TensorProto_DataType_UINT16, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT16},
+        // {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32},
+        // {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_FLOAT},
+        {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT32},
+        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}
+      };
       auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
       auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-      using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-      int val = GetPairingFunctionValue(int(input_data_type) , int(output_data_type));
-      switch(val){
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT8), int(onnx_dtype::TensorProto_DataType_FLOAT)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_UINT8)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT16),int(onnx_dtype::TensorProto_DataType_FLOAT)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_INT16)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT16),int(onnx_dtype::TensorProto_DataType_FLOAT)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_UINT16)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT32),int(onnx_dtype::TensorProto_DataType_INT32)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_FLOAT)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_INT32),int(onnx_dtype::TensorProto_DataType_FLOAT)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_FLOAT),int(onnx_dtype::TensorProto_DataType_INT32)):
-        case GetPairingFunctionValue(int(onnx_dtype::TensorProto_DataType_UINT8),int(onnx_dtype::TensorProto_DataType_INT32)):
-          return false;
-        default:
-          return true;
+
+      const auto typePair = std::make_pair(static_cast<onnx_dtype>(input_data_type),static_cast<onnx_dtype>(output_data_type));
+      const auto match = supportedCasts.find(typePair);
+      if(match == supportedCasts.end()){
+        return true;
       }
+      else
+        return false;
   } else if (optype == "Squeeze") {
     //Shape can't have empty axes attribute
     const auto& attributes = node->GetAttributes();
