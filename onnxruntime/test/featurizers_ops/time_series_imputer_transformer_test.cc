@@ -37,9 +37,6 @@ using TransformedType = std::vector<
 std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches,
                                const std::vector<NS::TypeId>& colsToImputeDataTypes,
                                bool supressError, NS::Featurizers::Components::TimeSeriesImputeStrategy tsImputeStrategy) {
-  using KeyT = std::vector<std::string>;
-  using ColsToImputeT = std::vector<nonstd::optional<std::string>>;
-  using InputBatchesType = std::vector<std::vector<InputType>>;
   using TSImputerEstimator = NS::Featurizers::TimeSeriesImputerEstimator;
 
   NS::AnnotationMapsPtr const pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
