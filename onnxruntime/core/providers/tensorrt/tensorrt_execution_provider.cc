@@ -834,7 +834,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], nullptr, nullptr)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Execution Context Enqueue Failed.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP Execution Context Enqueue Failed.");
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
