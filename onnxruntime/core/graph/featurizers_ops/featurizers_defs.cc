@@ -41,6 +41,7 @@ static void RegisterMinMaxScalarFeaturizerVer1();
 static void RegisterMissingDummiesFeaturizerVer1();
 static void RegisterRobustScalarFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
+static void RegisterTimeSeriesImputerFeaturizerVer1();
 
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
@@ -55,6 +56,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterMissingDummiesFeaturizerVer1();
   RegisterRobustScalarFeaturizerVer1();
   RegisterStringFeaturizerVer1();
+  RegisterTimeSeriesImputerFeaturizerVer1();
 }
 
 // ----------------------------------------------------------------------
@@ -212,7 +214,7 @@ void RegisterDateTimeFeaturizerVer1() {
                 case 0:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT32, output);
                   break;
-                case 1: // fall through
+                case 1:  // fall through
                 case 2:
                 case 3:
                 case 4:
@@ -223,11 +225,11 @@ void RegisterDateTimeFeaturizerVer1() {
                 case 9:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
                   break;
-                case 10: // fall through
+                case 10:  // fall through
                 case 11:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT16, output);
                   break;
-                case 12: // fall through
+                case 12:  // fall through
                 case 13:
                 case 14:
                   propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
@@ -595,7 +597,6 @@ void RegisterRobustScalarFeaturizerVer1() {
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT32 ||
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_UINT64 ||
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
-              ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
             } else {
               fail_type_inference("input 1 is expected to have a accepted type");
@@ -648,7 +649,178 @@ void RegisterStringFeaturizerVer1() {
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 0);
-            propagateShapeFromInputToOutput(ctx, 1, 0);
+            if (hasInputShape(ctx, 1)) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+          });
+}
+
+void RegisterTimeSeriesImputerFeaturizerVer1() {
+  static const char* doc = R"DOC(
+    Imputes rows and column values such that the generated output does not contain any
+    time gaps per grain (based on the time gaps encountered during training) and that
+    all missing column values are populated according to a strategy (forward fill,
+    backward fill, mode, etc.).
+
+    This Featurizer is unique in that it will produce 0:N rows per invocation, depending upon the
+    input data.
+
+    C++-style pseudo signature:
+      template <typename... GrainColValueTs, typename... DataColValueTs>
+      std::vector<
+        std::tuple<
+          bool, // true if the row was added
+          std::chrono::system_clock::time_point,
+          std::tuple<GrainColValueTs...>,
+          std::tuple<DataColValueTs...>
+        >
+      > execute(
+        std::chrono::system_clock::time_point const &value,
+        std::tuple<GrainColValueTs...> const &grain,
+        std::tuple<DataColValueTs...> const &colData
+      );
+
+    Examples:
+      During training, the time period was found to be 1 day...
+
+      Input:
+        +------+-------+------------------+-------------------+
+        | time | grain | forward fill col | backward fill col |
+        +======+=======+==================+===================+
+        | 1    | A     | 10               | None              |
+        +------+-------+------------------+-------------------+
+        | 2    | A     | None             | 200               |
+        +------+-------+------------------+-------------------+
+        | 1    | B     | -10              | -100              |
+        +------+-------+------------------+-------------------+
+        | 4    | A     | 40               | 400               |
+        +------+-------+------------------+-------------------+
+        | 6    | A     | 60               | 600               |
+        +------+-------+------------------+-------------------+
+        | 3    | B     | -30              | -300              |
+        +------+-------+------------------+-------------------+
+
+      Output:
+        +-------+------+-------+------------------+-------------------+
+        | Added | time | grain | forward fill col | backward fill col |
+        +=======+======+=======+==================+===================+
+        | false | 1    | A     | 10               | 200 (from 2)      |
+        +-------+------+-------+------------------+-------------------+
+        | false | 2    | A     | 10 (from 1)      | 200               |
+        +-------+------+-------+------------------+-------------------+
+        | true  | 3    | A     | 10 (from 2)      | 400 (from 4)      |
+        +-------+------+-------+------------------+-------------------+
+        | false | 4    | A     | 40               | 400               |
+        +-------+------+-------+------------------+-------------------+
+        | true  | 5    | A     | 40 (from 4)      | 600 (from 6)      |
+        +-------+------+-------+------------------+-------------------+
+        | false | 6    | A     | 60               | 600               |
+        +-------+------+-------+------------------+-------------------+
+        | false | 1    | B     | -10              | -100              |
+        +-------+------+-------+------------------+-------------------+
+        | true  | 2    | B     | -10 (from 1)     | -300 (from 3)     |
+        +-------+------+-------+------------------+-------------------+
+        | false | 3    | B     | -30              | -300              |
+        +-------+------+-------+------------------+-------------------+
+    )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(TimeSeriesImputerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Times",
+          "Tensor of timestamps in seconds since epoch [R] where R is a number of rows.",
+          "T1")
+      .Input(
+          2,
+          "Keys",
+          "Composite keys tensor of shape [R][K]. R is the same as Input(1)",
+          "T2")
+      .Input(
+          3,
+          "Data",
+          "It is a data tensor of shape [R][C] where R - rows and C - columns. R must be the same with Input(1)",
+          "T2")
+      .Output(
+          0,
+          "Added",
+          "Tensor of boolean with a shape of [IR]. Contains a boolean for each row in the result where true represents added row.",
+          "T3")
+      .Output(
+          1,
+          "ImputedTimes",
+          "This is a tensor of timestamps in seconds since epoch of shape [IR], where IR is the number of output rows.",
+          "T1")
+      .Output(
+          2,
+          "ImputedKeys",
+          "Contains keys along with the imputed keys. Tensor of shape [IR][K].",
+          "T2")
+      .Output(
+          3,
+          "ImputedData",
+          "Tensor of shape [IR][C] where IR is the number of rows in the output."
+          "C is the number of columns.",
+          "T2")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "T1",
+          {"tensor(int64)"},
+          "Represents number of seconds since epoch")
+      .TypeConstraint(
+          "T2",
+          {"tensor(string)"},
+          "Output data")
+      .TypeConstraint(
+          "T3",
+          {"tensor(bool)"},
+          "Boolean Tensor")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_BOOL, 0);
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT64, 1);
+            // Number of output rows is not known
+            ONNX_NAMESPACE::TensorShapeProto shape_0_1;
+            shape_0_1.add_dim();
+            ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape_0_1);
+            ONNX_NAMESPACE::updateOutputShape(ctx, 1, shape_0_1);
+
+            // Keys
+            propagateElemTypeFromInputToOutput(ctx, 2, 2);
+            // Keys shape
+            if (hasInputShape(ctx, 2)) {
+              const auto& input2_shape = getInputShape(ctx, 2);
+              if (input2_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting keys to have 2 dimensions");
+              }
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              shape.add_dim();
+              *shape.add_dim() = input2_shape.dim(1);
+              ONNX_NAMESPACE::updateOutputShape(ctx, 2, shape);
+            }
+
+            // Data shape
+            propagateElemTypeFromInputToOutput(ctx, 3, 3);
+            if (hasInputShape(ctx, 3)) {
+              const auto& input3_shape = getInputShape(ctx, 3);
+              if (input3_shape.dim_size() != 2) {
+                fail_shape_inference("Expecting data to have 2 dimensions");
+              }
+              ONNX_NAMESPACE::TensorShapeProto shape;
+              shape.add_dim();
+              *shape.add_dim() = input3_shape.dim(1);
+              ONNX_NAMESPACE::updateOutputShape(ctx, 3, shape);
+            }
           });
 }
 
