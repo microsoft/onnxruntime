@@ -15,8 +15,9 @@ steps:
   displayName: 'Remove prevoius build output'
   inputs:
     SourceFolder:$(Build.BinariesDirectory)\RelWithDebInfo
-    contents: !(*.exe|*.log)
-
+    contents: |
+      !(*.exe|*.log)
+      
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
   continueOnError: true
