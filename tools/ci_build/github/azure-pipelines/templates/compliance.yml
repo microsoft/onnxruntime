@@ -16,9 +16,9 @@ steps:
   inputs:
     SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
     Contents: |
-     *.obj
-     *.pdb
-     *.dll
+     **/*.obj
+     **/*.pdb
+     **/*.dll
       
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
