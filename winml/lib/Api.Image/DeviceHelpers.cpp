@@ -9,6 +9,7 @@
 #include <d3d11on12.h>
 #include <wil/winrt.h>
 #include "inc/DeviceHelpers.h"
+#include "LearningModelDevice.h"
 
 namespace DeviceHelpers {
 constexpr uint32_t c_intelVendorId = 0x8086;
@@ -133,7 +134,8 @@ static HRESULT IsFloat16Blocked(ID3D12Device& device, bool* isBlocked) {
 }
 
 bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModelDevice& device) {
-  if (device.AdapterId().HighPart == 0 && device.AdapterId().LowPart == 0) {
+  auto modelImpl = device.as<winmlp::LearningModelDevice>();
+  if (modelImpl->IsCpuDevice()) {
     return true;
   }
   winrt::com_ptr<ID3D12Device> d3d12Device;
