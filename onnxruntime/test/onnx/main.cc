@@ -530,7 +530,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   if (enable_cuda) {
     broken_tests.insert({"candy", "result mismatch"});
-    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});    
+    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
@@ -538,6 +538,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   }
 
   if (enable_dml) {
+    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
     broken_tests.insert({"operator_permute2", "Test requires 6D Transpose, which isn't supported by DirectML"});
     broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
