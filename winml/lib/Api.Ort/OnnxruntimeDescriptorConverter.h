@@ -8,23 +8,26 @@
 
 namespace Windows::AI::MachineLearning {
 
-struct FeatureDescriptor {
+struct OnnxruntimeValueInfoWrapper {
   const char* name_;
   size_t name_length_;
-  const char* description;
+  const char* description_;
   size_t description_length_;
   OrtTypeInfo* type_info_;
 };
 
-struct FeatureDescriptorFactory {
-  FeatureDescriptorFactory(
+class OnnxruntimeEngineFactory;
+
+struct OnnxruntimeDescriptorConverter {
+  OnnxruntimeDescriptorConverter(
+      OnnxruntimeEngineFactory* engine_factory,
       const std::unordered_map<std::string, std::string>& model_metadata);
 
   wfc::IVector<winml::ILearningModelFeatureDescriptor>
-  CreateLearningModelFeatureDescriptors(
-      const std::vector<FeatureDescriptor>& descriptors);
+  ConvertToLearningModelDescriptors(const std::vector<OnnxruntimeValueInfoWrapper>& descriptors);
 
  private:
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   const std::unordered_map<std::string, std::string>& metadata_;
 };
 

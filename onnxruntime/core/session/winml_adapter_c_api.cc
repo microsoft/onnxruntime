@@ -15,6 +15,8 @@ const OrtApi* GetVersion1Api();
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
+  &winmla::GetDenotationFromTypeInfo,
+
   // OrtTypeInfo Casting methods
   &winmla::CastTypeInfoToMapTypeInfo,
   &winmla::CastTypeInfoToSequenceTypeInfo,

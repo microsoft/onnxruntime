@@ -263,16 +263,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
 class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
                          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                          IWinMLAdapter> {
- private:
-  // TODO: Making this static is only temporary. A fix addressing the resulting the memory leaks is needed.
-  static std::shared_ptr<WinML::LotusEnvironment> lotus_environment_;
-
  public:
-  WinMLAdapter() {
-    if (lotus_environment_ == nullptr) {
-      lotus_environment_ = PheonixSingleton<WinML::LotusEnvironment>();
-    }
-  }
   // factory methods for creating an ort model from a path
   HRESULT STDMETHODCALLTYPE CreateModelProto(
       const char* path,
@@ -655,8 +646,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     return S_OK;
   }
   WINMLA_CATCH_ALL_COM
-};  // namespace Windows::AI::MachineLearning::Adapter
-std::shared_ptr<WinML::LotusEnvironment> WinMLAdapter::lotus_environment_ = nullptr;
+};
 
 extern "C" HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter) try {
   // make an adapter instance

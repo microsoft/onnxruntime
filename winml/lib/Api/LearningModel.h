@@ -109,7 +109,7 @@ struct LearningModel : LearningModelT<LearningModel> {
       bool& use_fp16);
 
  private:
-  com_ptr<WinML::IEngine> learning_engine_;
+  com_ptr<WinML::IEngineFactory> engine_factory_;
   com_ptr<WinML::IModel> model_;
   com_ptr<WinML::IModelInfo> model_info_;
 

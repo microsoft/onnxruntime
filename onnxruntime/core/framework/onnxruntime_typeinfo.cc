@@ -69,6 +69,13 @@ ORT_API_STATUS_IMPL(winmla::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* t
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(winmla::GetDenotationFromTypeInfo, const OrtTypeInfo* type_info, const char** const out, size_t* len) {
+  *out = type_info->denotation_.c_str();
+  *len = type_info->denotation_.size();
+  return nullptr;
+}
+
+
 ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   delete ptr;
 }
@@ -238,7 +245,9 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
         st = GetTensorShapeAndType(TensorShape(), nullptr, *input, &info);
       }
       if (st != nullptr) return st;
-      *out = new OrtTypeInfo(ten_type, info);
+      auto type_info = new OrtTypeInfo(ten_type, info);
+      type_info->denotation_ = input->denotation();
+      *out = type_info;
       return nullptr;
     } break;
     case on::TypeProto::kSequenceType: {
@@ -249,7 +258,9 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
         return status;
       }
 
-      *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
+      auto type_info = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
+      type_info->denotation_ = input->denotation();
+      *out = type_info;
       return nullptr;
     } break;
     case on::TypeProto::kMapType: {
@@ -260,11 +271,15 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
         return status;
       }
 
-      *out = new OrtTypeInfo(ONNX_TYPE_MAP, map_type_info);
+      auto type_info = new OrtTypeInfo(ONNX_TYPE_MAP, map_type_info);
+      type_info->denotation_ = input->denotation();
+      *out = type_info;
       return nullptr;
     } break;
     case on::TypeProto::kOpaqueType: {
-      *out = new OrtTypeInfo(ONNX_TYPE_OPAQUE);
+      auto type_info = new OrtTypeInfo(ONNX_TYPE_OPAQUE);
+      type_info->denotation_ = input->denotation();
+      *out = type_info;
       return nullptr;
     } break;
     case on::TypeProto::VALUE_NOT_SET:

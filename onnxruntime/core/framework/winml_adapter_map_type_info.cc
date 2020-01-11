@@ -61,12 +61,12 @@ OrtStatus* OrtMapTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* type_p
 }
 
 // OrtMapTypeInfo Accessors
-ORT_API_STATUS_IMPL(winmla::GetMapKeyType, OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
+ORT_API_STATUS_IMPL(winmla::GetMapKeyType, const OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
   *out = map_type_info->map_key_type_;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(winmla::GetMapValueType, OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(winmla::GetMapValueType, const OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
   *out = map_type_info->map_value_type_;
   return nullptr;
 }

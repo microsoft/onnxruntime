@@ -13,13 +13,15 @@ ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 ORT_API(void, ReleaseOperatorRegistry, OrtOperatorRegistry*);
 
+ORT_API_STATUS_IMPL(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
+
 // OrtTypeInfo Casting methods
 ORT_API_STATUS_IMPL(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out);
 ORT_API_STATUS_IMPL(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out);
 
 // OrtMapTypeInfo Accessors
-ORT_API_STATUS_IMPL(GetMapKeyType, _In_ OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out);
-ORT_API_STATUS_IMPL(GetMapValueType, _In_ OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out);
+ORT_API_STATUS_IMPL(GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info);
 
 // OrtSequenceTypeInfo Accessors
 ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);

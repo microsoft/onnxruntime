@@ -10,7 +10,7 @@
 #include "SequenceFeatureDescriptor.h"
 #include "TensorFeatureDescriptor.h"
 
-#include "OrtEngineFactory.h"
+#include "OnnxruntimeProvider.h"
 
 #include <robuffer.h>
 
@@ -26,19 +26,20 @@ LearningModel::LearningModel(
     const std::string& path,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
+
+  WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
+  WINML_THROW_IF_FAILED(engine_factory_->CreateModel(path.c_str(), path.size(), model_.put()));
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
+
+  // old
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(path.c_str(), model_proto_.put()));
-
-  // New adapter
-  WINML_THROW_IF_FAILED(CreateOrtEngine(learning_engine_.put()));
-  WINML_THROW_IF_FAILED(learning_engine_->CreateModel(path.c_str(), path.size(), model_.put()));
-  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
 
 static HRESULT CreateModelFromStream(
-    WinML::IEngine* learning_engine,
+    WinML::IEngineFactory* engine_factory,
     const wss::IRandomAccessStreamReference stream,
     WinML::IModel** model) {
   auto content = stream.OpenReadAsync().get();
@@ -57,7 +58,7 @@ static HRESULT CreateModelFromStream(
   WINML_THROW_IF_FAILED_MSG(bytes->Buffer(reinterpret_cast<byte**>(&data)), "Failed to acquire buffer from model stream.");
 
   size_t len = static_cast<size_t>(content.Size());
-  WINML_THROW_IF_FAILED(learning_engine->CreateModel(data, len, model));
+  WINML_THROW_IF_FAILED(engine_factory->CreateModel(data, len, model));
 
   return S_OK;
 }
@@ -66,15 +67,17 @@ LearningModel::LearningModel(
     const wss::IRandomAccessStreamReference stream,
     const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
+
+  WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
+  WINML_THROW_IF_FAILED(CreateModelFromStream(engine_factory_.get(), stream, model_.put()));
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
+
+  // old
   WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
   WINML_THROW_IF_FAILED(adapter_->CreateModelProto(
       static_cast<ABI::Windows::Storage::Streams::IRandomAccessStreamReference*>(winrt::get_abi(stream)),
       model_proto_.put()));
-
-  WINML_THROW_IF_FAILED(CreateOrtEngine(learning_engine_.put()));
-  WINML_THROW_IF_FAILED(CreateModelFromStream(learning_engine_.get(), stream, model_.put()));
-  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
 
@@ -124,7 +127,7 @@ WINML_CATCH_ALL
 
 wfc::IMapView<hstring, hstring>
 LearningModel::Metadata() try {
-  ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>* metadata;
+  ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>* metadata = nullptr;
   wfc::IMapView<hstring, hstring> out;
   WINML_THROW_IF_FAILED(model_info_->GetModelMetadata(&metadata));
   winrt::attach_abi(out, metadata);
@@ -149,7 +152,7 @@ LearningModel::GetOperatorRegistry() {
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::InputFeatures() try {
-  ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features;
+  ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features = nullptr;
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor> out;
   WINML_THROW_IF_FAILED(model_info_->GetInputFeatures(&features));
   winrt::attach_abi(out, features);
@@ -159,7 +162,7 @@ WINML_CATCH_ALL
 
 wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
 LearningModel::OutputFeatures() try {
-  ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features;
+  ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>* features = nullptr;
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor> out;
   WINML_THROW_IF_FAILED(model_info_->GetOutputFeatures(&features));
   winrt::attach_abi(out, features);
@@ -175,8 +178,7 @@ void LearningModel::Close() try {
 WINML_CATCH_ALL
 
 bool LearningModel::IsDisposed() {
-  return model_proto_ == nullptr;
-  //return model_ == nullptr;
+  return model_ == nullptr;
 }
 
 wf::IAsyncOperation<winml::LearningModel>

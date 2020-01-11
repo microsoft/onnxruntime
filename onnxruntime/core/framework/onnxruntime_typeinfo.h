@@ -3,6 +3,7 @@
 
 #pragma once
 #include <atomic>
+#include <string>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/winml_adapter_c_api.h"
 
@@ -22,6 +23,7 @@ class TypeProto;
 struct OrtTypeInfo {
  public:
   ONNXType type = ONNX_TYPE_UNKNOWN;
+  std::string denotation_;
 
   ~OrtTypeInfo();
 

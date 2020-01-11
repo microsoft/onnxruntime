@@ -8,13 +8,13 @@ namespace Windows::AI::MachineLearning {
 
 using UniqueOrtModel = std::unique_ptr<OrtModel, void (*)(OrtModel*)>;
 
-class OnnxruntimeEngine;
+class OnnxruntimeEngineFactory;
 
 class ModelInfo : public Microsoft::WRL::RuntimeClass<
                       Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                       IModelInfo> {
  public:
-  HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngine* engine, _In_ OrtModel* ort_model);
+  HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine, _In_ OrtModel* ort_model);
 
   STDMETHOD(GetAuthor)(const char** out, size_t* len);
   STDMETHOD(GetName)(const char** out, size_t* len);
@@ -42,7 +42,7 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
  public:
   OnnruntimeModel();
 
-  HRESULT RuntimeClassInitialize(OnnxruntimeEngine* engine, UniqueOrtModel&& ort_model);
+  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine, UniqueOrtModel&& ort_model);
 
   STDMETHOD(GetModelInfo)(IModelInfo** info);
   STDMETHOD(CloneModel)(IModel** copy);
@@ -50,7 +50,7 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
  private:
   UniqueOrtModel ort_model_;
 
-  Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<ModelInfo> info_;
 
   std::optional<std::unordered_map<std::string, std::string>> metadata_cache_;
@@ -60,11 +60,21 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
                               Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                               IEngine> {
  public:
+  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory);
+
+ private:
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
+};
+
+
+class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
+                              Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                              IEngineFactory> {
+ public:
   HRESULT RuntimeClassInitialize();
-  STDMETHOD(CreateModel)
-  (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out);
-  STDMETHOD(CreateModel)
-  (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out);
+  STDMETHOD(CreateModel)(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out);
+  STDMETHOD(CreateModel)(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out);
+  STDMETHOD(CreateEngine)(_Outptr_ IEngine** out);
 
   const OrtApi* UseOrtApi();
   const WinmlAdapterApi* UseWinmlAdapterApi();
@@ -73,5 +83,6 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   const OrtApi* ort_api_ = nullptr;
   const WinmlAdapterApi* winml_adapter_api_ = nullptr;
 };
+
 
 }  // namespace Windows::AI::MachineLearning

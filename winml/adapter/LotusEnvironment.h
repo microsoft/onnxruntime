@@ -10,9 +10,8 @@
 #pragma warning(push)
 #pragma warning(disable : 4505)
 
-namespace Windows {
-namespace AI {
-namespace MachineLearning {
+namespace Windows::AI ::MachineLearning {
+
 class CWinMLLogSink : public onnxruntime::logging::ISink {
  public:
   CWinMLLogSink() {
@@ -45,46 +44,20 @@ inline onnxruntime::logging::LoggingManager& DefaultLoggingManager() {
 class LotusEnvironment {
  public:
   LotusEnvironment() {
-    const HRESULT etw_status = TraceLoggingRegister(winmla::winml_trace_logging_provider);
-    if (FAILED(etw_status)) {
-      throw std::runtime_error("WinML TraceLogging registration failed. Logging will be broken: " + std::to_string(etw_status));
-    }
-
     // TODO: Do we need to call this or just define the method?
     default_logging_manager_ = &DefaultLoggingManager();
 
-    if (!onnxruntime::Environment::Create(lotus_environment_).IsOK()) {
-      throw winrt::hresult_error(E_FAIL);
-    }
-
-    auto allocatorMap = onnxruntime::DeviceAllocatorRegistry::Instance().AllRegistrations();
-    if (allocatorMap.find("Cpu") == allocatorMap.end()) {
-      onnxruntime::DeviceAllocatorRegistry::Instance().RegisterDeviceAllocator(
-          "Cpu",
-          [](int) { return std::make_unique<onnxruntime::CPUAllocator>(); },
-          std::numeric_limits<size_t>::max());
-    }
   }
 
-  ~LotusEnvironment() {
-    TraceLoggingUnregister(winmla::winml_trace_logging_provider);
-  }
 
   const onnxruntime::logging::Logger* GetDefaultLogger() {
     return &default_logging_manager_->DefaultLogger();
   }
 
  private:
-  std::unique_ptr<onnxruntime::Environment> lotus_environment_;
   onnxruntime::logging::LoggingManager* default_logging_manager_;
 };
 
-namespace ExecutionProviders {
-__declspec(selectany) const char* CPUExecutionProvider = "CPUExecutionProvider";
-}
-
-}  // namespace MachineLearning
-}  // namespace AI
-}  // namespace Windows
+}  // namespace MachineLearning::AI::Windows
 
 #pragma warning(pop)

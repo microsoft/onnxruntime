@@ -5,4 +5,4 @@
 
 #include "iengine.h"
 
-STDAPI CreateOrtEngine(_Out_ Windows::AI::MachineLearning::IEngine** engine);
+STDAPI CreateOnnxruntimeEngineFactory(_Out_ Windows::AI::MachineLearning::IEngineFactory** engine_factory);

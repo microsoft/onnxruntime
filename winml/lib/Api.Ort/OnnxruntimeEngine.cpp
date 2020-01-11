@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "OrtEngine.h"
+#include "OnnxruntimeEngine.h"
 #include "NamespaceAliases.h"
 #include "OnnxruntimeDescriptorConverter.h"
 
@@ -45,10 +45,10 @@ HRESULT CreateFeatureDescriptors(
   return S_OK;
 }
 
-HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* ort_model) {
+HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OrtModel* ort_model) {
   RETURN_HR_IF_NULL(E_INVALIDARG, ort_model);
 
-  const auto winml_adapter_api = engine->UseWinmlAdapterApi();
+  const auto winml_adapter_api = engine_factory->UseWinmlAdapterApi();
 
   // Get Metadata
   size_t count;
@@ -70,14 +70,13 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* o
         std::string(metadata_value, metadata_value_len));
   }
 
-  WinML::OnnxruntimeDescriptorConverter converter(engine, model_metadata_);
+  WinML::OnnxruntimeDescriptorConverter converter(engine_factory, model_metadata_);
 
   static const winml_adapter_api_model_feature_helper input_helpers = {
       winml_adapter_api->ModelGetInputCount,
       winml_adapter_api->ModelGetInputName,
       winml_adapter_api->ModelGetInputDescription,
-      winml_adapter_api->ModelGetInputTypeInfo
-  };
+      winml_adapter_api->ModelGetInputTypeInfo};
 
   // Create inputs
   std::vector<OnnxruntimeValueInfoWrapper> inputs;
@@ -181,10 +180,10 @@ STDMETHODIMP ModelInfo::GetOutputFeatures(ABI::Windows::Foundation::Collections:
 OnnruntimeModel::OnnruntimeModel() : ort_model_(nullptr, nullptr) {
 }
 
-STDMETHODIMP OnnruntimeModel::RuntimeClassInitialize(OnnxruntimeEngine* engine, UniqueOrtModel&& ort_model) {
+STDMETHODIMP OnnruntimeModel::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, UniqueOrtModel&& ort_model) {
   RETURN_HR_IF_NULL(E_INVALIDARG, ort_model);
 
-  engine_ = engine;
+  engine_factory_ = engine_factory;
   ort_model_ = std::move(ort_model);
 
   return S_OK;
@@ -192,7 +191,7 @@ STDMETHODIMP OnnruntimeModel::RuntimeClassInitialize(OnnxruntimeEngine* engine, 
 
 STDMETHODIMP OnnruntimeModel::GetModelInfo(IModelInfo** info) {
   if (info_ == nullptr) {
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<ModelInfo>(&info_, engine_.Get(), ort_model_.get()));
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<ModelInfo>(&info_, engine_factory_.Get(), ort_model_.get()));
   }
 
   info_.CopyTo(info);
@@ -204,29 +203,23 @@ STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
   return E_NOTIMPL;
 }
 
-HRESULT OnnxruntimeEngine::RuntimeClassInitialize() {
+HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
+  engine_factory_ = engine_factory;
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngineFactory::RuntimeClassInitialize() {
   const uint32_t ort_version = 1;
   const auto ort_api_base = OrtGetApiBase();
   ort_api_ = ort_api_base->GetApi(ort_version);
   winml_adapter_api_ = GetWinmlAdapterApi(ort_api_);
 
+  // TODO supposedly this doesnt work if it is not static
   static auto lotus_environment = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
-
   return S_OK;
 }
 
-static HRESULT OverrideSchemaInferenceFunctions() {
-  // This only makes sense for ORT.
-  // Before creating any models, we ensure that the schema has been overridden.
-  // TODO... need to call into the appro
-  //WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
-  return S_OK;
-}
-
-// TODO supposedly this doesnt work if it is not static
-STDMETHODIMP OnnxruntimeEngine::CreateModel(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) {
-  OverrideSchemaInferenceFunctions();
-
+STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) {
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModelFromPath(model_path, len, &ort_model)) {
     return E_FAIL;
@@ -237,9 +230,7 @@ STDMETHODIMP OnnxruntimeEngine::CreateModel(_In_ const char* model_path, _In_ si
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngine::CreateModel(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) {
-  OverrideSchemaInferenceFunctions();
-
+STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) {
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModelFromData(data, size, &ort_model)) {
     return E_FAIL;
@@ -250,17 +241,24 @@ STDMETHODIMP OnnxruntimeEngine::CreateModel(_In_ void* data, _In_ size_t size, _
   return S_OK;
 }
 
-const OrtApi* OnnxruntimeEngine::UseOrtApi() {
+STDMETHODIMP OnnxruntimeEngineFactory::CreateEngine(_Outptr_ Windows::AI::MachineLearning::IEngine** out) {
+  Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(&onnxruntime_engine, this));
+  RETURN_IF_FAILED(onnxruntime_engine.CopyTo(out));
+  return S_OK;
+}
+
+const OrtApi* OnnxruntimeEngineFactory::UseOrtApi() {
   return ort_api_;
 }
 
-const WinmlAdapterApi* OnnxruntimeEngine::UseWinmlAdapterApi() {
+const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
   return winml_adapter_api_;
 }
 
-STDAPI CreateOnnxruntimeEngine(_Out_ IEngine** engine) {
-  Microsoft::WRL::ComPtr<Windows::AI::MachineLearning::OnnxruntimeEngine> onnxruntime_engine;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<Windows::AI::MachineLearning::OnnxruntimeEngine>(&onnxruntime_engine));
-  RETURN_IF_FAILED(onnxruntime_engine.CopyTo(engine));
+STDAPI CreateOnnxruntimeEngineFactory(_Out_ Windows::AI::MachineLearning::IEngineFactory** engine_factory) {
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> onnxruntime_engine_factory;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngineFactory>(&onnxruntime_engine_factory));
+  RETURN_IF_FAILED(onnxruntime_engine_factory.CopyTo(engine_factory));
   return S_OK;
 }
