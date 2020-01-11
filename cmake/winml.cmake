@@ -442,8 +442,8 @@ endif(onnxruntime_USE_DML)
 
 # The default libraries to link with in Windows are kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib
 # Remove them and use the onecore umbrella library instead
-set(CMAKE_C_STANDARD_LIBRARIES "onecoreuap_apiset.lib")
-set(CMAKE_CXX_STANDARD_LIBRARIES "onecoreuap_apiset.lib")
+set(CMAKE_C_STANDARD_LIBRARIES "onecoreuap.lib")
+set(CMAKE_CXX_STANDARD_LIBRARIES "onecoreuap.lib")
 foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdgl32.lib advapi32.lib)
   set(removed_libs "${removed_libs} /NODEFAULTLIB:${default_lib}")
 endforeach()
