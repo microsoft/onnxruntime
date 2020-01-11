@@ -186,7 +186,7 @@ if (onnxruntime_USE_DML)
 endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
-set(onnxruntime_winml windowsapp.lib winml_adapter)
+set(onnxruntime_winml winml_adapter)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
 
 ###########################
@@ -476,7 +476,6 @@ endif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 target_link_libraries(winml_dll PRIVATE onnxruntime)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
-#target_link_libraries(winml_dll PRIVATE windowsapp.lib)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
