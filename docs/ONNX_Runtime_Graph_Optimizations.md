@@ -32,6 +32,7 @@ These are semantics-preserving graph rewrites which remove redundant nodes and r
   * Conv Mul Fusion
   * Conv BatchNorm Fusion
   * Relu Clip Fusion
+  * Reshape Fusion
 
 ### Extended Graph Optimizations
 
@@ -41,6 +42,15 @@ These optimizations include complex node fusions. They are run after graph parti
 * Matmul Add Fusion
 * Conv Activation Fusion
 * GELU Fusion
+* Layer Normalization Fusion
+
+And BERT related optimizations:
+* Embedding Layer Fusion
+* Attention Fusion
+* Layer Normalization and Skip Connection (with optional Add bias) Fusion
+* GELU Approximiation
+
+Approximation is used in GELU approximation and Attention fusion. There might be slight difference in result after these optimizations.
 
 ### Layout Optimizations
 
