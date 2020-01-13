@@ -15,9 +15,11 @@ Graph optimizations are divided in three levels:
 
 The optimizations belonging to one level are performed after the optimizations of the previous level have been applied (e.g., extended optimizations are applied after basic optimizations have been applied).
 
+**All optimizations are enabled by default.**
+
 ### Basic Graph Optimizations
 
-These are semantics-preserving graph rewrites which remove redundant nodes and redundant computation. These optimizations are enabled by default. They run before graph partitioning and thus apply to all the execution providers. Available basic graph optimizations are as follows:
+These are semantics-preserving graph rewrites which remove redundant nodes and redundant computation. They run before graph partitioning and thus apply to all the execution providers. Available basic graph optimizations are as follows:
 
 * Constant Folding: Statically computes parts of the graph that rely only on constant initializers. This eliminates the need to compute them during runtime.
 
