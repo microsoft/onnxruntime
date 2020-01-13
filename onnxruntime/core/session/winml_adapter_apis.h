@@ -13,6 +13,9 @@ ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 ORT_API(void, ReleaseOperatorRegistry, OrtOperatorRegistry*);
 
+ORT_API_STATUS_IMPL(EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+
+
 ORT_API_STATUS_IMPL(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
 
 // OrtTypeInfo Casting methods

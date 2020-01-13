@@ -14,7 +14,21 @@ ORT_RUNTIME_CLASS(OperatorRegistry);
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
 
-ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api)NO_EXCEPTION;
+ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api) NO_EXCEPTION;
+
+struct OrtProfilerEventRecord {
+  uint32_t category_;
+  const char* category_name_;
+  int64_t duration_;
+  int64_t time_span_;
+  const char* event_name_;
+  int32_t process_id_;
+  int32_t thread_id_;
+  const char* op_name_;
+  const char* execution_provider_;
+};
+
+typedef void(ORT_API_CALL* OrtProfilingFunction)(const OrtProfilerEventRecord* event_record);
 
 struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* GetDenotationFromTypeInfo)(_In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len)NO_EXCEPTION;
@@ -57,11 +71,11 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ OrtOperatorRegistry* registry)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel * model)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel* model)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char** const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
-      
+
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;

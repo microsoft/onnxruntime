@@ -134,6 +134,11 @@ struct OrtEnv {
     return logging_manager_.get();
   }
 
+  void SetLoggingManager(std::unique_ptr<LoggingManager> logging_manager) {
+    std::lock_guard<OrtMutex> lock(m_);
+    logging_manager_ = std::move(logging_manager);
+  }
+
  private:
   static OrtEnv* p_instance_;
   static OrtMutex m_;
@@ -1478,3 +1483,52 @@ ORT_API(void, OrtApis::ReleaseEnv, _Frees_ptr_opt_ OrtEnv* value) {
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
+
+#include "winml_adapter_apis.h"
+namespace winmla = Windows::AI::MachineLearning::Adapter;
+
+class WinmlAdapterLoggingWrapper : public LoggingWrapper {
+ public:
+  WinmlAdapterLoggingWrapper(OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, void* logger_param) : LoggingWrapper(logging_function, logger_param),
+                                                                                                                                 profiling_function_(profiling_function) {
+    ;
+  }
+
+  void SendProfileEvent(profiling::EventRecord& event_record) const override {
+    if (profiling_function_) {
+      OrtProfilerEventRecord ort_event_record = {};
+      ort_event_record.category_ = static_cast<uint32_t>(event_record.cat);
+      ort_event_record.category_name_ = onnxruntime::profiling::event_categor_names_[event_record.cat];
+      ort_event_record.duration_ = event_record.dur;
+      ort_event_record.event_name_ = event_record.name.c_str();
+      ort_event_record.execution_provider_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) ? event_record.args["provider"].c_str() : nullptr;
+      ort_event_record.op_name_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) ? event_record.args["op_name"].c_str() : nullptr;
+      ort_event_record.process_id_ = event_record.pid;
+      ort_event_record.thread_id_ = event_record.tid;
+      ort_event_record.time_span_ = event_record.ts;
+
+      profiling_function_(&ort_event_record);
+    }
+  }
+
+ private:
+  OrtProfilingFunction profiling_function_{};
+};
+
+ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function,
+                    _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
+                    _In_ const char* logid, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<LoggingManager> logging_manager;
+  std::string name = logid;
+  std::unique_ptr<ISink> logger = onnxruntime::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
+    logging_manager.reset(new LoggingManager(std::move(logger),
+                                  static_cast<Severity>(default_warning_level),
+                                  false,
+                                  LoggingManager::InstanceType::Default,
+                                  &name));
+
+  env->SetLoggingManager(std::move(logging_manager));
+  return nullptr;
+  API_IMPL_END
+}
