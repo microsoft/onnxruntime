@@ -9,7 +9,6 @@
 #include "cub/util_allocator.cuh"
 #include "cub/device/device_radix_sort.cuh"
 #include <limits>
-#include <chrono>
 
 namespace onnxruntime {
 namespace cuda {
@@ -334,7 +333,6 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 
 template <typename T>
 Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
-  std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
   auto aligned_K = static_cast<int64_t>(pow(2, ceil(log2(K))));
   auto aligned_dimension = static_cast<int64_t>(pow(2, ceil(log2(dimension))));
   if (aligned_dimension <= GridDim::maxThreadsPerBlock << 1) {
@@ -377,8 +375,6 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
       }
     } 
   }
-  std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-  std::cout << "ORT TopK kernel cost " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
   return Status::OK();
 }
 
