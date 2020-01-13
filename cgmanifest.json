@@ -22,7 +22,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "9bda90b7e5e08c4c37a832d0cea218aed6af6470",
+               "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
                "repositoryUrl": "https://github.com/google/googletest.git"
             }
          }
