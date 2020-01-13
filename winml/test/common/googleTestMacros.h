@@ -30,6 +30,21 @@
 #define GTEST_SKIP GTEST_SKIP_("")
 #endif
 
+#define EXPECT_THROW_SPECIFIC(statement, exception, condition)  \
+    EXPECT_THROW(                                               \
+        try {                                                   \
+            statement;                                          \
+        } catch (const exception& e) {                          \
+            EXPECT_TRUE(condition(e));                          \
+            throw;                                              \
+        }                                                       \
+    , exception);
+
+#ifndef INSTANTIATE_TEST_SUITE_P
+// Use the old name, removed in newer versions of googletest
+#define INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
+#endif
+
 #define WINML_SKIP_TEST(message) \
   GTEST_SKIP() << message;
 
