@@ -25,9 +25,9 @@ class IntelGraph {
  private:
   std::shared_ptr<InferenceEngine::CNNNetwork> CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto);
 
-  InferenceEngine::Precision ConvertPrecisionONNXToIntel(ONNX_NAMESPACE::DataType onnx_type);
+  InferenceEngine::Precision ConvertPrecisionONNXToIntel(const ONNX_NAMESPACE::TypeProto& onnx_type);
 
-  void SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network);
+  void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<InferenceEngine::CNNNetwork> network);
 
   void GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, const OrtValue* input_tensors[], std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 

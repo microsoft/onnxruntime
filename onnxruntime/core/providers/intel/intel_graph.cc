@@ -59,7 +59,7 @@ IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
   //   ie.ReadNetwork("/home/manohar/Desktop/model-zoo/alexnet/alexnet_fp32/model.xml",
   //   "/home/manohar/Desktop/model-zoo/alexnet/alexnet_fp32/model.bin"));
 
-  SetIODefs(ie_cnn_network_);
+  SetIODefs(model_proto, ie_cnn_network_);
 
   // Loading model to the plugin
   InferenceEngine::ExecutableNetwork exe_network_ = ie.LoadNetwork(*ie_cnn_network_, device_id_);
@@ -75,27 +75,29 @@ IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
 }
 
 InferenceEngine::Precision IntelGraph::ConvertPrecisionONNXToIntel(
-    ONNX_NAMESPACE::DataType onnx_type) {
-  if (*onnx_type == "float" || *onnx_type == "tensor(float)") {
+    const ONNX_NAMESPACE::TypeProto& onnx_type) {
+
+  ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
+  if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
-  } else if (*onnx_type == "float16" || *onnx_type == "tensor(float16)") {
+  } else if (*type_string == "float16" || *type_string == "tensor(float16)") {
     return InferenceEngine::Precision::FP16;
-  } else if (*onnx_type == "int32" || *onnx_type == "tensor(int32)") {
+  } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
     return InferenceEngine::Precision::I32;
-  } else if (*onnx_type == "int16" || *onnx_type == "tensor(int16)") {
+  } else if (*type_string == "int16" || *type_string == "tensor(int16)") {
     return InferenceEngine::Precision::I16;
-  } else if (*onnx_type == "int8" || *onnx_type == "tensor(int8)") {
+  } else if (*type_string == "int8" || *type_string == "tensor(int8)") {
     return InferenceEngine::Precision::I8;
-  } else if (*onnx_type == "uint16" || *onnx_type == "tensor(uint16)") {
+  } else if (*type_string == "uint16" || *type_string == "tensor(uint16)") {
     return InferenceEngine::Precision::U16;
-  } else if (*onnx_type == "uint8" || *onnx_type == "tensor(uint8)") {
+  } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else {
     throw "Unsupported Data type";
   }
 }
 
-void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network) {
+void IntelGraph::SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<InferenceEngine::CNNNetwork> network) {
   // Configure input & output
   // Prepare input blobs
   if (network) {
@@ -103,16 +105,10 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
       std::cout << "Network is not NULL" << std::endl;
   }
   auto inputInfo = network->getInputsInfo();
-  // auto onnx_input_defs = fused_node_->InputDefs();
-
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
     // Get the onnx index for the corresponding input (ignoring initializers)
-
-    // HACK HACK HACK!!!
-    // auto tracked_input_idx = input_indexes_[input_idx];
-    // auto precision = ConvertPrecisionONNXToIntel(onnx_input_defs[tracked_input_idx]->Type());
-    InferenceEngine::Precision precision = InferenceEngine::Precision::FP32;
+    auto precision = ConvertPrecisionONNXToIntel(model_proto.graph().input(input_idx).type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for input tensor
@@ -140,13 +136,9 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
-  // auto onnx_output_defs = fused_node_->OutputDefs();
-
   int output_idx = 0;
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
-    // HACK HACK HACK!!!
-    // auto precision = ConvertPrecisionONNXToIntel(onnx_output_defs[output_idx]->Type());
-    InferenceEngine::Precision precision = InferenceEngine::Precision::FP32;
+    auto precision = ConvertPrecisionONNXToIntel(model_proto.graph().output(output_idx).type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for output tensor
