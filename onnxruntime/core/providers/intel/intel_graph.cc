@@ -54,10 +54,6 @@ IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
 
   InferenceEngine::Core ie;
   ie_cnn_network_ = CreateCNNNetwork(model_proto);
-  // auto unused = CreateCNNNetwork(model_proto);
-  // ie_cnn_network_ = std::make_shared<InferenceEngine::CNNNetwork>(
-  //   ie.ReadNetwork("/home/manohar/Desktop/model-zoo/alexnet/alexnet_fp32/model.xml",
-  //   "/home/manohar/Desktop/model-zoo/alexnet/alexnet_fp32/model.bin"));
 
   SetIODefs(model_proto, ie_cnn_network_);
 
@@ -76,7 +72,6 @@ IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
 
 InferenceEngine::Precision IntelGraph::ConvertPrecisionONNXToIntel(
     const ONNX_NAMESPACE::TypeProto& onnx_type) {
-
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
@@ -188,12 +183,6 @@ void IntelGraph::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* inpu
 
     // Copy input data into OpenVINO's input buffer
     std::memcpy(graph_input_buffer, batch_memory_offset, input_data_size);
-
-    std::cout << "INPUT VALUES\n";
-    float* buf = (float*)graph_input_buffer;
-    for (int i = 0; i < 10; i++) {
-      std::cout << *(buf) << std::endl;
-    }
   }
 
   // Start Async inference
@@ -226,12 +215,6 @@ void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_
 
     // Copy output results back to ONNX-RT's output buffers
     std::memcpy(batch_memory_offset, graph_output_buffer, output_data_size);
-
-    std::cout << "OUTPUT VALUES\n";
-    float* buf = (float*)graph_output_buffer;
-    for (int i = 0; i < 10; i++) {
-      std::cout << *(buf) << std::endl;
-    }
   }
 }
 
