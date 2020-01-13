@@ -73,11 +73,10 @@ bool IsDimensionSupported(const Node* node) {
       return false;
   }
 
-  if(node->OpType() == "Softmax"){
-
+  if (node->OpType() == "Softmax") {
     auto attributes = node->GetAttributes();
     auto axis = attributes["axis"].i();
-    if(input_dims - axis != 1)
+    if (input_dims - axis != 1)
       return false;
   }
   return true;
@@ -86,49 +85,49 @@ bool IsDimensionSupported(const Node* node) {
 //Ops which are not supported by Intel EP
 bool IsUnsupportedOp(std::string name, std::string device) {
   std::set<std::string> unsupported_ops_cpu = {
-    "Where",
-    "Hardmax",
-    "ReduceL1",
-    "ReduceL2",
-    "ReduceSumSquare",
-    "ReduceLogSum",
-    "ReduceLogSumExp",
-    "ReduceMin",
-    "ReduceMax",
-    "ReduceSum",
-    "ReduceMean",
-    "ReduceProd",
-    "EyeLike",
-    "ConvTranspose",
-    "Shrink",
-    "ThresholdedRelu",
-    "PRelu",
-    "Selu",
-    "Softplus",
-    "GlobalLpPool",
-    "CumSum",
-    "LogSoftmax",
-    "MeanVarianceNormalization",
-    "QuantizeLinear",
-    "DequantizeLinear",
-    "QLinearConv",
-    "InstanceNormalization", // ngraph reshape v0
-    "Scan",
-    "Split", //ngraph v1, ov v0
-    "LpNormalization",
-    "Ceil", //cannot cast
-    "Reciprocal",
-    "Sqrt",
-    "Exp",
-    "Not",
-    "And",
-    "Or",
-    "Xor",
-    "Less",
-    "Greater",
-    "Equal",
-    "Asinh",
-    "Acosh",
+      "Where",
+      "Hardmax",
+      "ReduceL1",
+      "ReduceL2",
+      "ReduceSumSquare",
+      "ReduceLogSum",
+      "ReduceLogSumExp",
+      "ReduceMin",
+      "ReduceMax",
+      "ReduceSum",
+      "ReduceMean",
+      "ReduceProd",
+      "EyeLike",
+      "ConvTranspose",
+      "Shrink",
+      "ThresholdedRelu",
+      "PRelu",
+      "Selu",
+      "Softplus",
+      "GlobalLpPool",
+      "CumSum",
+      "LogSoftmax",
+      "MeanVarianceNormalization",
+      "QuantizeLinear",
+      "DequantizeLinear",
+      "QLinearConv",
+      "InstanceNormalization",  // ngraph reshape v0
+      "Scan",
+      "Split",  //ngraph v1, ov v0
+      "LpNormalization",
+      "Ceil",  //cannot cast
+      "Reciprocal",
+      "Sqrt",
+      "Exp",
+      "Not",
+      "And",
+      "Or",
+      "Xor",
+      "Less",
+      "Greater",
+      "Equal",
+      "Asinh",
+      "Acosh",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
@@ -138,18 +137,17 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Sinh"};
 
   std::set<std::string> unsupported_ops_vpu = {
-    "Abs",
-    "Acos",
-    "Acosh",
-    "Asin",
-    "Asinh",
-    "HardSigmoid",
-    "Softsign"
-    "Atan",
-    "Atanh",
-    "Cos",
-    "Cosh"
-  };
+      "Abs",
+      "Acos",
+      "Acosh",
+      "Asin",
+      "Asinh",
+      "HardSigmoid",
+      "Softsign"
+      "Atan",
+      "Atanh",
+      "Cos",
+      "Cosh"};
 
   std::set<std::string> unsupported_ops = {};
 
@@ -231,7 +229,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    if(GetInputCount(node, initializers) == 1)
+    if (GetInputCount(node, initializers) == 1)
       return true;
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
@@ -251,7 +249,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Softmax") {
-    if(!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Unsqueeze") {
     if (!IsDimensionSupported(node))
@@ -299,9 +297,8 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         return true;
     }
   } else if (optype == "Cast") {
-
-      using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-      const auto supportedCasts = std::set<std::pair<onnx_dtype, onnx_dtype>>{
+    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+    const auto supportedCasts = std::set<std::pair<onnx_dtype, onnx_dtype>>{
         {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
         {onnx_dtype::TensorProto_DataType_INT16, onnx_dtype::TensorProto_DataType_FLOAT},
@@ -312,18 +309,16 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         // {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT32},
-        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}
-      };
-      auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-      auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}};
+    auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-      const auto typePair = std::make_pair(static_cast<onnx_dtype>(input_data_type),static_cast<onnx_dtype>(output_data_type));
-      const auto match = supportedCasts.find(typePair);
-      if(match == supportedCasts.end()){
-        return true;
-      }
-      else
-        return false;
+    const auto typePair = std::make_pair(static_cast<onnx_dtype>(input_data_type), static_cast<onnx_dtype>(output_data_type));
+    const auto match = supportedCasts.find(typePair);
+    if (match == supportedCasts.end()) {
+      return true;
+    } else
+      return false;
   } else if (optype == "Squeeze") {
     //Shape can't have empty axes attribute
     const auto& attributes = node->GetAttributes();
