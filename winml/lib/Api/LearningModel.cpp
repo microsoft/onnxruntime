@@ -30,11 +30,6 @@ LearningModel::LearningModel(
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
   WINML_THROW_IF_FAILED(engine_factory_->CreateModel(path.c_str(), path.size(), model_.put()));
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
-
-  // old
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
-  WINML_THROW_IF_FAILED(adapter_->CreateModelProto(path.c_str(), model_proto_.put()));
 }
 WINML_CATCH_ALL
 
@@ -71,13 +66,6 @@ LearningModel::LearningModel(
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
   WINML_THROW_IF_FAILED(CreateModelFromStream(engine_factory_.get(), stream, model_.put()));
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
-
-  // old
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-  WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
-  WINML_THROW_IF_FAILED(adapter_->CreateModelProto(
-      static_cast<ABI::Windows::Storage::Streams::IRandomAccessStreamReference*>(winrt::get_abi(stream)),
-      model_proto_.put()));
 }
 WINML_CATCH_ALL
 
@@ -146,7 +134,8 @@ LearningModel::GetOperatorRegistry() {
       operator_provider_.as<ILearningModelOperatorProviderNative>();
 
   IMLOperatorRegistry* registry = nullptr;
-  WINML_THROW_IF_FAILED(adapter_->GetOperatorRegistry(operator_provider_native.get(), &registry));
+  // Retrieve the "operator abi" registry.
+  THROW_IF_FAILED(operator_provider_native->GetRegistry(&registry));
   return registry;
 }
 
@@ -172,7 +161,6 @@ WINML_CATCH_ALL
 
 void LearningModel::Close() try {
   // close the model
-  model_proto_ = nullptr;
   model_ = nullptr;
 }
 WINML_CATCH_ALL
@@ -239,30 +227,33 @@ LearningModel::LoadFromStream(
 }
 WINML_CATCH_ALL
 
-winmla::IModelProto*
-LearningModel::DetachModelProto() {
-  com_ptr<winmla::IModelProto> detached_model_proto;
-  if (model_proto_ != nullptr) {
-    detached_model_proto.attach(model_proto_.detach());
+WinML::IModel*
+LearningModel::DetachModel() {
+  com_ptr<WinML::IModel> detached_model;
+  if (model_ != nullptr) {
+    detached_model.attach(model_.detach());
 
     // Close the model since we now own the model proto
     Close();
   }
-  return detached_model_proto.detach();
+  return detached_model.detach();
 }
 
-winmla::IModelProto*
-LearningModel::CopyModelProto() {
-  if (model_proto_ == nullptr) {
+WinML::IModel*
+LearningModel::CloneModel() {
+  if (model_ == nullptr) {
     return nullptr;
   }
 
-  com_ptr<winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-  com_ptr<winmla::IModelProto> model_proto;
-  WINML_THROW_IF_FAILED(adapter->CreateModelProto(model_proto_.get(), model_proto.put()));
+  com_ptr<WinML::IModel> model_copy;
+  WINML_THROW_IF_FAILED(model_->CloneModel(model_copy.put()));
 
-  return model_proto.detach();
+  return model_copy.detach();
+}
+
+WinML::IEngineFactory*
+LearningModel::GetEngineFactory() {
+  return engine_factory_.get();
 }
 
 }  // namespace winrt::Windows::AI::MachineLearning::implementation

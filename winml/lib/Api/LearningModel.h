@@ -4,13 +4,12 @@
 #pragma once
 
 #include "LearningModel.g.h"
-#include "core/providers/winml/winml_provider_factory.h"
-
-#include "iengine.h"
 
 namespace Windows::AI::MachineLearning {
-	struct IEngine;
-}
+struct IEngineFactory;
+struct IModel;
+struct IModelInfo;
+}  // namespace Windows::AI::MachineLearning
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -99,22 +98,15 @@ struct LearningModel : LearningModelT<LearningModel> {
   /* Non-ABI methods */
   bool IsDisposed();
   IMLOperatorRegistry* GetOperatorRegistry();
-  winmla::IModelProto* DetachModelProto();
-  winmla::IModelProto* CopyModelProto();
-
- private:
-  void LogCreationEvent(bool fromStream = false);
-  void ModelUseFP16(
-      winml::ILearningModelFeatureDescriptor descriptor,
-      bool& use_fp16);
+  WinML::IModel* DetachModel();
+  WinML::IModel* CloneModel();
+  WinML::IEngineFactory* GetEngineFactory();
 
  private:
   com_ptr<WinML::IEngineFactory> engine_factory_;
   com_ptr<WinML::IModel> model_;
   com_ptr<WinML::IModelInfo> model_info_;
 
-  com_ptr<winmla::IWinMLAdapter> adapter_;
-  com_ptr<winmla::IModelProto> model_proto_;
   ILearningModelOperatorProvider operator_provider_;
 };
 

@@ -33,7 +33,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   // OrtModel methods
   &winmla::CreateModelFromPath,
   &winmla::CreateModelFromData,  
-  nullptr, // OrtStatus*(ORT_API_CALL* CreateModel)(_In_ const OrtModel* in, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  &winmla::CloneModel,
   &winmla::ModelGetAuthor,
   &winmla::ModelGetName, // OrtStatus*(ORT_API_CALL* ModelGetName(_In_ const OrtModel* model, _Out_ const char* const name, _Out_ size_t* len)NO_EXCEPTION;
   &winmla::ModelGetDomain, // OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const char* const domain, _Out_ size_t* len)NO_EXCEPTION;
@@ -48,8 +48,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ModelGetInputTypeInfo,
   &winmla::ModelGetOutputTypeInfo,
   &winmla::ModelGetMetadataCount,
-  &winmla::ModelGetMetadata, 
-  nullptr, // OrtStatus*(ORT_API_CALL* ModelCheckIfValid)(_In_ OrtModel* model, _Out_ bool* valid)NO_EXCEPTION;
+  &winmla::ModelGetMetadata,
+  &winmla::ModelEnsureNoFloat16,
 
   // OrtSession methods
   nullptr, // OrtStatus*(ORT_API_CALL* CreateSessionWihtoutModel)(_In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;

@@ -8,6 +8,7 @@ namespace Windows::AI::MachineLearning {
 
 using UniqueOrtModel = std::unique_ptr<OrtModel, void (*)(OrtModel*)>;
 
+class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
 
 class ModelInfo : public Microsoft::WRL::RuntimeClass<
@@ -45,6 +46,7 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine, UniqueOrtModel&& ort_model);
 
   STDMETHOD(GetModelInfo)(IModelInfo** info);
+  STDMETHOD(ModelEnsureNoFloat16)();
   STDMETHOD(CloneModel)(IModel** copy);
   
  private:
@@ -65,8 +67,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
 };
-
-
+  
 class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
                               Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                               IEngineFactory> {
@@ -74,8 +75,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   HRESULT RuntimeClassInitialize();
   STDMETHOD(CreateModel)(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out);
   STDMETHOD(CreateModel)(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out);
-  STDMETHOD(CreateEngine)(_Outptr_ IEngine** out);
-
+  STDMETHOD(CreateEngineBuilder)(IEngineBuilder** engine_builder);
   const OrtApi* UseOrtApi();
   const WinmlAdapterApi* UseWinmlAdapterApi();
 

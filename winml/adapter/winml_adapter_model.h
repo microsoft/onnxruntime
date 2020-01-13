@@ -12,8 +12,10 @@ struct OrtModel {
  public:
   static OrtStatus* CreateOrtModelFromPath(const char* path, size_t len, OrtModel** model);
   static OrtStatus* CreateOrtModelFromData(void* data, size_t len, OrtModel** model);
-
+  static OrtStatus* CreateOrtModelFromProto(std::unique_ptr<onnx::ModelProto>&& model_proto, OrtModel** model);
   const ModelInfo* UseModelInfo() const;
+
+  const onnx::ModelProto* UseModelProto() const;
 
  private:
   OrtModel(std::unique_ptr<onnx::ModelProto>&& model_proto);

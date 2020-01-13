@@ -9,6 +9,7 @@
 #include "MLOperatorAuthor.h"
 #include "WinML_Lock.h"
 #include "core/providers/winml/winml_provider_factory.h"
+#include "iengine.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -79,10 +80,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   void
   Initialize();
 
-  winmla::IModelProto*
+  WinML::IModel*
   GetOptimizedModel();
 
-  winmla::IModelProto*
+  WinML::IModel*
   GetOptimizedModel(bool should_close_model);
 
   uint64_t
@@ -102,6 +103,7 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   ToggleProfiler();
 
  private:
+  com_ptr<WinML::IEngineFactory> engine_factory_;
   com_ptr<winmla::IInferenceSession> inference_session_;
   struct IMLOperatorRegistryDeleter {
     void operator()(IMLOperatorRegistry* p) {

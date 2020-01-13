@@ -80,13 +80,14 @@ class ModelInfo {
   std::vector<std::pair<std::string, std::string>> model_metadata_;
   std::vector<const onnx::ValueInfoProto*> input_features_;
   std::vector<const onnx::ValueInfoProto*> output_features_;
+  bool requires_float16_support_;
 
  private:
   void Initialize(const onnx::ModelProto* model_proto) {
     for (auto& prop : model_proto->metadata_props()) {
       model_metadata_.push_back(std::make_pair(prop.key(), prop.value()));
     }
-    
+
     input_features_ = GetInputsWithoutInitializers(*model_proto);
     output_features_ = ::GetOutputs(*model_proto);
 
@@ -158,22 +159,21 @@ OrtStatus* OrtModel::CreateOrtModelFromPath(const char* path, size_t len, OrtMod
     return status;
   }
 
-  *model = new (std::nothrow) OrtModel(std::move(model_proto));
-  if (*model == nullptr) {
-    return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Engine failed to create a model!");
-  }
-
-  return nullptr;
+  return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
 }
 
 OrtStatus* OrtModel::CreateOrtModelFromData(void* data, size_t len, OrtModel** model) {
   auto model_proto = std::unique_ptr<onnx::ModelProto>(new onnx::ModelProto());
- 
+
   auto parse_succeeded = model_proto->ParseFromArray(data, static_cast<int>(len));
   if (!parse_succeeded) {
     return OrtApis::CreateStatus(ORT_INVALID_PROTOBUF, "Failed to parse model stream!");
   }
 
+  return OrtModel::CreateOrtModelFromProto(std::move(model_proto), model);
+}
+
+OrtStatus* OrtModel::CreateOrtModelFromProto(std::unique_ptr<onnx::ModelProto>&& model_proto, OrtModel** model) {
   *model = new (std::nothrow) OrtModel(std::move(model_proto));
   if (*model == nullptr) {
     return OrtApis::CreateStatus(ORT_ENGINE_ERROR, "Engine failed to create a model!");
@@ -186,6 +186,10 @@ const ModelInfo* OrtModel::UseModelInfo() const {
   return model_info_.get();
 }
 
+const ONNX_NAMESPACE::ModelProto* OrtModel::UseModelProto() const {
+  return model_proto_.get();
+}
+
 ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, size_t size, OrtModel** out) {
   if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, out)) {
     return status;
@@ -195,6 +199,14 @@ ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, size_t 
 
 ORT_API_STATUS_IMPL(winmla::CreateModelFromData, void* data, size_t size, OrtModel** out) {
   if (auto status = OrtModel::CreateOrtModelFromData(data, size, out)) {
+    return status;
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::CloneModel, const OrtModel* in, OrtModel** out) {
+  auto model_proto_copy = std::make_unique<onnx::ModelProto>(*in->UseModelProto());
+  if (auto status = OrtModel::CreateOrtModelFromProto(std::move(model_proto_copy), out)) {
     return status;
   }
   return nullptr;
@@ -245,7 +257,7 @@ ORT_API_STATUS_IMPL(winmla::ModelGetMetadata, const OrtModel* model, size_t coun
 
 ORT_API_STATUS_IMPL(winmla::ModelGetInputCount, const OrtModel* model, size_t* count) {
   *count = model->UseModelInfo()->input_features_.size();
-  return nullptr; 
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(winmla::ModelGetOutputCount, const OrtModel* model, size_t* count) {
@@ -291,6 +303,72 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputTypeInfo, const OrtModel* model, size_
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
+  auto model_info = model->UseModelInfo();
+  auto model_proto = model->UseModelProto();
+  auto& graph = model_proto->graph();
+
+  // The model will not contain fp16 operations if:
+  // 1. The model has no fp16 inputs
+  // 2. The model has no fp16 initializers
+  // 3. The model does not create any fp16 intermediary tensors via the Cast (to float16) operator
+  // 4. The model does not have any fp16 outputs
+
+  // 1. Ensure that The model has no fp16 inputs
+  for (auto input : model_info->input_features_) {
+    auto& type = input->type();
+    if (type.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
+      auto& tensor_type = type.tensor_type();
+      if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+        std::stringstream error_message;
+        error_message << "The model contains a 16-bit input (" << input->name() << "), but the current device does not support 16-bit float.";
+        return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
+      }
+    }
+  }
+
+  // 2. Ensure that the model has no fp16 initializers
+  for (int i = 0; i < graph.node_size(); i++) {
+    auto node = graph.node(i);
+    if (node.op_type() == "Cast" && node.domain().empty()) {
+      for (int attribIndex = 0; attribIndex < node.attribute_size(); attribIndex++) {
+        auto attribute = node.attribute(attribIndex);
+        if (attribute.name() == "to") {
+          if (attribute.i() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
+            std::stringstream error_message;
+            error_message << "The model contains a 16-bit input (" << node.name().c_str() << "), but the current device does not support 16-bit float.";
+            return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Ensure that the model does not create any fp16 intermediary
+  //    tensors via the Cast (to float16) operator
+  for (int i = 0; i < graph.initializer_size(); i++) {
+    auto initializer = graph.initializer(i);
+    if (initializer.data_type() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
+      std::stringstream error_message;
+      error_message << "The model contains a 16-bit input (" << initializer.name().c_str() << "), but the current device does not support 16-bit float.";
+      return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
+    }
+  }
+
+  // 4. Ensure that the model does not have any fp16 outputs
+  for (auto output : model_info->output_features_) {
+    auto& type = output->type();
+    if (type.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
+      auto& tensor_type = type.tensor_type();
+      if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+        std::stringstream error_message;
+        error_message << "The model contains a 16-bit input (" << output->name() << "), but the current device does not support 16-bit float.";
+        return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
+      }
+    }
+  }
+  return nullptr;
+}
 
 ORT_API(void, winmla::ReleaseModel, OrtModel* ptr) {
   delete ptr;

@@ -28,12 +28,12 @@ using namespace Windows::AI::MachineLearning;
 
 namespace Windows::AI::MachineLearning::Adapter {
 
-CpuOrtSessionBuilder::CpuOrtSessionBuilder() {
+OnnxruntimeCpuSessionBuilder::OnnxruntimeCpuSessionBuilder() {
 
 }
 
 HRESULT
-CpuOrtSessionBuilder::CreateSessionOptions(
+OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
     OrtSessionOptions** options) try {
   RETURN_HR_IF_NULL(E_POINTER, options);
 
@@ -57,7 +57,7 @@ CpuOrtSessionBuilder::CreateSessionOptions(
 WINMLA_CATCH_ALL_COM
 
 HRESULT
-CpuOrtSessionBuilder::CreateSession(
+OnnxruntimeCpuSessionBuilder::CreateSession(
     OrtSessionOptions* options,
     winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) try {
@@ -90,7 +90,7 @@ CpuOrtSessionBuilder::CreateSession(
 WINMLA_CATCH_ALL_COM
 
 HRESULT
-CpuOrtSessionBuilder::Initialize(
+OnnxruntimeCpuSessionBuilder::Initialize(
     winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* /*p_provider*/
 ) try {

@@ -447,12 +447,12 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
       ID3D12CommandQueue* queue,
       IOrtSessionBuilder** session_builder) override try {
     if (device == nullptr) {
-      auto builder = wil::MakeOrThrow<CpuOrtSessionBuilder>();
+      auto builder = wil::MakeOrThrow<OnnxruntimeCpuSessionBuilder>();
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
     }
 #ifdef USE_DML
     else {
-      auto builder = wil::MakeOrThrow<DmlOrtSessionBuilder>(device, queue);
+      auto builder = wil::MakeOrThrow<OnnxruntimeDmlSessionBuilder>(device, queue);
       return builder.CopyTo(__uuidof(IOrtSessionBuilder), reinterpret_cast<void**>(session_builder));
     }
 #else

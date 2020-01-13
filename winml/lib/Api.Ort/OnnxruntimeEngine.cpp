@@ -6,6 +6,7 @@
 
 #include "PheonixSingleton.h"
 #include "OnnxruntimeEnvironment.h"
+#include "OnnxruntimeEngineBuilder.h"
 
 // Add back when we remove the winmladapter.h
 //#include "core/providers/winml/winml_provider_factory.h"
@@ -199,9 +200,28 @@ STDMETHODIMP OnnruntimeModel::GetModelInfo(IModelInfo** info) {
   return S_OK;
 }
 
-STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
-  return E_NOTIMPL;
+STDMETHODIMP OnnruntimeModel::ModelEnsureNoFloat16() {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  if (auto status = winml_adapter_api->ModelEnsureNoFloat16(ort_model_.get())) {
+    return E_FAIL;
+  }
+  return S_OK;
 }
+
+STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  OrtModel* ort_model_copy;
+  if (auto status = winml_adapter_api->CloneModel(ort_model_.get(), &ort_model_copy)) {
+    return E_FAIL;
+  }
+
+  auto model = UniqueOrtModel(ort_model_copy, winml_adapter_api->ReleaseModel);
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnruntimeModel>(copy, engine_factory_.Get(), std::move(model)));
+
+  return S_OK;
+}
+
 
 HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;
@@ -241,10 +261,10 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t 
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineFactory::CreateEngine(_Outptr_ Windows::AI::MachineLearning::IEngine** out) {
-  Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(&onnxruntime_engine, this));
-  RETURN_IF_FAILED(onnxruntime_engine.CopyTo(out));
+STDMETHODIMP OnnxruntimeEngineFactory::CreateEngineBuilder(_Outptr_ Windows::AI::MachineLearning::IEngineBuilder** out) {
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineBuilder> onnxruntime_engine_builder;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngineBuilder>(&onnxruntime_engine_builder, this));
+  RETURN_IF_FAILED(onnxruntime_engine_builder.CopyTo(out));
   return S_OK;
 }
 

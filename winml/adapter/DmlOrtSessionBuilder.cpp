@@ -34,7 +34,7 @@ using namespace Windows::AI::MachineLearning;
 
 namespace Windows::AI::MachineLearning::Adapter {
 
-DmlOrtSessionBuilder::DmlOrtSessionBuilder(
+OnnxruntimeDmlSessionBuilder::OnnxruntimeDmlSessionBuilder(
     ID3D12Device* device,
     ID3D12CommandQueue* queue) {
   device_.copy_from(device);
@@ -42,7 +42,7 @@ DmlOrtSessionBuilder::DmlOrtSessionBuilder(
 }
 
 HRESULT
-DmlOrtSessionBuilder::CreateSessionOptions(
+OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
     OrtSessionOptions** options) try {
   RETURN_HR_IF_NULL(E_POINTER, options);
 
@@ -108,7 +108,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
   return dmlDevice;
 }
 
-HRESULT DmlOrtSessionBuilder::CreateSession(
+HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
     OrtSessionOptions* options,
     winmla::IInferenceSession** p_session,
     onnxruntime::IExecutionProvider** pp_provider) try {
@@ -139,7 +139,7 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
 }
 WINMLA_CATCH_ALL_COM
 
-HRESULT DmlOrtSessionBuilder::Initialize(
+HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
     winmla::IInferenceSession* p_session,
     onnxruntime::IExecutionProvider* p_provider) try {
   RETURN_HR_IF_NULL(E_INVALIDARG, p_session);
