@@ -15,8 +15,6 @@ namespace test {
 
 TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_04) {
   const time_t date = 217081624;
-  char buffer[1024];
-  std::cout << "Time: " << ctime_s(buffer, sizeof(buffer), &date) << std::endl;
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
