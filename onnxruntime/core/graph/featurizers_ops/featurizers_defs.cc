@@ -34,7 +34,6 @@ using ONNX_NAMESPACE::OPTIONAL;
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
-static void RegisterHashOneHotVectorizerFeaturizerVer1();
 static void RegisterImputationMarkerFeaturizerVer1();
 static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
@@ -51,7 +50,6 @@ static void RegisterTimeSeriesImputerFeaturizerVer1();
 void RegisterMSFeaturizersSchemas() {
   RegisterCatImputerFeaturizerVer1();
   RegisterDateTimeFeaturizerVer1();
-  RegisterHashOneHotVectorizerFeaturizerVer1();
   RegisterImputationMarkerFeaturizerVer1();
   RegisterLabelEncoderFeaturizerVer1();
   RegisterMaxAbsScalarFeaturizerVer1();
@@ -317,83 +315,6 @@ void RegisterDateTimeFeaturizerVer1() {
             propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 20);
             if(has_shape) {
               propagateShapeFromInputToOutput(ctx, 1, 20);
-            }
-
-          }
-      );
-}
-
-void RegisterHashOneHotVectorizerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Hashes the input to a categorical value, then produces a one hot encoded vector
-        based on that value.
-
-        C++-style pseudo signature:
-            template <typename T> HashOneHotVectorizerStruct execute(T const &value);
-
-        Examples:
-          Assuming the hashing algorithm...
-            "A" -> 1
-            "B" -> 2
-            "C" -> 5
-
-          and 'numCols' set to 8:
-
-            execute("A") -> [1, 0, 0, 0, 0, 0, 0, 0]
-            execute("B") -> [0, 1, 0, 0, 0, 0, 0, 0]
-            execute("C") -> [0, 0, 0, 0, 1, 0, 0, 0]
-  )DOC";
-
-  MS_FEATURIZERS_OPERATOR_SCHEMA(HashOneHotVectorizerTransformer)
-      .SinceVersion(1)
-      .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
-      .Input(
-          0,
-          "State",
-          "State generated during training that is used for prediction",
-          "T0")
-      .Input(
-          1,
-          "Input",
-          "No information is available",
-          "InputT")
-      .Output(0, "NumElements", "No information available", "OutputT0")
-      .Output(1, "Value", "No information available", "OutputT1")
-      .Output(2, "Index", "No information available", "OutputT0")
-      .TypeConstraint(
-          "T0",
-          {"tensor(uint8)"},
-          "No information is available")
-      .TypeConstraint(
-          "InputT",
-          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
-          "No information is available")
-      .TypeConstraint(
-          "OutputT0",
-          {"tensor(uint64)"},
-          "No information is available")
-      .TypeConstraint(
-          "OutputT1",
-          {"tensor(uint8)"},
-          "No information is available")
-      .TypeAndShapeInferenceFunction(
-          [](ONNX_NAMESPACE::InferenceContext& ctx) {
-            const bool has_shape = hasInputShape(ctx, 1);
-
-            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT64, 0);
-            if(has_shape) {
-              propagateShapeFromInputToOutput(ctx, 1, 0);
-            }
-
-            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 1);
-            if(has_shape) {
-              propagateShapeFromInputToOutput(ctx, 1, 1);
-            }
-
-            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT64, 2);
-            if(has_shape) {
-              propagateShapeFromInputToOutput(ctx, 1, 2);
             }
 
           }
