@@ -9,6 +9,7 @@
 #include "cub/util_allocator.cuh"
 #include "cub/device/device_radix_sort.cuh"
 #include <limits>
+#include <chrono>
 
 namespace onnxruntime {
 namespace cuda {
@@ -39,13 +40,9 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
   auto mid_dim = axis == size - 1 ? 1 : elem_nums[axis + 1];
   auto left_dim = bid / mid_dim * elem_nums[axis];
   auto right_dim = axis == size - 1 ? 0 : bid % elem_nums[axis + 1];
-  //copy x to shared memory
-  for (auto i = 0; i < 2; ++i) {
-    auto j = (tid << 1) + i;
-    if (j < aligned_dimension) {
-      S[j].key = j < dimension ? X[FROM(j)] : TRIVIAL;
-      S[j].val = j;
-    }
+  for (auto i = tid; i < aligned_dimension; i += blockDim.x) {
+    S[i].key = i < dimension ? X[FROM(i)] : TRIVIAL;
+    S[i].val = i;
   }
   __syncthreads();
   //sort each K
@@ -216,13 +213,10 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
     if (tid < 256) H[tid] = 0;
     __syncthreads();
     auto skip = 8 * byte, prev_skip = 8 * (byte + 1);
-    for (int64_t xpt_i = 0; xpt_i < XPT; ++xpt_i) {
-      auto x_i = offset + xpt_i;
-      if (x_i < dimension) {
-        T x = X[FROM(x_i)];
-        if (byte == sizeof(T) - 1 || SamePrefix(&x, &Kth, prev_skip)) {
-          atomicAdd(&H[Radix(&x, skip, mod)], 1);
-        }
+    for (int64_t x_i = tid; x_i < dimension; x_i += blockDim.x) {
+      T x = X[FROM(x_i)];
+      if (byte == sizeof(T) - 1 || SamePrefix(&x, &Kth, prev_skip)) {
+        atomicAdd(&H[Radix(&x, skip, mod)], 1);
       }
     }
     __syncthreads();
@@ -245,58 +239,49 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
     }
   }
   uint32_t superior = 0, equal = 0;
-  for (int64_t xpt_i = 0; xpt_i < XPT; ++xpt_i) {
-    auto x_i = offset + xpt_i;
-    if (x_i < dimension) {
-      auto x = X[FROM(x_i)];
-      if (1 == largest && x > Kth || 0 == largest && x < Kth) {
-        ++superior;
-      } else if (Equal(x, Kth)) {
-        ++equal;
-      }
+  for (int64_t x_i = tid; x_i < dimension; x_i += blockDim.x) {
+    auto x = X[FROM(x_i)];
+    if (1 == largest && x > Kth || 0 == largest && x < Kth) {
+      ++superior;
+    } else if (Equal(x, Kth)) {
+      ++equal;
     }
   }
   BlockScan(temp_storage).ExclusiveSum(superior, superior);
   BlockScan(temp_storage).ExclusiveSum(equal, equal);
   auto equal_quota = K - *all_superior - equal;
   auto output_i = superior + LESS(K - *all_superior, equal);
-  for (int64_t xpt_i = 0; xpt_i < XPT; ++xpt_i) {
-    auto x_i = offset + xpt_i;
-    if (x_i < dimension) {
-      auto x = X[FROM(x_i)];
-      if (1 == largest && x > Kth || 0 == largest && x < Kth) {
-        auto to_i = TO(output_i);
-        V[to_i] = x;
-        I[to_i] = x_i;
-        ++output_i;
-      } else if (Equal(x, Kth) && equal_quota > 0) {
-        auto to_i = TO(output_i);
-        V[to_i] = x;
-        I[to_i] = x_i;
-        ++output_i;
-        --equal_quota;
-      }
+  for (int64_t x_i = tid; x_i < dimension; x_i += blockDim.x) {
+    auto x = X[FROM(x_i)];
+    if (1 == largest && x > Kth || 0 == largest && x < Kth) {
+      auto to_i = TO(output_i);
+      V[to_i] = x;
+      I[to_i] = x_i;
+      ++output_i;
+    } else if (Equal(x, Kth) && equal_quota > 0) {
+      auto to_i = TO(output_i);
+      V[to_i] = x;
+      I[to_i] = x_i;
+      ++output_i;
+      --equal_quota;
     }
   }
   __syncthreads();
   if (1 == sorted) {
     T keys[KPT];
     int64_t vals[KPT];
-    auto kpt_offset = tid * KPT;
     #pragma unroll 
-    for (int64_t kpt_i = 0; kpt_i < KPT; ++kpt_i) {
-      auto k_i = kpt_offset + kpt_i;
+    for (int64_t k_i = tid, k_c = 0; k_c < KPT; k_i += blockDim.x, ++k_c) {
       if (k_i < K) {
         auto to_i = TO(k_i);
-        keys[kpt_i] = V[to_i];
-        vals[kpt_i] = I[to_i];
+        keys[k_c] = V[to_i];
+        vals[k_c] = I[to_i];
       } else {
         if (1 == largest) {
-          keys[kpt_i] = type_min;
+          keys[k_c] = type_min;
         } else {
-          keys[kpt_i] = type_max;
+          keys[k_c] = type_max;
         }
-        vals[kpt_i] = dimension;
       }
     }
     __syncthreads();
@@ -309,12 +294,12 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nums
     }
     __syncthreads();
     #pragma unroll
-    for (int64_t kpt_i = 0; kpt_i < KPT; ++kpt_i) {
-      auto k_i = kpt_offset + kpt_i;
+    for (int64_t k_c = 0; k_c < KPT; ++k_c) {
+      auto k_i = tid * KPT + k_c;
       if (k_i < K) {
         auto to_i = TO(k_i);
-        V[to_i] = keys[kpt_i];
-        I[to_i] = vals[kpt_i];
+        V[to_i] = keys[k_c];
+        I[to_i] = vals[k_c];
       }
     }
   }
@@ -349,6 +334,7 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 
 template <typename T>
 Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+  std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
   auto aligned_K = static_cast<int64_t>(pow(2, ceil(log2(K))));
   auto aligned_dimension = static_cast<int64_t>(pow(2, ceil(log2(dimension))));
   if (aligned_dimension <= GridDim::maxThreadsPerBlock << 1) {
@@ -391,6 +377,8 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
       }
     } 
   }
+  std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+  std::cout << "ORT TopK kernel cost " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "[µs]" << std::endl;
   return Status::OK();
 }
 
