@@ -48,7 +48,7 @@ And BERT related optimizations:
 * Embedding Layer Fusion
 * Attention Fusion
 * Layer Normalization and Skip Connection (with optional Add bias) Fusion
-* GELU Approximiation
+* GELU Approximation
 
 Approximation is used in GELU approximation and Attention fusion. There might be slight difference in result after these optimizations.
 
