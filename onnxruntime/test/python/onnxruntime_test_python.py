@@ -521,8 +521,8 @@ class TestInferenceSession(unittest.TestCase):
 
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
+        # default should be all optimizations optimization
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
-            # default should be basic optimization
         opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED)
         sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
