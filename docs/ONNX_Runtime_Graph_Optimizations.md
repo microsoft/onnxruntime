@@ -37,6 +37,7 @@ These are semantics-preserving graph rewrites which remove redundant nodes and r
 ### Extended Graph Optimizations
 
 These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU or CUDA execution provider. Available extended graph optimizations are as follows:
+
 | Optimization                    | Execution Provider | Comment                                                     |
 |---------------------------------|--------------------|-------------------------------------------------------------|
 | GEMM Activation Fusion          | cpu                |                                                             |
