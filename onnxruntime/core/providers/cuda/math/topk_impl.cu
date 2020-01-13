@@ -22,6 +22,7 @@ struct KV {
 };
 
 #define BT GridDim::maxThreadsPerBlock
+#define ALIGN(N) static_cast<int64_t>(pow(2, ceil(log2(static_cast<double>(N)))))
 #define FROM(idx) (left_dim + (idx)*mid_dim + right_dim)
 #define TO(idx) (left_dim * K / dimension + (idx)*mid_dim + right_dim)
 #define TRIVIAL (1 == largest ? type_min : type_max)
@@ -333,8 +334,8 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 
 template <typename T>
 Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const int64_t* elem_nums, size_t size, int64_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
-  auto aligned_K = static_cast<int64_t>(pow(2, ceil(log2(K))));
-  auto aligned_dimension = static_cast<int64_t>(pow(2, ceil(log2(dimension))));
+  auto aligned_K = ALIGN(K);
+  auto aligned_dimension = ALIGN(dimension);
   if (aligned_dimension <= GridDim::maxThreadsPerBlock << 1) {
     BitonicTopK<T><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<T>)>>>(input_x, output_v, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
   } else if (K <= BT*16 || 0 == sorted) {
