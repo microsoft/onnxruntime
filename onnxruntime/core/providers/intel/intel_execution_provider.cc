@@ -9,10 +9,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "intel_execution_provider.h"
-#include "intel_graph.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
+#include "backend_manager.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -36,67 +36,10 @@ constexpr const char* Intel = "Intel";
 
 IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
-
-  //ORT_ENFORCE(info.ng_backend_type == "CPU", "nGraph Execution Provider for onnxruntime currently is only supported for CPU backend.");
   ORT_UNUSED_PARAMETER(info);
-
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel,     OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
-  }
-
-
-  /*
-  auto default_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(NGRAPH, OrtAllocatorType::OrtDeviceAllocator);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
-  DeviceAllocatorRegistrationInfo default_memory_info{
-    OrtMemTypeDefault,
-    std::move(default_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-
-  auto cpu_allocator_factory = [](int) {
-    auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(
-      NGRAPH, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput);
-    return onnxruntime::make_unique<CPUAllocator>(std::move(memory_info));
-  };
-
-  DeviceAllocatorRegistrationInfo cpu_memory_info{
-    OrtMemTypeCPUOutput,
-    std::move(cpu_allocator_factory),
-    std::numeric_limits<size_t>::max()
-  };
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  try {
-    ng_backend_ = ngraph::runtime::Backend::create(info.ng_backend_type);
-  } catch (const std::exception& exp) {
-    LOGS_DEFAULT(FATAL) << "Exception while creating nGraph " << info.ng_backend_type << " Backend: " << std::string(exp.what());
-  } catch (...) {
-    LOGS_DEFAULT(FATAL) << "Unknown exception while while creating nGraph " << info.ng_backend_type << " Backend";
-    throw;
-  }
-
-} */
-//Save ONNX Model
-static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const std::string& file_path){
-   int fd;
-   Status status = Env::Default().FileOpenWr(file_path,fd);
-
-   google::protobuf::io::FileOutputStream output(fd);
-   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-   if(result)
-  return Status::OK();
-   else
-        return Status::OK();
 }
-
 
 //Gets the input count of given node
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
@@ -123,108 +66,101 @@ bool IsDimensionSupported(const Node* node) {
       return false;
   }
 
-  if(node->OpType() == "Unsqueeze"){
-
+  if (node->OpType() == "Unsqueeze") {
     auto attributes = node->GetAttributes();
     auto axes = attributes["axes"].ints();
     if (input_dims + axes.size() > 5)
       return false;
   }
 
-  if(node->OpType() == "Softmax"){
-
+  if (node->OpType() == "Softmax") {
     auto attributes = node->GetAttributes();
     auto axis = attributes["axis"].i();
-    if(input_dims - axis != 1)
+    if (input_dims - axis != 1)
       return false;
   }
   return true;
 }
 
 //Ops which are not supported by Intel EP
-bool IsUnsupportedOp(std::string name, std::string device){
-
+bool IsUnsupportedOp(std::string name, std::string device) {
   std::set<std::string> unsupported_ops_cpu = {
-    "Where",
-    "Hardmax",
-    "ReduceL1",
-    "ReduceL2",
-    "ReduceSumSquare",
-    "ReduceLogSum",
-    "ReduceLogSumExp",
-    "ReduceMin",
-    "ReduceMax",
-    "ReduceSum",
-    "ReduceMean",
-    "ReduceProd",
-    "EyeLike",
-    "ConvTranspose",
-    "Shrink",
-    "ThresholdedRelu",
-    "PRelu",
-    "Selu",
-    "Softplus",
-    "GlobalLpPool",
-    "CumSum",
-    "LogSoftmax",
-    "MeanVarianceNormalization",
-    "QuantizeLinear",
-    "DequantizeLinear",
-    "QLinearConv",
-    "InstanceNormalization", // ngraph reshape v0
-    "Scan",
-    "Split", //ngraph v1, ov v0
-    "LpNormalization",
-    "Ceil", //cannot cast
-    "Reciprocal",
-    "Sqrt",
-    "Exp",
-    "Not",
-    "And",
-    "Or",
-    "Xor",
-    "Less",
-    "Greater",
-    "Equal",
-    "Asinh",
-    "Acosh",
+      "Where",
+      "Hardmax",
+      "ReduceL1",
+      "ReduceL2",
+      "ReduceSumSquare",
+      "ReduceLogSum",
+      "ReduceLogSumExp",
+      "ReduceMin",
+      "ReduceMax",
+      "ReduceSum",
+      "ReduceMean",
+      "ReduceProd",
+      "EyeLike",
+      "ConvTranspose",
+      "Shrink",
+      "ThresholdedRelu",
+      "PRelu",
+      "Selu",
+      "Softplus",
+      "GlobalLpPool",
+      "CumSum",
+      "LogSoftmax",
+      "MeanVarianceNormalization",
+      "QuantizeLinear",
+      "DequantizeLinear",
+      "QLinearConv",
+      "InstanceNormalization",  // ngraph reshape v0
+      "Scan",
+      "Split",  //ngraph v1, ov v0
+      "LpNormalization",
+      "Ceil",  //cannot cast
+      "Reciprocal",
+      "Sqrt",
+      "Exp",
+      "Not",
+      "And",
+      "Or",
+      "Xor",
+      "Less",
+      "Greater",
+      "Equal",
+      "Asinh",
+      "Acosh",
   };
 
   std::set<std::string> unsupported_ops_gpu = {
-    "Cos",
-    "Cosh",
-    "SinFloat",
-    "Sinh"
-  };
+      "Cos",
+      "Cosh",
+      "SinFloat",
+      "Sinh"};
 
   std::set<std::string> unsupported_ops_vpu = {
-    "Abs",
-    "Acos",
-    "Acosh",
-    "Asin",
-    "Asinh",
-    "HardSigmoid",
-    "Softsign"
-    "Atan",
-    "Atanh",
-    "Cos",
-    "Cosh"
-  };
+      "Abs",
+      "Acos",
+      "Acosh",
+      "Asin",
+      "Asinh",
+      "HardSigmoid",
+      "Softsign"
+      "Atan",
+      "Atanh",
+      "Cos",
+      "Cosh"};
 
   std::set<std::string> unsupported_ops = {};
 
-  if(device == "CPU"){
+  if (device == "CPU") {
     unsupported_ops = unsupported_ops_cpu;
-  }
-  else if(device == "GPU"){
+  } else if (device == "GPU") {
     std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
-      unsupported_ops_gpu.begin(), unsupported_ops_gpu.end(),
-      std::inserter(unsupported_ops, unsupported_ops.begin()));
-  }
-  else if(device == "VPU"){
+               unsupported_ops_gpu.begin(), unsupported_ops_gpu.end(),
+               std::inserter(unsupported_ops, unsupported_ops.begin()));
+  } else if (device == "VPU") {
     std::merge(unsupported_ops_cpu.begin(), unsupported_ops_cpu.end(),
-      unsupported_ops_vpu.begin(), unsupported_ops_vpu.end(),
-      std::inserter(unsupported_ops, unsupported_ops.begin()));
+               unsupported_ops_vpu.begin(), unsupported_ops_vpu.end(),
+               std::inserter(unsupported_ops, unsupported_ops.begin()));
   }
 
   return unsupported_ops.find(name) != unsupported_ops.end();
@@ -236,12 +172,11 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
 
-
   if (optype == "Reshape") {
     //nGraph Reshape op currently requires shape info available in advance.
     const auto& shape_arg = node->InputDefs()[1];
     //Empty Initializer check
-    if(shape_arg->Shape()->dim_size() == 1 && shape_arg->Shape()->dim(0).dim_value() == 0)
+    if (shape_arg->Shape()->dim_size() == 1 && shape_arg->Shape()->dim(0).dim_value() == 0)
       return true;
     return initializers.find(shape_arg->Name()) == initializers.end();
   } else if (optype == "MaxPool") {
@@ -261,40 +196,40 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
-    if(!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-          if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
-            return true;
-          }
+    for (size_t i = 0; i < node->InputDefs().size(); i++) {
+      if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64) {
+        return true;
       }
+    }
   } else if (optype == "Div") {
-      for (size_t i = 0; i < node->InputDefs().size(); i++) {
-        if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64 ||
-            node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
-              return true;
-          }
+    for (size_t i = 0; i < node->InputDefs().size(); i++) {
+      if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64 ||
+          node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+        return true;
       }
+    }
   } else if (optype == "Abs") {
-    for(size_t i = 0; i < node->InputDefs().size(); i++) {
+    for (size_t i = 0; i < node->InputDefs().size(); i++) {
       if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
         return true;
     }
   } else if (optype == "Dropout" || optype == "Identity") {
-      auto graph_inputs = graph_viewer.GetInputs();
-      for (const auto& input : node->InputDefs()) {
-        auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
-        if (it != graph_inputs.end()) {
-            return true;
-        }
+    auto graph_inputs = graph_viewer.GetInputs();
+    for (const auto& input : node->InputDefs()) {
+      auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+      if (it != graph_inputs.end()) {
+        return true;
       }
-      if(optype == "Identity"){
-        if(GetInputCount(node, initializers) == 0)
-          return true;
-      }
+    }
+    if (optype == "Identity") {
+      if (GetInputCount(node, initializers) == 0)
+        return true;
+    }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
-    if(GetInputCount(node, initializers) == 1)
+    if (GetInputCount(node, initializers) == 1)
       return true;
   } else if (optype == "OneHot") {
     //nGraph OneHot op currently requires depth info available in advance.
@@ -314,10 +249,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Softmax") {
-    if(!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Unsqueeze") {
-    if(!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "Pad") {
     // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
@@ -336,36 +271,34 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     // }
 
     //Negative padding is not supported
-    if(pad_attr != attributes.end()){
-      for(const auto& val : pad_attr->second.ints()){
-        if(val < 0)
+    if (pad_attr != attributes.end()) {
+      for (const auto& val : pad_attr->second.ints()) {
+        if (val < 0)
           return true;
       }
     }
 
     const auto mode_attr = attributes.find("mode");
-    if(mode_attr != attributes.end())
-    {
-        const auto mode = mode_attr->second.s();
-        static const std::set<std::string> allowed_modes = {"constant", "reflect"};
+    if (mode_attr != attributes.end()) {
+      const auto mode = mode_attr->second.s();
+      static const std::set<std::string> allowed_modes = {"constant", "reflect"};
 
-        return allowed_modes.count(mode) == 0;
+      return allowed_modes.count(mode) == 0;
     }
   } else if (optype == "Mod") {
     //Only fmod=1 is supported
     auto attributes = node->GetAttributes();
     auto fmod = attributes["fmod"].i();
-    if(fmod != 1)
+    if (fmod != 1)
       return true;
     //Only FP32 data type is allowed
-    for(const auto& input : node->InputDefs()){
-      if(input->Type()->find("float") == std::string::npos)
+    for (const auto& input : node->InputDefs()) {
+      if (input->Type()->find("float") == std::string::npos)
         return true;
     }
   } else if (optype == "Cast") {
-
-      using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-      const auto supportedCasts = std::set<std::pair<onnx_dtype, onnx_dtype>>{
+    using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
+    const auto supportedCasts = std::set<std::pair<onnx_dtype, onnx_dtype>>{
         {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
         {onnx_dtype::TensorProto_DataType_INT16, onnx_dtype::TensorProto_DataType_FLOAT},
@@ -376,18 +309,16 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
         // {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_FLOAT},
         {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT32},
-        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}
-      };
-      auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-      auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        {onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32}};
+    auto input_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-      const auto typePair = std::make_pair(static_cast<onnx_dtype>(input_data_type),static_cast<onnx_dtype>(output_data_type));
-      const auto match = supportedCasts.find(typePair);
-      if(match == supportedCasts.end()){
-        return true;
-      }
-      else
-        return false;
+    const auto typePair = std::make_pair(static_cast<onnx_dtype>(input_data_type), static_cast<onnx_dtype>(output_data_type));
+    const auto match = supportedCasts.find(typePair);
+    if (match == supportedCasts.end()) {
+      return true;
+    } else
+      return false;
   } else if (optype == "Squeeze") {
     //Shape can't have empty axes attribute
     const auto& attributes = node->GetAttributes();
@@ -421,7 +352,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-    if(!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node))
       return true;
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
@@ -452,7 +383,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(a_zero_point->Name()) == initializers.end() ||
              initializers.find(b_zero_point->Name()) == initializers.end();
-    } // else -> azp & bzp are 0 by default according to ONNX spec
+    }  // else -> azp & bzp are 0 by default according to ONNX spec
   } else if (optype == "ConvInteger") {
     // all ConvInteger zero points need to be constants
     const auto inputs = node->InputDefs();
@@ -468,7 +399,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       // not found in initializers -> not const
       return initializers.find(x_zero_point->Name()) == initializers.end() ||
              initializers.find(w_zero_point->Name()) == initializers.end();
-    } // else -> xzp & wzp are 0 by default according to ONNX spec
+    }  // else -> xzp & wzp are 0 by default according to ONNX spec
   } else if (optype == "Expand") {
     // nGraph only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
@@ -485,27 +416,26 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
     return false;
   }
 
-  if(is_initializer){
+  if (is_initializer) {
     switch (type_proto->tensor_type().elem_type()) {
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
-  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
-    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
-    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
-   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
-    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
-    // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
-  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
-  //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
-      return true;
-    default:
-      if(intel_ep::IsDebugEnabled())
-        std::cout << "Initializer Data Type is not supported" << std::endl;
-      return false;
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
+        //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
+        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
+        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
+      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64:
+        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
+        // case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16:
+        //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32:
+        //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
+        return true;
+      default:
+        if (intel_ep::IsDebugEnabled())
+          std::cout << "Initializer Data Type is not supported" << std::endl;
+        return false;
     }
-  }
-  else{
+  } else {
     switch (type_proto->tensor_type().elem_type()) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
@@ -514,7 +444,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
         return true;
       default:
-        if(intel_ep::IsDebugEnabled())
+        if (intel_ep::IsDebugEnabled())
           std::cout << "I/O data type is not supported" << std::endl;
         return false;
     }
@@ -527,20 +457,19 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
 
-  if(intel_ep::IsDebugEnabled())
+  if (intel_ep::IsDebugEnabled())
     std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
 
   std::string device_id = "CPU";
 
-  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
-    device_id = "GPU";
-  #endif
+#if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+  device_id = "GPU";
+#endif
 
-  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
-    device_id = "VPU";
-  #endif
-
+#if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+  device_id = "VPU";
+#endif
 
   /*
   0. Check if node is in the unsupported list
@@ -552,23 +481,22 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   */
 
   //Check 0
-  if(IsUnsupportedOp(optype,device_id)){
-    if(intel_ep::IsDebugEnabled())
+  if (IsUnsupportedOp(optype, device_id)) {
+    if (intel_ep::IsDebugEnabled())
       std::cout << "Node is in the unsupported list" << std::endl;
     return false;
   }
 
-
   //Check 1
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported,&graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&are_types_supported, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
     bool is_initializer = false;
-    if(is_input){
-      if(graph_viewer.IsConstantInitializer(node_arg.Name(), true))
+    if (is_input) {
+      if (graph_viewer.IsConstantInitializer(node_arg.Name(), true))
         is_initializer = true;
     }
-    are_types_supported &= IsTypeSupported(&node_arg,is_initializer);
+    are_types_supported &= IsTypeSupported(&node_arg, is_initializer);
   });
 
   if (!are_types_supported) {
@@ -578,21 +506,20 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension](const onnxruntime::NodeArg& node_arg, bool /*is_input*/){
+  node->ForEachDef([&has_unsupported_dimension](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
     auto shape = node_arg.Shape();
-    if(shape != nullptr){
-      if(shape->dim_size() == 0){
+    if (shape != nullptr) {
+      if (shape->dim_size() == 0) {
         has_unsupported_dimension = true;
         return;
       }
       //Reject 1D symbolic shapes
-      else if(shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))){
+      else if (shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))) {
         has_unsupported_dimension = true;
         return;
-      }
-      else{
-        for(const auto& dim : shape->dim()) {
-          if(utils::HasDimValue(dim) && dim.dim_value() == 0){
+      } else {
+        for (const auto& dim : shape->dim()) {
+          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
             has_unsupported_dimension = true;
             return;
           }
@@ -600,16 +527,15 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
       }
     }
   });
-  if(has_unsupported_dimension){
-    if(intel_ep::IsDebugEnabled())
+  if (has_unsupported_dimension) {
+    if (intel_ep::IsDebugEnabled())
       std::cout << "Dimension check failed" << std::endl;
     return false;
   }
 
-
   //Check 3a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
-    if(intel_ep::IsDebugEnabled())
+    if (intel_ep::IsDebugEnabled())
       std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
   }
@@ -630,7 +556,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   static size_t op_counter = 0;
 
   auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->name = "NGRAPHCustomOp_" + std::to_string(++op_counter);
+  meta_def->name = "Intel-EP-subgraph_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
@@ -781,7 +707,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
   for (const auto& in_arg : ordered_input_args) {
     if (!output_args.count(in_arg) &&
         !((initializers.count(in_arg) && !original_graph_inputs.count(in_arg)) ||
-        ng_required_initializers.count(in_arg))) {
+          ng_required_initializers.count(in_arg))) {
       cluster_inputs.push_back(in_arg);
     }
   }
@@ -801,7 +727,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
   std::cout << "In the Intel EP" << std::endl;
 
@@ -868,49 +794,27 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
-  const auto* node_function = fused_node->GetFunctionBody();
-
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
-
-  const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
-                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
-
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
-
-  if(intel_ep::IsDebugEnabled())
-    SaveModel(model_proto, "intel_model.onnx");
-  return model_proto;
-}
-
 common::Status IntelExecutionProvider::Compile(
     const std::vector<onnxruntime::Node*>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
-    std::shared_ptr<intel_ep::IntelGraph> intel_graph;
-    intel_graph = std::make_shared<intel_ep::IntelGraph>(fused_node);
-    auto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
+    std::shared_ptr<intel_ep::BackendManager> backend_manager = std::make_shared<intel_ep::BackendManager>(fused_node, *GetLogger());
 
     compute_info.create_state_func =
-        [intel_graph](ComputeContext* context, FunctionState* state) {
+        [backend_manager](ComputeContext* context, FunctionState* state) {
           IntelEPFunctionState* p = new IntelEPFunctionState();
           p->allocate_func = context->allocate_func;
           p->destroy_func = context->release_func;
           p->allocator_handle = context->allocator_handle;
-          p->intel_graph = intel_graph;
+          p->backend_manager = backend_manager;
           *state = static_cast<FunctionState>(p);
           return 0;
         };
-    compute_info.compute_func = [model_proto](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<IntelEPFunctionState*>(state);
       try {
-        function_state->intel_graph->Infer(model_proto, *api, context);
+        function_state->backend_manager->Compute(*api, context);
       } catch (const char* msg) {
         return common::Status(common::ONNXRUNTIME, common::FAIL, msg);
       }
@@ -930,38 +834,3 @@ common::Status IntelExecutionProvider::Compile(
   return Status::OK();
 }
 }  // namespace onnxruntime
-
-/*
-Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node : fused_nodes) {
-    NodeComputeInfo compute_info;
-
-    // Local copy of backend since, class members cannot be captured.
-    auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
-                                     (ComputeContext* context, FunctionState* state)
-    {
-      auto* p = new ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
-      *state = p;
-      return 0;
-    };
-
-    compute_info.release_state_func = [](FunctionState state) {
-      if (state)
-        delete reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-    };
-
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
-      return ng_custom_op->Compute(api, context);
-    };
-
-    node_compute_funcs.push_back(compute_info);
-  }
-
-  return Status::OK();
-}
-
-}  // namespace onnxruntime
-*/

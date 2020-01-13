@@ -1,4 +1,3 @@
-// u
 // Copyright(C) 2019 Intel Corporation
 // Licensed under the MIT License
 
@@ -32,44 +31,13 @@ namespace intel_ep {
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 const std::string IntelGraph::log_tag = "[Intel-EP] ";
 
-
 //TODO: Remove this before production
-bool IsDebugEnabled(){
-
+bool IsDebugEnabled() {
   return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
 }
 
-IntelGraph::IntelGraph(const onnxruntime::Node* fused_node) {
-  device_id_ = "CPU";
-  precision_ = InferenceEngine::Precision::FP32;
-  std::string precision_str = "FP32";
-
-#ifdef INTEL_CONFIG_CPU_FP32
-  device_id_ = "CPU";
-  precision_ = InferenceEngine::Precision::FP32;
-  precision_str = "FP32";
-#endif
-#ifdef INTEL_CONFIG_GPU_FP32
-  device_id_ = "GPU";
-  precision_ = InferenceEngine::Precision::FP32;
-  precision_str = "FP32";
-#endif
-#ifdef INTEL_CONFIG_GPU_FP16
-  device_id_ = "GPU";
-  precision_ = InferenceEngine::Precision::FP16;
-  precision_str = "FP16";
-#endif
-#ifdef INTEL_CONFIG_MYRIAD
-  device_id_ = "MYRIAD";
-  precision_ = InferenceEngine::Precision::FP16;
-  precision_str = "FP16";
-#endif
-#ifdef INTEL_CONFIG_VAD_M
-  device_id_ = "HDDL";
-  precision_ = InferenceEngine::Precision::FP16;
-  precision_str = "FP16";
-#endif
-
+IntelGraph::IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
+    : input_indexes_{input_indexes}, device_id_{device_id}, precision_{precision} {
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
   // on the physical hardware availability. If multiple Infer Requests are mapped to
@@ -84,69 +52,58 @@ IntelGraph::IntelGraph(const onnxruntime::Node* fused_node) {
   // sets number of maximum parallel inferences
   num_inf_reqs_ = (device_id_ == "HDDL") ? 8 : 1;
 
-  fused_node_ = fused_node;
+  InferenceEngine::Core ie;
+  ie_cnn_network_ = CreateCNNNetwork(model_proto);
 
-  // Save the indexes of graph inputs among fused_node's inputDefs
-  // (which also contains initializers).
-  std::map<std::string, int> inputdef_index_map;
-  auto input_defs = fused_node_->InputDefs();
-  int i = 0;
-  for (auto idef : input_defs) {
-    inputdef_index_map.insert({idef->Name(), i});
-    i++;
+  SetIODefs(model_proto, ie_cnn_network_);
+
+  // Loading model to the plugin
+  InferenceEngine::ExecutableNetwork exe_network_ = ie.LoadNetwork(*ie_cnn_network_, device_id_);
+  LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+
+  // Create infer request
+  for (size_t i = 0; i < num_inf_reqs_; i++) {
+    auto infRequest = exe_network_.CreateInferRequestPtr();
+
+    infer_requests_.push_back(infRequest);
   }
-
-  auto inputs = fused_node_->GetFunctionBody()->Body().GetInputs();
-  for (auto input : inputs) {
-    auto it = inputdef_index_map.find(input->Name());
-    if (it == inputdef_index_map.end()) {
-      throw "Input not found in the input defs list";
-    }
-
-    int index = it->second;
-    input_indexes_.push_back(index);
-  }
+  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
 }
 
 InferenceEngine::Precision IntelGraph::ConvertPrecisionONNXToIntel(
-    ONNX_NAMESPACE::DataType onnx_type) {
-  if (*onnx_type == "float" || *onnx_type == "tensor(float)") {
+    const ONNX_NAMESPACE::TypeProto& onnx_type) {
+  ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
+  if (*type_string == "float" || *type_string == "tensor(float)") {
     return InferenceEngine::Precision::FP32;
-  } else if (*onnx_type == "float16" || *onnx_type == "tensor(float16)") {
+  } else if (*type_string == "float16" || *type_string == "tensor(float16)") {
     return InferenceEngine::Precision::FP16;
-  } else if (*onnx_type == "int32" || *onnx_type == "tensor(int32)") {
+  } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
     return InferenceEngine::Precision::I32;
-  } else if (*onnx_type == "int16" || *onnx_type == "tensor(int16)") {
+  } else if (*type_string == "int16" || *type_string == "tensor(int16)") {
     return InferenceEngine::Precision::I16;
-  } else if (*onnx_type == "int8" || *onnx_type == "tensor(int8)") {
+  } else if (*type_string == "int8" || *type_string == "tensor(int8)") {
     return InferenceEngine::Precision::I8;
-  } else if (*onnx_type == "uint16" || *onnx_type == "tensor(uint16)") {
+  } else if (*type_string == "uint16" || *type_string == "tensor(uint16)") {
     return InferenceEngine::Precision::U16;
-  } else if (*onnx_type == "uint8" || *onnx_type == "tensor(uint8)") {
+  } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else {
     throw "Unsupported Data type";
   }
 }
 
-void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network) {
-  LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
+void IntelGraph::SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<InferenceEngine::CNNNetwork> network) {
   // Configure input & output
   // Prepare input blobs
-  if (network){
-    if(IsDebugEnabled())
+  if (network) {
+    if (IsDebugEnabled())
       std::cout << "Network is not NULL" << std::endl;
   }
   auto inputInfo = network->getInputsInfo();
-  LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
-  auto onnx_input_defs = fused_node_->InputDefs();
-  LOGS_DEFAULT(INFO) << log_tag << "Loaded plugins";
-
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
     // Get the onnx index for the corresponding input (ignoring initializers)
-    auto tracked_input_idx = input_indexes_[input_idx];
-    auto precision = ConvertPrecisionONNXToIntel(onnx_input_defs[tracked_input_idx]->Type());
+    auto precision = ConvertPrecisionONNXToIntel(model_proto.graph().input(input_idx).type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for input tensor
@@ -174,11 +131,9 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
 
   // Prepare output blobs
   auto outputInfo = network->getOutputsInfo();
-  auto onnx_output_defs = fused_node_->OutputDefs();
-
   int output_idx = 0;
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
-    auto precision = ConvertPrecisionONNXToIntel(onnx_output_defs[output_idx]->Type());
+    auto precision = ConvertPrecisionONNXToIntel(model_proto.graph().output(output_idx).type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for output tensor
@@ -205,26 +160,9 @@ void IntelGraph::SetIODefs(std::shared_ptr<InferenceEngine::CNNNetwork> network)
   }
 }
 
-size_t IntelGraph::DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
-                                   InferenceEngine::SizeVector graph_dims) {
-  size_t batch_size = 1;
-
-  // All the inputs and outputs are batched the same way.
-  // So it is sufficient to use any one of these tensors to deduce the batch size.
-  const auto& input_shape = ort.GetTensorShape(ort.GetTensorTypeAndShape(input_tensor));
-
-  if ((input_shape.size() == graph_dims.size() && input_shape[0] > 1 && graph_dims[0] == 1) || (input_shape.size() == graph_dims.size() + 1)) {
-    batch_size = input_shape[0];
-  }
-
-  LOGS_DEFAULT(INFO) << log_tag << "Deduced batch size: " << batch_size;
-
-  return batch_size;
-}
-
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input_tensors[],
+void IntelGraph::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* input_tensors[],
                                      size_t batch_slice_idx,
                                      size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -253,7 +191,7 @@ void IntelGraph::StartAsyncInference(Ort::CustomOpApi ort, const OrtValue* input
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_tensors[],
+void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_tensors[],
                                         size_t batch_slice_idx,
                                         size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -280,7 +218,7 @@ void IntelGraph::CompleteAsyncInference(Ort::CustomOpApi ort, OrtValue* output_t
   }
 }
 
-void IntelGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, const OrtValue* input_tensors[],
+void IntelGraph::GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, const OrtValue* input_tensors[],
                                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   size_t input_count = ie_cnn_network->getInputsInfo().size();
 
@@ -289,7 +227,7 @@ void IntelGraph::GetInputTensors(Ort::CustomOpApi ort, OrtKernelContext* context
   }
 }
 
-void IntelGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
+void IntelGraph::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
@@ -319,7 +257,6 @@ void IntelGraph::GetOutputTensors(Ort::CustomOpApi ort, OrtKernelContext* contex
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
-
   std::cout << "In CreateNgraphFunc" << std::endl;
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
@@ -328,18 +265,18 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
     LOGS_DEFAULT(INFO) << "ONNX Import Done";
   } catch (const std::exception& exp) {
     LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
-                        << " - " << name_ << " - "
                         << "Exception while importing model to nGraph: " << std::string(exp.what());
+    // << " - " << name_ << " - "
     throw;
   } catch (...) {
     LOGS_DEFAULT(FATAL) << "[NGRAPHCustomOp] "
-                        << " - " << name_ << " - "
                         << "Unknown exception while importing model to nGraph";
+    // << " - " << name_ << " - "
     throw;
   }
 
   //Serializing nGraph function
-  if(IsDebugEnabled()){
+  if (IsDebugEnabled()) {
     std::string json_string = serialize(ng_function, 4);
     std::ofstream out("serialize_function_before_PM.json");
     out << json_string;
@@ -350,110 +287,59 @@ std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const 
   pass_manager.register_pass<ngraph::pass::Opset1Upgrade>();
   pass_manager.run_passes(ng_function);
 
-  if (precision_ == InferenceEngine::Precision::FP16)
-  {
-     if(IsDebugEnabled())
-       std::cout << "FP16" << std::endl;
-     //FP16 transformations
-     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
-     ng_function->validate_nodes_and_infer_types();
+  if (precision_ == InferenceEngine::Precision::FP16) {
+    if (IsDebugEnabled())
+      std::cout << "FP16" << std::endl;
+    //FP16 transformations
+    ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
+    ng_function->validate_nodes_and_infer_types();
   }
 
   //Serializing nGraph function
-  if(IsDebugEnabled()){
+  if (IsDebugEnabled()) {
     std::string json_string_pm = serialize(ng_function, 4);
     std::ofstream out_pm("serialize_function_after_PM.json");
     out_pm << json_string_pm;
   }
 
   //IE wrapper for nGraph function
-  InferenceEngine::CNNNetwork network(ng_function);
+  // InferenceEngine::CNNNetwork network(ng_function);
 
   //Serialize CNNNetwork
   //network.serialize("IR.xml", "IR.bin");
 
-  return std::make_shared<InferenceEngine::CNNNetwork>(network);
+  return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
 }
 
 void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
-    std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto.SerializeToOstream(&outfile);
-    outfile.close();
+  std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+  model_proto.SerializeToOstream(&outfile);
+  outfile.close();
 }
 
-std::shared_ptr<ONNX_NAMESPACE::ModelProto> AddInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi& ort, OrtKernelContext* context) {
-
-  size_t num_inputs = ort.KernelContext_GetInputCount(context);
-  auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
-  std::string proto_str;
-  model_proto.SerializeToString(&proto_str);
-  model_copy->ParseFromString(proto_str);
-  auto graph_proto = model_copy->mutable_graph();
-
-  for(size_t i=0; i < num_inputs; i++) {
-    auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
-    g_in_shape->clear_dim();
-
-    auto input_tensor = ort.KernelContext_GetInput(context, i);
-    auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-    auto tensor_shape = ort.GetTensorShape(tensor_info);
-    ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-
-    for(size_t dim=0; dim < tensor_shape.size(); dim++) {
-      g_in_shape->add_dim()->set_dim_value(tensor_shape[dim]);
-    }
-  }
-
-  return model_copy;
-}
-
-void IntelGraph::Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::CustomOpApi ort, OrtKernelContext* context) {
+void IntelGraph::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
   std::lock_guard<std::mutex> lock(compute_lock_);
 
-  auto model_with_shape_info = AddInputShapeInfo(model_proto, ort, context);
-
-  if(IsDebugEnabled()) {
-    DumpOnnxModelProto(*model_with_shape_info, "subgraph-with-concrete-shape.onnx");
-    DumpOnnxModelProto(model_proto, "original-subgraph.onnx");
-  }
-
-  auto ie_cnn_network = CreateCNNNetwork(*model_with_shape_info);
-  SetIODefs(ie_cnn_network);
-
-  InferenceEngine::Core ie;
-  //Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exeNetwork = ie.LoadNetwork(*ie_cnn_network, device_id_);
-
-  LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
-
-  //Create infer request
-  std::vector<InferenceEngine::InferRequest::Ptr> infer_requests;
-  for (size_t i = 0; i < num_inf_reqs_; i++) {
-    auto infRequest = exeNetwork.CreateInferRequestPtr();
-
-    infer_requests.push_back(infRequest);
-  }
-  LOGS_DEFAULT(INFO) << log_tag << "Infer requests created: " << num_inf_reqs_;
-
   // Get Input and Output tensors
-  size_t input_count = ie_cnn_network->getInputsInfo().size();
-  size_t output_count = ie_cnn_network->getOutputsInfo().size();
+  size_t input_count = ie_cnn_network_->getInputsInfo().size();
+  size_t output_count = ie_cnn_network_->getOutputsInfo().size();
   const OrtValue* input_tensors[input_count];
   OrtValue* output_tensors[output_count];
 
-  GetInputTensors(ort, context, input_tensors, ie_cnn_network);
+  GetInputTensors(ort, context, input_tensors, ie_cnn_network_);
 
   // Calculate the batch_size from the input tensor shape.
-  auto batch_size = DeduceBatchSize(ort, input_tensors[0],
-                                    ie_cnn_network->getInputsInfo().begin()->second->getTensorDesc().getDims());
+  // auto batch_size = DeduceBatchSize(ort, input_tensors[0],
+  //                                   ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
 
+  size_t batch_size = 1;
   size_t full_parallel_runs = batch_size / num_inf_reqs_;
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
-  GetOutputTensors(ort, context, output_tensors, batch_size, infer_requests, ie_cnn_network);
+  GetOutputTensors(ort, context, output_tensors, batch_size, infer_requests_, ie_cnn_network_);
 
   // Distribute the batched inputs among available Infer Requests
   // for parallel inference.
@@ -462,25 +348,24 @@ void IntelGraph::Infer(const ONNX_NAMESPACE::ModelProto& model_proto, Ort::Custo
   for (size_t set = 0; set < full_parallel_runs; set++) {
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
-      StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx, infer_requests, ie_cnn_network);
+      StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
     }
     for (size_t inf_req_idx = 0; inf_req_idx < num_inf_reqs_; inf_req_idx++) {
       size_t batch_slice_idx = set * num_inf_reqs_ + inf_req_idx;
-      CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests, ie_cnn_network);
+      CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
     }
   }
 
   // Run parallel inferences for remaining batch slices
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx, infer_requests, ie_cnn_network);
+    StartAsyncInference(ort, input_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
   }
   for (size_t inf_req_idx = 0; inf_req_idx < remainder_parallel_runs; inf_req_idx++) {
     size_t batch_slice_idx = full_parallel_runs * num_inf_reqs_ + inf_req_idx;
-    CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests, ie_cnn_network);
+    CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
   }
 
-  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
