@@ -23,7 +23,7 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
   void SendProfileEvent(onnxruntime::profiling::EventRecord& event_record) const override {
     if (profiling_function_) {
       OrtProfilerEventRecord ort_event_record = {};
-      ort_event_record.category_ = static_cast<uint32_t>(event_record.cat);
+      ort_event_record.category_ = static_cast<OrtProfilerEventCategory>(event_record.cat);
       ort_event_record.category_name_ = onnxruntime::profiling::event_categor_names_[event_record.cat];
       ort_event_record.duration_ = event_record.dur;
       ort_event_record.event_name_ = event_record.name.c_str();
@@ -44,15 +44,19 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
 ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
-  std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager;
   std::string name = logid;
   std::unique_ptr<onnxruntime::logging::ISink> logger = onnxruntime::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
-    logging_manager.reset(new onnxruntime::logging::LoggingManager(std::move(logger),
+  
+  // Clear the logging manager, since only one default instance of logging manager can exist at a time.
+  env->SetLoggingManager(nullptr);
+
+  auto winml_logging_manager = std::make_unique<onnxruntime::logging::LoggingManager>(std::move(logger),
                                   static_cast<onnxruntime::logging::Severity>(default_warning_level),
                                   false,
                                   onnxruntime::logging::LoggingManager::InstanceType::Default,
-                                  &name));
+                                  &name);
 
-  env->SetLoggingManager(std::move(logging_manager));
+  // Set a new default logging manager
+  env->SetLoggingManager(std::move(winml_logging_manager));
   return nullptr;
 }

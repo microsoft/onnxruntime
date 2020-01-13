@@ -16,8 +16,15 @@ typedef struct WinmlAdapterApi WinmlAdapterApi;
 
 ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api) NO_EXCEPTION;
 
+// TODO: Must match onnxruntime::profiling::EventRecord
+enum OrtProfilerEventCategory {
+  SESSION_EVENT = 0,
+  NODE_EVENT,
+  EVENT_CATEGORY_MAX
+};
+
 struct OrtProfilerEventRecord {
-  uint32_t category_;
+  OrtProfilerEventCategory category_;
   const char* category_name_;
   int64_t duration_;
   int64_t time_span_;
@@ -31,6 +38,8 @@ struct OrtProfilerEventRecord {
 typedef void(ORT_API_CALL* OrtProfilingFunction)(const OrtProfilerEventRecord* event_record);
 
 struct WinmlAdapterApi {
+  OrtStatus*(ORT_API_CALL* EnvConfigureCustomLoggerAndProfiler)(_In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out)NO_EXCEPTION;
+
   OrtStatus*(ORT_API_CALL* GetDenotationFromTypeInfo)(_In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len)NO_EXCEPTION;
 
   // OrtTypeInfo Casting methods

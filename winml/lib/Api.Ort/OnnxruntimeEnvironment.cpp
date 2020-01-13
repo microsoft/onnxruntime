@@ -88,22 +88,22 @@ static void WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const
   }
 }
 
-static void WinmlOrtProfileEventCallback(void* eventRecord) {/*
-  if (eventRecord.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) {
+static void WinmlOrtProfileEventCallback(const OrtProfilerEventRecord* profiler_record) {
+  if (profiler_record->category_ == OrtProfilerEventCategory::NODE_EVENT) {
     TraceLoggingWrite(
         winml_trace_logging_provider,
         "OnnxRuntimeProfiling",
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_LOTUS_PROFILING),
         TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_INFO),
-        TraceLoggingString(onnxruntime::profiling::event_categor_names_[eventRecord.cat], "Category"),
-        TraceLoggingInt64(eventRecord.dur, "Duration (us)"),
-        TraceLoggingInt64(eventRecord.ts, "Time Stamp (us)"),
-        TraceLoggingString(eventRecord.name.c_str(), "Event Name"),
-        TraceLoggingInt32(eventRecord.pid, "Process ID"),
-        TraceLoggingInt32(eventRecord.tid, "Thread ID"),
-        TraceLoggingString(eventRecord.args["op_name"].c_str(), "Operator Name"),
-        TraceLoggingString(eventRecord.args["provider"].c_str(), "Execution Provider"));
+        TraceLoggingString(profiler_record->category_name_, "Category"),
+        TraceLoggingInt64(profiler_record->duration_, "Duration (us)"),
+        TraceLoggingInt64(profiler_record->time_span_, "Time Stamp (us)"),
+        TraceLoggingString(profiler_record->event_name_, "Event Name"),
+        TraceLoggingInt32(profiler_record->process_id_, "Process ID"),
+        TraceLoggingInt32(profiler_record->thread_id_, "Thread ID"),
+        TraceLoggingString(profiler_record->op_name_, "Operator Name"),
+        TraceLoggingString(profiler_record->execution_provider_, "Execution Provider"));
   } else {
     TraceLoggingWrite(
         winml_trace_logging_provider,
@@ -111,13 +111,13 @@ static void WinmlOrtProfileEventCallback(void* eventRecord) {/*
         TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_LOTUS_PROFILING),
         TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
         TraceLoggingOpcode(EVENT_TRACE_TYPE_INFO),
-        TraceLoggingString(onnxruntime::profiling::event_categor_names_[eventRecord.cat], "Category"),
-        TraceLoggingInt64(eventRecord.dur, "Duration (us)"),
-        TraceLoggingInt64(eventRecord.ts, "Time Stamp (us)"),
-        TraceLoggingString(eventRecord.name.c_str(), "Event Name"),
-        TraceLoggingInt32(eventRecord.pid, "Process ID"),
-        TraceLoggingInt32(eventRecord.tid, "Thread ID"));
-  }*/
+        TraceLoggingString(profiler_record->category_name_, "Category"),
+        TraceLoggingInt64(profiler_record->duration_, "Duration (us)"),
+        TraceLoggingInt64(profiler_record->time_span_, "Time Stamp (us)"),
+        TraceLoggingString(profiler_record->event_name_, "Event Name"),
+        TraceLoggingInt32(profiler_record->process_id_, "Process ID"),
+        TraceLoggingInt32(profiler_record->thread_id_, "Thread ID"));
+  }
 }
 
 static HRESULT OverrideSchemaInferenceFunctions(const OrtApi* ort_api) {
@@ -129,13 +129,20 @@ static HRESULT OverrideSchemaInferenceFunctions(const OrtApi* ort_api) {
 }
 
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {
-  // auto winml_adapter_api = GetWinmlAdapterApi(ort_api_);
   OrtEnv* ort_env = nullptr;
-  if (auto status = ort_api->CreateEnvWithCustomLogger(&WinmlOrtLoggingCallback, nullptr, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env)) {
+  if (auto status = ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env)) {
     throw;
   }
-
   ort_env_ = UniqueOrtEnv(ort_env, ort_api->ReleaseEnv);
+
+  // Configure the environment with the winml logger
+  auto winml_adapter_api = GetWinmlAdapterApi(ort_api);
+  auto status = winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
+	  &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
+	  OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+  if (status) {
+    throw;
+  }
 
   OverrideSchemaInferenceFunctions(ort_api);
 }
