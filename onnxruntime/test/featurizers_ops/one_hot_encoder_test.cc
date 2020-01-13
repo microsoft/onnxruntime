@@ -19,7 +19,7 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
 
   Estimator estimator(NS::CreateTestAnnotationMapsPtr(1), 0, allowMissingValues);
   NS::TestHelpers::Train<Estimator, InputType>(estimator, trainingBatches);
-  Estimator::TransformerUniquePtr pTransformer(estimator.create_transformer());
+  typename Estimator::TransformerUniquePtr pTransformer(estimator.create_transformer());
 
   NS::Archive ar;
   pTransformer->save(ar);
