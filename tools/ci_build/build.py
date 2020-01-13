@@ -244,7 +244,7 @@ def install_ubuntu_deps(args):
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
-    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
+    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.18.0')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
@@ -943,8 +943,8 @@ def main():
               else:
                 tensorrt_run_onnx_tests(build_dir, configs, "")
 
-            if args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)
+            if args.use_cuda and not args.use_tensorrt:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
 
             if args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)

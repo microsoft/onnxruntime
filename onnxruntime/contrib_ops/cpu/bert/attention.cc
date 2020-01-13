@@ -238,8 +238,17 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       float* x = reinterpret_cast<T*>(scratch_data) + j * D;
       float* y = x;
 
-      for (int i = 0; i < D; i++)
-        y[i] = expf(x[i]);
+      // e^x is represented as infinity if x is large enough, like 100.f.
+      // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
+      // a math transform as below is leveraged to get a stable softmax:
+      // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
+      float max = -std::numeric_limits<float>::infinity();
+      for (int i = 0; i < D; i++) {
+        if (max < x[i]) max = x[i];
+      }
+      for (int i = 0; i < D; i++) {
+        y[i] = expf(x[i] - max);
+      }
 
       double sum = 0.0;
 

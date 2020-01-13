@@ -25,7 +25,7 @@ namespace onnxruntime {
 thread_local int64_t NupharSubgraphUnit::counter = 0;
 
 thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExecutionProvider::tls_realized_dims_;
-int NupharExecutionProvider::global_fused_count_ = 0;
+thread_local int NupharExecutionProvider::per_model_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
 #if USE_TVM_WITH_LLVM
@@ -312,12 +312,12 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   };
   GraphPartitioner graph_partitioner(is_supported_func);
 
-  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, global_fused_count_, results).IsOK());
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, per_model_fused_count_, results).IsOK());
 
-  // reset global_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
+  // reset per_model_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
   // this is the time all graph cut should be finished as ORT handles main graph last
   if (!graph_viewer.IsSubgraph())
-    global_fused_count_ = 0;
+    per_model_fused_count_ = 0;
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo

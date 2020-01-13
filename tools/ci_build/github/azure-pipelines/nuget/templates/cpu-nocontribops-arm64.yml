@@ -6,6 +6,7 @@
 parameters:
   DoEsrp: 'false'
 
+jobs:  
 - template: ../../templates/win-ci-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2019'
@@ -221,6 +222,12 @@ parameters:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
+
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      PlatformsSupported: 'win-x64,win-x86,win10-arm,linux-x64,osx-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
