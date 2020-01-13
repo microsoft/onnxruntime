@@ -1,6 +1,6 @@
 #include "iengine.h"
 
-#include "core/session/winml_adapter_c_api.h"
+#include "adapter/winml_adapter_c_api.h"
 
 #include <memory>
 

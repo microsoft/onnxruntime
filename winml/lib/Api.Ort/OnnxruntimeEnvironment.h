@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/session/winml_adapter_c_api.h"
+#include "adapter/winml_adapter_c_api.h"
 
 #pragma warning(push)
 #pragma warning(disable : 4505)

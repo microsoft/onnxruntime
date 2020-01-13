@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include "pch.h"
 
 #include "winml_adapter_model.h"
 
-#include "core/session/winml_adapter_c_api.h"
+#include "winml_adapter_c_api.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "core/session/winml_adapter_apis.h"
-#include "error_code_helper.h"
+#include "winml_adapter_apis.h"
+#include "core/framework/error_code_helper.h"
 
 #include <io.h>
 #include <fcntl.h>

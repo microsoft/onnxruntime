@@ -12,7 +12,6 @@
 #include <sstream>
 
 #include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/status.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
@@ -28,6 +27,8 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+
+#include "core/session/onnxruntime_env.h"
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
@@ -48,117 +49,6 @@ using namespace onnxruntime;
     auto _status = (expr);            \
     if (_status) return _status;      \
   } while (0)
-
-class LoggingWrapper : public ISink {
- public:
-  LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
-      : logging_function_(logging_function), logger_param_(logger_param) {
-  }
-
-  void SendImpl(const Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
-                const Capture& message) override {
-    std::string s = message.Location().ToString();
-    logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
-                      logger_id.c_str(), s.c_str(), message.Message().c_str());
-  }
-
- private:
-  OrtLoggingFunction logging_function_;
-  void* logger_param_;
-};
-
-struct OrtEnv {
- public:
-  struct LoggingManagerConstructionInfo {
-    LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
-                                   void* logger_param1,
-                                   OrtLoggingLevel default_warning_level1,
-                                   const char* logid1)
-        : logging_function(logging_function1),
-          logger_param(logger_param1),
-          default_warning_level(default_warning_level1),
-          logid(logid1) {}
-    OrtLoggingFunction logging_function{};
-    void* logger_param{};
-    OrtLoggingLevel default_warning_level;
-    const char* logid{};
-  };
-
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, Status& status) {
-    std::lock_guard<OrtMutex> lock(m_);
-    if (!p_instance_) {
-      std::unique_ptr<Environment> env;
-      status = Environment::Create(env);
-      if (!status.IsOK()) {
-        return nullptr;
-      }
-
-      std::unique_ptr<LoggingManager> lmgr;
-      std::string name = lm_info.logid;
-      if (lm_info.logging_function) {
-        std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                                 lm_info.logger_param);
-        lmgr.reset(new LoggingManager(std::move(logger),
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      } else {
-        lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      }
-
-      p_instance_ = new OrtEnv(std::move(env), std::move(lmgr));
-    }
-    ++ref_count_;
-    return p_instance_;
-  }
-
-  static void Release(OrtEnv* env_ptr) {
-    if (!env_ptr) {
-      return;
-    }
-    std::lock_guard<OrtMutex> lock(m_);
-    ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
-    --ref_count_;
-    if (ref_count_ == 0) {
-      delete p_instance_;
-      p_instance_ = nullptr;
-    }
-  }
-
-  LoggingManager* GetLoggingManager() const {
-    return logging_manager_.get();
-  }
-
-  void SetLoggingManager(std::unique_ptr<LoggingManager> logging_manager) {
-    std::lock_guard<OrtMutex> lock(m_);
-    logging_manager_ = std::move(logging_manager);
-  }
-
- private:
-  static OrtEnv* p_instance_;
-  static OrtMutex m_;
-  static int ref_count_;
-
-  std::unique_ptr<Environment> value_;
-  std::unique_ptr<LoggingManager> logging_manager_;
-
-  OrtEnv(std::unique_ptr<Environment> value1, std::unique_ptr<LoggingManager> logging_manager)
-      : value_(std::move(value1)), logging_manager_(std::move(logging_manager)) {
-  }
-
-  ~OrtEnv() = default;
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
-};
-
-OrtEnv* OrtEnv::p_instance_ = nullptr;
-int OrtEnv::ref_count_ = 0;
-OrtMutex OrtEnv::m_;
 
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
@@ -1483,52 +1373,3 @@ ORT_API(void, OrtApis::ReleaseEnv, _Frees_ptr_opt_ OrtEnv* value) {
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
-
-#include "winml_adapter_apis.h"
-namespace winmla = Windows::AI::MachineLearning::Adapter;
-
-class WinmlAdapterLoggingWrapper : public LoggingWrapper {
- public:
-  WinmlAdapterLoggingWrapper(OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, void* logger_param) : LoggingWrapper(logging_function, logger_param),
-                                                                                                                                 profiling_function_(profiling_function) {
-    ;
-  }
-
-  void SendProfileEvent(profiling::EventRecord& event_record) const override {
-    if (profiling_function_) {
-      OrtProfilerEventRecord ort_event_record = {};
-      ort_event_record.category_ = static_cast<uint32_t>(event_record.cat);
-      ort_event_record.category_name_ = onnxruntime::profiling::event_categor_names_[event_record.cat];
-      ort_event_record.duration_ = event_record.dur;
-      ort_event_record.event_name_ = event_record.name.c_str();
-      ort_event_record.execution_provider_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) ? event_record.args["provider"].c_str() : nullptr;
-      ort_event_record.op_name_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT) ? event_record.args["op_name"].c_str() : nullptr;
-      ort_event_record.process_id_ = event_record.pid;
-      ort_event_record.thread_id_ = event_record.tid;
-      ort_event_record.time_span_ = event_record.ts;
-
-      profiling_function_(&ort_event_record);
-    }
-  }
-
- private:
-  OrtProfilingFunction profiling_function_{};
-};
-
-ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function,
-                    _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
-                    _In_ const char* logid, _Outptr_ OrtEnv** out) {
-  API_IMPL_BEGIN
-  std::unique_ptr<LoggingManager> logging_manager;
-  std::string name = logid;
-  std::unique_ptr<ISink> logger = onnxruntime::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
-    logging_manager.reset(new LoggingManager(std::move(logger),
-                                  static_cast<Severity>(default_warning_level),
-                                  false,
-                                  LoggingManager::InstanceType::Default,
-                                  &name));
-
-  env->SetLoggingManager(std::move(logging_manager));
-  return nullptr;
-  API_IMPL_END
-}

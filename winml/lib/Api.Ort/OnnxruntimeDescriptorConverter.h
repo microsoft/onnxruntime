@@ -4,7 +4,7 @@
 #pragma once
 #include "pch.h"
 
-#include "core/session/winml_adapter_c_api.h"
+#include "adapter/winml_adapter_c_api.h"
 
 namespace Windows::AI::MachineLearning {
 

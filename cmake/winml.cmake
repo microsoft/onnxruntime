@@ -151,6 +151,7 @@ target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/win
 
 target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
+target_include_directories(winml_lib_ort PRIVATE ${REPO_ROOT}/winml)
 target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
 target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_core_dir})
 target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_ort_dir})
@@ -190,6 +191,20 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/WinMLAdapter.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
+	${winml_adapter_dir}/winml_adapter_apis.h
+    ${winml_adapter_dir}/winml_adapter_c_api.h
+	${winml_adapter_dir}/winml_adapter_c_api.cpp
+	${winml_adapter_dir}/winml_adapter_environment.cpp
+	${winml_adapter_dir}/winml_adapter_execution_provider.cpp
+	${winml_adapter_dir}/winml_adapter_execution_provider.h
+	${winml_adapter_dir}/winml_adapter_map_type_info.cpp
+	${winml_adapter_dir}/winml_adapter_map_type_info.h
+	${winml_adapter_dir}/winml_adapter_model.cpp
+	${winml_adapter_dir}/winml_adapter_model.h
+	${winml_adapter_dir}/winml_adapter_operator_registry.cpp
+	${winml_adapter_dir}/winml_adapter_operator_registry.h
+	${winml_adapter_dir}/winml_adapter_sequence_type_info.cpp
+	${winml_adapter_dir}/winml_adapter_sequence_type_info.h
     )
 
 if (onnxruntime_USE_DML)

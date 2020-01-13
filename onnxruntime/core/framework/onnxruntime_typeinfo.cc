@@ -11,9 +11,9 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
 
-#include "core/framework/winml_adapter_map_type_info.h"
-#include "core/framework/winml_adapter_sequence_type_info.h"
-#include "core/session/winml_adapter_apis.h"
+#include "../../winml/adapter/winml_adapter_map_type_info.h"
+#include "../../winml/adapter/winml_adapter_sequence_type_info.h"
+#include "../../winml/adapter/winml_adapter_apis.h"
 
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;

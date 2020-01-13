@@ -5,7 +5,6 @@
 #include <atomic>
 #include <string>
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/winml_adapter_c_api.h"
 
 namespace onnxruntime {
 class DataTypeImpl;
@@ -15,6 +14,10 @@ class TensorShape;
 namespace ONNX_NAMESPACE {
 class TypeProto;
 }
+
+// These types are only present in the winml adapter c api, so they are forward declared.
+struct OrtMapTypeInfo;
+struct OrtSequenceTypeInfo;
 
 /**
  * the equivalent of ONNX_NAMESPACE::TypeProto

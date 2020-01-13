@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include "pch.h"
 #include "winml_adapter_sequence_type_info.h"
-#include "onnxruntime_typeinfo.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "core/session/winml_adapter_apis.h"
-#include "error_code_helper.h"
+#include "winml_adapter_apis.h"
+#include "core/framework/error_code_helper.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 

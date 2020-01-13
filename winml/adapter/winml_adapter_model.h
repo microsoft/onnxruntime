@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/session/winml_adapter_c_api.h"
+#include "winml_adapter_c_api.h"
 #include <memory>
 #include "core/graph/onnx_protobuf.h"
 

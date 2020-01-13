@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+#include "pch.h"
 
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
