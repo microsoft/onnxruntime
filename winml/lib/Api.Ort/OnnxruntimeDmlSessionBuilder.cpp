@@ -24,6 +24,7 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
   RETURN_HR_IF_NULL(E_POINTER, options);
 
   auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   OrtSessionOptions* ort_options;
   ort_api->CreateSessionOptions(&ort_options);
@@ -36,72 +37,19 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
   ort_api->DisableMemPattern(session_options.get());
 
+  // Request the dml ep
+  winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get());
+  
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
 
-  
-    //winml_adapter_api->sessionoptionsappendexecutionprovider_dml
-  //#ifndef _WIN64
-  //  xpInfo.create_arena = false;
-  //#endif
-
   return S_OK;
 }
-//
-//static HRESULT
-//RegisterCustomRegistry(
-//    onnxruntime::InferenceSession* session,
-//    IMLOperatorRegistry* registry) {
-//  if (registry != nullptr) {
-//    RETURN_HR_IF_NULL(E_POINTER, session);
-//
-//    auto custom_registries = GetLotusCustomRegistries(registry);
-//
-//    // Register
-//    for (auto& custom_registry : custom_registries) {
-//      ORT_THROW_IF_ERROR(session->RegisterCustomRegistry(custom_registry));
-//    }
-//  }
-//
-//  return S_OK;
-//}
-//
-//Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
-//  // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-//  wil::unique_hmodule dmlDll(LoadLibraryW(L"DirectML.dll"));
-//  THROW_LAST_ERROR_IF(!dmlDll);
-//
-//  auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
-//      GetProcAddress(dmlDll.get(), "DMLCreateDevice1"));
-//  THROW_LAST_ERROR_IF(!dmlCreateDevice1Fn);
-//
-//  DML_CREATE_DEVICE_FLAGS dmlFlags = DML_CREATE_DEVICE_FLAG_NONE;
-//
-//  // Enable the DML debug layer in DEBUG builds, if the D3D12 debug layer is also enabled
-//#if _DEBUG
-//  Microsoft::WRL::ComPtr<ID3D12DebugDevice> d3d12DebugDevice;
-//  if (SUCCEEDED(d3d12Device->QueryInterface(IID_PPV_ARGS(&d3d12DebugDevice)))) {
-//    d3d12DebugDevice = nullptr;
-//    dmlFlags |= DML_CREATE_DEVICE_FLAG_DEBUG;
-//  }
-//#endif
-//
-//  Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice;
-//  THROW_IF_FAILED(dmlCreateDevice1Fn(d3d12Device, dmlFlags, DML_FEATURE_LEVEL_2_0, IID_PPV_ARGS(&dmlDevice)));
-//
-//  // Keep DirectML.dll loaded by leaking the handle. This is equivalent behavior to if we delay-loaded the DLL.
-//  dmlDll.release();
-//
-//  return dmlDevice;
-//}
 
 HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
     OrtSessionOptions* options,
-    OrtSession** session,
-    OrtExecutionProvider** provider) {
+    OrtSession** session) {
   RETURN_HR_IF_NULL(E_POINTER, session);
-  RETURN_HR_IF_NULL(E_POINTER, provider);
-  RETURN_HR_IF(E_POINTER, *provider != nullptr);
 
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -110,40 +58,46 @@ HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
   RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
 
   OrtSession* ort_session_raw;
-  winml_adapter_api->CreateSessionWihtoutModel(ort_env, options, &ort_session_raw);
+  winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw);
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
 
-  auto d3d_device = device_.get();
-  auto queue = queue_.get();
-
-  //std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
-
+  // Was not here before refactor.. is this needed, do we need to bring this back into winml???
   //const onnxruntime::Env& env = onnxruntime::Env::Default();
-  //env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid()); // what to do here???
-
-  //winml_adapter_api->SessionGetExecutionProvidersCount()
-  //winml_adapter_api->SessionGetExecutionProvider(i)
+  //env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid());
+  *session = ort_session.release();
 
   return S_OK;
 }
 
 HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
-    OrtSession* session,
-    OrtExecutionProvider* provider) {
+    OrtSession* session) {
   RETURN_HR_IF_NULL(E_INVALIDARG, session);
-  RETURN_HR_IF_NULL(E_INVALIDARG, provider);
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  size_t num_providers;
+  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
+  RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
+
+  OrtExecutionProvider* ort_provider_raw;
+  winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider_raw);
+  auto ort_provider = UniqueOrtExecutionProvider(ort_provider_raw, winml_adapter_api->ReleaseExecutionProvider);
 
   // OnnxRuntime uses the default rounding mode when calling the session's allocator.
   // During initialization, OnnxRuntime allocates weights, which are permanent across session
   // lifetime and can be large, so shouldn't be rounded.
   //Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Disabled);
+  //winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(session, provider)
 
-  //ORT_THROW_IF_ERROR(p_session->get()->Initialize());
+  if (auto status = winml_adapter_api->SessionInitialize(session)) {
+    return E_FAIL;
+  }
 
   //Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Enabled);
+  //winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(session, provider)
 
   //// Flush the D3D12 work from the DML execution provider
   //Dml::FlushContext(p_provider);
+  //winml_adapter_api->DmlExecutionProviderFlushContext(session, provider)
 
   return S_OK;
 }

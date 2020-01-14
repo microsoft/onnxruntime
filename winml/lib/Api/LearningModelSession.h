@@ -104,6 +104,7 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
  private:
   com_ptr<WinML::IEngineFactory> engine_factory_;
+  com_ptr<WinML::IEngine> engine_;
   com_ptr<winmla::IInferenceSession> inference_session_;
   struct IMLOperatorRegistryDeleter {
     void operator()(IMLOperatorRegistry* p) {

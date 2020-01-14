@@ -87,7 +87,8 @@ LearningModelSession::GetOptimizedModel(bool should_close_model) {
   return model.detach();
 }
 
-void LearningModelSession::Initialize() {
+void
+LearningModelSession::Initialize() {
   // Begin recording session creation telemetry
   _winmlt::TelemetryEvent session_creation_event(
       _winmlt::EventCategory::kSessionCreation);
@@ -117,22 +118,23 @@ void LearningModelSession::Initialize() {
 
   // Register the custom operator registry
   operatorRegistry_.reset(model_impl->GetOperatorRegistry());
-    //WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operatorRegistry_.get()));
+  //WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operatorRegistry_.get()));
 
-    // Register only the transformers not already in ORT
-    //engine->RegisterGraphTransformers();
+  // Register only the transformers not already in ORT
+  //engine->RegisterGraphTransformers();
 
-    // Load the model into the session
-    //  WINML_THROW_IF_FAILED(session->LoadModel(model_proto.get()));
-    // the session owns the model_proto now, it used detach()
-    //  model_proto = nullptr;
+  // Load the model into the session
+  WINML_THROW_IF_FAILED(engine->LoadModel(model.get()));
+  
+  // the session owns the model_proto now, it used detach()
+  model = nullptr;
 
-    // Initialize the session
-    //WINML_THROW_IF_FAILED(session_builder->Initialize(session.get(), cached_execution_provider_));
+  // Initialize the session
+  WINML_THROW_IF_FAILED(engine->Initialize());
 
-    // Cache the constructed session
-    //inference_session_ = session;
-  }
+  // Cache the constructed session
+  engine_ = engine;
+ }
 
   wfc::IPropertySet
   LearningModelSession::EvaluationProperties() try {

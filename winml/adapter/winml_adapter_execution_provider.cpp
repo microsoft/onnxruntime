@@ -12,6 +12,15 @@
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
+OrtExecutionProvider::OrtExecutionProvider(const std::string provider_id) : provider_id_(std::move(provider_id)) {
+
+}
+
+OrtStatus* OrtExecutionProvider::CreateProvider(const std::string provider_id, OrtExecutionProvider** out) {
+  *out = new OrtExecutionProvider(provider_id);
+  return nullptr;
+}
+
 ORT_API(void, winmla::ReleaseExecutionProvider, OrtExecutionProvider* ptr) {
   delete ptr;
 }

@@ -56,12 +56,13 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ModelEnsureNoFloat16,
 
   // OrtSession methods
-  &winmla::CreateSessionWihtoutModel,
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterExecutionProvider)(_In_ OrtSession* session, onnxruntime::IExecutionProvider* provider)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session, onnxruntime::IExecutionProvider* provider)NO_EXCEPTION;
+  &winmla::CreateSessionWithoutModel,
+  &winmla::SessionGetExecutionProvidersCount,
+  &winmla::SessionGetExecutionProvider,
+  &winmla::SessionInitialize,
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel * model)NO_EXCEPTION;
+  &winmla::SessionLoadAndPurloinModel,
   nullptr, // OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
@@ -71,7 +72,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
   &OrtSessionOptionsAppendExecutionProvider_CPU,
-  nullptr, //OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
+  &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, 
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
   &winmla::ReleaseSequenceTypeInfo,

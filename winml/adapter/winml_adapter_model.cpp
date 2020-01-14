@@ -190,6 +190,10 @@ const ONNX_NAMESPACE::ModelProto* OrtModel::UseModelProto() const {
   return model_proto_.get();
 }
 
+std::unique_ptr<onnx::ModelProto> OrtModel::DetachModelProto() {
+  return std::move(model_proto_);
+}
+
 ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, const char* model_path, size_t size, OrtModel** out) {
   if (auto status = OrtModel::CreateOrtModelFromPath(model_path, size, out)) {
     return status;

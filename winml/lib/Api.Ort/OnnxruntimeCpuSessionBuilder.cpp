@@ -19,6 +19,7 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
   RETURN_HR_IF_NULL(E_POINTER, options);
 
   auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   OrtSessionOptions* ort_options;
   ort_api->CreateSessionOptions(&ort_options);
@@ -34,13 +35,15 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
   // runs the fastest.
   ort_api->SetIntraOpNumThreads(session_options.get(), std::thread::hardware_concurrency());
 
+#ifndef _WIN64
+  auto use_arena = false;
+#else
+  auto use_arena = true;
+#endif
+  winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena);
+
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
-
-    //winml_adapter_api->sessionoptionsappendexecutionprovider_cpu
-  //#ifndef _WIN64
-  //  xpInfo.create_arena = false;
-  //#endif
 
   return S_OK;
 }
@@ -49,11 +52,8 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
 HRESULT
 OnnxruntimeCpuSessionBuilder::CreateSession(
     OrtSessionOptions* options,
-    OrtSession** session,
-    OrtExecutionProvider** provider) {
+    OrtSession** session) {
   RETURN_HR_IF_NULL(E_POINTER, session);
-  RETURN_HR_IF_NULL(E_POINTER, provider);
-  RETURN_HR_IF(E_POINTER, *provider != nullptr);
 
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -62,21 +62,22 @@ OnnxruntimeCpuSessionBuilder::CreateSession(
   RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
 
   OrtSession* ort_session_raw;
-  winml_adapter_api->CreateSessionWihtoutModel(ort_env, options, &ort_session_raw);
+  winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw);
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
-
-  //winml_adapter_api->SessionGetExecutionProvidersCount()
-  //winml_adapter_api->SessionGetExecutionProvider(i)
-
+    
+  *session = ort_session.release();
+  
   return S_OK;
 }
 
 HRESULT
 OnnxruntimeCpuSessionBuilder::Initialize(
-    OrtSession* session,
-    OrtExecutionProvider* /*p_provider*/
-    ) {
-  //winml_adapter_api->SessionInitialize(i)
-//    ORT_THROW_IF_ERROR(session->get()->Initialize());
+    OrtSession* session) {
+  RETURN_HR_IF_NULL(E_INVALIDARG, session);
+
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  if (auto status = winml_adapter_api->SessionInitialize(session)) {
+    return E_FAIL;
+  }
   return S_OK;
 }

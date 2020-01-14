@@ -136,6 +136,8 @@ add_library(winml_lib_ort STATIC
    ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.cpp
    ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.h
    ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.cpp
+   ${winml_lib_api_ort_dir}/OnnxruntimeModel.h
+   ${winml_lib_api_ort_dir}/OnnxruntimeModel.cpp
    ${winml_lib_api_ort_dir}/OnnxruntimeSessionBuilder.h
    ${winml_lib_api_ort_dir}/pch.h
   )
@@ -202,6 +204,7 @@ list(APPEND winml_adapter_files
 	${winml_adapter_dir}/winml_adapter_apis.h
     ${winml_adapter_dir}/winml_adapter_c_api.h
 	${winml_adapter_dir}/winml_adapter_c_api.cpp
+	${winml_adapter_dir}/winml_adapter_dml.cpp
 	${winml_adapter_dir}/winml_adapter_environment.cpp
 	${winml_adapter_dir}/winml_adapter_execution_provider.cpp
 	${winml_adapter_dir}/winml_adapter_execution_provider.h

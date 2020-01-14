@@ -16,6 +16,7 @@ struct OrtModel {
   const ModelInfo* UseModelInfo() const;
 
   const onnx::ModelProto* UseModelProto() const;
+  std::unique_ptr<onnx::ModelProto> DetachModelProto();
 
  private:
   OrtModel(std::unique_ptr<onnx::ModelProto>&& model_proto);

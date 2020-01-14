@@ -24,6 +24,8 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
+	STDMETHOD(LoadModel)(_In_ IModel*)PURE;
+	STDMETHOD(Initialize)()PURE;
 };
 
 

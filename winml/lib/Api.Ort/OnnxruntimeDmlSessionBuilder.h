@@ -21,12 +21,10 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass <
 
   HRESULT STDMETHODCALLTYPE CreateSession(
       OrtSessionOptions* options,
-      OrtSession** session,
-      OrtExecutionProvider** provider) override;
+      OrtSession** session) override;
 
   HRESULT STDMETHODCALLTYPE Initialize(
-      OrtSession* session,
-      OrtExecutionProvider* provider) override;
+      OrtSession* session) override;
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
