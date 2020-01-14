@@ -6,6 +6,8 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 
+#include "test/test_environment.h"
+
 using ONNX_NAMESPACE::Utils::DataTypeUtils;
 using namespace ONNX_NAMESPACE;
 
@@ -71,7 +73,8 @@ static GraphProto CreateNodeRemovalSubgraph(const std::string& new_output_name =
   std::string suffix = add_second_level ? ".top" : ".bottom";
   std::string constant_output_name = (new_output_name.empty() ? "constant_in_0" + suffix : new_output_name);
 
-  Model model("CreateNodeRemovalSubgraph:" + constant_output_name);
+  Model model("CreateNodeRemovalSubgraph:" + constant_output_name, false,
+              DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_scalar_tensor;
@@ -198,7 +201,8 @@ static void CheckNodeRemovalSubgraphUpdate(const std::string& new_name, const Gr
 }
 
 static void UpdateSubgraphWhenRemovingNode(bool include_nested = false) {
-  Model model(std::string("UpdateSubgraphWhenRemovingNode") + (include_nested ? ":Nested" : ":SingleLevel"));
+  Model model(std::string("UpdateSubgraphWhenRemovingNode") + (include_nested ? ":Nested" : ":SingleLevel"),
+              false, DefaultLoggingManager().DefaultLogger());
 
   CreateNodeRemovalGraph(model, true, include_nested);
 
@@ -232,13 +236,15 @@ TEST(GraphUtils, UpdateNestedSubgraphWhenRemovingNode) {
 // we can't remove a node if it is used as an implicit input in a subgraph, and changing the implicit input name
 // will result with in a clash with an existing node in the subgraph
 static void DontRemoveNodeIfItWillBreakSubgraph(bool test_nested = false) {
-  Model model(std::string("DontRemoveNodeIfItWillBreakSubgraph") + (test_nested ? ":Nested" : ":SingleLevel"));
+  Model model(std::string("DontRemoveNodeIfItWillBreakSubgraph") + (test_nested ? ":Nested" : ":SingleLevel"),
+              false, DefaultLoggingManager().DefaultLogger());
   CreateNodeRemovalGraph(model, false, test_nested);
 
   auto& graph = model.MainGraph();
   auto& node_to_remove = *graph.GetNode(1);
 
-  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, node_to_remove,
+                                          DefaultLoggingManager().DefaultLogger()));
 }
 
 TEST(GraphUtils, DontRemoveNodeIfItWillBreakSubgraph) {
@@ -253,7 +259,7 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
   // Create a graph with 5 Id nodes. The graph structure is as follows: Id0 ( Id1 Id2 ( Id3 Id4 ) ).
   // First we remove Id2, which leads to: Id0 ( Id1 Id4 Id5 ).
   // Then we remove Id1, which leads to: Id2 Id4 Id5, being fed the initializer.
-  Model model("MultiEdgeRemovalGraph");
+  Model model("MultiEdgeRemovalGraph", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_tensor;
@@ -303,7 +309,7 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
 }
 
 TEST(GraphUtils, TestMultiOutputRemoveNode) {
-  Model model("MultiOutputRemovalGraph");
+  Model model("MultiOutputRemovalGraph", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   TypeProto float_tensor;
@@ -341,14 +347,17 @@ TEST(GraphUtils, TestMultiOutputRemoveNode) {
 
   // Try to remove do_0, which should return false
   // because both outputs are consumed by downstream Operators.
-  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0]));
+  ASSERT_FALSE(graph_utils::CanRemoveNode(graph, *nodes[0],
+                                          DefaultLoggingManager().DefaultLogger()));
 
   // Try removing do_0 after removing id_2, which should return true
   // because it now has exactly one output consumed by downstream Operators.
-  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1]));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[1],
+                                         DefaultLoggingManager().DefaultLogger()));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[1]));
   ASSERT_FALSE(graph_utils::IsOutputUsed(*nodes[0], 0));
-  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0]));
+  ASSERT_TRUE(graph_utils::CanRemoveNode(graph, *nodes[0],
+                                         DefaultLoggingManager().DefaultLogger()));
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[0]));
 }
 

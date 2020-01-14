@@ -47,9 +47,8 @@ class ExecutionProviders {
       ORT_IGNORE_RETURN_VALUE(allocator_idx_map_.insert({allocator->Info(), new_provider_idx}));
     }
 
-    exec_providers_.push_back(std::move(p_exec_provider));
     exec_provider_ids_.push_back(provider_id);
-
+    exec_providers_.push_back(std::move(p_exec_provider));
     return Status::OK();
   }
 

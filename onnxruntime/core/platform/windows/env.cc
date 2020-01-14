@@ -129,7 +129,7 @@ class WindowsEnv : public Env {
 
     size_t total_bytes_read = 0;
     while (total_bytes_read < length) {
-      constexpr DWORD k_max_bytes_to_read = 1 << 30; // read at most 1GB each time
+      constexpr DWORD k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
       const size_t bytes_remaining = length - total_bytes_read;
       const DWORD bytes_to_read = static_cast<DWORD>(std::min<size_t>(bytes_remaining, k_max_bytes_to_read));
       DWORD bytes_read;
@@ -151,8 +151,8 @@ class WindowsEnv : public Env {
   }
 
   Status MapFileIntoMemory(
-      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
-      MappedMemoryPtr& mapped_memory) const override {
+      const ORTCHAR_T*, FileOffsetType, size_t,
+      MappedMemoryPtr&) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
   }
 
@@ -225,6 +225,33 @@ class WindowsEnv : public Env {
   // \brief returns a provider that will handle telemetry on the current platform
   const Telemetry& GetTelemetryProvider() const override {
     return telemetry_provider_;
+  }
+
+  // \brief returns a value for the queried variable name (var_name)
+  std::string GetEnvironmentVar(const std::string& var_name) const override {
+    // Why getenv() should be avoided on Windows:
+    // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/getenv-wgetenv
+    // Instead use the Win32 API: GetEnvironmentVariableA()
+
+    // Max limit of an environment variable on Windows including the null-terminating character
+    constexpr DWORD kBufferSize = 32767;
+
+    // Create buffer to hold the result
+    char buffer[kBufferSize];
+
+    auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer, kBufferSize);
+
+    // Will be > 0 if the API call was successful
+    if (char_count) {
+      return std::string(buffer, buffer + char_count);
+    }
+
+    // TODO: Understand the reason for failure by calling GetLastError().
+    // If it is due to the specified environment variable being found in the environment block,
+    // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
+    // For now, we assume that the environment variable is not found.
+
+    return std::string();
   }
 
  private:

@@ -139,12 +139,19 @@ def create_backend_test(testname=None):
                                       'test_edge_pad_cpu',
                                       'test_reflect_pad_cpu']
 
-        if c2.supports_device('MKL-DNN'):
+        if c2.supports_device('DNNL'):
             current_failing_tests += ['^test_range_float_type_positive_delta_expanded_cpu',
-                                      '^test_range_int32_type_negative_delta_expanded_cpu']
+                                      '^test_range_int32_type_negative_delta_expanded_cpu',
+									  '^test_averagepool_2d_ceil_cpu',
+                                      '^test_maxpool_2d_ceil_cpu',
+									  '^test_maxpool_2d_dilations_cpu']
 
         if c2.supports_device('OPENVINO_GPU_FP32') or c2.supports_device('OPENVINO_GPU_FP16'):
             current_failing_tests.append('^test_div_cpu*')
+
+        if c2.supports_device('OPENVINO_CPU_FP32'):
+            current_failing_tests += ['^test_scan9_sum_cpu',#sum_out output node not defined, temporarily disabling test
+                                      '^test_scan_sum_cpu'] #sum_out output node not defined, temporarily disabling test
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \

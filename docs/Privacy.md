@@ -14,5 +14,5 @@ Currently telemetry is only implemented for Windows builds, but may be expanded 
 #### Technical Details
 The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation.
 
-For API usage details to turn this on/off, please check the API pages:
+Windows ML and onnxruntime C APIs allow telemetry collection to be turned on/off (see API pages for details). It is turned off by default in all official builds.
 * [C API](./C_API.md#telemetry)

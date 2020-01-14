@@ -32,6 +32,10 @@ void SwapByteOrderCopy(
   assert(element_size_in_bytes > 0);
   assert(source_bytes.size_bytes() % element_size_in_bytes == 0);
   assert(source_bytes.size_bytes() == destination_bytes.size_bytes());
+  // check non-overlapping
+  // given begin <= end, end0 <= begin1 || end1 <= begin0
+  assert(source_bytes.data() + source_bytes.size() <= destination_bytes.data() ||
+         destination_bytes.data() + destination_bytes.size() <= source_bytes.data());
 
   for (size_t element_offset = 0, element_offset_end = source_bytes.size_bytes();
        element_offset < element_offset_end;

@@ -54,6 +54,11 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<std::tuple<IAllocatorUniquePtr<void>, int>> all_selected_indices;
   int total_num_saved_outputs = 0;
 
+  // safe downcast max_output_boxes_per_class to int as cub::DeviceSelect::Flagged() does not support int64_t
+  int int_max_output_boxes_per_class = max_output_boxes_per_class > std::numeric_limits<int>::max()
+                                           ? std::numeric_limits<int>::max()
+                                           : static_cast<int>(max_output_boxes_per_class);
+
   for (int64_t batch_index = 0; batch_index < pc.num_batches_; ++batch_index) {
     for (int64_t class_index = 0; class_index < pc.num_classes_; ++class_index) {
       IAllocatorUniquePtr<void> d_selected_indices{};
@@ -66,7 +71,7 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
           GetCenterPointBox(),
           batch_index,
           class_index,
-          max_output_boxes_per_class,
+          int_max_output_boxes_per_class,
           iou_threshold,
           score_threshold,
           d_selected_indices,
@@ -130,4 +135,4 @@ Status NonMaxSuppression::ComputeInternal(OpKernelContext* ctx) const {
 }
 
 }  // namespace cuda
-};  // namespace onnxruntime
+}  // namespace onnxruntime

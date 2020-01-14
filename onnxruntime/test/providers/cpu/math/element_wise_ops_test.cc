@@ -11,12 +11,13 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(BroadcastingTest, DimWithZeroHandling) {
+TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
     // exclude NGraph and TensorRT as this isn't handled by those EPs
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNGraphExecutionProvider});
   };
 
+  // test binary element-wise op broadcasting when there's a dim with value of zero
   // equal rank
   OpTester test("Add");
   test.AddInput<int64_t>("A", {3, 1}, {1, 2, 3});
@@ -51,6 +52,12 @@ TEST(BroadcastingTest, DimWithZeroHandling) {
   test4.AddInput<int64_t>("B", {2, 1}, {1, 2});
   test4.AddOutput<int64_t>("C", {2, 2, 0}, {});
   run(test4);
+
+  // test unary op handles it as well
+  OpTester test5("Floor");
+  test5.AddInput<float>("A", {0, 3}, {});
+  test5.AddOutput<float>("B", {0, 3}, {});
+  run(test5);
 }
 
 TEST(MathOpTest, Add_int32) {
@@ -338,7 +345,11 @@ TEST(MathOpTest, Sub) {
                         {2.0f, -2.4f, -433.3f,
                          0.0f, -2.0f, -164.0f,
                          0.0f, 0.0f, -20000.0f});
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#else
   test.Run();
+#endif
 }
 
 TEST(MathOpTest, Sub_Broadcast_Scalar) {

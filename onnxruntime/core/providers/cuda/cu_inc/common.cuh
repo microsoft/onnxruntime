@@ -7,6 +7,7 @@
 #include <mutex>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
@@ -154,6 +155,14 @@ __device__ __inline__ double _Tanh(double a) { return tanh(a); }
 template <>
 __device__ __inline__ half _Tanh(half a) { return half(tanhf((float)a)); }
 
+template <>
+__device__ __inline__ half2 _Tanh(half2 a) {
+  float2 tmp = (__half22float2(a));
+  tmp.x = tanhf(tmp.x);
+  tmp.y = tanhf(tmp.y);
+  return __float22half2_rn(tmp);
+}
+
 template <typename T>
 __device__ __inline__ T _Pow(T a, T b);
 
@@ -187,6 +196,11 @@ __device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
 template <>
 __device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
 
+template <typename T>
+__device__ __inline__ T _Gelu(T a) {
+  return a * _Normcdf(a);
+}
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 
@@ -208,8 +222,9 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 
 struct GridDim {
   enum : CUDA_LONG {
-    maxThreadsPerBlock = 1024,  // use this many threads per block
-    maxWarpsPerBlock = 32,      // use this many warps per block. This means 1024 threads for warpSize=32
+    maxThreadsPerBlock = 256,  // max threads per block
+    maxWarpsPerBlock = 32,     // max warps per block
+    maxElementsPerThread = 4,  // max element processed per thread
   };
 
   // use these for launching

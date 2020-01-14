@@ -26,7 +26,7 @@ namespace test {
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
 TEST(OptimizerTest, Basic) {
-  Model model("OptimizerBasic");
+  Model model("OptimizerBasic", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   const int tensor_dim = 10;
@@ -67,7 +67,7 @@ TEST(OptimizerTest, Basic) {
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set);
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-  const logging::Logger& logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+  const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
 
   for (auto& node : graph.Nodes()) {
     auto* kernel = info.GetKernel(node.Index());

@@ -80,7 +80,7 @@ For other system requirements and other dependencies, please see [this section](
 |Description|Command|Additional description|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
-|**Debug build**|--config RelWithDebugInfo|Debug build|
+|**Debug build**|--config RelWithDebInfo|Debug build|
 |**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
@@ -96,7 +96,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Execution Providers**
 * [NVIDIA CUDA](#CUDA)
 * [NVIDIA TensorRT](#TensorRT)
-* [Intel MKL-DNN/MKL-ML](#MKLDNN-and-MKLML)
+* [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
 * [Android NNAPI](#Android)
@@ -106,6 +106,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Options**
 * [OpenMP](#OpenMP)
 * [OpenBLAS](#OpenBLAS)
+* [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
 
 **Architectures**
 * [x86](#x86)
@@ -188,7 +189,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5 but validated with the feature set equivalent to TensorRT 5. Some TensorRT 6 new features such as dynamic shape is not available at this time.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
@@ -202,15 +203,12 @@ Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
 ---
 
-### MKLDNN and MKLML
-See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md).
+### DNNL and MKLML
+See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
-MKL-DNN: `./build.sh --use_mkldnn`
-
-MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn --use_mklml`
-
+DNNL: `./build.sh --use_dnnl`
 ---
 
 
@@ -235,16 +233,16 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 #### Pre-Requisites
 * Install the OpenVINO release along with its dependencies: [Windows]([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit), [Linux](https://software.intel.com/en-us/openvino-toolkit).
-   * For Linux, currently supports and is validated on OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1 (Recommended)
-   * For Windows, download the 2019 R1.1 Windows Installer.
+   * For Linux, currently supports and is validated on OpenVINO 2019 R3.1
+   * For Windows, download the 2019 R3.1 Windows Installer.
 * Install the model optimizer prerequisites for ONNX by running:
    * Windows: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat`
    * Linux: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh`
 * Initialize the OpenVINO environment by running the setupvars in `\<openvino\_install\_directory\>\/bin` using `setupvars.bat` (Windows) or `source setupvars.sh` (Linux)
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R1.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R3.html)
 
 
 #### Build Instructions
@@ -259,19 +257,9 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
 ```
 
-
-  For Linux:
-
-   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
-
-  For Windows:
-
-  <code> .\build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
-
-   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
-
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
+  <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
 
 * `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
@@ -421,6 +409,30 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ```
 ./build.sh --use_openblas
 ```
+
+---
+
+### DebugNodeInputsOutputs
+OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
+#### Build Instructions
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+Dump tensor input/output shapes for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+Dump tensor input/output shapes and output data for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
+To disable this functionality after previously enabling, set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0 or delete CMakeCache.txt.
 
 ---
 

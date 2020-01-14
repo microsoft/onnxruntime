@@ -1,5 +1,6 @@
 parameters:
   AgentPool : 'Hosted macOS High Sierra'
+  IsMacOS : 'true'
 
 jobs:
 - job: NuGet_Test_MacOS
@@ -10,15 +11,24 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+  - group: ORT_TEST_DATA_SAS
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
   steps:
-  - template: ../../templates/mac-set-variables-and-download.yml
+  - template: set-test-data-variables-step.yml
+  - template: mac-set-variables-and-download.yml
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Signed NuGet'
     inputs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download OsX CustomOp test data'
+    inputs:
+      artifactName: 'drop-osx'
+      targetPath: '$(Build.BinariesDirectory)/testdata'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
@@ -29,7 +39,8 @@ jobs:
                $(Build.BinariesDirectory)/nuget-artifact \
                $(Build.SourcesDirectory) \
                $(Build.BinariesDirectory) \
-               $(NuGetPackageVersionNumber)
+               $(NuGetPackageVersionNumber) \
+               ${{ parameters.IsMacOS }}
 
      if [ $? -ne 0 ]; then
          echo "Failed to run test"

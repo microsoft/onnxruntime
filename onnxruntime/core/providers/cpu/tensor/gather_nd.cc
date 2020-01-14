@@ -71,7 +71,7 @@ Status GatherNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) con
   const int64_t offset_count = indices_shape.Size() / last_indices_dimension;  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
-  if (input_tensor->DataType() == DataTypeImpl::GetType<std::string>()) {
+  if (input_tensor->IsDataTypeString()) {
     p.input_str_base = static_cast<const std::string*>(input_tensor->DataRaw());
     p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
   } else {
@@ -106,7 +106,7 @@ template Status GatherNDBase::PrepareForCompute<int64_t>(OpKernelContext*, Prepa
 
 Status GatherND::Compute(OpKernelContext* context) const {
   Prepare p;
-  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->DataType() == DataTypeImpl::GetType<int32_t>()
+  ORT_RETURN_IF_ERROR(context->Input<Tensor>(1)->IsDataType<int32_t>()
                           ? PrepareForCompute<int32_t>(context, p)
                           : PrepareForCompute<int64_t>(context, p));
 

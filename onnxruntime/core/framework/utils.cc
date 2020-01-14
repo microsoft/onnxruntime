@@ -97,7 +97,7 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kMklDnnExecutionProvider ||
+         provider_type == onnxruntime::kDnnlExecutionProvider ||
          provider_type == onnxruntime::kNGraphExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
@@ -114,9 +114,10 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
                                                                       fetched_tensor.Shape(),
                                                                       allocator);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   output_mlvalue.Init(p_tensor.release(),
-                      DataTypeImpl::GetType<Tensor>(),
-                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                      ml_tensor,
+                      ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }
@@ -154,8 +155,6 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
   //  target_mlvalue = source_mlvalue;
   //  return Status::OK();
   //}
-
-  assert(source_mlvalue.IsTensor());
 
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
@@ -645,6 +644,8 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
                   std::cout << " failed to transfer data to cpu.\n";
                 }
               }
+#else
+              ORT_UNUSED_PARAMETER(session_state);
 #endif
             }
           }
@@ -663,6 +664,47 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   }
 }
 #endif
+
+int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
+  switch (onnx_enum) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT32;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      return onnx::TensorProto_DataType::TensorProto_DataType_BOOL;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_BFLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
+    default:
+      assert(false);
+      return onnx::TensorProto_DataType::TensorProto_DataType_UNDEFINED;
+  }
+}
 
 }  // namespace utils
 }  // namespace onnxruntime

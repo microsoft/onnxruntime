@@ -57,9 +57,9 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     target_str = default_nuphar_target_str;
   }
 
+  const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   if (target_str == llvm_target_str) {
     // auto detect from CPU ID
-    const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
     if (cpu_id_info.HasAVX512f()) {
       codegen_target_ = CodeGenTarget_AVX512();
     } else if (cpu_id_info.HasAVX2()) {
@@ -81,9 +81,21 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
 
-  CreateTVMTarget();
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+    if ((target_str == "avx512" && !cpu_id_info.HasAVX512f()) ||
+        (target_str == "avx2" && !cpu_id_info.HasAVX2()) ||
+        (target_str == "avx" && !cpu_id_info.HasAVX())) {
+      LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET is not compatible with host machine."
+                               "Target code will be generated, but exectuion will fail!";
+    }
+    // For CPU, use target as host since the tvm_host_target_ is the one used to generate code in TVM
+    tvm_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+    tvm_host_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+  } else {
+    CreateTVMTarget();
+    tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
+  }
 
-  tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
   tvm_ctx_.device_id = 0;  // use the default device id for CPU allocator
 
@@ -113,8 +125,8 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   handle->shape_inference = whole_graph_shape_infer_;
 
-  // TODO: remove
-  handle->enable_per_node_parallelized = info.enable_per_node_parallel;
+  handle->parallel_min_workloads = std::stoi(settings.GetOptionValue(kNupharParallelMinWorkloads));
+
   // TODO: remove
   handle->allow_unaligned_buffers = info.allow_unaligned_buffers;  // TODO remove this
 

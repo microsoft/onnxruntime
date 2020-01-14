@@ -37,5 +37,6 @@ Create a new Function instance.
 @param customized_func the IndexedSubGraph to use for the Function.
 */
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
-                                       std::unique_ptr<IndexedSubGraph> customized_func);
+                                       std::unique_ptr<IndexedSubGraph> customized_func,
+                                       const logging::Logger& logger);
 }  // namespace onnxruntime

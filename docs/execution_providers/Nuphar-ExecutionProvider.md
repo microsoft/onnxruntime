@@ -17,6 +17,12 @@ You can use the Nuphar execution provider via the python wheel from the ONNX Run
 ## Performance and Accuracy Testing
 You can test your ONNX model's performance with [onnxruntime_perf_test](../../onnxruntime/test/perftest/README.md), or test accuracy with [onnx_test_runner](../../onnxruntime/test/onnx/README.txt). To run these tools with the Nuphar execution provider, please pass `-e nuphar` in command line options.
 
+Please note that Nuphar uses TVM thread pool and parallel schedule for multi-thread inference performance. When building with OpenMP or MKLML, TVM thread pool would use gomp or iomp as its implementation; otherwise, TVM creates its own thread pool. Because of this, the current default parallel schedule policy is:
+- Default to on for USE_OPENMP or USE_MKLML. User can use OMP_NUM_THREADS/MKL_NUM_THREADS to control TVM thread pool, as well as TVM_NUM_THREADS
+- Default to off for none of above. User can use TVM_NUM_THREADS to control TVM thread pool.
+
+This choice is to ensure to get ideal performance with the different build options. When build with USE_OPENMP or USE_MKLML, users would have to avoid thread confliction from OpenMP or MKL with their inference invocations anyway, so parallel schedule is enable to leverage existing thread pool. When not building with gomp or iomp, TVM thread pool is turned off to avoid confliction with user threads. If needed, user can set env or settings with [NUPHAR_PARALLEL_MIN_WORKLOADS](../../onnxruntime/core/providers/nuphar/common/nuphar_settings.cc#L61) to 0 to disable parallel schedule, or to some non-zero value to enable parallel schedule. The non-zero value indicates the minimal number of elements being computed per thread when parallel schedule would be turned on.
+
 ## Model Conversion and Quantization
 You may use Python script [model_editor.py](../../onnxruntime/core/providers/nuphar/scripts/model_editor.py) to turn LSTM/GRU/RNN ops to Scan ops for a given model, and then use [model_quantizer.py](../../onnxruntime/core/providers/nuphar/scripts/model_quantizer.py) to quantize MatMul ops into MatMulInteger ops.
 

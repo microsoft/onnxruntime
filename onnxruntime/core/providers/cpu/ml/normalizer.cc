@@ -42,26 +42,6 @@ ONNX_CPU_OPERATOR_ML_KERNEL(
                                                      DataTypeImpl::GetTensorType<int64_t>()}),
     Normalizer);
 
-Status Normalizer::Compute(OpKernelContext* context) const {
-  const auto* input_tensor_ptr = context->Input<Tensor>(0);
-  ORT_ENFORCE(input_tensor_ptr != nullptr);
-  MLDataType input_type = input_tensor_ptr->DataType();
-
-  if (input_type == DataTypeImpl::GetType<float>()) {
-    Normalize<float>(context);
-  } else if (input_type == DataTypeImpl::GetType<double>()) {
-    Normalize<double>(context);
-  } else if (input_type == DataTypeImpl::GetType<int64_t>()) {
-    Normalize<int64_t>(context);
-  } else if (input_type == DataTypeImpl::GetType<int32_t>()) {
-    Normalize<int32_t>(context);
-  } else {
-    ORT_THROW("Invalid input type of ", input_type);
-  }
-
-  return Status::OK();
-}
-
 template <typename T>
 void NormalizeMax(const gsl::span<const T>& in, gsl::span<float>& out,
                   int64_t offset, int64_t stride, int64_t increment_by) {
@@ -186,6 +166,23 @@ void Normalizer::Normalize(OpKernelContext* context) const {
       }
     }
   }
+}
+
+// MLTypeCallDispather implementation wrapper
+template <class T>
+struct Normalizer::CallNormalizerImpl {
+  void operator()(const Normalizer* norm, OpKernelContext* ctx) const {
+    norm->Normalize<T>(ctx);
+  }
+};
+
+Status Normalizer::Compute(OpKernelContext* context) const {
+  const auto* input_tensor_ptr = context->Input<Tensor>(0);
+  ORT_ENFORCE(input_tensor_ptr != nullptr);
+
+  utils::MLTypeCallDispatcher<CallNormalizerImpl, float, double, int64_t, int32_t> t_disp(input_tensor_ptr->GetElementType());
+  t_disp.Invoke(this, context);
+  return Status::OK();
 }
 
 }  // namespace ml

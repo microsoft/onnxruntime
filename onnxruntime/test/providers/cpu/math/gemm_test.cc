@@ -235,7 +235,7 @@ TEST(GemmOpTest, GemmEmptyTensor) {
   test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {0, 3},
                         {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kMklDnnExecutionProvider}); //TensorRT: doesn't support dynamic shape yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider}); //TensorRT: doesn't support dynamic shape yet
 }
 
 TEST(GemmOpTest, GemmNoBiasOpset11) {

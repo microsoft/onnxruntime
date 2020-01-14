@@ -4,19 +4,8 @@
 #pragma once
 #include "core/platform/telemetry.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/windows/TraceLoggingConfig.h"
 #include <atomic>
-
-// ***
-// platform specific control bits
-#ifndef TraceLoggingOptionMicrosoftTelemetry
-#define TraceLoggingOptionMicrosoftTelemetry() \
-  TraceLoggingOptionGroup(0000000000, 00000, 00000, 0000, 0000, 0000, 0000, 0000, 000, 0000, 0000)
-#endif
-#define MICROSOFT_KEYWORD_MEASURES       0x0000400000000000  // Bit 46
-#define TelemetryPrivacyDataTag(tag)     TraceLoggingUInt64((tag), "PartA_PrivTags")
-#define PDT_ProductAndServicePerformance 0x0000000001000000u
-#define PDT_ProductAndServiceUsage       0x0000000002000000u
-// ***
 
 namespace onnxruntime {
 

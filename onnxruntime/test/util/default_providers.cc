@@ -10,7 +10,7 @@ namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
@@ -49,9 +49,9 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultMkldnnExecutionProvider(bool enable_arena) {
-#ifdef USE_MKLDNN
-  return CreateExecutionProviderFactory_Mkldnn(enable_arena ? 1 : 0)->CreateProvider();
+std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
+#ifdef USE_DNNL
+  return CreateExecutionProviderFactory_Dnnl(enable_arena ? 1 : 0)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;

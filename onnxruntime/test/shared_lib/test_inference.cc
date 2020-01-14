@@ -8,6 +8,7 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <atomic>
 #include <gtest/gtest.h>
 #include "test_allocator.h"
@@ -20,11 +21,12 @@ struct Input {
   std::vector<float> values;
 };
 
+template <typename OutT>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
                 const std::vector<Input>& inputs,
                 const char* output_name,
                 const std::vector<int64_t>& dims_y,
-                const std::vector<float>& values_y,
+                const std::vector<OutT>& values_y,
                 Ort::Value* output_tensor) {
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names;
@@ -47,19 +49,22 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   size_t total_len = type_info.GetElementCount();
   ASSERT_EQ(values_y.size(), total_len);
 
-  float* f = output_tensor->GetTensorMutableData<float>();
+  OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != total_len; ++i) {
     ASSERT_EQ(values_y[i], f[i]);
   }
 }
 
-template <typename T>
+
+template <typename T, typename OutT>
 void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<Input>& inputs,
                    const char* output_name,
                    const std::vector<int64_t>& expected_dims_y,
-                   const std::vector<float>& expected_values_y,
-                   int provider_type, OrtCustomOpDomain* custom_op_domain_ptr) {
+                   const std::vector<OutT>& expected_values_y,
+                   int provider_type, 
+                   OrtCustomOpDomain* custom_op_domain_ptr,
+                   const char* custom_op_library_filename) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
@@ -70,9 +75,9 @@ void TestInference(Ort::Env& env, T model_uri,
     return;
 #endif
   } else if (provider_type == 2) {
-#ifdef USE_MKLDNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, 1));
-    std::cout << "Running simple inference with mkldnn provider" << std::endl;
+#ifdef USE_DNNL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
+    std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;
 #endif
@@ -90,11 +95,16 @@ void TestInference(Ort::Env& env, T model_uri,
     session_options.Add(custom_op_domain_ptr);
   }
 
+  if (custom_op_library_filename){
+    void* library_handle = nullptr; // leak this, no harm. 
+    Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
+  }
+
   Ort::Session session(env, model_uri, session_options);
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // Now run
   //without preallocated output tensor
-  RunSession(default_allocator.get(),
+  RunSession<OutT>(default_allocator.get(),
              session,
              inputs,
              output_name,
@@ -106,7 +116,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   //test it twice
   for (int i = 0; i != 2; ++i)
-    RunSession(default_allocator.get(),
+    RunSession<OutT>(default_allocator.get(),
                session,
                inputs,
                output_name,
@@ -117,6 +127,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 
@@ -142,7 +153,7 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr);
+  TestInference<PATH_TYPE, float>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
 }
 
 TEST_F(CApiTest, dim_param) {
@@ -247,8 +258,44 @@ TEST_F(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-  TestInference<PATH_TYPE>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain);
+  TestInference<PATH_TYPE, float>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 }
+
+TEST_F(CApiTest, DISABLED_test_custom_op_library) {
+  std::cout << "Running inference using custom op shared library" << std::endl;
+
+  std::vector<Input> inputs(2);
+  inputs[0].name = "input_1";
+  inputs[0].dims = {3, 5};
+  inputs[0].values = {1.1f,   2.2f,   3.3f,   4.4f,   5.5f, 
+                      6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
+                      11.1f,  12.2f,  13.3f,  14.4f,  15.5f};
+  inputs[1].name = "input_2";
+  inputs[1].dims = {3, 5};
+  inputs[1].values = {15.5f,   14.4f,   13.3f,   12.2f,   11.1f, 
+                      10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
+                      5.5f,    4.4f,    3.3f,    2.2f,    1.1f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 5};
+  std::vector<int32_t> expected_values_y = 
+                    {17, 17, 17, 17, 17,
+                     17, 18, 18, 18, 17,
+                     17, 17, 17, 17, 17};
+
+  std::string lib_name;
+  #if defined(_WIN32)
+    lib_name = "custom_op_library.dll";
+  #elif defined(__APPLE__)
+    lib_name = "libcustom_op_library.dylib";
+  #else
+    lib_name = "libcustom_op_library.so";
+  #endif
+
+  TestInference<PATH_TYPE, int32_t>(env_, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+}
+
+
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
 TEST_F(CApiTest, DISABLED_test_pyop) {
@@ -271,7 +318,7 @@ TEST_F(CApiTest, DISABLED_test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr);
+  TestInference<PATH_TYPE, float>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 

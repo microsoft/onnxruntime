@@ -25,13 +25,31 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     DepthToSpace<float>);
 
-// intemediate tensor shapes are:
+// intermediate tensor shapes are:
 // (batch, blocksize, blocksize, input_depth / (blocksize * blocksize), input_height, input_width) for DepthToSpace
 // (batch, input_depth, input_height / blocksize, blocksize, input_width / blocksize, blocksize) for SpaceToDepth
 const int IntermediateTensorRank = 6;
 typedef Eigen::TensorMap<Eigen::Tensor<float, IntermediateTensorRank, Eigen::RowMajor, int64_t>,
                          Eigen::Aligned>
     EigenTensorMap;
+
+typedef Eigen::TensorMap<Eigen::Tensor<const float, IntermediateTensorRank, Eigen::RowMajor, int64_t>,
+                         Eigen::Aligned>
+    ConstEigenTensorMap;
+
+// helper to create output to minimize binary size
+static void CreateOutput(const Tensor& input, Tensor& output,
+                         const std::array<int64_t, IntermediateTensorRank>& permutation,
+                         const int64_t batch_size,  // dim0 in both input and output
+                         const int64_t in_dim1, const int64_t in_dim2, const int64_t in_dim3,
+                         const int64_t in_dim4, const int64_t in_dim5,
+                         const int64_t out_dim1, const int64_t out_dim2, const int64_t out_dim3,
+                         const int64_t out_dim4, const int64_t out_dim5) {
+  EigenTensorMap(output.template MutableData<float>(), batch_size, out_dim1, out_dim2, out_dim3, out_dim4, out_dim5) =
+      ConstEigenTensorMap(input.template Data<float>(), batch_size,
+                          in_dim1, in_dim2, in_dim3, in_dim4, in_dim5)
+          .shuffle(permutation);
+}
 
 template <>
 Status SpaceToDepth<float>::Compute(OpKernelContext* context) const {
@@ -52,12 +70,9 @@ Status SpaceToDepth<float>::Compute(OpKernelContext* context) const {
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
 
   std::array<int64_t, IntermediateTensorRank> permutation{{0, 3, 5, 1, 2, 4}};
-  EigenTensorMap(output.template MutableData<float>(), batch, blocksize_, blocksize_,
-                 input_depth, input_height / blocksize_, input_width / blocksize_) =
-      EigenTensorMap(const_cast<float*>(input.template Data<float>()), batch,
-                     input_depth, input_height / blocksize_, blocksize_,
-                     input_width / blocksize_, blocksize_)
-          .shuffle(permutation);
+  CreateOutput(input, output, permutation, batch,
+               input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
+               blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_);
 
   return Status::OK();
 }
@@ -80,28 +95,17 @@ Status DepthToSpace<float>::Compute(OpKernelContext* context) const {
   const int64_t output_width = input_width * blocksize_;
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
-  
-  // Process "DCR" mode
-  if (is_dcr_) {
-    std::array<int64_t, IntermediateTensorRank> permutation{{0, 3, 4, 1, 5, 2}};
-    EigenTensorMap(output.template MutableData<float>(), batch, input_depth / blocksize_ / blocksize_,
-                   input_height, blocksize_, input_width, blocksize_) =
-        EigenTensorMap(const_cast<float*>(input.template Data<float>()), batch,
-                       blocksize_, blocksize_, input_depth / blocksize_ / blocksize_,
-                       input_height, input_width)
-            .shuffle(permutation);   
-  }
 
-  // Process "CRD" mode
-  else {
-    std::array<int64_t, IntermediateTensorRank> permutation{{0, 1, 4, 2, 5, 3}};
-    EigenTensorMap(output.template MutableData<float>(), batch, input_depth / blocksize_ / blocksize_,
-                   input_height, blocksize_, input_width, blocksize_) =
-        EigenTensorMap(const_cast<float*>(input.template Data<float>()), batch,
-                       input_depth / blocksize_ / blocksize_, blocksize_, blocksize_,
-                       input_height, input_width)
-            .shuffle(permutation);  
-  }
+  // handle DCR and CRD format
+  auto dim1 = is_dcr_ ? blocksize_ : input_depth / blocksize_ / blocksize_;
+  auto dim3 = is_dcr_ ? input_depth / blocksize_ / blocksize_ : blocksize_;
+
+  auto permutation = is_dcr_ ? std::array<int64_t, IntermediateTensorRank>{{0, 3, 4, 1, 5, 2}}
+                             : std::array<int64_t, IntermediateTensorRank>{{0, 1, 4, 2, 5, 3}};
+
+  CreateOutput(input, output, permutation, batch,
+               dim1, blocksize_, dim3, input_height, input_width,
+               input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
 
   return Status::OK();
 }

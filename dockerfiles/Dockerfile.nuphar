@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
-ARG PYTHON_VERSION=3.5
+ARG PYTHON_VERSION=3.6
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_SERVER_BRANCH=master
 
@@ -22,8 +22,9 @@ RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p
 WORKDIR /
 
 RUN mkdir -p /onnxruntime/build && \
-    pip3 install sympy packaging && \
-    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_shared_lib --skip_submodule_sync --build_wheel --parallel --use_nuphar --use_mklml --use_tvm --use_llvm
-
-RUN pip3 install /onnxruntime/build/Release/dist/onnxruntime_nuphar-*.whl && \
+    pip3 install sympy packaging cpufeature jupyter && \
+    python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_shared_lib --skip_submodule_sync --build_wheel --parallel --use_nuphar --use_mklml --use_tvm --use_llvm && \
+    rm -rf /tmp/* && \
+    rm -rf /home/root/* && \
+    pip3 install /onnxruntime/build/Release/dist/onnxruntime_nuphar-*.whl && \
     rm -rf /onnxruntime

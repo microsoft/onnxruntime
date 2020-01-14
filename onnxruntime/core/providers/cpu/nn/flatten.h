@@ -23,13 +23,12 @@ class Flatten final : public OpKernel {
 
     const TensorShape& X_shape = X->Shape();
     auto axis = axis_;
-    
+
     // Valid axis range is [-rank, rank] instead of [-rank, rank-1], add additional check to only handle neg axis case.
-    if (axis < 0)
-    {
+    if (axis < 0) {
       axis = HandleNegativeAxis(axis, X_shape.NumDimensions());  // handle negative and enforce axis is valid
     }
-    
+
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(X_shape.NumDimensions()) >= axis, "The rank of input tensor must be >= axis");
 
     Tensor* Y = context->Output(0, TensorShape({X_shape.SizeToDimension(axis), X_shape.SizeFromDimension(axis)}));

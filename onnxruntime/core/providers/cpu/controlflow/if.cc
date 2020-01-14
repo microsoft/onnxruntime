@@ -304,10 +304,10 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
       // allocation plan for the If node's output is used.
       fetch_allocators[i] = [this, i, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
                                                 OrtValue& ort_value, bool& allocated) {
-        // for now we only allocate on CPU as currently all 'If' outputs are on CPU.
-        // if that does not match the required device we don't update the provided OrtValue and return false for
-        // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
-        // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
+        // if the device the If output is allocated on does not match the required device for the subgraph output
+        // we don't update the provided OrtValue and return false for 'allocated'.
+        // the execution frame will allocate a buffer on the required device, and the fetches copy
+        // logic in utils::ExecuteSubgraph will handle moving it into the tensor we allocated here.
         auto* tensor = context_.Output(i, shape);
         if (!tensor)
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create output tensor for If output ", i);

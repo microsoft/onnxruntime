@@ -12,12 +12,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
 class Transpose final : public CudaKernel, public TransposeBase {
  public:
   Transpose(const OpKernelInfo& info) : CudaKernel(info), TransposeBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+  static Status DoTranspose(const Transpose& transpose_kernel,
+                            const std::vector<size_t>& permutations, const Tensor& input, Tensor& output);
 };
 
 }  // namespace cuda

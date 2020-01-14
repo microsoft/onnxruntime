@@ -38,6 +38,8 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* skip = ctx->Input<Tensor>(1);
   const Tensor* gamma = ctx->Input<Tensor>(2);
   const Tensor* beta = ctx->Input<Tensor>(3);
+  const Tensor* bias = ctx->Input<Tensor>(4);
+
   Tensor* output = ctx->Output(0, input->Shape());
 
   const auto input_dims = input->Shape().GetDims();
@@ -71,6 +73,18 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
                            "Last dimension of beta and input does not match");
   }
 
+  if (nullptr != bias) {
+    const auto bias_dims = bias->Shape().GetDims();
+    if (bias_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "bias is expected to have 1 dimension, got ", bias_dims.size());
+    }
+    if (bias_dims[0] != input_dims[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Last dimension of bias and input does not match");
+    }
+  }
+
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
@@ -83,6 +97,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           skip->template Data<T>(),
           gamma->template Data<T>(),
           beta->template Data<T>(),
+          bias != nullptr ? bias->template Data<T>() : nullptr,
           batch_size,
           hidden_size,
           element_count,

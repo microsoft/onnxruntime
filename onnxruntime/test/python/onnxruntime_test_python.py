@@ -118,6 +118,26 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(
             output_expected, res[0], rtol=1e-05, atol=1e-08)
 
+    def testRunModel2Contiguous(self):
+        sess = onnxrt.InferenceSession(self.get_name("matmul_1.onnx"))
+        x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:,[1,0]]
+        input_name = sess.get_inputs()[0].name
+        self.assertEqual(input_name, "X")
+        input_shape = sess.get_inputs()[0].shape
+        self.assertEqual(input_shape, [3, 2])
+        output_name = sess.get_outputs()[0].name
+        self.assertEqual(output_name, "Y")
+        output_shape = sess.get_outputs()[0].shape
+        self.assertEqual(output_shape, [3, 1])
+        res = sess.run([output_name], {input_name: x})
+        output_expected = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
+        np.testing.assert_allclose(
+            output_expected, res[0], rtol=1e-05, atol=1e-08)
+        xcontiguous = np.ascontiguousarray(x)
+        rescontiguous = sess.run([output_name], {input_name: xcontiguous})
+        np.testing.assert_allclose(
+            output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
+
     def testRunModelMultipleThreads(self):
         so = onnxrt.SessionOptions()
         so.log_verbosity_level = 1
@@ -574,5 +594,28 @@ class TestInferenceSession(unittest.TestCase):
         opt.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
         self.assertEqual(opt.execution_mode, onnxrt.ExecutionMode.ORT_PARALLEL)
 
+    def testLoadingSessionOptionsFromModel(self):
+        try:
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(1)
+            sess = onnxrt.InferenceSession(self.get_name("model_with_valid_ort_config_json.onnx"))
+            session_options = sess.get_session_options()
+            
+            self.assertEqual(session_options.inter_op_num_threads, 5)  # from the ORT config
+            
+            self.assertEqual(session_options.intra_op_num_threads, 2)  # from the ORT config
+
+            self.assertEqual(session_options.execution_mode, onnxrt.ExecutionMode.ORT_SEQUENTIAL)  # default option (not from the ORT config)
+
+            self.assertEqual(session_options.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)  # from the ORT config
+
+            self.assertEqual(session_options.enable_profiling, True)  # from the ORT config
+            
+        except Exception: 
+            raise
+
+        finally:
+            # Make sure the usage of the feature is disabled after this test
+            os.environ['ORT_LOAD_CONFIG_FROM_MODEL'] = str(0)       
+        
 if __name__ == '__main__':
     unittest.main()

@@ -164,7 +164,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
     return copy_status;
   }
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   return common::Status::OK();
 }
 

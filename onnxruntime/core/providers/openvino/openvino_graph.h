@@ -20,7 +20,6 @@ namespace openvino_ep {
 
 class OpenVINOGraph {
  public:
-
   OpenVINOGraph(const onnxruntime::Node* fused_node);
 
   void Infer(Ort::CustomOpApi ort, OrtKernelContext* context);
@@ -53,7 +52,6 @@ class OpenVINOGraph {
   const onnxruntime::Node* fused_node_;
   std::shared_ptr<InferenceEngine::CNNNetwork> openvino_network_;
   size_t num_inf_reqs_;
-  InferenceEngine::InferencePlugin plugin_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   std::string device_id_;
   mutable std::mutex compute_lock_;

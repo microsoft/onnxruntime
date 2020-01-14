@@ -157,6 +157,12 @@ class Env {
   // \brief returns a provider that will handle telemetry on the current platform
   virtual const Telemetry& GetTelemetryProvider() const = 0;
 
+  // \brief returns a value for the queried variable name (var_name)
+  //
+  // Returns the corresponding value stored in the environment variable if available
+  // Returns empty string if there is no such environment variable available
+  virtual std::string GetEnvironmentVar(const std::string& var_name) const = 0;
+
  protected:
   Env();
 

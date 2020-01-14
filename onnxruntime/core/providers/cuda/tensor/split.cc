@@ -8,21 +8,27 @@
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_KERNEL_EX(
-    Split,
-    kOnnxDomain,
-    2,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Split);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
+                                  kOnnxDomain,
+                                  2, 10,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Split);
+
+// explicitly supports negative axis
+ONNX_OPERATOR_KERNEL_EX(Split,
+                        kOnnxDomain,
+                        11,
+                        kCudaExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        Split);
 
 Status Split::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
   auto& input_shape = input_tensor->Shape();
   auto num_outputs = ctx->OutputCount();
-  int64_t axis = axis_;
+  int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
   int before_dims = 0;
   int block_size_including_axis_dim = 0;
   int block_size_inside_axis_dim = 0;
@@ -57,15 +63,17 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
       axis_dimension_input_output_mapping.at(index++) = i;
     }
   }
+
   output_ptr.CopyToGpu();
 
   CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
   split_sizes_gpu.CopyToGpu();
-  
+
   std::vector<int64_t> split_sizes_range(split_sizes);
   for (size_t i = 1; i < split_sizes_range.size(); ++i) {
     split_sizes_range[i] += split_sizes_range[i - 1];
   }
+
   CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);
   split_sizes_range_gpu.CopyToGpu();
 

@@ -3,6 +3,7 @@
 
 #pragma once
 #include "gsl/gsl"
+#include "core/framework/utils.h"
 namespace onnxruntime {
 
 struct TensorPitches : std::vector<int64_t> {
@@ -172,7 +173,7 @@ struct SliceIterator {
   SliceIterator(const Tensor& tensor, const TensorShape& tensor_shape, gsl::span<const int64_t> starts,
                 gsl::span<const int64_t> extents, gsl::span<const int64_t> steps)
       : tensor_(tensor), extents_(extents), skips_(tensor_shape, extents, steps), indices_(extents.size(), 0) {
-    auto& dims = tensor_shape.GetDims();
+    const auto& dims = tensor_shape.GetDims();
     Init(dims, starts, steps);
   }
 
@@ -230,12 +231,14 @@ struct SliceIterator {
     return *input_;
   }
 
-  // spliting the function that copies the innermost dimension into 2 separate methods,
+  // splitting the function that copies the innermost dimension into 2 separate methods,
+  // CopyInnermostAxisSolitaryInnerStep and CopyInnermostAxisNonSolitaryInnerStep,
   // as this is most likely being called within a loop
-  // and we want to avoid the check inside to avoid overhead
-  // upto the caller to call the relevant one
+  // and we want to avoid the check inside to avoid overhead.
+  // up to the caller to call the correct one based on SolitaryInnerStep().
+  bool SolitaryInnerStep() const { return inner_step_ == 1; }
 
-  // Assumes inner_step_ == 1
+  // Assumes SolitaryInnerStep() == true
   T* CopyInnermostAxisSolitaryInnerStep(T* output) {
     std::copy(input_, input_ + inner_extent_, output);
     input_ += inner_extent_;
@@ -248,7 +251,7 @@ struct SliceIterator {
   T* CopyInnermostAxisNonSolitaryInnerStep(T* output) {
     for (size_t i = 0; i < inner_extent_; ++i) {
       *output++ = *input_;
-      input_ += inner_step_;
+      IncrementInnerDimension();
     }
     return output;
   }
@@ -267,7 +270,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
   const void* source = src->DataRaw();
 
   if (target != source) {
-    auto is_string_type = (src->DataType() == DataTypeImpl::GetType<std::string>());
+    auto is_string_type = utils::IsDataTypeString(src->DataType());
     if (is_string_type) {
       for (int64_t i = 0; i < src->Shape().Size(); ++i)
         static_cast<std::string*>(target)[i] = static_cast<const std::string*>(source)[i];

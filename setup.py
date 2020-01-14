@@ -110,27 +110,33 @@ try:
                     logger.info('removing %s', file)
                     remove(file)
 
-except ImportError:
+except ImportError as error:
+    print("Error importing dependencies:")
+    print(error)
     bdist_wheel = None
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libdnnl.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
+  # Openvino Libs
+  libs.extend(['libcpu_extension.so'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
-  libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
+  libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
   libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
+  # Openvino Libs
+  libs.extend(['cpu_extension.dll'])
   if nightly_build:
     libs.extend(['onnxruntime_pywrapper.dll'])
 
@@ -178,6 +184,11 @@ if nightly_build:
     date_suffix = str(datetime.datetime.now().date().strftime("%m%d"))
     version_number = version_number + ".dev" + date_suffix
 
+cmd_classes = {}
+if bdist_wheel is not None :
+    cmd_classes['bdist_wheel'] = bdist_wheel
+cmd_classes['build_ext'] = build_ext
+
 # Setup
 setup(
     name=package_name,
@@ -186,7 +197,7 @@ setup(
     long_description=long_description,
     author='Microsoft Corporation',
     author_email='onnx@microsoft.com',
-    cmdclass={'bdist_wheel': bdist_wheel, 'build_ext': build_ext},
+    cmdclass=cmd_classes,
     license="MIT License",
     packages=['onnxruntime',
               'onnxruntime.backend',

@@ -7,6 +7,7 @@
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/pad_ops.h"
 #include "core/codegen/mti/tensor/reshape_ops.h"
+#include "core/providers/nuphar/compiler/x86/scheduler/nuphar_scheduler.h"
 #include <topi/reduction.h>
 
 namespace onnxruntime {
@@ -85,7 +86,7 @@ tvm::Tensor ReduceValueWithoutSplit(const tvm::Tensor& X,
 
   tvm::Map<std::string, tvm::NodeRef> attrs;
   attrs.Set(kNupharVReduceFuseDim, tvm::Expr(fuse_dim));
-
+  attrs.Set(kNupharScheduleNoParallel, tvm::Expr(true));
   return tvm::compute(output_shape, l_out, name + "_regular_reduce", kNupharVReduce, attrs);
 }
 
@@ -303,6 +304,27 @@ tvm::Tensor ReduceMin(const tvm::Tensor& X,
                       const std::string& name) {
   return ReduceValue(X, topi::MinOp, axes, keep_dims,
                      X->dtype.max(), vector_size, last_dim_aligned, fuse_dim, name);
+}
+
+tvm::Tensor ReduceMean(const tvm::Tensor& X,
+                       const std::vector<int64_t>& axes, bool keep_dims,
+                       const int32_t vector_size,
+                       bool last_dim_aligned,
+                       int32_t fuse_dim,
+                       const std::string& name) {
+  tvm::Tensor sum = ReduceSum(X, axes, keep_dims, vector_size, last_dim_aligned, fuse_dim, name + "_sum");
+  tvm::Expr count;
+  if (axes.size() > 0) {
+    count = tvm::make_const(HalideIR::Int(32), 1);
+    for (auto ax : axes) {
+      ax = tvm_codegen::HandleNegativeAxis(ax, X->shape.size());
+      count = count * X->shape[ax];
+    }
+  } else {
+    // by default, reduce over all axes
+    count = tvm_codegen::SizeFromDimension(X->shape, 0);
+  }
+  return topi::divide(sum, tvm::cast(X->dtype, count), name + "_div");
 }
 
 // [WIP] a special vectorization friendly value reduction

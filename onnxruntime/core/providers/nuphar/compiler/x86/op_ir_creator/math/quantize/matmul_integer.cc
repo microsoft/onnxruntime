@@ -3,6 +3,7 @@
 
 #include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 
+#include "core/codegen/common/utils.h"
 #include "core/codegen/mti/math/binary_ops.h"
 #include "core/codegen/mti/math/matmul_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
@@ -49,10 +50,11 @@ tvm::Tensor IMatMulTensorize(const tvm::Tensor& A,
     A_reshape = A;
   } else {
     A_reshape = tvm_codegen::Reshape(A, {batchseq_dim, input_dim}, name + "_reshape_X");
-    if (input_dim != input_padded) {
-      tvm::Expr pad_value = tvm::make_const(A->dtype, 0);
-      A_reshape = tvm_codegen::PadLastDim(A_reshape, vector_width, pad_value);
-    }
+  }
+
+  if (input_dim != input_padded) {
+    tvm::Expr pad_value = tvm::make_const(A->dtype, 0);
+    A_reshape = tvm_codegen::PadLastDim(A_reshape, vector_width, pad_value);
   }
 
   tvm::Tensor Y = tvm::compute(
@@ -113,6 +115,8 @@ static Status EvaluateMatMulInteger(
 
       // Enviornment variables option
       const codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
+      TargetFeature feature = GetTargetInfo(settings);
+
       bool force_mkl = false;
       if (settings.HasOption(kNupharIMatMulForceMkl)) {
         force_mkl = true;
@@ -122,13 +126,9 @@ static Status EvaluateMatMulInteger(
         force_no_tensorize = true;
       }
 
-      // Target instruction option
-      bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
-      bool isAVX512 = CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake();
-
       // Tensorization: AVX2: 8bit GEMM AVX512: 8bit GEMV and GEMM
       bool isGEMV = (p_batch_seq_dim != nullptr && *p_batch_seq_dim == 1);
-      bool use_tensorization = !force_mkl && !force_no_tensorize && (isAVX512 || (isAVX2 && !isGEMV));
+      bool use_tensorization = !force_mkl && !force_no_tensorize && (feature.hasAVX512 || (feature.hasAVX2 && !isGEMV) || (!feature.hasAVX2 && feature.hasAVX));
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];
@@ -139,19 +139,19 @@ static Status EvaluateMatMulInteger(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        bool use_extern_MKL = (force_mkl || !isAVX2);
+        bool use_extern_MKL = (force_mkl || !feature.hasAVX2);
         tvm::Tensor output_tensor = use_extern_MKL ? IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL")
                                                    : IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2");
+
         outputs.push_back(output_tensor);
       } else if (use_tensorization) {
         // vector width determined from target hardware
-        // AVX2:   vector width 32 = 256bits / 8bit; 16 = 256 bits / 16bits;
-        // AVX512: vector width 64 = 512bits / 8bit; 32 = 512 bits / 16bits;
-        int vector_width = 32;
+        // AVX:    vector width 16 = 128 bits / 8 bits;
+        // AVX2:   vector width 32 = 256 bits / 8 bits;
+        // AVX512: vector width 64 = 512 bits / 8 bits;
         CodeGenTargetX86* target = dynamic_cast<CodeGenTargetX86*>(ctx_codegen.GetCodeGenHandle()->codegen_target);
-        if (target != nullptr) {
-          vector_width = target->NaturalVectorWidth(B->dtype.bits()) / 2;
-        }
+        ORT_ENFORCE(target != nullptr, "CodeGen target unknown: not AVX/AVX2/AVX512 !");
+        int vector_width = target->NaturalVectorWidth(B->dtype.bits()) / 2;
 
         // TVM has known issue when handling tensorization of matmul: [1x1] = [1xK]x[Kx1]
         // and this case is not likely happen in real model
@@ -192,7 +192,7 @@ static Status EvaluateMatMulInteger(
         auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
-        bool use_extern_AVX2 = (!force_mkl && isAVX2);
+        bool use_extern_AVX2 = (!force_mkl && feature.hasAVX2);
         tvm::Tensor output_tensor = use_extern_AVX2 ? IMatMulExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternAVX2")
                                                     : IMatMulExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, name + "_IMatMulExternMKL");
 
@@ -222,7 +222,13 @@ static Status EvaluateMatMulInteger16(
   bool is16bit = (A->dtype == HalideIR::type_of<int16_t>() &&
                   B->dtype == HalideIR::type_of<int16_t>());
 
-  if (B->shape.size() == 2 && is16bit) {
+  const codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
+  TargetFeature feature = GetTargetInfo(settings);
+
+  // 16bit on AVX fall back to 32bit
+  bool AVXonly = feature.hasAVX && !feature.hasAVX2;
+
+  if (!AVXonly && (B->shape.size() == 2 && is16bit)) {
     const int64_t* p_input_dim = tvm::as_const_int(B->shape[0]);
     const int64_t* p_embed_dim = tvm::as_const_int(B->shape[1]);
 
@@ -237,15 +243,10 @@ static Status EvaluateMatMulInteger16(
       }
       output_shape.push_back(tvm::Expr(gsl::narrow_cast<int>(embed_dim)));
 
-      // Enviornment variable option
-      const codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
       bool force_mkl = false;
       if (settings.HasOption(kNupharIMatMulForceMkl)) {
         force_mkl = true;
       }
-
-      // Target instruction option
-      bool isAVX2 = CPUIDInfo::GetCPUIDInfo().HasAVX2();
 
       // Model input option
       auto B_NodeArg = node.InputDefs()[1];
@@ -256,7 +257,7 @@ static Status EvaluateMatMulInteger16(
         //TODO: change to use MLAS when no layout could apply
         tvm::Tensor B_marshalled = tvm_codegen::Transpose(B, {1, 0});
 
-        bool use_extern_MKL = (force_mkl || !isAVX2);
+        bool use_extern_MKL = (force_mkl || !feature.hasAVX2);
         tvm::Tensor output_tensor = use_extern_MKL ? IMatMul16ExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternMKL")
                                                    : IMatMul16ExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternAVX2");
         outputs.push_back(output_tensor);
@@ -264,7 +265,7 @@ static Status EvaluateMatMulInteger16(
         auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(TensorProtoDataType(B_NodeArg));
         tvm::Tensor B_marshalled = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
 
-        bool use_extern_AVX2 = (!force_mkl && isAVX2);
+        bool use_extern_AVX2 = (!force_mkl && feature.hasAVX2);
         tvm::Tensor output_tensor = use_extern_AVX2 ? IMatMul16ExternAVX2(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternAVX2")
                                                     : IMatMul16ExternMKL(A, B_marshalled, output_shape, input_dim, embed_dim, node.Name() + "_IMatMulExternMKL");
         outputs.push_back(output_tensor);

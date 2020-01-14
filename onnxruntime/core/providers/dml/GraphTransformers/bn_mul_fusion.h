@@ -22,9 +22,9 @@ class BatchNormalizationMulFusion : public RewriteRule {
   }
 
  private:
-  bool SatisfyCondition(const Graph& graph, const Node& node) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node, const onnxruntime::logging::Logger&) const override;
 
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const onnxruntime::logging::Logger&) const override;
 };
 
 }  // namespace onnxruntime

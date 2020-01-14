@@ -150,37 +150,36 @@ std::pair<COMPARE_RESULT, std::string> CompareTwoTensors(const Tensor& outvalue,
     oss << "shape mismatch, expect " << expected_tensor.Shape().ToString() << " got " << outvalue.Shape().ToString();
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   }
-  auto p1 = outvalue.DataType();
-  if (p1 == DataTypeImpl::GetType<float>()) {
+  if (outvalue.IsDataType<float>()) {
     return CompareFloatResult<float>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                      post_processing);
-  } else if (p1 == DataTypeImpl::GetType<double>()) {
+  } else if (outvalue.IsDataType<double>()) {
     return CompareFloatResult<double>(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                       post_processing);
-  } else if (p1 == DataTypeImpl::GetType<std::string>()) {
+  } else if (outvalue.IsDataTypeString()) {
     return IsResultExactlyMatch<std::string>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<uint8_t>()) {
+  } else if (outvalue.IsDataType<uint8_t>()) {
     return IsResultExactlyMatch<uint8_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<int8_t>()) {
+  } else if (outvalue.IsDataType<int8_t>()) {
     return IsResultExactlyMatch<int8_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<uint16_t>()) {
+  } else if (outvalue.IsDataType<uint16_t>()) {
     return IsResultExactlyMatch<uint16_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<int16_t>()) {
+  } else if (outvalue.IsDataType<int16_t>()) {
     return IsResultExactlyMatch<int16_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<uint32_t>()) {
+  } else if (outvalue.IsDataType<uint32_t>()) {
     return IsResultExactlyMatch<uint32_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<int32_t>()) {
+  } else if (outvalue.IsDataType<int32_t>()) {
     return IsResultExactlyMatch<int32_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<uint64_t>()) {
+  } else if (outvalue.IsDataType<uint64_t>()) {
     return IsResultExactlyMatch<uint64_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<int64_t>()) {
+  } else if (outvalue.IsDataType<int64_t>()) {
     return IsResultExactlyMatch<int64_t>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<bool>()) {
+  } else if (outvalue.IsDataType<bool>()) {
     return IsResultExactlyMatch<bool>(outvalue, expected_tensor);
-  } else if (p1 == DataTypeImpl::GetType<MLFloat16>()) {
+  } else if (outvalue.IsDataType<MLFloat16>()) {
     return CompareFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                 post_processing);
-  } else if (p1 == DataTypeImpl::GetType<BFloat16>()) {
+  } else if (outvalue.IsDataType<BFloat16>()) {
     return CompareBFloat16Result(outvalue, expected_tensor, per_sample_tolerance, relative_per_sample_tolerance,
                                  post_processing);
   } else {
@@ -228,55 +227,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
 }
 
 const char* ElementTypeToString(MLDataType type) {
-  if (type == DataTypeImpl::GetType<float>()) {
-    return "tensor(float)";
-  } else if (type == DataTypeImpl::GetType<bool>()) {
-    return "tensor(bool)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int32_t>()) {
-    return "tensor(int32)";
-  }
-
-  else if (type == DataTypeImpl::GetType<double>()) {
-    return "tensor(double)";
-  }
-
-  else if (type == DataTypeImpl::GetType<std::string>()) {
-    return "tensor(string)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint8_t>()) {
-    return "tensor(uint8)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint16_t>()) {
-    return "tensor(uint16)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int16_t>()) {
-    return "tensor(int16)";
-  }
-
-  else if (type == DataTypeImpl::GetType<int64_t>()) {
-    return "tensor(int64)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint32_t>()) {
-    return "tensor(uint32)";
-  }
-
-  else if (type == DataTypeImpl::GetType<uint64_t>()) {
-    return "tensor(uint64)";
-  }
-
-  else if (type == DataTypeImpl::GetType<MLFloat16>()) {
-    return "tensor(MLFloat16)";
-  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
-    return "tensor(bfloat16)";
-  } else {
-    return "unknown";
-  }
+  return DataTypeImpl::ToString(type);
 }
 
 // The expected_shape could contain unknown dimensions, but the real_shape cannot

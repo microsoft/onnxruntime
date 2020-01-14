@@ -255,33 +255,11 @@ SPECIALIZED_SET(uint8_t);
 SPECIALIZED_SET(uint16_t);
 #undef SPECIALIZED_SET
 
-template <>
-void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
-                                                      const int64_t* col_shape, int64_t img_size, int64_t col_size,
-                                                      const int64_t* kernel_shape, const int64_t* stride,
-                                                      const int64_t* dilation, const int64_t* pad, int64_t N,
-                                                      float* data_img, CPUMathUtil* context) {
-  Set<float, CPUMathUtil>(img_size, 0, data_img, context);
-  Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
-      data_col,
-      img_shape,
-      col_shape,
-      img_size,
-      col_size,
-      kernel_shape,
-      stride,
-      dilation,
-      pad,
-      N,
-      data_img,
-      context,
-      true);
-}
-
-static void Im2colWithEqualPadding(int64_t output_h, int64_t output_w, const float* data_im, int64_t channels,
+template <typename T>
+static void Im2colWithEqualPadding(int64_t output_h, int64_t output_w, const T* data_im, int64_t channels,
                                    int64_t height, int64_t width, int64_t kernel_h, int64_t kernel_w,
                                    int64_t dilation_h, int64_t dilation_w, int64_t pad_t, int64_t pad_l,
-                                   int64_t stride_h, int64_t stride_w, float* data_col) {
+                                   int64_t stride_h, int64_t stride_w, T* data_col, T padding_value) {
   // From Intel, https://github.com/BVLC/caffe/pull/3536
   int64_t pad_h = pad_t;
   int64_t pad_w = pad_l;
@@ -292,16 +270,16 @@ static void Im2colWithEqualPadding(int64_t output_h, int64_t output_w, const flo
         int64_t input_row = -pad_h + kernel_row * dilation_h;
         for (int64_t output_rows = output_h; output_rows; output_rows--) {
           if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
-            memset(data_col, 0, output_w * sizeof(float));
+            std::fill_n(data_col, output_w, padding_value);
             data_col += output_w;
           } else {
             int64_t input_col = -pad_w + kernel_col * dilation_w;
-            const float* rdptr = data_im + input_row * width + input_col;
+            const T* rdptr = data_im + input_row * width + input_col;
             for (int64_t i = 0; i != output_w; ++i) {
               if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
                 *(data_col++) = rdptr[i * stride_w];
               } else {
-                *(data_col++) = 0;
+                *(data_col++) = padding_value;
               }
               input_col += stride_w;
             }
@@ -312,12 +290,13 @@ static void Im2colWithEqualPadding(int64_t output_h, int64_t output_w, const flo
     }
   }
 }
-template <>
-void Im2col<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_im, int64_t channels, int64_t height,
-                                                    int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                    int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                    int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                    int64_t stride_w, float* data_col, CPUMathUtil* /*context*/) {
+
+template <typename T>
+void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channels, int64_t height,
+                                               int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                               int64_t stride_w, T* data_col, T padding_value) {
   const int64_t output_h =
       (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h +
       1;
@@ -344,13 +323,13 @@ void Im2col<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_im, int64_
           memcpy(
               dst + (y * output_w),
               src + (iy * width + ix),
-              sizeof(float) * output_w);
+              sizeof(T) * output_w);
         } else {
           for (auto x = 0; x < output_w; x++) {
             memcpy(
                 dst + (y * output_w + x),
                 src + (iy * width + ix + x * stride_w),
-                sizeof(float));
+                sizeof(T));
           }
         }
       }
@@ -360,7 +339,7 @@ void Im2col<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_im, int64_
 
   // Fast path for equal padding
   if (pad_l == pad_r && pad_t == pad_b) {
-    Im2colWithEqualPadding(output_h, output_w, data_im, channels, height, width, kernel_h, kernel_w, dilation_h, dilation_w, pad_t, pad_l, stride_h, stride_w, data_col);
+    Im2colWithEqualPadding(output_h, output_w, data_im, channels, height, width, kernel_h, kernel_w, dilation_h, dilation_w, pad_t, pad_l, stride_h, stride_w, data_col, padding_value);
     return;
   }
 
@@ -384,18 +363,21 @@ void Im2col<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_im, int64_
           data_col[(c * height_col + h) * width_col + w] =
               data_im[(c_im * height + h_pad) * width + w_pad];
         else
-          data_col[(c * height_col + h) * width_col + w] = 0;
+          data_col[(c * height_col + h) * width_col + w] = padding_value;
       }
     }
   }
 }
 
+template struct Im2col<float, StorageOrder::NCHW>;
+template struct Im2col<uint8_t, StorageOrder::NCHW>;
+
 template <>
-void Im2col<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_im, int64_t channels, int64_t height,
-                                                    int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                    int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                    int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                    int64_t stride_w, float* data_col, CPUMathUtil* /*context*/) {
+void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t channels, int64_t height,
+                                                   int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                                   int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                                   int64_t stride_w, float* data_col, float padding_value) {
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
@@ -412,8 +394,7 @@ void Im2col<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_im, int64_
             memcpy(data_col, data_im + (ih * width + iw) * channels,
                    sizeof(float) * channels);
           } else {
-            // This should be simply padded with zero.
-            memset(data_col, 0, sizeof(float) * channels);
+            std::fill_n(data_col, channels, padding_value);
           }
           data_col += channels;
         }
@@ -558,6 +539,28 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
     }
     h_pad += stride_h;
   }
+}
+
+template <>
+void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, const int64_t* img_shape,
+                                                      const int64_t* col_shape, int64_t img_size, int64_t col_size,
+                                                      const int64_t* kernel_shape, const int64_t* stride,
+                                                      const int64_t* dilation, const int64_t* pad, int64_t N,
+                                                      float* data_img, CPUMathUtil* context) {
+  Set<float, CPUMathUtil>(img_size, 0, data_img, context);
+  Im2colNd<float, StorageOrder::NCHW>()(
+      data_col,
+      img_shape,
+      col_shape,
+      img_size,
+      col_size,
+      kernel_shape,
+      stride,
+      dilation,
+      pad,
+      N,
+      data_img,
+      true);
 }
 
 #define SPECIALIZED_COPYVECTOR(T)                                                          \

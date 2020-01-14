@@ -43,17 +43,6 @@ ADD_TYPED_ROIALIGN_OP(double);
 
 namespace {
 template <typename T>
-void TryParallelFor(concurrency::ThreadPool* tp, int32_t total, T&& fn) {
-  if (tp != nullptr)
-    tp->ParallelFor(total, fn);
-  else {
-    for (int32_t i = 0; i != total; ++i) {
-      fn(i);
-    }
-  }
-}
-
-template <typename T>
 struct PreCalc {
   int64_t pos1;
   int64_t pos2;
@@ -183,9 +172,7 @@ void RoiAlignForward(const TensorShape& output_shape,
   int64_t pooled_height = output_shape[2];
   int64_t pooled_width = output_shape[3];
 
-  // TODO: This should do blocks of work based on the number of threads in the threadpool with each block
-  // being n_rois / num_threads
-  std::function<void(int32_t)> work_object = [&](int32_t n) {
+  ThreadPool::TryBatchParallelFor(ttp, static_cast<int32_t>(n_rois), [&](int32_t n) {
     int64_t index_n = n * channels * pooled_width * pooled_height;
 
     const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
@@ -281,9 +268,7 @@ void RoiAlignForward(const TensorShape& output_shape,
         }  // for pw
       }    // for ph
     }      // for c
-  };       // for n
-
-  TryParallelFor(ttp, static_cast<int32_t>(n_rois), work_object);
+  });      // for n
 }
 }  // namespace
 

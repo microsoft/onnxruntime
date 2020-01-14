@@ -21,7 +21,7 @@ namespace test {
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 std::shared_ptr<onnxruntime::Model> DummyGraphWithClip() {
-  auto model = std::make_shared<onnxruntime::Model>("test");
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -42,7 +42,7 @@ class ExecutionFrameTest : public ::testing::Test {
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
-  onnxruntime::Model model("test");
+  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -112,7 +112,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
   onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                           std::unordered_map<std::string, int>{{"", 10}});
+                           std::unordered_map<std::string, int>{{"", 10}}, {},
+                           DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -164,7 +165,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);

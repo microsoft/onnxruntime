@@ -1091,6 +1091,18 @@ void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* co
       });
 }
 
+// Generic implementation of Mod kernel
+template <class T>
+struct CallModImpl {
+  void operator()(bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) const {
+    if (fmod) {
+      BroadCastFMod<T>(X, Y, ctx);
+    } else {
+      BroadCastMod<T>(X, Y, ctx);
+    }
+  }
+};
+
 }  // namespace mod_internal
 
 Status Mod::Compute(OpKernelContext* context) const {
@@ -1108,68 +1120,29 @@ Status Mod::Compute(OpKernelContext* context) const {
 
   using namespace mod_internal;
 
-  if (dtype == DataTypeImpl::GetType<float>()) {
-    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-    BroadCastFMod<float>(X, Y, context);
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
-    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-    BroadCastFMod<double>(X, Y, context);
-  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-    BroadCastMFloat16FMod(X, Y, context);
-  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint8_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint8_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int8_t>(X, Y, context);
-    } else {
-      BroadCastMod<int8_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint16_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint16_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int16_t>(X, Y, context);
-    } else {
-      BroadCastMod<int16_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint32_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint32_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int32_t>(X, Y, context);
-    } else {
-      BroadCastMod<int32_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint64_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint64_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int64_t>(X, Y, context);
-    } else {
-      BroadCastMod<int64_t>(X, Y, context);
-    }
-  } else {
-    ORT_ENFORCE(false, "Unsupported data type", dtype);
+  namespace on = ONNX_NAMESPACE;
+  auto dt_type = X.GetElementType();
+  switch (dt_type) {
+    case on::TensorProto_DataType_FLOAT:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastFMod<float>(X, Y, context);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastFMod<double>(X, Y, context);
+      break;
+    case on::TensorProto_DataType_FLOAT16:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastMFloat16FMod(X, Y, context);
+      break;
+    default:
+      utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
+                                  uint32_t, int32_t, uint64_t, int64_t>
+          t_disp(dt_type);
+      t_disp.Invoke(fmod_, X, Y, context);
+      break;
   }
-
   return s;
-}  // namespace onnxruntime
+}
 
 }  // namespace onnxruntime

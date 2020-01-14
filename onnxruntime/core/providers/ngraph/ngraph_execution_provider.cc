@@ -527,14 +527,15 @@ NGRAPHExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node) {
+static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
   const auto* node_function = fused_node->GetFunctionBody();
 
   ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
 
   const Graph& node_subgraph = node_function->Body();
   onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap()};
+                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
+                           std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -551,9 +552,7 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
 
     // Local copy of backend since, class members cannot be captured.
     auto ngraph_backend = ng_backend_;
-    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node), ngraph_backend]
-                                     (ComputeContext* context, FunctionState* state)
-    {
+    compute_info.create_state_func = [model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger()), ngraph_backend](ComputeContext* context, FunctionState* state) {
       auto* p = new ngraph_ep::NGRAPHCustomOp(context, model_proto, ngraph_backend);
       *state = p;
       return 0;
@@ -564,7 +563,7 @@ Status NGRAPHExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& f
         delete reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       onnxruntime::ngraph_ep::NGRAPHCustomOp* ng_custom_op = reinterpret_cast<onnxruntime::ngraph_ep::NGRAPHCustomOp*>(state);
       return ng_custom_op->Compute(api, context);
     };

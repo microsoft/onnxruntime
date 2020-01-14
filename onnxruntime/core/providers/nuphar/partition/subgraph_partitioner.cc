@@ -189,7 +189,9 @@ Status SubgraphPartitioner::Partition(
           bool unused_initializer = false;
           if (t != nullptr) {
             // note for Reshape and Tile, shape/repeats as initializer is not used at runtime
-            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1);
+            // neither for any scalar
+            unused_initializer = ((node.OpType() == "Reshape" || node.OpType() == "Tile") && i == 1) ||
+                                 t->Shape().Size() == 1;
 
             if (!unused_initializer) {
               subgraph.initializers.emplace(def.Name(), t);

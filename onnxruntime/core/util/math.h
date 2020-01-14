@@ -55,8 +55,8 @@ void Sqr(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
-#define DECLARE_BINARY_OP(name)                                                     \
-  template <typename T, class Provider>                                             \
+#define DECLARE_BINARY_OP(name)         \
+  template <typename T, class Provider> \
   void name(int N, const T* a, const T* b, T* y, Provider* provider);
 
 DECLARE_BINARY_OP(Add);
@@ -142,7 +142,70 @@ void Axpy(int N, float alpha, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Axpy(int N, const float* alpha, const T* x, T* y, Provider* provider);
 
-template <typename T, class Provider, int order>
+template <typename T, int order>
+struct Im2col {
+  void operator()(
+      const T* data_im,
+      int64_t channels,
+      int64_t height,
+      int64_t width,
+      int64_t kernel_h,
+      int64_t kernel_w,
+      int64_t dilation_h,
+      int64_t dilation_w,
+      int64_t pad_t,
+      int64_t pad_l,
+      int64_t pad_b,
+      int64_t pad_r,
+      int64_t stride_h,
+      int64_t stride_w,
+      T* data_col,
+      T padding_value = 0);
+};
+
+template <typename T>
+struct Im2col<T, StorageOrder::NCHW> {
+  void operator()(
+      const T* data_im,
+      int64_t channels,
+      int64_t height,
+      int64_t width,
+      int64_t kernel_h,
+      int64_t kernel_w,
+      int64_t dilation_h,
+      int64_t dilation_w,
+      int64_t pad_t,
+      int64_t pad_l,
+      int64_t pad_b,
+      int64_t pad_r,
+      int64_t stride_h,
+      int64_t stride_w,
+      T* data_col,
+      T padding_value = 0);
+};
+
+template <typename T>
+struct Im2col<T, StorageOrder::NHWC> {
+  void operator()(
+      const T* data_im,
+      int64_t channels,
+      int64_t height,
+      int64_t width,
+      int64_t kernel_h,
+      int64_t kernel_w,
+      int64_t dilation_h,
+      int64_t dilation_w,
+      int64_t pad_t,
+      int64_t pad_l,
+      int64_t pad_b,
+      int64_t pad_r,
+      int64_t stride_h,
+      int64_t stride_w,
+      T* data_col,
+      T padding_value = 0);
+};
+
+template <typename T, int order>
 struct Im2colNd {
   void operator()(
       const T* data_img,
@@ -156,16 +219,15 @@ struct Im2colNd {
       const int64_t* pad,
       int64_t N,
       T* data_col,
-      Provider* /*provider*/,
       bool accumulate_output = false,
       T padding_value = 0);
 };
 
-template <typename T, class Provider>
-struct Im2colNd<T, Provider, StorageOrder::NCHW> {
+template <typename T>
+struct Im2colNd<T, StorageOrder::NCHW> {
   void operator()(const T* data_img, const int64_t* im_shape, const int64_t* col_shape, int64_t /*img_size*/,
                   int64_t /*col_size*/, const int64_t* kernel_shape, const int64_t* stride, const int64_t* dilation,
-                  const int64_t* pad, int64_t N, T* data_col, Provider* /*provider*/, bool accumulate_output = false,
+                  const int64_t* pad, int64_t N, T* data_col, bool accumulate_output = false,
                   T padding_value = 0) {
     int64_t kernel_size = 1;
     for (int64_t i = 0; i < N; ++i) {
@@ -239,25 +301,6 @@ void Col2imNd(
     const int64_t* pad,
     int64_t N,
     T* data_img,
-    Provider* provider);
-
-template <typename T, class Provider, int order>
-void Im2col(
-    const T* data_im,
-    int64_t channels,
-    int64_t height,
-    int64_t width,
-    int64_t kernel_h,
-    int64_t kernel_w,
-    int64_t dilation_h,
-    int64_t dilation_w,
-    int64_t pad_t,
-    int64_t pad_l,
-    int64_t pad_b,
-    int64_t pad_r,
-    int64_t stride_h,
-    int64_t stride_w,
-    T* data_col,
     Provider* provider);
 
 template <typename T, class Provider, int order>

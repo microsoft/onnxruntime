@@ -182,7 +182,10 @@ bool LaunchEmbedLayerNormKernel(
     const size_t element_size) {
   const cudaStream_t stream = nullptr;  // default stream
 
-  if (!ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index))) {
+  if (nullptr == input_mask) {
+    if (!CUDA_CALL(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size)))
+      return false;
+  } else if (!ComputeMaskIndex(stream, sequence_length, batch_size, input_mask, static_cast<int*>(mask_index))) {
     return false;
   }
 

@@ -142,8 +142,6 @@ tvm::runtime::PackedFunc LoadTVMPackedFuncFromCache(const std::string& func_name
   return func;
 }
 
-thread_local int saved_tvm_model_cnt = 0;
-
 void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& module) {
   fs::path path;
 
@@ -156,7 +154,7 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   if (existing_files.count(filename) == 0 &&
       GetOrCreateTVMModuleCacheDirectory(path, /*create*/ true)) {
     existing_files.insert(filename);
-    path.append("cached_" + std::to_string(saved_tvm_model_cnt++) + ".o");
+    path.append(filename + ".o");
     if (fs::exists(path)) {
       LOGS_DEFAULT(CODEGEN_SETTINGS_LOG_LEVEL) << "Object file " << path << " already exists, skip saving...";
       return;
@@ -165,9 +163,75 @@ void SaveTVMModuleToCache(const std::string& filename, tvm::runtime::Module& mod
   }
 }
 
-std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target) {
+std::string GetPackedFuncName(const nuphar::NupharSubgraphUnit& subgraph, const CodeGenTarget& codegen_target, int64_t parallel_min_workloads) {
   // in C, a function does not allow its name starting with a digit.
-  return NormalizeCppName("_" + subgraph.UniqueId() + " " + codegen_target.GetTargetName());
+  return NormalizeCppName("_" + subgraph.UniqueId() + "_" + codegen_target.GetTargetName() + "_p" + std::to_string(parallel_min_workloads));
+}
+
+bool TryCreateConstantScalar(
+    tvm::Expr& scalar,
+    const Tensor* tensor) {
+  if (!tensor)
+    return false;
+
+  auto num_elements = tensor->Shape().Size();
+  if (num_elements > 1) {
+    // for non-scalar, only fold to constant scalar when all values are identical
+    const auto& dtype = tensor->DataType();
+    auto elem_size = dtype->Size();
+    const void* data = tensor->DataRaw();
+
+#define CHECK_ALL_TENSOR_SAME(T)                                                    \
+  for (int64_t i = 1; i < num_elements; ++i) {                                      \
+    if (reinterpret_cast<const T*>(data)[i] != reinterpret_cast<const T*>(data)[0]) \
+      return false;                                                                 \
+  }
+
+    switch (elem_size) {
+      case 1:
+        CHECK_ALL_TENSOR_SAME(int8_t);
+        break;
+      case 2:
+        CHECK_ALL_TENSOR_SAME(int16_t);
+        break;
+      case 4:
+        CHECK_ALL_TENSOR_SAME(int32_t);
+        break;
+      case 8:
+        CHECK_ALL_TENSOR_SAME(int64_t);
+        break;
+      default:
+        return false;
+    }
+
+#undef CHECK_ALL_TENSOR_SAME
+  }
+
+#define ASSIGN_TVM_SCALAR(tvm_type, tensor_type)                      \
+  if (tensor->IsDataType<tensor_type>()) {                            \
+    scalar = tvm::make_const(tvm_type, *tensor->Data<tensor_type>()); \
+  }
+
+#define ASSIGN_TVM_SCALAR_ELSE(tvm_type, tensor_type) \
+  else ASSIGN_TVM_SCALAR(tvm_type, tensor_type)
+
+  ASSIGN_TVM_SCALAR(HalideIR::Float(32), float)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Float(64), double)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(64), int64_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(32), int32_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(16), int16_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::Int(8), int8_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(64), uint64_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(32), uint32_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(16), uint16_t)
+  ASSIGN_TVM_SCALAR_ELSE(HalideIR::UInt(8), uint8_t)
+  else {
+    return false;
+  }
+
+#undef ASSIGN_TVM_SCALAR
+
+  return true;
 }
 
 }  // namespace nuphar

@@ -1,8 +1,25 @@
 <h1><span style="color:red">Note: ONNX Runtime Server is still in beta state and may not be ready for production environments.</span></h1>
 
+# How to Use build ONNX Runtime Server for Prediction
+ONNX Runtime Server provides an easy way to start an inferencing server for prediction with both HTTP and GRPC endpoints.
+
+The CLI command to build the server is
+
+Default CPU:
+```
+python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER
+```
+
+Openvino EP:
+
+```
+python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_openvino $DEVICE --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+```
+
+where $DEVICE can be CPU_FP32,GPU_FP32,VAD-M_FP16 or MYRIAD_FP16 as per the execution provider
 # How to Use ONNX Runtime Server for Prediction
 
-ONNX Runtime Server provides an easy way to start an inferencing server for prediction with both HTTP and GRPC endpoints. The CLI command to start the server is shown below:
+ The CLI command to start the server is shown below:
 
 ```
 $ ./onnxruntime_server

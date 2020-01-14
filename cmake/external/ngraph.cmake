@@ -71,8 +71,9 @@ if (MSVC)
                 -Dprebuilt_ONNX_SOURCE_DIR=${prebuilt_ONNX_SOURCE_DIR}
             DEPENDS onnx
         )
-    add_library(ngraph STATIC IMPORTED)
-    set_property(TARGET ngraph PROPERTY IMPORTED_LOCATION ${ngraph_LIBRARIES}/ngraph.lib)
+    add_library(ngraph SHARED IMPORTED)
+    set_property(TARGET ngraph PROPERTY IMPORTED_LOCATION ${ngraph_LIBRARIES}/${NGRAPH_SHARED_LIB})
+    set_property(TARGET ngraph PROPERTY IMPORTED_IMPLIB ${ngraph_LIBRARIES}/ngraph.lib)
 else()
     ExternalProject_Add(project_ngraph
             PREFIX ngraph

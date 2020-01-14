@@ -21,10 +21,10 @@ namespace nuphar {
 #define NUPHAR_TVM_X86_OP_IR_CREATOR_STRING(OP) \
   STRINGIZE(NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(OP))
 
-#define LIST_X86_POOL_OPS()  \
-  POOL_OP(MaxPool)           \
-  POOL_OP(AveragePool)       \
-  POOL_OP(GlobalMaxPool)     \
+#define LIST_X86_POOL_OPS() \
+  POOL_OP(MaxPool)          \
+  POOL_OP(AveragePool)      \
+  POOL_OP(GlobalMaxPool)    \
   POOL_OP(GlobalAveragePool)
 
 #define LIST_X86_UNARY_OPS()   \
@@ -41,7 +41,8 @@ namespace nuphar {
 #define LIST_REDUCE_V_OPS() \
   REDUCE_V_OP(ReduceMax)    \
   REDUCE_V_OP(ReduceMin)    \
-  REDUCE_V_OP(ReduceSum)
+  REDUCE_V_OP(ReduceSum)    \
+  REDUCE_V_OP(ReduceMean)
 
 #define LIST_ALL_X86_OPS()     \
   LIST_REDUCE_V_OPS()          \
@@ -52,6 +53,7 @@ namespace nuphar {
   ADD_OP_ITEM(MatMul)          \
   ADD_OP_ITEM(MatMulInteger)   \
   ADD_OP_ITEM(MatMulInteger16) \
+  ADD_OP_ITEM(Pow)             \
   ADD_OP_ITEM(Scatter)         \
   ADD_OP_ITEM(ScatterElements) \
   ADD_OP_ITEM(Slice)           \

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace nuphar {
 
-tvm::Tensor LogSoftmax(const tvm::Tensor& input, int64_t axis, const std::string& name = "LogSoftmax");
+tvm::Tensor LogSoftmax(const tvm::Tensor& input, int64_t axis, int64_t vector_width, const std::string& name = "LogSoftmax");
 
 }  // namespace nuphar
 }  // namespace onnxruntime

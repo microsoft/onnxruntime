@@ -5,9 +5,9 @@
 #include "environment.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#ifdef USE_MKLDNN
+#ifdef USE_DNNL
 
-#include "core/providers/mkldnn/mkldnn_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
 
 #endif
 
@@ -20,6 +20,12 @@
 #ifdef USE_NUPHAR
 
 #include "core/providers/nuphar/nuphar_provider_factory.h"
+
+#endif
+
+#ifdef USE_OPENVINO
+
+#include "core/providers/openvino/openvino_provider_factory.h"
 
 #endif
 
@@ -61,8 +67,8 @@ ServerEnvironment::ServerEnvironment(OrtLoggingLevel severity, spdlog::sinks_ini
 }
 
 void ServerEnvironment::RegisterExecutionProviders(){
-  #ifdef USE_MKLDNN
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(options_, 1));
+  #ifdef USE_DNNL
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(options_, 1));
   #endif
 
   #ifdef USE_NGRAPH
@@ -72,6 +78,12 @@ void ServerEnvironment::RegisterExecutionProviders(){
   #ifdef USE_NUPHAR
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(options_, 1, ""));
   #endif
+  
+  #ifdef USE_OPENVINO
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(options_, "CPU"));
+  #endif
+  
+
 }
 
 void ServerEnvironment::InitializeModel(const std::string& model_path, const std::string& model_name, const std::string& model_version) {

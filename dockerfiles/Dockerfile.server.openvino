@@ -1,0 +1,69 @@
+#-------------------------------------------------------------------------
+# Copyright(C) 2019 Intel Corporation.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
+FROM ubuntu:16.04
+
+RUN apt update && \
+    apt -y install git sudo wget bash \
+    python3.5 python3-pip zip x11-apps lsb-core cpio libboost-python-dev libpng-dev zlib1g-dev libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.58.0 libboost-thread1.58.0 protobuf-compiler libprotoc-dev libusb-1.0-0-dev
+ARG PYTHON_VERSION=3.5
+ARG DEVICE=CPU_FP32
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
+ARG ONNXRUNTIME_SERVER_BRANCH=master
+
+RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
+RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh -p ${PYTHON_VERSION} && \
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_server_deps.sh
+
+RUN /bin/sh /onnxruntime/dockerfiles/scripts/install_common_deps.sh
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+
+ENV pattern="COMPONENTS=DEFAULTS"
+ENV replacement="COMPONENTS=intel-openvino-ie-sdk-ubuntu-xenial__x86_64;intel-openvino-ie-rt-cpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-gpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-vpu-ubuntu-xenial__x86_64;intel-openvino-ie-rt-hddl-ubuntu-xenial__x86_64;intel-openvino-model-optimizer__x86_64;intel-openvino-opencv-lib-ubuntu-xenial__x86_64"
+COPY l_openvino_*.tgz .
+RUN tar -xzf l_openvino_toolkit*.tgz && \
+    rm -rf l_openvino_toolkit*.tgz && \
+    cd l_openvino_toolkit* && \
+    sed -i "s/$pattern/$replacement/" silent.cfg && \
+    sed -i 's/decline/accept/g' silent.cfg && \
+    ./install.sh -s silent.cfg && \
+    cd - && \
+    rm -rf l_openvino_toolkit* && \
+    cd /opt/intel/openvino/install_dependencies && ./_install_all_dependencies.sh && dpkg -i *.deb && \
+    pip3 install networkx==2.3 test-generator==0.1.1 defusedxml>=0.5.0
+
+ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2019.3.376
+ENV INTEL_CVSDK_DIR=/opt/intel/openvino_2019.3.376
+ENV InferenceEngine_DIR=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/share
+ENV IE_PLUGINS_PATH=${INTEL_CVSDK_DIR}/deployment_tools/inference_engine/lib/intel64
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/cldnn/lib:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
+ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
+ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
+ENV PATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PATH
+ENV PYTHONPATH=${INTEL_CVSDK_DIR}/deployment_tools/model_optimizer:$PYTHONPATH
+ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
+ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
+RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
+ENV LANG en_US.UTF-8
+
+RUN mkdir -p /opt/cmake/bin
+
+ENV PATH /opt/cmake/bin:$PATH
+
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
+    tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.13.2-Linux-x86_64.tar.gz
+
+WORKDIR /onnxruntime/build/Release/
+RUN mkdir -p /onnxruntime/build
+RUN rm -rf /usr/bin/python && ln -s /usr/bin/python3 /usr/bin/python && \
+    ln -s /usr/bin/pip3 /usr/bin/pip
+RUN python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_openvino $DEVICE --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+
+ENTRYPOINT ["/onnxruntime/build/Release/onnxruntime_server"]
+  

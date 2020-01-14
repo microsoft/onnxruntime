@@ -74,16 +74,15 @@ Status Split::Compute(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
 
   Status status;
-  auto data_type = input.DataType();
 
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<int32_t>())
+  else if (input.IsDataType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
-    ORT_THROW("Split operator does not support ", data_type, " yet");
+    ORT_THROW("Split operator does not support ", input.DataType(), " yet");
 
   return status;
 }

@@ -29,7 +29,7 @@ namespace cuda {
 
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernelSmall(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, T* output) {
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, T* output) {
   const T reverse_ld = T(1) / T(ld);
   const int offset = blockIdx.x * ld;
 
@@ -40,7 +40,7 @@ __global__ void SkipLayerNormKernelSmall(
   T val = 0;
 
   if (threadIdx.x < ld) {
-    val = input[idx] + skip[idx];
+    val = (bias == nullptr) ? input[idx] + skip[idx] : input[idx] + skip[idx] + bias[threadIdx.x];
     const T rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
   }
@@ -50,7 +50,7 @@ __global__ void SkipLayerNormKernelSmall(
 
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernel(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, T* output) {
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, T* output) {
   const T reverse_ld = T(1) / T(ld);
   const int offset = blockIdx.x * ld;
 
@@ -60,7 +60,7 @@ __global__ void SkipLayerNormKernel(
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
-    const T val = input[idx] + skip[idx];
+    const T val = (bias == nullptr) ? input[idx] + skip[idx] : input[idx] + skip[idx] + bias[i];
     const T rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
     output[idx] = val;
@@ -72,7 +72,7 @@ __global__ void SkipLayerNormKernel(
 template <typename T>
 bool ComputeSkipLayerNorm(
     cudaStream_t stream, const int ld, const int n, const T* input, const T* skip,
-    const T* beta, const T* gamma, T* output) {
+    const T* beta, const T* gamma, const T* bias, T* output) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
   const int grid_size = n / ld;
@@ -80,18 +80,18 @@ bool ComputeSkipLayerNorm(
   if (ld <= 32) {
     constexpr int block_size = 32;
     SkipLayerNormKernelSmall<T, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
   } else if (ld <= 128) {
     constexpr int block_size = 128;
     SkipLayerNormKernelSmall<T, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
   } else if (ld == 384) {
     constexpr int block_size = 384;
     SkipLayerNormKernelSmall<T, block_size>
-        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
   } else {
     constexpr int block_size = 256;
-    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, output);
+    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, output);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -102,6 +102,7 @@ bool LaunchSkipLayerNormKernel(
     const void* skip,
     const void* gamma,
     const void* beta,
+    const void* bias,
     const int batch_size,
     const int hidden_size,
     const int element_count,
@@ -111,15 +112,25 @@ bool LaunchSkipLayerNormKernel(
 
   if (element_size == 2) {
     return ComputeSkipLayerNorm(
-        stream, hidden_size, element_count,
-        reinterpret_cast<const half*>(input), reinterpret_cast<const half*>(skip),
-        reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
+        stream,
+        hidden_size,
+        element_count,
+        reinterpret_cast<const half*>(input),
+        reinterpret_cast<const half*>(skip),
+        reinterpret_cast<const half*>(beta),
+        reinterpret_cast<const half*>(gamma),
+        reinterpret_cast<const half*>(bias),
         reinterpret_cast<half*>(output));
   } else {
     return ComputeSkipLayerNorm(
-        stream, hidden_size, element_count,
-        reinterpret_cast<const float*>(input), reinterpret_cast<const float*>(skip),
-        reinterpret_cast<const float*>(beta), reinterpret_cast<const float*>(gamma),
+        stream,
+        hidden_size,
+        element_count,
+        reinterpret_cast<const float*>(input),
+        reinterpret_cast<const float*>(skip),
+        reinterpret_cast<const float*>(beta),
+        reinterpret_cast<const float*>(gamma),
+        reinterpret_cast<const float*>(bias),
         reinterpret_cast<float*>(output));
   }
 }

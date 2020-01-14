@@ -8,6 +8,7 @@
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
 #include "test_utils.h"
+#include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -74,7 +75,8 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version);
+                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -111,7 +113,7 @@ TEST(TransformerTest, MemcpyTransformerTest) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -128,7 +130,8 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version);
+                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TypeProto tensor_float_type;
@@ -165,7 +168,7 @@ TEST(TransformerTest, MemcpyTransformerTestCudaFirst) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 
@@ -204,7 +207,8 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
                                                     false,
                                                     ModelMetaData(),
                                                     IOnnxRuntimeOpSchemaRegistryList(),
-                                                    domain_to_version);
+                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
 
   TensorProto parent_constant(value_tensor);
@@ -221,7 +225,8 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
                                                         false,
                                                         ModelMetaData(),
                                                         IOnnxRuntimeOpSchemaRegistryList(),
-                                                        subgraph_domain_to_version);
+                                                        subgraph_domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                        DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& subgraph = sub_model->MainGraph();
 
   TensorProto local_constant(value_tensor);
@@ -278,7 +283,7 @@ TEST(TransformerTest, TestCopyNodeInsertionInitializerInSubgraph) {
   MemcpyTransformer transformer({onnxruntime::kCudaExecutionProvider}, test_registry_manager);
 
   bool modified = false;
-  status = transformer.Apply(graph, modified);
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   EXPECT_TRUE(modified);
 }

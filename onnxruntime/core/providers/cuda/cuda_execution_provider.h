@@ -140,7 +140,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_map_;
 
   // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
+  mutable std::deque<std::shared_ptr<PerThreadContext>> retired_context_pool_;
   mutable OrtMutex context_pool_mutex_;
 
   PerThreadContext& GetPerThreadContext() const;

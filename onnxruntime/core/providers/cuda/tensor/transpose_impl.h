@@ -8,9 +8,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
-void TransposeImpl(size_t shape_rank, const int64_t* input_strides, const size_t* perm, const T* input_data,
-                   const fast_divmod* fdm_output_strides, T* output_data, size_t N);
+Status TransposeImpl(size_t element_size, size_t shape_rank, const int64_t* input_strides, const size_t* perm,
+                     const void* input_data, const fast_divmod* fdm_output_strides, void* output_data, size_t N);
 
 }  // namespace cuda
 }  // namespace onnxruntime

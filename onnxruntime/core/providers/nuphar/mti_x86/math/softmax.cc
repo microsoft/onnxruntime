@@ -8,8 +8,8 @@
 namespace onnxruntime {
 namespace nuphar {
 
-tvm::Tensor Softmax(const tvm::Tensor& input, int64_t axis, const std::string& name) {
-  return internal::SoftmaxInternal(input, axis, name, /*logarithmic*/ false);
+tvm::Tensor Softmax(const tvm::Tensor& input, int64_t axis, int64_t vector_width, const std::string& name) {
+  return internal::SoftmaxInternal(input, axis, vector_width, name, /*logarithmic*/ false);
 }
 
 }  // namespace nuphar

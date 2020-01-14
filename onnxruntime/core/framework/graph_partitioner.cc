@@ -71,7 +71,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
     // A fused kernel is not supported in this case.
     ORT_ENFORCE(1 == capability->nodes.size());
 
-    auto node = graph.GetNode(capability->nodes[0]);
+    auto* node = graph.GetNode(capability->nodes[0]);
     if (nullptr != node && node->GetExecutionProviderType().empty()) {
       // The node was not fused or assigned. Assign it to this <provider>.
       node->SetExecutionProviderType(provider_type);

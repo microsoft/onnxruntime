@@ -94,7 +94,8 @@ class Scan8Impl {
   Scan8Impl(OpKernelContextInternal& context,
             const SessionState& session_state,
             const Scan<8>::Info& info,
-            const std::vector<int64_t>& directions);
+            const std::vector<int64_t>& directions,
+            const scan::detail::DeviceHelpers& device_helpers);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -129,6 +130,8 @@ class Scan8Impl {
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
 
   const std::vector<const OrtValue*>& implicit_inputs_;
+
+  const scan::detail::DeviceHelpers& device_helpers_;
 };
 
 template <>
@@ -144,6 +147,15 @@ Scan<8>::Scan(const OpKernelInfo& info) : OpKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
   ReadDirections(info, "directions", input_directions_, num_scan_inputs_);
+
+  device_helpers_.transpose_func = [](const std::vector<size_t>&, const Tensor&, Tensor&) -> Status {
+    ORT_NOT_IMPLEMENTED("Scan<8> spec does not support transpose of output. This should never be called.");
+  };
+
+  device_helpers_.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
+    memset(data, 0, size_in_bytes);
+    return Status::OK();
+  };
 }
 
 template <>
@@ -155,7 +167,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   const auto& node = Node();
   info_ = onnxruntime::make_unique<Scan<8>::Info>(node, *subgraph_session_state.GetGraphViewer(),
-                                          static_cast<int>(num_scan_inputs_));
+                                                  static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
                                                         /* is_v8 */ true, feeds_fetches_manager_);
@@ -176,7 +188,7 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
-  Scan8Impl scan_impl{*ctx_internal, *session_state, *info_, input_directions_};
+  Scan8Impl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, device_helpers_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -189,12 +201,14 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
 Scan8Impl::Scan8Impl(OpKernelContextInternal& context,
                      const SessionState& session_state,
                      const Scan<8>::Info& info,
-                     const std::vector<int64_t>& directions)
+                     const std::vector<int64_t>& directions,
+                     const scan::detail::DeviceHelpers& device_helpers)
     : context_(context),
       session_state_(session_state),
       info_(info),
       directions_(directions),
-      implicit_inputs_(context_.GetImplicitInputs()) {
+      implicit_inputs_(context_.GetImplicitInputs()),
+      device_helpers_(device_helpers) {
   // optional first input so may be nullptr
   sequence_lens_tensor_ = context.Input<Tensor>(0);
 }
@@ -316,13 +330,15 @@ Status Scan8Impl::AllocateOutputTensors() {
   std::unique_ptr<OutputIterator> output_iter;
 
   for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    status = AllocateOutput(context_, info_.subgraph, i, true, batch_size_, max_sequence_len_, output_iter);
+    status = AllocateOutput(context_, info_.subgraph, i, true, batch_size_, max_sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
 
   for (int i = info_.num_loop_state_variables, end = info_.num_outputs; i < end; ++i) {
-    status = AllocateOutput(context_, info_.subgraph, i, false, batch_size_, max_sequence_len_, output_iter);
+    status = AllocateOutput(context_, info_.subgraph, i, false, batch_size_, max_sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
@@ -348,7 +364,7 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
 
     ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_input_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
+    loop_state_input_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
   }
 
   batch_loop_state_variables.clear();
@@ -398,9 +414,9 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
       // forward
       if (directions_[i - info_.num_loop_state_variables] == static_cast<int64_t>(ScanDirection::kForward)) {
         // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
-        scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).begin());
+        scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 1, b).begin());
       } else {  // reverse
-        scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value, 1, b).rbegin());
+        scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 1, b).rbegin());
         // need to skip past the empty entries at the end of the input if sequence length is short
         auto offset = max_sequence_len_ - sequence_len;
         if (offset > 0) {

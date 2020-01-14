@@ -145,15 +145,15 @@ static void update_subgraphs_within_function_body(ONNX_NAMESPACE::GraphProto& su
 }
 
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
-                           std::unique_ptr<IndexedSubGraph> customized_func)
-    : parent_graph_(&graph) {
+                           std::unique_ptr<IndexedSubGraph> customized_func,
+                           const logging::Logger& logger)
+    : parent_graph_(&graph),
+     body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+           IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+           graph.DomainToVersionMap(), {}, logger)
+    {
   customized_func_body_ = std::move(customized_func);
-
-  // Construct body.
-  body_ = onnxruntime::make_unique<onnxruntime::Model>("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-                                                       IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-                                                       graph.DomainToVersionMap());
-  auto& function_body_graph = body_->MainGraph();
+  auto& function_body_graph = body_.MainGraph();
 
   auto meta_def = customized_func_body_->GetMetaDef();
   op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
@@ -220,15 +220,24 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 }
 
+static  std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto){
+  return std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, static_cast<int>(onnx_func_proto.since_version())}};
+}
+
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const onnxruntime::NodeIndex& node_index,
-                           const ONNX_NAMESPACE::FunctionProto& onnx_func_proto)
-    : parent_graph_(&graph) {
+                           const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
+                           const logging::Logger& logger)
+    : parent_graph_(&graph),
+      body_ (onnx_func_proto.name(), false, onnxruntime::ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+             GetOpsetVersionMap(onnx_func_proto), {}, logger),
+      onnx_func_proto_(onnx_func_proto)
+    {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
   // Hence, we make a copy prior to generating the graph representation of the function,
   // as we might make some modifications to the FunctionProto along the way
-  onnx_func_proto_ = onnx_func_proto;
+
 
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
   op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
@@ -290,9 +299,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   std::unordered_map<std::string, int> domain_to_version;
   //TODO: set correct domain and version
   domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_.since_version());
-  body_ = onnxruntime::make_unique<onnxruntime::Model>(onnx_func_proto_.name(), false, onnxruntime::ModelMetaData(),
-                                                       IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
-  auto& function_body_graph = body_->MainGraph();
+
+  auto& function_body_graph = body_.MainGraph();
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
@@ -379,7 +387,7 @@ const ONNX_NAMESPACE::OpSchema& FunctionImpl::OpSchema() const {
 }
 
 const onnxruntime::Graph& FunctionImpl::Body() const {
-  return body_->MainGraph();
+  return body_.MainGraph();
 }
 
 const IndexedSubGraph& FunctionImpl::GetIndexedSubGraph() const {
@@ -391,7 +399,8 @@ const ONNX_NAMESPACE::FunctionProto* FunctionImpl::GetFuncProto() const {
 }
 
 std::unique_ptr<Function> MakeFunction(const onnxruntime::Graph& graph,
-                                       std::unique_ptr<IndexedSubGraph> customized_func) {
-  return onnxruntime::make_unique<FunctionImpl>(graph, std::move(customized_func));
+                                       std::unique_ptr<IndexedSubGraph> customized_func,
+                                       const logging::Logger& logger) {
+  return onnxruntime::make_unique<FunctionImpl>(graph, std::move(customized_func), logger);
 }
 }  // namespace onnxruntime

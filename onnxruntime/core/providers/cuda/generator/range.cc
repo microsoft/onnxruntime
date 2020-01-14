@@ -80,27 +80,27 @@ static Status ComputeRange(OpKernelContext* ctx) {
   return Status::OK();
 }
 
+namespace cuda_range_internal {
+
+template <class T>
+struct CallCudaRangeImpl {
+  Status operator()(OpKernelContext* ctx) const {
+    return ComputeRange<T>(ctx);
+  }
+};
+
+}  // namespace cuda_range_internal
+
 Status Range::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   if (input_tensor == nullptr) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+    return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   }
 
-  auto data_type = input_tensor->DataType();
-  if (data_type == DataTypeImpl::GetType<int32_t>()) {
-    return ComputeRange<int32_t>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<float>()) {
-    return ComputeRange<float>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
-    return ComputeRange<int64_t>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<double>()) {
-    return ComputeRange<double>(ctx);
-  } else if (data_type == DataTypeImpl::GetType<int16_t>()) {
-    return ComputeRange<int16_t>(ctx);
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                         "Range op: Unsupported tensor data type:", data_type);
+  utils::MLTypeCallDispatcherRet<Status, cuda_range_internal::CallCudaRangeImpl, int32_t,
+                                 float, int64_t, double, int16_t>
+      t_disp(input_tensor->GetElementType());
+  return t_disp.Invoke(ctx);
 }
 
 }  // namespace cuda

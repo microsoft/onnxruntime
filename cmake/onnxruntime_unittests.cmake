@@ -202,8 +202,8 @@ if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
 endif()
 
-if(onnxruntime_USE_MKLDNN)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_mkldnn)
+if(onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
 endif()
 
 if(onnxruntime_USE_NGRAPH)
@@ -251,11 +251,16 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
+    ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -309,8 +314,8 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils_for_framework onnxrunti
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnxruntime_test_utils_for_framework PRIVATE USE_FULL_PROTOBUF=1)
 endif()
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_DNNL=1)
 endif()
 add_dependencies(onnxruntime_test_utils_for_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils_for_framework PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -324,8 +329,8 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework g
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnxruntime_test_utils PRIVATE USE_FULL_PROTOBUF=1)
 endif()
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -414,15 +419,13 @@ endif()  # SingleUnitTestProject
 
 # standalone test for inference session without environment
 # the normal test executables set up a default runtime environment, which we don't want here
-if(NOT ipo_enabled)
-  #TODO: figure out why this test doesn't work with gcc LTO
 AddTest(
   TARGET onnxruntime_test_framework_session_without_environment_standalone
   SOURCES "${TEST_SRC_DIR}/framework/inference_session_without_environment/inference_session_without_environment_standalone_test.cc" "${TEST_SRC_DIR}/framework/test_main.cc"
   LIBS  onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
   DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
 )
-endif()
+
 
 #
 # onnxruntime_ir_graph test data
@@ -437,11 +440,11 @@ add_custom_command(
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
 if(WIN32)
-  if (onnxruntime_USE_MKLDNN)
-    list(APPEND onnx_test_libs mkldnn)
+  if (onnxruntime_USE_DNNL)
+    list(APPEND onnx_test_libs dnnl)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
+      COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
       )
   endif()
   if (onnxruntime_USE_MKLML)
@@ -449,6 +452,14 @@ if(WIN32)
       TARGET ${test_data_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
       ${MKLML_LIB_DIR}/${MKLML_SHARED_LIB} ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB}
+      $<TARGET_FILE_DIR:${test_data_target}>
+    )
+  endif()
+  if (onnxruntime_USE_OPENVINO)
+    add_custom_command(
+      TARGET ${test_data_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+      ${OPENVINO_CPU_EXTENSION_DIR}/${OPENVINO_CPU_EXTENSION_LIB}
       $<TARGET_FILE_DIR:${test_data_target}>
     )
   endif()
@@ -470,7 +481,7 @@ endif()
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 if(WIN32)
-    target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456")
+    target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100")
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -705,11 +716,15 @@ if (onnxruntime_BUILD_SERVER)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/executor_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
-
+  
   add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
   onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock onnx onnx_proto server_proto server_grpc_proto)
   add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core  ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT} )
+  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core  ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT})
+ if (onnxruntime_USE_OPENVINO)
+   message(${OPENVINO_INCLUDE_DIR})
+   target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR})
+ endif()
   if(UNIX)
     target_compile_options(onnxruntime_test_utils_for_server PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
@@ -764,6 +779,17 @@ if (onnxruntime_BUILD_SERVER)
 
 endif()
 
+#some ETW tools
+if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
+    add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
+    target_compile_definitions(generate_perf_report_from_etl PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
+    target_link_libraries(generate_perf_report_from_etl PRIVATE tdh Advapi32)
+
+    add_executable(compare_two_sessions ${ONNXRUNTIME_ROOT}/tool/etw/compare_two_sessions.cc ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
+    target_compile_definitions(compare_two_sessions PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
+    target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
+endif()
+
 add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT})
 set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
@@ -773,3 +799,18 @@ endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+
+add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
+target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+if(UNIX)
+  if (APPLE)
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --no-undefined -Xlinker --gc-sections")
+  endif()
+else()
+  set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.def /IGNORE:4199")
+  # need to ignore the linker warning 4199, due to some global linker flags failing here
+endif()
+set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})

@@ -36,3 +36,6 @@ onnxruntime_profile*.json
 docs/python/*.onnx
 *.onnx
 onnxprofile_profile_test_*.json
+/csharp/packages
+/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.targets
+/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.props

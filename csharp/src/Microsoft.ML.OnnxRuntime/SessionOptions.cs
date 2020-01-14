@@ -81,10 +81,10 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
         }
 
-#if USE_MKLDNN
-        public void AppendExecutionProvider_Mkldnn(int useArena)
+#if USE_DNNL
+        public void AppendExecutionProvider_Dnnl(int useArena)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(_nativePtr, useArena));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
         }
 #endif
 
@@ -142,6 +142,14 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         #endregion //ExecutionProviderAppends
 
+        #region Public Methods
+        public void RegisterCustomOpLibrary(string libraryPath)
+        {
+            IntPtr libraryHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(_nativePtr, libraryPath, out libraryHandle));
+        }
+
+        #endregion
         #region Public Properties
 
         internal IntPtr Handle
