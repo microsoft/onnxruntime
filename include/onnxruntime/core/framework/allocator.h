@@ -85,26 +85,27 @@ struct OrtMemoryInfo {
 
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
-  int id;
-  OrtMemType mem_type;
-  OrtAllocatorType type;
+  int id = -1;
+  OrtMemType mem_type = OrtMemTypeDefault;
+  OrtAllocatorType alloc_type = Invalid;
   OrtDevice device;
 
-  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,
+                          OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
       : name(name_),
         id(id_),
         mem_type(mem_type_),
-        type(type_),
+        alloc_type(type_),
         device(device_) {
   }
 
   // To make OrtMemoryInfo become a valid key in std map
-  inline bool operator<(const OrtMemoryInfo& other) const {
-    if (type != other.type)
-      return type < other.type;
+  bool operator<(const OrtMemoryInfo& other) const {
+    if (alloc_type != other.alloc_type)
+      return alloc_type < other.alloc_type;
     if (mem_type != other.mem_type)
       return mem_type < other.mem_type;
     if (id != other.id)
@@ -113,20 +114,22 @@ struct OrtMemoryInfo {
     return strcmp(name, other.name) < 0;
   }
 
-  inline std::string ToString() const {
+  std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo: ["
          << " name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
-         << " type:" << type
+         << " alloc_type:" << alloc_type
          << "]";
     return ostr.str();
   }
 };
 
 inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
-  return left.mem_type == other.mem_type && left.type == other.type && left.id == other.id &&
+  return left.mem_type == other.mem_type &&
+         left.alloc_type == other.alloc_type &&
+         left.id == other.id &&
          strcmp(left.name, other.name) == 0;
 }
 
@@ -213,9 +216,11 @@ class IAllocator {
     if (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      if (!CalcMemSizeForArray(count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
+      if (!CalcMemSizeForArray(count_or_bytes,
+                               sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
                                &alloc_size)) return nullptr;
     }
+
     return IAllocatorUniquePtr<T>{
         static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
@@ -224,22 +229,26 @@ class IAllocator {
 
 template <size_t alignment>
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
-  static constexpr size_t max_allowed = (static_cast<size_t>(1) << (static_cast<size_t>(std::numeric_limits<size_t>::digits >> 1))) - alignment;
+  static constexpr size_t max_allowed = (size_t(1) << (size_t(std::numeric_limits<size_t>::digits >> 1))) - alignment;
   static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
   static constexpr size_t alignment_mask = alignment - 1;
+
   //Indeed, we only need to check if max_size / nmemb < size
   //max_allowed is for avoiding unnecessary DIV.
   if (nmemb >= max_allowed && max_size / nmemb < size) {
     return false;
   }
+
   if (size >= max_allowed &&
       nmemb > 0 && max_size / nmemb < size) {
     return false;
   }
+
   if (alignment == 0)
     *out = size * nmemb;
   else
     *out = (size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
+
   return true;
 }
 
@@ -297,11 +306,10 @@ class MiMallocAllocator : public IDeviceAllocator {
 
 #endif
 
-
 #ifdef USE_MIMALLOC
-  using TAllocator = MiMallocAllocator;
+using TAllocator = MiMallocAllocator;
 #else
-  using TAllocator = CPUAllocator;
+using TAllocator = CPUAllocator;
 #endif
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;

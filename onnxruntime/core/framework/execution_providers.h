@@ -107,8 +107,25 @@ class ExecutionProviders {
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;
+
+  // currently the allocator type is an implementation detail and we don't make any  behavioral choices based on it,
+  // so exclude it from the key comparison for allocator_idx_map_.
+  // we also don't expect to have two allocators with the same name, one using an arena and one not.
+  struct OrtMemoryInfoLessThanIgnoreAllocType {
+    bool operator()(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) const {
+      /*if (lhs.alloc_type != rhs.alloc_type)
+        return lhs.alloc_type < rhs.alloc_type;*/
+      if (lhs.mem_type != rhs.mem_type)
+        return lhs.mem_type < rhs.mem_type;
+      if (lhs.id != rhs.id)
+        return lhs.id < rhs.id;
+
+      return strcmp(lhs.name, rhs.name) < 0;
+    }
+  };
+
   // using std::map as OrtMemoryInfo would need a custom hash function to be used with unordered_map,
   // and as this isn't performance critical it's not worth the maintenance overhead of adding one.
-  std::map<OrtMemoryInfo, size_t> allocator_idx_map_;
+  std::map<OrtMemoryInfo, size_t, OrtMemoryInfoLessThanIgnoreAllocType> allocator_idx_map_;
 };
 }  // namespace onnxruntime
