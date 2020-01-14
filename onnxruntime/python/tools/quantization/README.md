@@ -1,12 +1,52 @@
 # Quantization tool Overview
 This tool supports quantization of an onnx model. quantize() takes a model in ModelProto format and returns the quantized model in ModelProto format.
 
-## Calibrate an ONNX model
+## Calibrating an ONNX model
 
-Calibration can be used to improve quantization techniques, adding reduced-precision computation for neural networks while retaining high accuracy without retraining. `calibrate.py` adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in a loaded ONNX model and ensures their outputs are stored as part of the graph output, extracts intermediate output values after inference, and returns a dictionary mapping added node names to average (ReduceMin, ReduceMax) values as input to `quantize.py`. Example usage:
+Calibration can be used to improve quantization, adding reduced-precision computation for neural networks while retaining high accuracy without retraining.  Example usage:
 ```
-python calibrate.py --model_path=<'path/to/model.onnx'> --data_set_path=<'path/to/data/folder'> --calib_mode='naive'
+python calibrate.py --model_path=<'path/to/model.onnx'> --dataset_path=<'path/to/data/folder'> --calib_mode='naive'
 ```  
+Note the option `--dataset_path`, used to specify the path for the "calibration dataset".  This dataset is meant to contain "representative" examples of the input (presumably, a subset of the dataset the original model was trained on), which are used to collect statistics on the "typical" outputs of selected nodes in the model, as described in the sections below.  The dataset can be provided as:
+
+* A filepath for a directory, containing images or
+* A protobuf file, encoding a set of images using the `TensorProto` schema,
+
+Whether a set of files or a collected bundles of tensors, `calibrate.py` assumes that the images in the representative dataset are suitable for immediate consumption by the original fp32 model, i.e., that they have been adequately pre-processed.  `calibrate.py` also supports a small set of preprocessing functions, selectable via the CLI option `--data_preprocess`.  Currently, this option accepts the values:
+
+* 'preprocess_method1' : reshapes an image into NCHW format and scales the pixel values to the[-1, 1] range.  This method mirrors [the treatment for mobilenet models available in version 0.5 of mlperf](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L226)
+* 'preprocess_method2' : resizes and normalizes image to NCHW format, in a [technique used by mlperf 0.5](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L250) for variants of ResNet.
+
+For maximum flexibility, it is recommended that the user carries out the necessary preprocessing as a separate stage in the quantization pipeline, and provides the already-preprocessed dataset to `calibrate.py`.  Alternatively, we welcome contributions of preprocessing techniques (see below).
+
+### How does this work
+
+`calibrate.py` adds `ReduceMin` and `ReduceMax` nodes to all `Conv` and `MatMul` nodes in a loaded ONNX model and ensures their outputs are stored as part of the graph output, extracts intermediate output values after inference, and returns a dictionary mapping added node names to average (`ReduceMin`, `ReduceMax`) values as input to `quantize.py`.
+
+### How to add preprocessing options
+
+To add the current set of available preprocessing functions, you need to add a Python function to the `data_preprocess.py` file.  Such a function needs to take a filename and the (width, height) of an image as integers, and return a `numpy` `ndarray`.
+
+To expose it a new preprocessing function to the command line, you'll need to "register" it by adding it to the name/function mapping maintained as a dictionary in the `set_preprocess` function in `data_preprocess.py`.
+
+### End-to-end example
+
+Say you want to quantize a model `/models/mymodel.onnx` that has been trained with a subset of the ILSVRC ImageNet dataset.  In what follows it is assumed that you have either the dataset or a sample you deem significant to use as a calibration set --  one way to get a proxy for ImageNet is to follow a "fake" imageset as [this notebook from MLPerf](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/GettingStarted.ipynb) provides.  Assume that the images from the dataset are in the `/tmp/data/ilsvrc12` directory (note you don't need the labels to quantize, but they are useful to validate/verify the results of the quantization).  You can then run
+
+```
+python calibrate.py \
+   --model_path=/models/mymodel.onnx \
+   --dataset_path=/tmp/data/ilsvrc12 \
+   --calib_mode='naive' \
+   --data_preprocess=preprocess_method1
+```
+
+which specifies that images are to be preprocessed before they're fed to the model for the inference step (see above for description of `preprocess_method1`) necessary to calculate the quantization parameters used later in the actual quantization process.
+
+If your model requires a preprocessing of the input that is not provided with the scripts, you'll need to resort to preprocessing "offline", i.e., carry out the following process
+1. read each image, running it through whatever preprocess is required for the model, 
+1. store the resulting tensor, and
+1. "stack" the tensors corresponding to all the images in the calibration dataset in a tensor, serializing it to the `onnx` `TensorProto` schema (refer, for example to [this article](https://onnx.ai/onnx-r/articles/protobufs.html), with code in R, or to [the manual](https://github.com/onnx/onnx/blob/master/docs/PythonAPIOverview.md) for code in Python).
 
 ## Quantize an ONNX model
 ```python
