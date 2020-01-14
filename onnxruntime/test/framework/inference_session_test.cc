@@ -86,8 +86,7 @@ class FuseExecutionProvider : public IExecutionProvider {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
                                                  [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+    InsertAllocator(device_info.factory(0));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -776,8 +775,8 @@ static void TestBindHelper(const std::string& log_str,
   std::string s1;
   p_model->ToProto().SerializeToString(&s1);
   std::stringstream sstr(s1);
-  ASSERT_TRUE(session_object.Load(sstr).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;

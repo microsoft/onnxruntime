@@ -136,7 +136,13 @@ TEST(TensorTest, EmptyTensorTest) {
   auto& location = t.Location();
   ASSERT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
+
+  // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
+#if (defined(__amd64__) || defined(_M_AMD64)) && !defined(USE_JEMALLOC)
+  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtArenaAllocator);
+#else
+  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtDeviceAllocator);
+#endif
 }
 
 TEST(TensorTest, StringTensorTest) {
