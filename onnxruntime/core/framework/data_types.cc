@@ -45,12 +45,6 @@ MLDataType DataTypeImpl::GetType<TensorSeq>() {
   return SequenceTensorTypeBase::Type();
 }
 
-<<<<<<< HEAD
-namespace data_types_internal {
-
-template <typename T>
-struct TensorContainedTypeSetter<T> {
-=======
 //static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
 //  int sz = tensor_type_proto.shape().dim_size();
 //  return sz == 0 || sz == 1;
@@ -60,7 +54,6 @@ namespace data_types_internal {
 
 template <typename T>
 struct TensorElementTypeSetter<T> {
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto& proto) {
     proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
   }
@@ -947,15 +940,6 @@ const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
        DataTypeImpl::GetTensorType<uint8_t>(),
        DataTypeImpl::GetTensorType<MLFloat16>(),
        DataTypeImpl::GetTensorType<BFloat16>()};
-
-  return all_numeric_size_tensor_types;
-}
-
-const std::vector<MLDataType>& DataTypeImpl::AllFloatingPointTensorTypes() {
-  static std::vector<MLDataType> all_numeric_size_tensor_types =
-      {DataTypeImpl::GetTensorType<float>(),
-       DataTypeImpl::GetTensorType<double>(),
-       DataTypeImpl::GetTensorType<MLFloat16>()};
 
   return all_numeric_size_tensor_types;
 }

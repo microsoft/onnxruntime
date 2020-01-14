@@ -101,7 +101,7 @@ void GradientOpTester::Run(
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
-        kMklDnnExecutionProvider,
+        kDnnlExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
@@ -114,8 +114,8 @@ void GradientOpTester::Run(
         execution_provider = DefaultCpuExecutionProvider();
       else if (provider_type == onnxruntime::kCudaExecutionProvider)
         execution_provider = DefaultCudaExecutionProvider();
-      else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
-        execution_provider = DefaultMkldnnExecutionProvider();
+      else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+        execution_provider = DefaultDnnlExecutionProvider();
       else if (provider_type == onnxruntime::kNupharExecutionProvider)
         execution_provider = DefaultNupharExecutionProvider();
       else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)

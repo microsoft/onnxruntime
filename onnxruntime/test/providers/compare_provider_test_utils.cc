@@ -18,8 +18,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultCpuExecutionProvider();
   else if (provider_type == onnxruntime::kCudaExecutionProvider)
     execution_provider = DefaultCudaExecutionProvider();
-  else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
-    execution_provider = DefaultMkldnnExecutionProvider();
+  else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+    execution_provider = DefaultDnnlExecutionProvider();
   else if (provider_type == onnxruntime::kNGraphExecutionProvider)
     execution_provider = DefaultNGraphExecutionProvider();
   else if (provider_type == onnxruntime::kNupharExecutionProvider)
@@ -32,6 +32,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultOpenVINOExecutionProvider();
   else if (provider_type == onnxruntime::kNnapiExecutionProvider)
     execution_provider = DefaultNnapiExecutionProvider();
+  else if (provider_type == onnxruntime::kAclExecutionProvider)
+    execution_provider = DefaultAclExecutionProvider();
   // skip if execution provider is disabled
   if (execution_provider == nullptr) {
     return nullptr;

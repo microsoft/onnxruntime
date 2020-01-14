@@ -55,25 +55,20 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   }
 }
 
-
 template <typename T, typename OutT>
 void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<Input>& inputs,
                    const char* output_name,
                    const std::vector<int64_t>& expected_dims_y,
                    const std::vector<OutT>& expected_values_y,
-                   int provider_type, 
+                   int provider_type,
                    OrtCustomOpDomain* custom_op_domain_ptr,
                    const char* custom_op_library_filename) {
   Ort::SessionOptions session_options;
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-<<<<<<< HEAD
-    ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0, std::numeric_limits<size_t>::max()));
-=======
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0, std::numeric_limits<size_t>::max()));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;
@@ -99,8 +94,8 @@ void TestInference(Ort::Env& env, T model_uri,
     session_options.Add(custom_op_domain_ptr);
   }
 
-  if (custom_op_library_filename){
-    void* library_handle = nullptr; // leak this, no harm. 
+  if (custom_op_library_filename) {
+    void* library_handle = nullptr;  // leak this, no harm.
     Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
   }
 
@@ -109,24 +104,24 @@ void TestInference(Ort::Env& env, T model_uri,
   // Now run
   //without preallocated output tensor
   RunSession<OutT>(default_allocator.get(),
-             session,
-             inputs,
-             output_name,
-             expected_dims_y,
-             expected_values_y,
-             nullptr);
+                   session,
+                   inputs,
+                   output_name,
+                   expected_dims_y,
+                   expected_values_y,
+                   nullptr);
   //with preallocated output tensor
   Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(), expected_dims_y.data(), expected_dims_y.size());
 
   //test it twice
   for (int i = 0; i != 2; ++i)
     RunSession<OutT>(default_allocator.get(),
-               session,
-               inputs,
-               output_name,
-               expected_dims_y,
-               expected_values_y,
-               &value_y);
+                     session,
+                     inputs,
+                     output_name,
+                     expected_dims_y,
+                     expected_values_y,
+                     &value_y);
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
@@ -271,35 +266,33 @@ TEST_F(CApiTest, DISABLED_test_custom_op_library) {
   std::vector<Input> inputs(2);
   inputs[0].name = "input_1";
   inputs[0].dims = {3, 5};
-  inputs[0].values = {1.1f,   2.2f,   3.3f,   4.4f,   5.5f, 
-                      6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
-                      11.1f,  12.2f,  13.3f,  14.4f,  15.5f};
+  inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+                      6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+                      11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
   inputs[1].name = "input_2";
   inputs[1].dims = {3, 5};
-  inputs[1].values = {15.5f,   14.4f,   13.3f,   12.2f,   11.1f, 
-                      10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
-                      5.5f,    4.4f,    3.3f,    2.2f,    1.1f};
+  inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
+                      10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
+                      5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 5};
-  std::vector<int32_t> expected_values_y = 
-                    {17, 17, 17, 17, 17,
-                     17, 18, 18, 18, 17,
-                     17, 17, 17, 17, 17};
+  std::vector<int32_t> expected_values_y =
+      {17, 17, 17, 17, 17,
+       17, 18, 18, 18, 17,
+       17, 17, 17, 17, 17};
 
   std::string lib_name;
-  #if defined(_WIN32)
-    lib_name = "custom_op_library.dll";
-  #elif defined(__APPLE__)
-    lib_name = "libcustom_op_library.dylib";
-  #else
-    lib_name = "libcustom_op_library.so";
-  #endif
+#if defined(_WIN32)
+  lib_name = "custom_op_library.dll";
+#elif defined(__APPLE__)
+  lib_name = "libcustom_op_library.dylib";
+#else
+  lib_name = "libcustom_op_library.so";
+#endif
 
   TestInference<PATH_TYPE, int32_t>(env_, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
-
-
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
 TEST_F(CApiTest, DISABLED_test_pyop) {

@@ -9,14 +9,7 @@
 #include <string>
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
-
-<<<<<<< HEAD
-#include "gsl/pointers"
-#include "core/framework/ml_value.h"
-#include "core/framework/framework_common.h"
-=======
 #include "gsl/gsl"
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 namespace onnxruntime {
 typedef std::unordered_map<std::string, std::string> ModelMetaData;

@@ -709,7 +709,7 @@ TEST(BatchNormTest, ForwardTrainingTest) {
   // exclude CPU Execution Provider so that test is run with CUDA with ForwardTraining mode
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider,  
                                                         kTensorrtExecutionProvider, 
-                                                        kMklDnnExecutionProvider, 
+                                                        kDnnlExecutionProvider, 
                                                         kNGraphExecutionProvider, 
                                                         kOpenVINOExecutionProvider,
                                                         kNupharExecutionProvider,

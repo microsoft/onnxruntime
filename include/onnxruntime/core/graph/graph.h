@@ -299,7 +299,7 @@ class Node {
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type);
 
-  /** Gets the NodeProto representation of this Node. 
+  /** Gets the NodeProto representation of this Node.
   @param update_subgraphs Update the GraphProto values for any subgraphs in the returned NodeProto.
                           If graph optimization has been run this is most likely required
                           to ensure the complete Graph is valid.
@@ -521,7 +521,7 @@ class Graph {
   }
 
   /** Gets the Graph inputs that are initializers
-  These are overridable initializers. This is a difference between 
+  These are overridable initializers. This is a difference between
   graph_inputs_including_initializers_ and graph_inputs_excluding_initializers_
   @remarks Contains no nullptr values. */
   const std::vector<const NodeArg*>& GetOverridableInitializers() const {
@@ -777,7 +777,6 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
-<<<<<<< HEAD
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetType(NodeArg& arg, const onnx::TypeProto& type_proto);
 
@@ -867,14 +866,14 @@ class Graph {
     ResolveOptions options;
     options.override_types = true;
     return Resolve(options);
-=======
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
     return resolve_context_.outer_scope_node_args.find(name) != resolve_context_.outer_scope_node_args.cend();
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   }
 
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.

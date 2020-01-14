@@ -5,7 +5,6 @@
 
 #include <iomanip>
 
-
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
@@ -433,7 +432,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger) {
+                                       const logging::Logger& logger, const bool& only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
@@ -441,7 +440,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag));
+      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
     } else {
       p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
     }
@@ -505,74 +504,18 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-<<<<<<< HEAD
-                            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                            bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger,
-                            bool cache_copy_info, bool only_execute_path_to_fetches) {
-  const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
-  auto device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
-
-  ORT_ENFORCE(device_copy_checks.status == DeviceCopyCheck::Unknown);
-
-  std::unique_ptr<IExecutor> p_exec;
-  if (sequential_execution) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
-  } else {
-    p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
-  }
-
-  // see if we can skip copies due to the types of execution providers available
-  if (CheckExecutionProviders(session_state.GetExecutionProviders()) == DeviceCopyCheck::NoCopy) {
-    device_copy_checks.input_copy_needed = DeviceCopyCheck::NoCopy;
-    device_copy_checks.output_copy_needed = DeviceCopyCheck::NoCopy;
-
-    // no device copies are needed so simple execute
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
-                                        feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                        feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators, logger));
-  } else {
-    bool copy_needed = false;
-
-    const std::vector<OrtValue>* p_feeds = &feeds;
-    std::vector<OrtValue>* p_fetches = &fetches;
-    std::vector<OrtValue> device_feeds;
-    std::vector<OrtValue> device_fetches;
-
-    // Copy inputs
-    auto* copiers = cache_copy_info ? &feeds_fetches_manager.GetMutableFeedsDeviceCopiers() : nullptr;
-    ORT_RETURN_IF_ERROR(CopyInputsAcrossDevices(session_state,
-                                                feeds_fetches_info.feed_names, feeds, device_feeds,
-                                                copy_needed, copiers));
-
-    if (copy_needed) {
-      p_feeds = &device_feeds;
-    }
-
-    device_copy_checks.input_copy_needed = copy_needed ? DeviceCopyCheck::Copy
-                                                       : DeviceCopyCheck::NoCopy;
-
-    // setup fetches.
-    if (fetches.empty()) {
-      fetches.resize(feeds_fetches_info.output_names.size());
-    }
-
-    auto* use_provided_fetch_flags =
-        cache_copy_info ? &feeds_fetches_manager.GetMutableCanUseFetchDuringExecutionFlags()
-                        : nullptr;
-=======
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger) {
+                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(session_state, feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
 
   return status;
-}
+}  // namespace utils
 
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,

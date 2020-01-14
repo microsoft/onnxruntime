@@ -34,5 +34,13 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gelu<float>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    GeluGrad,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    GeluGrad<float>);
+
 }  // namespace contrib
 }  // namespace onnxruntime

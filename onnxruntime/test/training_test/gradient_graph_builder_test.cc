@@ -90,7 +90,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 
   const auto& log_manager = so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
 
-  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, log_manager);
+  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, log_manager);
 
   EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
 
@@ -144,7 +144,7 @@ TEST(GradientGraphBuilderTest, BuildGradientGraphTest) {
   const PathString& backprop_model_file = BuildBackPropGraph(params);
 
   std::shared_ptr<Model> pModel;
-  EXPECT_TRUE(Model::Load(backprop_model_file, pModel).IsOK());
+  EXPECT_TRUE(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
 
   Graph& graph = pModel->MainGraph();
   EXPECT_FALSE(graph.GraphResolveNeeded());
@@ -206,7 +206,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
 
   std::cout << "Loading gist model file = " << ToMBString(gist_model_file) << "\n";
   std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(onnxruntime::Model::Load(gist_model_file, p_model).IsOK());
+  ASSERT_TRUE(onnxruntime::Model::Load(gist_model_file, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
 
   const Graph& graph = p_model->MainGraph();
   bool found_encoder = false;
@@ -334,7 +334,7 @@ static void RunBertTrainingWithChecks(
 
   const auto& log_manager = so.session_log_verbosity_level > 0 ? &DefaultLoggingManager() : nullptr;
 
-  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, log_manager);
+  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, log_manager);
 
   EXPECT_TRUE(training_session->Load(backprop_model_file).IsOK());
 
@@ -345,7 +345,7 @@ static void RunBertTrainingWithChecks(
   std::cout << "Loaded " << model_metadata->graph_name << std::endl;
 
   CUDAExecutionProviderInfo xp_info;
-  ASSERT_TRUE(training_session->RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+  ASSERT_TRUE(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
 
   ASSERT_TRUE(training_session->Initialize().IsOK());
 

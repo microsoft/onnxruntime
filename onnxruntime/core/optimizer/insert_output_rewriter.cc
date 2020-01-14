@@ -8,7 +8,7 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 
-Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   auto& outputs = node.MutableOutputDefs();
   const NodeArg* Y = outputs[0];
 
@@ -24,7 +24,7 @@ Status InsertMaxPoolOutput::Apply(Graph& graph, Node& node, RewriteRuleEffect& r
   return Status::OK();
 }
 
-bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node) const {
+bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {8}) &&
       node.OutputDefs().size() == 1) {
     return true;
@@ -32,7 +32,7 @@ bool InsertMaxPoolOutput::SatisfyCondition(const Graph& /*graph*/, const Node& n
   return false;
 }
 
-Status AdjustBatchNormOutputs::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status AdjustBatchNormOutputs::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   auto& outputs = node.MutableOutputDefs();
   const auto& inputs = node.InputDefs();
   const NodeArg* scale_input_def = inputs[1];
@@ -55,7 +55,7 @@ Status AdjustBatchNormOutputs::Apply(Graph& graph, Node& node, RewriteRuleEffect
   return Status::OK();
 }
 
-bool AdjustBatchNormOutputs::SatisfyCondition(const Graph& /*graph*/, const Node& node) const {
+bool AdjustBatchNormOutputs::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
   if (node.OutputDefs().size() == 1) {
     return true;
   }

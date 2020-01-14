@@ -47,15 +47,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-<<<<<<< HEAD
-    // Since this node is going to be folded, force it on CPU
-    node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-=======
     // override the EP while setting up OptimizerExecutionFrame::Info so that it will use the CPU kernel for Compute.
     if (!cpu_ep) {
       node->SetExecutionProviderType(kCpuExecutionProvider);
     }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
     // Create execution frame for executing constant nodes.
     OptimizerExecutionFrame::Info info({node}, constant_inputs);

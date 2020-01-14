@@ -3,7 +3,7 @@
 #include "core/providers/trt_in_cuda/tensor_rt_compiler.h"
 #include "core/framework/execution_provider.h"
 #include "cuda_runtime_api.h"
-#include "gsl/pointers"
+#include "gsl/gsl"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
 
@@ -17,7 +17,7 @@ std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& 
   for (const auto& index : graph_nodes_index.first) {
     node_set.insert(node_index[index]);
   }
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
 
   // Find inputs and outputs of the subgraph
   std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;

@@ -728,14 +728,8 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
                                           *subgraph_session_state, execution_providers_, kernel_registry_manager_);
 
       const auto implicit_inputs = node.ImplicitInputDefs();
-<<<<<<< HEAD
-      ORT_RETURN_IF_ERROR(initializer.CreatePlan(&node, &implicit_inputs,
-                                                 session_options_.enable_sequential_execution));
-
-=======
       ORT_RETURN_IF_ERROR_SESSIONID_(initializer.CreatePlan(&node, &implicit_inputs,
                                                             session_options_.execution_mode));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       // LOGS(*session_logger_, VERBOSE) << std::make_pair(subgraph_info.session_state->GetExecutionPlan(),
       //                                                   &*subgraph_info.session_state);
 
@@ -843,12 +837,8 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(session_initializer.CreatePlan(nullptr, nullptr, session_options_.execution_mode));
 
     // handle any subgraphs
-<<<<<<< HEAD
-    ORT_RETURN_IF_ERROR(InitializeSubgraphSessions(graph, session_state_));
-    session_state_.ResolveMemoryPatternFlag();
-=======
     ORT_RETURN_IF_ERROR_SESSIONID_(InitializeSubgraphSessions(graph, *session_state_));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+    session_state_->ResolveMemoryPatternFlag();
     is_inited_ = true;
 
     // and log telemetry
@@ -945,12 +935,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
     auto iter = input_def_map_.find(feed_name);
     if (input_def_map_.end() == iter) {
-<<<<<<< HEAD
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Invalid Feed Input Name: ", feed_name);
-=======
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Feed Input Name:", feed_name);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     }
 
     auto expected_type = iter->second.ml_data_type;
@@ -1072,19 +1057,14 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     }
 
     if (run_options.only_execute_path_to_fetches) {
-      session_state_.UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
     }
     // execute the graph
     ORT_CHECK_AND_SET_RETVAL(
-<<<<<<< HEAD
-        utils::ExecuteGraph(session_state_, feeds_fetches_manager, feeds, *p_fetches, {},
-                            session_options_.enable_sequential_execution, run_options.terminate, run_logger,
-                            false, run_options.only_execute_path_to_fetches));
-=======
         utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                             session_options_.execution_mode,
-                            run_options.terminate, run_logger));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+                            run_options.terminate, run_logger,
+                            run_options.only_execute_path_to_fetches));
 
   } catch (const std::exception& e) {
     retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
@@ -1286,20 +1266,13 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
     for (auto elem : inputs) {
       auto elem_type = utils::GetMLDataType(*elem);
       auto elem_shape_proto = elem->Shape();
-<<<<<<< HEAD
-      input_def_map_.insert({elem->Name(), InputDefMetaData(elem,
-                                                            elem_type,
-                                                            elem_shape_proto
-                                                                ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto)
-                                                                : TensorShape())});
-      model_input_names_.insert(elem->Name());
-=======
       input_def_map_.insert(
           {elem->Name(),
            InputDefMetaData(
                elem, elem_type,
                elem_shape_proto ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto) : TensorShape())});
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+
+      model_input_names_.insert(elem->Name());
     }
   };
 

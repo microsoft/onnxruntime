@@ -108,15 +108,11 @@ void InternalNumericalCheck(const OpTester::Data& expected_data, const Tensor& o
   bool has_abs_err = expected_data.absolute_error_.has_value();
   bool has_rel_err = expected_data.relative_error_.has_value();
 
-<<<<<<< HEAD
-=======
   // deal with rare cases in which order of output data from a kernel MAY be undefined
   if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(expected, output, size);
   }
 
-  float threshold = 0.001f;
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #ifdef USE_CUDA
   float threshold = 0.005f;
 #else
@@ -147,7 +143,6 @@ void InternalNumericalCheck(const OpTester::Data& expected_data, const Tensor& o
 }
 
 template <>
-<<<<<<< HEAD
 void Check<float>(
     const OpTester::Data& expected_data,
     const Tensor& output_tensor,
@@ -156,11 +151,8 @@ void Check<float>(
 }
 
 template <>
-void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
-=======
 void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor,
                       const std::string& provider_type) {
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
   auto* expected = expected_tensor.template Data<MLFloat16>();
   auto* output = output_tensor.template Data<MLFloat16>();
@@ -171,16 +163,12 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   ConvertMLFloat16ToFloat(expected, f_expected.data(), static_cast<int>(size));
   ConvertMLFloat16ToFloat(output, f_output.data(), static_cast<int>(size));
 
-<<<<<<< HEAD
-  float threshold = 0.005f;
-=======
   // deal with rare cases in which order of output data from a kernel MAY be undefined
   if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
 
-  float threshold = 0.001f;
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+  float threshold = 0.005f;
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
       EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
@@ -310,18 +298,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 }
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
-<<<<<<< HEAD
-#ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                                               provider_type);
-#else
-  CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat>(expected_data.data_.Type(), expected_data, ort_value,
-                                                               provider_type);
-#endif
-=======
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
                                                                           provider_type);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }
 
 void DebugTrap() {
@@ -555,17 +533,15 @@ void OpTester::Run(ExpectResult expect_result,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-<<<<<<< HEAD
-                   bool sequential_execution,
+                   ExecutionMode execution_mode,
                    const CustomOutputVerifierFn& custom_output_verifier) {
-=======
-                   ExecutionMode execution_mode) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
-  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
+  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers,
+      custom_output_verifier);
 }
 
 void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy) because we may need to modify it
@@ -573,9 +549,9 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
-                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
+                   const CustomOutputVerifierFn& custom_output_verifier) {
   std::string cur_provider = "not set";
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   try {
 #ifndef NDEBUG
     run_called_ = true;
@@ -648,13 +624,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
       }
 
-<<<<<<< HEAD
       fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
                                                 feeds, output_names, provider_types, custom_output_verifier);
-=======
-      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds, output_names,
-                   provider_types);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -733,15 +704,10 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
 
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-<<<<<<< HEAD
         fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
                                                   feeds, output_names, provider_type, custom_output_verifier);
-=======
-        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds,
-                     output_names, provider_type);
 
         cur_provider = "not set";
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       }
 
       EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";

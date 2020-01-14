@@ -7,14 +7,6 @@
 
 namespace onnxruntime {
 
-<<<<<<< HEAD
-class GeluFusion : public GraphTransformer {
- public:
-  GeluFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept 
-      : GraphTransformer("GeluFusion", compatible_execution_providers) {}
-
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level) const override;
-=======
 /**
 @Class GeluFusion
 
@@ -30,7 +22,6 @@ class GeluFusion : public GraphTransformer {
       : GraphTransformer("GeluFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 };
 
 }  // namespace onnxruntime

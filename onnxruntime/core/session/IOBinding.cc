@@ -9,38 +9,19 @@
 
 namespace onnxruntime {
 
-static std::pair<bool, size_t> Contains(const std::vector<std::string>& output_names, const std::string& oname) {
-  auto it = std::find(std::begin(output_names), std::end(output_names), oname);
-  if (it == std::end(output_names)) {
-    return {false, 0};
-  }
-  return {true, it - std::begin(output_names)};
-}
-
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
 static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, const std::string& name) {
   auto it = std::find(std::begin(names), std::end(names), name);
+
   if (it == std::end(names)) {
     return {false, 0};
   }
+
   return {true, it - std::begin(names)};
 }
 
-<<<<<<< HEAD
-  OrtValue new_mlvalue;
-  ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
-
-  auto rc = Contains(feed_names_, name);
-  if (rc.first) {
-    feeds_[rc.second] = ml_value;
-    return Status::OK();
-  }
-
-  feed_names_.push_back(name);
-  feeds_.push_back(new_mlvalue);
-=======
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
   auto rc = Contains(feed_names_, name);
 
@@ -60,7 +41,6 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
   } else {
     add_or_replace(rc.first, rc.second, ml_value);
   }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   return Status::OK();
 }

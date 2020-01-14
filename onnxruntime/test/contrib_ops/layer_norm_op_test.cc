@@ -66,20 +66,14 @@ class LayerNormOpTester : public OpTester {
     AddAttribute("keep_dims", keep_dims_);
     AddAttribute("epsilon", epsilon_);
 
-    int64_t X_size = std::accumulate(X_dims_.cbegin(), X_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-    int64_t scale_size = std::accumulate(scale_dims_.cbegin(), scale_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-    int64_t B_size = std::accumulate(B_dims_.cbegin(), B_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-    int64_t Y_size = std::accumulate(Y_dims_.cbegin(), Y_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
-
     // create rand inputs
-    X_data_.resize(X_size, 1.f);
-    scale_data_.resize(scale_size, 1.f);
-    B_data_.resize(B_size, 2.f);
-    Y_data_.resize(Y_size);
+    RandomValueGenerator random{};
+    X_data_ = random.Uniform<float>(X_dims_, 0.0f, 1.0f);
+    scale_data_ = random.Uniform<float>(scale_dims_, 0.0f, 1.0f);
+    B_data_ = random.Uniform<float>(B_dims_, 0.0f, 1.0f);
 
-    FillRandom<float>(X_data_, 0.0f, 1.0f);
-    FillRandom<float>(scale_data_, 0.0f, 1.0f);
-    FillRandom<float>(B_data_, 0.0f, 1.0f);
+    const int64_t Y_size = std::accumulate(Y_dims_.cbegin(), Y_dims_.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    Y_data_.resize(Y_size);
 
     AddInput<float>("X", X_dims_, X_data_);
     AddInput<float>("scale", scale_dims_, scale_data_, true);

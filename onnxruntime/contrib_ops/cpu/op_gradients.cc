@@ -9,8 +9,7 @@
 #include "core/util/math.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "gsl/gsl_algorithm"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {

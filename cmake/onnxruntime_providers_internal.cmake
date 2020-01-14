@@ -41,7 +41,7 @@ if (onnxruntime_USE_BRAINSLICE)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_brainslice_cc_srcs})
   add_library(onnxruntime_providers_brainslice ${onnxruntime_providers_brainslice_cc_srcs})
   target_link_libraries(onnxruntime_providers_brainslice ${fpga_core_lib} ${bs_client_lib})
-  onnxruntime_add_include_to_target(onnxruntime_providers_brainslice onnxruntime_common onnxruntime_framework gsl onnx onnx_proto protobuf::libprotobuf)
+  onnxruntime_add_include_to_target(onnxruntime_providers_brainslice onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   target_include_directories(onnxruntime_providers_brainslice PRIVATE ${ONNXRUNTIME_ROOT})
   target_include_directories(onnxruntime_providers_brainslice PRIVATE
                              ${onnxruntime_BS_CLIENT_PACKAGE}/inc )

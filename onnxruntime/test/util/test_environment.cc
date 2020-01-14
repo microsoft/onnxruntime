@@ -36,21 +36,12 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
 
   if (create_default_logging_manager) {
     static std::string default_logger_id{"Default"};
-<<<<<<< HEAD
-    s_default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                                 Severity::kWARNING,  // TODO make this configurable through
-                                                                                      // cmd line arguments or some other way
-                                                                 false,
-                                                                 LoggingManager::InstanceType::Default,
-                                                                 &default_logger_id);
-=======
     s_default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
-                                                        Severity::kWARNING,  // TODO make this configurable through
-                                                                             // cmd line arguments or some other way
-                                                        false,
-                                                        LoggingManager::InstanceType::Default,
-                                                        &default_logger_id);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+                                                                         Severity::kWARNING,  // TODO make this configurable through
+                                                                                              // cmd line arguments or some other way
+                                                                         false,
+                                                                         LoggingManager::InstanceType::Default,
+                                                                         &default_logger_id);
 
     // make sure default logging manager exists and is working
     auto logger = DefaultLoggingManager().DefaultLogger();
@@ -64,7 +55,7 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
     // seed = 2826461700;
   }
   if (seed != 0) {
-    SetStaticRandomSeed(seed); // set the random seed value for this test run.
+    SetStaticRandomSeed(seed);  // set the random seed value for this test run.
   }
   std::clog << "ORT test random seed value: " << GetStaticRandomSeed() << std::endl;
 

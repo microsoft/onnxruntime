@@ -41,15 +41,12 @@
 #include "test/test_environment.h"
 
 #include "gtest/gtest.h"
-<<<<<<< HEAD
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gist_encode_decode.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
-=======
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -605,12 +602,8 @@ TEST(GraphTransformationTests, MatMulAddFusion_negitive_case) {
 
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, Gemm_Relu_three_input) {
-<<<<<<< HEAD
-  string model_uri = MODEL_FOLDER + "matmul_add_fusion/3Input/gemm_relu.onnx";
-=======
   auto model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/gemm_relu.onnx";
 
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -749,17 +742,6 @@ TEST(GraphTransformationTests, ReluClip6Fusion) {
   }
 }
 
-<<<<<<< HEAD
-TEST(GraphTransformationTests, GeluFusion) {
-  string model_uri = MODEL_FOLDER + "fusion/gelu.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
-=======
 // test handling of Clip 11
 TEST(GraphTransformationTests, ReluClip11Fusion) {
   Model model("ReluClip6Fusion", false, DefaultLoggingManager().DefaultLogger());  //, true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 11}}, {});
@@ -1124,7 +1106,6 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -1135,44 +1116,7 @@ TEST(GraphTransformationTests, GeluFusionTest) {
   ASSERT_TRUE(op_to_count["Gelu"] == 1);
 }
 
-<<<<<<< HEAD
-TEST(GraphTransformationTests, GistEncodeDecode) {
-  string model_uri = MODEL_FOLDER + "../test_training_model.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-  rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
-
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
-}
-
-TEST(GraphTransformationTests, TransposeMatmulFusion) {
-  string model_uri = MODEL_FOLDER + "fusion/transpose_matmul_4d_fusion.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Transpose"] == 0);
-  ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
-}
-
-=======
-TEST(GraphTransformationTests, BiasGeluTest) {
+TEST(GraphTransformationTests, DISABLED_BiasGeluTest) {
   auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
@@ -1487,8 +1431,41 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
   }
 }
 
-#endif
+TEST(GraphTransformationTests, GistEncodeDecode) {
+  string model_uri = MODEL_FOLDER "../test_training_model.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
 
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+  rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>());
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
+}
+
+TEST(GraphTransformationTests, TransposeMatmulFusion) {
+  string model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
+}
+
+#endif
 }  // namespace test
 }  // namespace onnxruntime

@@ -103,7 +103,7 @@ static void RunBiasGeluTest(
   }
 }
 
-TEST(BiasGeluTest, Two_One_Dim) {
+TEST(BiasGeluTest, DISABLED_Two_One_Dim) {
   std::vector<float> input_a_data = {
       0.8f, -0.5f, 0.0f, 1.f,
       0.5f, 0.2f, 0.3f, -0.6f};

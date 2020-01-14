@@ -15,8 +15,8 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
-onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common gsl onnx onnx_proto tensorboard protobuf::libprotobuf)
-
+onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard protobuf::libprotobuf)
+target_compile_options(onnxruntime_training PUBLIC "-Wno-maybe-uninitialized")
 target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${re2_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -38,14 +38,14 @@ file(GLOB_RECURSE onnxruntime_training_runner_srcs
 add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs})
 add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
 
-onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
+onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
   target_include_directories(onnxruntime_training_runner PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
 endif()
-
+target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
 set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_runner_srcs})
 
@@ -57,11 +57,11 @@ file(GLOB_RECURSE training_poc_src
     "${ONNXRUNTIME_ROOT}/test/training/poc/main.cc"
 )
 add_executable(onnxruntime_training_poc ${training_poc_src})
-onnxruntime_add_include_to_target(onnxruntime_training_poc onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
+onnxruntime_add_include_to_target(onnxruntime_training_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_poc PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 set(ONNXRUNTIME_LIBS onnxruntime_session ${onnxruntime_libs} ${PROVIDERS_CUDA} ${PROVIDERS_MKLDNN} onnxruntime_optimizer onnxruntime_providers onnxruntime_util onnxruntime_framework onnxruntime_util onnxruntime_graph onnxruntime_common onnxruntime_mlas)
-
+target_compile_options(onnxruntime_training_poc PUBLIC "-Wno-maybe-uninitialized")
 target_link_libraries(onnxruntime_training_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_poc PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -74,9 +74,9 @@ file(GLOB_RECURSE training_squeezene_src
     "${ONNXRUNTIME_ROOT}/test/training/squeezenet/*.cc"
 )
 add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
-onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
+onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_squeezenet PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
+target_compile_options(onnxruntime_training_squeezenet PUBLIC "-Wno-maybe-uninitialized")
 target_link_libraries(onnxruntime_training_squeezenet PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_squeezenet PROPERTIES FOLDER "ONNXRuntimeTest")
 ]]
@@ -87,7 +87,10 @@ file(GLOB_RECURSE training_bert_src
     "${ONNXRUNTIME_ROOT}/test/training/bert/*.cc"
 )
 add_executable(onnxruntime_training_bert ${training_bert_src})
-onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
+
+target_compile_options(onnxruntime_training_bert PUBLIC "-Wno-maybe-uninitialized")
+
+onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
 target_include_directories(onnxruntime_training_bert PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
 if (onnxruntime_USE_HOROVOD)

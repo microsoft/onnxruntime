@@ -291,7 +291,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
-    auto mem_patterns = std::make_unique<MemoryPatternGroup>();
+    auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
     if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get()).IsOK()) {
       key = CalculateMemoryPatternsKey(input_shapes);
       auto ptr = mem_patterns.get();

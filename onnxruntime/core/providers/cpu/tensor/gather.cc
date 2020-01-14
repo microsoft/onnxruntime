@@ -10,13 +10,6 @@ namespace onnxruntime {
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,
     1,
-<<<<<<< HEAD
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", std::vector<MLDataType>{
-                                    DataTypeImpl::GetTensorType<int32_t>(),
-                                    DataTypeImpl::GetTensorType<int64_t>()}),
-=======
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
@@ -31,7 +24,6 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -149,14 +141,14 @@ ONNX_CPU_OPERATOR_KERNEL(
                                     DataTypeImpl::GetTensorType<int64_t>()}),
     GatherGrad);
 
-#define TYPED_GRAD_FUNCTION_CALL(T)                                           \
-  if (T_type == DataTypeImpl::GetType<T>()) {                                 \
-    if (Tind_type == DataTypeImpl::GetType<int32_t>()) {                      \
-      return ComputeImpl<T, int32_t>(data_shape, indices, grad, output);      \
-    }                                                                         \
-    if (Tind_type == DataTypeImpl::GetType<int64_t>()) {                      \
-      return ComputeImpl<T, int64_t>(data_shape, indices, grad, output);      \
-    }                                                                         \
+#define TYPED_GRAD_FUNCTION_CALL(T)                                      \
+  if (T_type == DataTypeImpl::GetType<T>()) {                            \
+    if (Tind_type == DataTypeImpl::GetType<int32_t>()) {                 \
+      return ComputeImpl<T, int32_t>(data_shape, indices, grad, output); \
+    }                                                                    \
+    if (Tind_type == DataTypeImpl::GetType<int64_t>()) {                 \
+      return ComputeImpl<T, int64_t>(data_shape, indices, grad, output); \
+    }                                                                    \
   }
 
 Status GatherGrad::Compute(OpKernelContext* context) const {

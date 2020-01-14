@@ -163,26 +163,25 @@ class OpKernelContext {
   Fence_t OutputFence(int index) const;
 
   /**
-<<<<<<< HEAD
   Return the device id that current kernel runs on.
   */
   int GetDeviceId() const {
     return kernel_->Info().GetExecutionProvider()->GetDeviceId();
   }
-=======
+
+  /**
   Returns the opset domain of the underlying kernel
   **/
   const std::string& GetOpDomain() const;
 
-  /** 
+  /**
   Returns the intra-op threadpool, if available.
   */
   _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
-  OrtValue* GetMutableInputMLValue(int index);
+
   const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);

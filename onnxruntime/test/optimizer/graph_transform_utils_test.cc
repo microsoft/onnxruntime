@@ -41,16 +41,11 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l2_transformer = "ConvActivationFusion";
   std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_transformer};
 
-<<<<<<< HEAD
-  auto transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level1, custom_list);
-  //ASSERT_TRUE(transformers.size() == 2);
-  ASSERT_TRUE(transformers.size() == 1); // TODO hack - temporarily disabled constant folding
-  auto l1_rule_transformer_name = transformer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
-=======
   auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
+  //ASSERT_TRUE(transformers.size() == 2);
+  ASSERT_TRUE(transformers.size() == 1);  // TODO hack - temporarily disabled constant folding
   auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   RuleBasedGraphTransformer* rule_transformer = nullptr;
   for (const auto& transformer : transformers) {
     if (transformer->Name() == l1_rule_transformer_name) {
@@ -59,12 +54,8 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
 
-<<<<<<< HEAD
-  transformers = transformer_utils::GenerateTransformers(TransformerLevel::Level2, custom_list);
-=======
   transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
 #ifndef DISABLE_CONTRIB_OPS
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   ASSERT_TRUE(transformers.size() == 1);
 #else
   ASSERT_TRUE(transformers.size() == 0);

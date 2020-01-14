@@ -148,10 +148,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            std::unique_ptr<IndexedSubGraph> customized_func,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
-     body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
-           IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-           graph.DomainToVersionMap(), {}, logger)
-    {
+      body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
+            IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
+            graph.DomainToVersionMap(), {}, logger) {
   customized_func_body_ = std::move(customized_func);
   auto& function_body_graph = body_.MainGraph();
 
@@ -220,7 +219,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 }
 
-static  std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto){
+static std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto) {
   return std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, static_cast<int>(onnx_func_proto.since_version())}};
 }
 
@@ -229,15 +228,13 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
-      body_ (onnx_func_proto.name(), false, onnxruntime::ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-             GetOpsetVersionMap(onnx_func_proto), {}, logger),
-      onnx_func_proto_(onnx_func_proto)
-    {
+      body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+            GetOpsetVersionMap(onnx_func_proto), {}, logger),
+      onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
   // Hence, we make a copy prior to generating the graph representation of the function,
   // as we might make some modifications to the FunctionProto along the way
-
 
   auto node_in_parent_graph = parent_graph_->GetNode(node_index);
   op_schema_ = onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>();
@@ -298,18 +295,11 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   //construct body
   std::unordered_map<std::string, int> domain_to_version;
   //TODO: set correct domain and version
-<<<<<<< HEAD
-  domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_->since_version());
-  body_ = std::make_unique<onnxruntime::Model>(onnx_func_proto_->name(), false, onnxruntime::ModelMetaData(),
-                                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
-  auto& sub_graph = body_->MainGraph();
-  std::vector<const NodeArg*> graph_inputs(onnx_func_proto_->input_size(), nullptr),
-      graph_outputs(onnx_func_proto_->output_size(), nullptr);
-=======
   domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_.since_version());
-
   auto& function_body_graph = body_.MainGraph();
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+  std::vector<const NodeArg*> graph_inputs(onnx_func_proto_.input_size(), nullptr),
+      graph_outputs(onnx_func_proto_.output_size(), nullptr);
+
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
@@ -386,14 +376,11 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     function_body_graph.AddNode(uniq_identifier + "_" + std::to_string(node_index), (*node).op_type(),
                                 (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
   }
-<<<<<<< HEAD
-  sub_graph.SetInputs(graph_inputs);
-  sub_graph.SetOutputs(graph_outputs);
-  auto status = sub_graph.Resolve();
-=======
 
+  function_body_graph.SetInputs(graph_inputs);
+  function_body_graph.SetOutputs(graph_outputs);
   auto status = function_body_graph.Resolve();
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+
   ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
 }
 

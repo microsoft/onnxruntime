@@ -12,13 +12,10 @@
 
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
-<<<<<<< HEAD
-#include "core/graph/onnx_protobuf.h"
-=======
 #include "core/framework/endian.h"
+#include "core/graph/onnx_protobuf.h"
 
 struct OrtValue;
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 namespace ONNX_NAMESPACE {
 class TypeProto;
@@ -40,6 +37,8 @@ using MapInt64ToDouble = std::map<int64_t, double>;
 //vectors/sequences
 using VectorMapStringToFloat = std::vector<MapStringToFloat>;
 using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
+using VectorString = std::vector<std::string>;
+using VectorInt64 = std::vector<int64_t>;
 
 class DataTypeImpl;
 class TensorTypeBase;
@@ -234,13 +233,9 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllSequenceTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();
   static const std::vector<MLDataType>& AllNumericTensorTypes();
-<<<<<<< HEAD
-  static const std::vector<MLDataType>& AllFloatingPointTensorTypes();
-=======
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes();
   static const std::vector<MLDataType>& AllFixedSizeTensorExceptHalfTypes();
   static const std::vector<MLDataType>& AllIEEEFloatTensorExceptHalfTypes();
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 };
 
 std::ostream& operator<<(std::ostream& out, MLDataType data_type);
@@ -693,7 +688,7 @@ class MapType : public NonTensorType<CPPType> {
  * \brief SequenceType. Use to register sequence for non-tensor types.
  *
  *  \param T - CPP type that you wish to register as Sequence
- *             runtime type. 
+ *             runtime type.
  *
  * \details Usage: ORT_REGISTER_SEQ(C++Type)
  *          The type is required to have value_type defined

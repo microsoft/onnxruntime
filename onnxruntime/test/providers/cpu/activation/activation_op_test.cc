@@ -210,12 +210,5 @@ TEST(ActivationOpTest, Softsign) {
       [](float x) { return x / (1 + std::abs(x)); }, {}, false);  // Disable TensorRT because result mismatches
 }
 
-TEST(ActivationOpTest, Gelu) {
-  TestUnaryElementwiseOp(
-      "Gelu",
-      input_vals,
-      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); }, {}, false, 9);
-}
-
 }  // namespace test
 }  // namespace onnxruntime

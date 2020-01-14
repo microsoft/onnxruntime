@@ -30,7 +30,7 @@ class MatMulComputeHelper {
     // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
     // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
     if (!transa && left_num_dims >= 2 && right_num_dims >= 2 &&
-      right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
+        right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
       M_ = left_shape.SizeToDimension(left_num_dims - 1);
       K_ = left_shape[left_num_dims - 1];
       N_ = transb ? right_shape[right_num_dims - 2] : right_shape[right_num_dims - 1];
@@ -39,13 +39,9 @@ class MatMulComputeHelper {
       output_offsets_ = {0};
       left_offsets_ = {0};
       right_offsets_ = {0};
-<<<<<<< HEAD
       ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2] ||
-                        transb && K_ == right_shape[right_num_dims - 1], "MatMul dimension mismatch");
-=======
-      ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2],
-                        "MatMul dimension mismatch, Left:", left_shape, " Right:", right_shape);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+                            transb && K_ == right_shape[right_num_dims - 1],
+                        "MatMul dimension mismatch");
       return Status::OK();
     }
 

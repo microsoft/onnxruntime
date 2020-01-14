@@ -17,7 +17,7 @@ std::vector<float> x = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
 std::vector<float> dy(7, 1.0f);
 }  // namespace testdata
 
-TEST(FunctionOpTest, Gelu) {
+TEST(FunctionOpTest, DISABLED_Gelu) {
   std::vector<std::vector<float>> input_data;
   input_data.push_back(testdata::x);
 
@@ -30,7 +30,7 @@ TEST(FunctionOpTest, Gelu) {
                  9);
 }
 
-TEST(FunctionOpTest, GeluGrad) {
+TEST(FunctionOpTest, DISABLED_GeluGrad) {
   std::vector<std::vector<float>> input_data;
   input_data.push_back(testdata::dy);
   input_data.push_back(testdata::x);

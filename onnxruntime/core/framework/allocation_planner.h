@@ -31,14 +31,9 @@ class ISequentialPlannerContext {
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-<<<<<<< HEAD
-  SequentialPlannerContext(bool p_enable_parallel_execution)
-      : m_enable_parallel_execution(p_enable_parallel_execution) {}
-=======
   SequentialPlannerContext(ExecutionMode execution_mode)
       : m_execution_mode(execution_mode) {
   }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
     return arg.Shape();

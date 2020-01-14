@@ -102,7 +102,7 @@ class TrainingUtil {
     assert(shape.Size() == static_cast<int64_t>(value.size()));
     auto element_type = DataTypeImpl::GetType<T>();
     auto allocator = alloc ? alloc : GetCpuAllocator();
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
+    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, allocator);
 
     if (value.size() > 0) {
       memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());

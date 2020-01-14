@@ -67,7 +67,7 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
     data_files_ = std::move(partial_training_files);
   }
 
-  data_loader_thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>(
+  data_loader_thread_pool_ = onnxruntime::make_unique<onnxruntime::concurrency::ThreadPool>(
       "DataLoaderPool", thread_pool_size_);
 }
 

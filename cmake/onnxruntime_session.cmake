@@ -22,26 +22,6 @@ if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_session PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
 
-<<<<<<< HEAD
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  add_definitions(-DENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
-  onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_language_interop)
-  add_dependencies(onnxruntime_session onnxruntime_language_interop)
-endif()
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  add_definitions(-DENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
-  onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_language_interop)
-  add_dependencies(onnxruntime_session onnxruntime_language_interop)
-endif()
-
-if(onnxruntime_USE_EIGEN_THREADPOOL)
-    target_compile_definitions(onnxruntime_session PUBLIC USE_EIGEN_THREADPOOL)
-endif()
-=======
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND onnxruntime_ENABLE_PYTHON)
   target_compile_definitions(onnxruntime_session PUBLIC ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677

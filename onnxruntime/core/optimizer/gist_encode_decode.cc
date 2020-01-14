@@ -103,7 +103,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
   }
   return true;
 }
-Status GistEncodeDecode::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status GistEncodeDecode::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
   if (GistEncodeDecode::AddEncodeDecode(graph, node, "GistBinarize")) {
     rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;
   }
@@ -111,9 +111,8 @@ Status GistEncodeDecode::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule
   return Status::OK();
 }
 
-bool GistEncodeDecode::SatisfyCondition(const Graph& graph, const Node& node) const {
-  return graph_utils::IsSingleInSingleOutNode(node) &&
-         !graph.IsNodeOutputsInGraphOutputs(node);
+bool GistEncodeDecode::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
+  return graph_utils::CanRemoveNode(graph, node, logger);
 }
 
 }  // namespace onnxruntime

@@ -84,9 +84,9 @@ class GraphViewer {
   /** Gets the NodeIndex values for the Graph nodes, sorted into topological order. */
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const;
 
-  /** 
+  /**
   Gets the NodeIndex values for the root nodes in the Graph.
-  The root nodes are the topmost nodes in the Graph that receive inputs from the Graph inputs 
+  The root nodes are the topmost nodes in the Graph that receive inputs from the Graph inputs
   and no other nodes in the Graph.
   */
   const std::vector<NodeIndex>& GetRootNodes() const;
@@ -108,19 +108,17 @@ class GraphViewer {
   /** Checks if this is a Subgraph */
   bool IsSubgraph() const;
 
-<<<<<<< HEAD
   /** Get the internal graph*/
   const Graph* GetGraph() const { return graph_; }
-=======
-  /** 
-  returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+
+  /**
+  returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
   @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name' if not found in 'graph_'.
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);

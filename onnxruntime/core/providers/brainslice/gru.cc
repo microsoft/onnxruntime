@@ -35,11 +35,11 @@ BrainSliceGRU<float>::BrainSliceGRU(const OpKernelInfo& info) : BrainSliceRNN(in
 
     auto matrix_mem_type = use_dram_ ? ISA_Mem_Dram : ISA_Mem_MatrixRf;
     BrainSliceParameterInitPlan wr_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wr_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + w_shape.Size() * W->DataType()->Size(), W->Location());
+    wr_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + w_shape.Size() * W->DataType()->Size(), W->Location());
     BrainSliceParameterInitPlan wz_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wz_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer, W->Location());
+    wz_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer, W->Location());
     BrainSliceParameterInitPlan wh_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wh_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + 2 * (w_shape.Size() * W->DataType()->Size()), W->Location());
+    wh_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + 2 * (w_shape.Size() * W->DataType()->Size()), W->Location());
 
     //b. R
     const Tensor* R;
@@ -50,11 +50,11 @@ BrainSliceGRU<float>::BrainSliceGRU(const OpKernelInfo& info) : BrainSliceRNN(in
     TensorShape r_shape({1, r_dims[1] / 3, r_dims[2]});
     char* r_buffer = static_cast<char*>(const_cast<void*>((R->DataRaw()))) + i * 3 * r_shape.Size() * R->DataType()->Size();
     BrainSliceParameterInitPlan rr_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    rr_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + r_shape.Size() * R->DataType()->Size(), R->Location());
+    rr_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + r_shape.Size() * R->DataType()->Size(), R->Location());
     BrainSliceParameterInitPlan rz_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    rz_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer, R->Location());
+    rz_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer, R->Location());
     BrainSliceParameterInitPlan rh_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    rh_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + 2 * (r_shape.Size() * R->DataType()->Size()), R->Location());
+    rh_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + 2 * (r_shape.Size() * R->DataType()->Size()), R->Location());
 
     //The built-in GRU firmware is trick that it assume the matrix are load in the order: Wr, Rr, Wz, Rz, Wh, Rh
     //And need to start from address 0. So the order matters here
@@ -75,7 +75,7 @@ BrainSliceGRU<float>::BrainSliceGRU(const OpKernelInfo& info) : BrainSliceRNN(in
     BrainSliceParameterInitPlan identity_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 1, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
     TensorShape identity_shape({hidden_size_, hidden_size_});
     // R is on cpu, reuse the location.
-    identity_plan.tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), identity_shape, &identity_matrix[0], R->Location());
+    identity_plan.tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), identity_shape, &identity_matrix[0], R->Location());
     UploadParameter<float>(&rnn_params_[i][static_cast<uint32_t>(GRUParaIndex::MRF_IDENTITY)], identity_plan);
 
     //4. upload bias
@@ -118,11 +118,11 @@ BrainSliceGRU<float>::BrainSliceGRU(const OpKernelInfo& info) : BrainSliceRNN(in
     auto bias_mem_type = use_dram_ ? ISA_Mem_Dram : ISA_Mem_AddSubVrf_0;
 
     BrainSliceParameterInitPlan br_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    br_plan.tensor = std::make_unique<Tensor>(B->DataType(), b_shape, &bias[0][0], W->Location());
+    br_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), b_shape, &bias[0][0], W->Location());
     BrainSliceParameterInitPlan bz_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    bz_plan.tensor = std::make_unique<Tensor>(B->DataType(), b_shape, &bias[1][0], W->Location());
+    bz_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), b_shape, &bias[1][0], W->Location());
     BrainSliceParameterInitPlan bh_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    bh_plan.tensor = std::make_unique<Tensor>(B->DataType(), b_shape, &bias[2][0], W->Location());
+    bh_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), b_shape, &bias[2][0], W->Location());
     UploadParameter<float>(&rnn_params_[i][static_cast<uint32_t>(GRUParaIndex::ANS_RF_B_R)], br_plan);
     UploadParameter<float>(&rnn_params_[i][static_cast<uint32_t>(GRUParaIndex::ANS_RF_B_U)], bz_plan);
     UploadParameter<float>(&rnn_params_[i][static_cast<uint32_t>(GRUParaIndex::ANS_RF_B_C)], bh_plan);

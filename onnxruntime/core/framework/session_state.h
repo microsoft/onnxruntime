@@ -251,9 +251,9 @@ class SessionState {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   Status GeneratePatternGroupCache(
-	  const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
-	  const std::vector<int>& feed_mlvalue_idxs,
-	  MemoryPatternGroup* output) const;
+      const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+      const std::vector<int>& feed_mlvalue_idxs,
+      MemoryPatternGroup* output) const;
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
@@ -303,24 +303,20 @@ class SessionState {
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
-<<<<<<< HEAD
-
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
-=======
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   SessionState* parent_ = nullptr;
   //Assign each graph in each session an unique id.
   int graph_id_ = 0;
   int next_graph_id_ = 1;
-  
-  void GenerateGraphId() {
-	SessionState* p = this;
-    while (p->parent_ != nullptr) p = p->parent_;
-	graph_id_ = p->next_graph_id_ ++;
-  }
 
+  void GenerateGraphId() {
+    SessionState* p = this;
+    while (p->parent_ != nullptr) p = p->parent_;
+    graph_id_ = p->next_graph_id_++;
+  }
 #endif
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 };
 
 }  // namespace onnxruntime

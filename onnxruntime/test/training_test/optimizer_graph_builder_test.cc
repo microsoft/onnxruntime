@@ -18,6 +18,7 @@
 #include "core/training/optimizer_graph_builder.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/gtest_utils.h"
+#include "test/test_environment.h"
 
 using onnxruntime::test::CountOpsInGraph;
 
@@ -38,7 +39,8 @@ Status SetUpBaseGraph(Graph& graph);
 
 class OptimizerGraphBuilderTest : public testing::Test {
  protected:
-  OptimizerGraphBuilderTest() : model_{"test_model"}, graph_{model_.MainGraph()} {
+  OptimizerGraphBuilderTest() : model_{"test_model", false, onnxruntime::test::DefaultLoggingManager().DefaultLogger()},
+   graph_{model_.MainGraph()} {
   }
 
   virtual void SetUp() override {

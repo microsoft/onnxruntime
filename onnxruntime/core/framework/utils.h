@@ -68,13 +68,8 @@ void FinalizeFeedFetchCopyInfo(const SessionState& session_state,
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-<<<<<<< HEAD
-                            const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                            bool sequential_execution, const bool& terminate_flag, const logging::Logger& logger,
-                            bool cache_copy_info = true, bool only_execute_path_to_fetches = false);
-=======
-                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                            bool only_execute_path_to_fetches = false);
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.

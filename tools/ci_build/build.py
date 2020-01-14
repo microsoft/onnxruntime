@@ -153,13 +153,9 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
-<<<<<<< HEAD
     parser.add_argument("--use_horovod", action='store_true', help="Enable Horovod.")
     parser.add_argument("--use_nccl", action='store_true', help="Build with NCCL for distributed training.")
-    parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests")
-=======
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests. Note: Use --skip_tests to skip all tests.")
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
@@ -269,52 +265,9 @@ def check_md5(filename, expected_md5):
         return False
     return True
 
-<<<<<<< HEAD
-#the last part of src_url should be unique, across all the builds
-def download_test_data(build_dir, src_url, expected_md5, azure_sas_key):
-    cache_dir = os.path.join(expanduser("~"), '.cache','onnxruntime')
-    os.makedirs(cache_dir, exist_ok=True)
-    local_zip_file = os.path.join(cache_dir, os.path.basename(src_url))
-    if not check_md5(local_zip_file, expected_md5):
-        log.info("Downloading test data from {}".format(src_url))
-        if azure_sas_key:
-            src_url += azure_sas_key
-        # try to avoid logging azure_sas_key
-        if shutil.which('aria2c'):
-            result = subprocess.run(['aria2c','-x', '5', '-j',' 5',  '-q', src_url, '-d', cache_dir])
-            if result.returncode != 0:
-                raise BuildError("aria2c exited with code {}.".format(result.returncode))
-        elif shutil.which('curl'):
-            result = subprocess.run(['curl', '-s', src_url, '-o', local_zip_file])
-            if result.returncode != 0:
-                raise BuildError("curl exited with code {}.".format(result.returncode))
-        else:
-            import urllib.request
-            import urllib.error
-            try:
-                urllib.request.urlretrieve(src_url, local_zip_file)
-            except urllib.error.URLError as exc:
-                raise BuildError("urllib.request.urlretrieve() failed with error {}".format(exc))
-    models_dir = os.path.join(build_dir,'models')
-    if os.path.exists(models_dir):
-        log.info('deleting %s' % models_dir)
-        shutil.rmtree(models_dir)
-    if shutil.which('unzip'):
-        run_subprocess(['unzip','-qd', models_dir, local_zip_file])
-    elif shutil.which('7z'):  # 7-Zip
-        run_subprocess(['7z','x', local_zip_file, '-y', '-o' + models_dir])
-    elif shutil.which('7za'):  # 7-Zip standalone
-        run_subprocess(['7za', 'x', local_zip_file, '-y', '-o' + models_dir])
-    else:
-        #TODO: use python for unzip
-        log.error("No unzip tool for use")
-        return False
-    return True
-=======
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 
-def setup_test_data(build_dir, configs):    
+def setup_test_data(build_dir, configs):
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
         src_model_dir = os.path.join(build_dir, 'models')
@@ -573,10 +526,10 @@ def setup_tensorrt_vars(args):
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
         os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "1000"
-        
+
         # Set minimum subgraph node size in graph partitioning for TensorRT
         os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
-        
+
     return tensorrt_home
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
@@ -703,7 +656,7 @@ def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-e', 'tensorrt', '-j', '1'] 
+        cmd_base = ['-e', 'tensorrt', '-j', '1']
 
         #onnx test
         if os.path.exists(onnx_test_data_dir):
@@ -713,7 +666,7 @@ def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         # model test
         # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
         if config != 'Debug' and os.path.exists(model_dir):
-          model_dir_opset8 = os.path.join(model_dir, "opset8")          
+          model_dir_opset8 = os.path.join(model_dir, "opset8")
           model_dir_opset8 = glob.glob(os.path.join(model_dir_opset8, "test_*"))
           model_dir_opset10 = os.path.join(model_dir, "opset10")
           model_dir_opset10 = glob.glob(os.path.join(model_dir_opset10, "tf_inception_v1"))
@@ -737,7 +690,7 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           # /data/onnx
           run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
           run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
-        
+
         if config != 'Debug' and os.path.exists(model_dir):
           opset7_model_dir = os.path.join(model_dir, 'opset7')
           opset7_cmd = cmd_base + [opset7_model_dir]
@@ -1066,7 +1019,7 @@ def main():
                 tensorrt_run_onnx_tests(build_dir, configs, "")
 
             if args.use_cuda:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)
 
             if args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)
@@ -1078,7 +1031,7 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1, 1)
 
             if args.use_dml:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)
 
             # Run some models are disabled to keep memory utilization under control
             if args.use_dnnl:
@@ -1086,7 +1039,7 @@ def main():
 
             run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
               1 if args.x86 or platform.system() == 'Darwin' else 0,
-              1 if args.x86 or platform.system() == 'Darwin' else 0)                       
+              1 if args.x86 or platform.system() == 'Darwin' else 0)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:

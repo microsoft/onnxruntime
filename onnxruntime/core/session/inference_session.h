@@ -458,13 +458,10 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
-<<<<<<< HEAD
  protected:
   bool IsInitialized() const;
 
  private:
-=======
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
@@ -497,7 +494,7 @@ class InferenceSession {
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;  // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
   InsertCastTransformer insert_cast_transformer_;
 
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.

@@ -11,8 +11,8 @@ namespace brainslice {
 using namespace onnxruntime;
 class BrainSlicePinnedAllocator : public CPUAllocator {
  public:
-  virtual const OrtAllocatorInfo& Info() const override {
-    static OrtAllocatorInfo bs_cpu_allocator_info("BrainSlice",
+  virtual const OrtMemoryInfo& Info() const override {
+    static OrtMemoryInfo bs_cpu_allocator_info("BrainSlice",
                                                   OrtAllocatorType::OrtDeviceAllocator, 0,
                                                   OrtMemType::OrtMemTypeCPU);
     return bs_cpu_allocator_info;
@@ -24,8 +24,8 @@ class BrainSlicePinnedAllocator : public CPUAllocator {
 //Looks something wrong is the design, may need to take a look later.
 class BrainSliceAllocator : public IAllocator {
  public:
-  virtual const OrtAllocatorInfo& Info() const override {
-    static OrtAllocatorInfo bs_default_allocator_info("BrainSlice",
+  virtual const OrtMemoryInfo& Info() const override {
+    static OrtMemoryInfo bs_default_allocator_info("BrainSlice",
                                                       OrtAllocatorType::OrtDeviceAllocator, 0,
                                                       OrtMemType::OrtMemTypeDefault);
     return bs_default_allocator_info;
@@ -41,11 +41,11 @@ class BrainSliceAllocator : public IAllocator {
 };
 
 BrainSliceExecutionProvider::BrainSliceExecutionProvider(const fpga::FPGAInfo& info) : handle_(info),
-                                                                                       matrix_rf_planner_(std::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_MatrixRf, handle_.GetParameters().MATRIX_RF_SIZE, 0)),
-                                                                                       multiply_vrf_planner_(std::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_MultiplyVrf, handle_.GetParameters().MULTIPLY_VRF_SIZE, 0)),
-                                                                                       add_sub_vrf_planner_(std::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_AddSubVrf_0, handle_.GetParameters().ADDSUB_VRF_0_SIZE, 0)),
-                                                                                       m_dram_planner_(std::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_Dram, handle_.GetParameters().MATRIX_MEM_SIZE, 1)),
-                                                                                       v_dram_planner_(std::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_AddSubVrf, handle_.GetParameters().VECTOR_MEM_SIZE, 1)) {
+                                                                                       matrix_rf_planner_(onnxruntime::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_MatrixRf, handle_.GetParameters().MATRIX_RF_SIZE, 0)),
+                                                                                       multiply_vrf_planner_(onnxruntime::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_MultiplyVrf, handle_.GetParameters().MULTIPLY_VRF_SIZE, 0)),
+                                                                                       add_sub_vrf_planner_(onnxruntime::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_AddSubVrf_0, handle_.GetParameters().ADDSUB_VRF_0_SIZE, 0)),
+                                                                                       m_dram_planner_(onnxruntime::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_Dram, handle_.GetParameters().MATRIX_MEM_SIZE, 1)),
+                                                                                       v_dram_planner_(onnxruntime::make_unique<BrainSliceMemoryPlanner>(ISA_Mem_AddSubVrf, handle_.GetParameters().VECTOR_MEM_SIZE, 1)) {
   // insert cpu memory allocator
   AllocatorPtr cpu_allocator(new BrainSlicePinnedAllocator());
   AllocatorPtr bs_allocator(new BrainSliceAllocator());
@@ -181,9 +181,9 @@ BrainSliceExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node : graph.Nodes()) {
     if (CheckNodeWithCapacity(graph, node)) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
       sub_graph->nodes.push_back(node.Index());
-      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
       //TODO: right now BrainSlice only support one node on the device.
       //Will fix it later.
       break;

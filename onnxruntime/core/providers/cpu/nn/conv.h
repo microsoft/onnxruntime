@@ -42,12 +42,15 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
-class ConvGrad final : public OpKernel, public ConvBase {
+class ConvGrad final : public OpKernel {
  public:
-  explicit ConvGrad(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  explicit ConvGrad(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ protected:
+   ConvAttributes conv_attrs_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvGrad);

@@ -73,13 +73,6 @@ class Profiler {
   */
   std::string EndProfiling();
 
-<<<<<<< HEAD
-  static constexpr size_t DEFAULT_MAX_PROFILER_EVENTS = 1000 * 1000;
-  /* The maximum number of profiler records to collect. */
-  static size_t max_num_events_;
-
-private:
-=======
   static Profiler& Instance() {
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
     ORT_ENFORCE(instance_ != nullptr);
@@ -89,8 +82,11 @@ private:
 #endif
   }
 
+  static constexpr size_t DEFAULT_MAX_PROFILER_EVENTS = 1000 * 1000;
+  /* The maximum number of profiler records to collect. */
+  static size_t max_num_events_;
+
  private:
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   // Mutex controlling access to profiler data

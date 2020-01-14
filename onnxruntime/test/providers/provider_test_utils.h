@@ -242,10 +242,6 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 // explanatory
 class OpTester {
  public:
-<<<<<<< HEAD
-  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
-      : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {}
-=======
   // Default to the first opset that ORT was available (7).
   // When operators are updated they need to explicitly add tests for the new opset version.
   // This is due to the kernel matching logic. See KernelRegistry::VerifyKernelDef.
@@ -258,15 +254,14 @@ class OpTester {
   //        will find and run the CPU v2 implementation, but will not match the GPU v1 implementation.
   //        OpTester will say it was successful as at least one EP ran, and the GPU implementation of v1 no longer has
   //        test coverage.
-  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
-      : op_(op), domain_(domain), opset_version_(opset_version) {
+  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
+      : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {
     if (opset_version_ < 0) {
       static int latest_onnx_version =
           ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
       opset_version_ = latest_onnx_version;
     }
   }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   virtual ~OpTester();
 
@@ -295,12 +290,12 @@ class OpTester {
   }
 
   template <typename T>
-<<<<<<< HEAD
   void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false) {
     AddData(input_data_, name, dims, p_values, size, is_initializer);
   }
 
-=======
+  // Add other registered types, possibly experimental
+  template <typename T>
   void AddInput(const char* name, const T& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
@@ -334,7 +329,6 @@ class OpTester {
     AddSeqData<T>(output_data_, name, seq_tensors);
   }
 
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
     std::unique_ptr<std::map<TKey, TVal>> ptr = onnxruntime::make_unique<std::map<TKey, TVal>>(val);
@@ -446,21 +440,18 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-<<<<<<< HEAD
-           bool sequential_execution = true,
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
            const CustomOutputVerifierFn& custom_output_verifier = {});
-
-  std::vector<MLValue> GetFetches() { return fetches_; }
-=======
-           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
 
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
-           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+           const CustomOutputVerifierFn& custom_output_verifier = {});
+
+  std::vector<MLValue> GetFetches() { return fetches_; }
 
   struct Data {
     onnxruntime::NodeArg def_;
@@ -546,9 +537,7 @@ class OpTester {
     }
   }
 
-<<<<<<< HEAD
  private:
-=======
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
     auto num_tensors = seq_tensors.tensors.size();
@@ -584,12 +573,6 @@ class OpTester {
                         optional<float>(), optional<float>()));
   }
 
-  void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
-                    const std::string& expected_failure_string, const RunOptions* run_options,
-                    std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
-                    const std::string& provider_type);
-
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;

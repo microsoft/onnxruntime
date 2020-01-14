@@ -160,12 +160,7 @@ void AddNonTensor(OrtValue& val, std::vector<py::object>& pyobjs) {
   pyobjs.push_back(py::cast(val.Get<T>()));
 }
 
-<<<<<<< HEAD
-py::object TensorToPyObj(OrtValue& val, const DataTransferManager* data_transfer_manager = nullptr) {
-  const Tensor& rtensor = val.Get<Tensor>();
-=======
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransferManager* data_transfer_manager = nullptr) {
   std::vector<npy_intp> npy_dims;
   const TensorShape& shape = rtensor.Shape();
 
@@ -185,8 +180,8 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
     //if it is not cpu tenosr, need to copy to host
     if (rtensor.Location().device.Type() != OrtDevice::CPU) {
       if (!data_transfer_manager)
-        throw std::runtime_error("TensorToPyObj: data transfer manager is needed when convert non-CPU tensor to numpy array");
-      static const OrtAllocatorInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+        throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed when convert non-CPU tensor to numpy array");
+      static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
       std::vector<char> tensor_data_buffer{};
       tensor_data_buffer.resize(rtensor.SizeInBytes());
       ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
@@ -202,12 +197,6 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj) {
       outObj[i] = py::cast(*src);
     }
   }
-<<<<<<< HEAD
-  return obj;
-}
-
-void AddTensorAsPyObj(OrtValue& val, vector<py::object>& pyobjs) {
-  pyobjs.push_back(TensorToPyObj(val));
 }
 
 static std::string GetDeviceName(const OrtDevice& device) {
@@ -221,8 +210,29 @@ static std::string GetDeviceName(const OrtDevice& device) {
     default:
       throw std::runtime_error("Unknow device type:" + std::to_string(device.Type()));
   }
-=======
 }
+
+struct TrainingParameters {
+  std::string loss_output_name;
+  std::unordered_set<std::string> weights_to_train;
+  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
+  std::vector<std::string> weights_not_to_train;
+
+  // optimizer
+  std::string training_optimizer_name;
+  std::string loss_scale_input_name;
+  std::string scaled_loss_output_name;
+  std::string lr_params_feed_name = "Learning_Rate";
+  std::unordered_map<string, std::unordered_map<string, float>> optimizer_attributes_map;
+  bool use_fp16_moments = false;
+
+  bool use_mixed_precision = false;
+  bool allreduce_post_accumulation = false;
+  float loss_scale = 0.0f;
+  int world_rank = -1;
+  int world_size = 1;
+  int gradient_accumulation_steps = 1;
+};
 
 template <>
 void AddNonTensor<TensorSeq>(OrtValue& val, std::vector<py::object>& pyobjs) {
@@ -278,30 +288,7 @@ void AddTensorAsPyObj(OrtValue& val, std::vector<py::object>& pyobjs) {
   py::object obj;
   GetPyObjFromTensor(rtensor, obj);
   pyobjs.push_back(obj);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }
-
-struct TrainingParameters {
-  std::string loss_output_name;
-  std::unordered_set<std::string> weights_to_train;
-  onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
-  std::vector<std::string> weights_not_to_train;
-
-  // optimizer
-  std::string training_optimizer_name;
-  std::string loss_scale_input_name;
-  std::string scaled_loss_output_name;
-  std::string lr_params_feed_name = "Learning_Rate";
-  std::unordered_map<string, std::unordered_map<string, float>> optimizer_attributes_map;
-  bool use_fp16_moments = false;
-
-  bool use_mixed_precision = false;
-  bool allreduce_post_accumulation = false;
-  float loss_scale = 0.0f;
-  int world_rank = -1;
-  int world_size = 1;
-  int gradient_accumulation_steps = 1;
-};
 
 class SessionObjectInitializer {
  public:
@@ -451,15 +438,13 @@ const std::vector<std::string>& GetAvailableProviders() {
     available_providers.push_back(kTensorrtExecutionProvider);
 #endif
 #ifdef USE_CUDA
-<<<<<<< HEAD
-  {
-    RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
-    cuda_device_id = 0;
-    cuda_mem_limit = INT_MAX;
-  }
-=======
+    {
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
+      cuda_device_id = 0;
+      cuda_mem_limit = INT_MAX;
+    }
+
     available_providers.push_back(kCudaExecutionProvider);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #endif
 #ifdef USE_DNNL
     available_providers.push_back(kDnnlExecutionProvider);
@@ -576,11 +561,7 @@ void addGlobalMethods(py::module& m) {
         // default logger is needed to create the DNNLExecutionProvider
         std::string default_logger_id{"DefaultLogger"};
         std::unique_ptr<onnxruntime::logging::LoggingManager> default_logging_manager =
-<<<<<<< HEAD
-            std::make_unique<LoggingManager>(
-=======
             onnxruntime::make_unique<LoggingManager>(
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
                 std::unique_ptr<onnxruntime::logging::ISink>{new onnxruntime::logging::CLogSink{}},
                 onnxruntime::logging::Severity::kWARNING,
                 false,
@@ -593,13 +574,8 @@ void addGlobalMethods(py::module& m) {
 #ifdef USE_CUDA
             onnxruntime::CreateExecutionProviderFactory_CUDA(0),
 #endif
-<<<<<<< HEAD
-#ifdef USE_MKLDNN
-            onnxruntime::CreateExecutionProviderFactory_Mkldnn(1),
-=======
 #ifdef USE_DNNL
             onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #endif
 #ifdef USE_NGRAPH
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
@@ -608,11 +584,7 @@ void addGlobalMethods(py::module& m) {
             onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
 #endif
 #ifdef USE_TENSORRT
-<<<<<<< HEAD
-            onnxruntime::CreateExecutionProviderFactory_Tensorrt()
-=======
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #endif
         };
 
@@ -628,15 +600,13 @@ void addGlobalMethods(py::module& m) {
       },
       "Return a vector of KernelDef for all registered OpKernels");
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
-<<<<<<< HEAD
+
 #ifdef USE_CUDA
   m.def("set_cuda_device_id", [](const int id) { cuda_device_id = id; });
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
 #endif
-=======
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
@@ -758,7 +728,10 @@ void addObjectMethods(py::module& m) {
       .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
       .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-<<<<<<< HEAD
+  py::enum_<ExecutionMode>(m, "ExecutionMode")
+      .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
+      .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
+
   py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
   device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
@@ -779,9 +752,9 @@ void addObjectMethods(py::module& m) {
 
         std::string device_name = GetDeviceName(device);
 
-        OrtAllocatorInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
 
-        std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
                      DataTypeImpl::GetType<Tensor>(),
@@ -799,9 +772,9 @@ void addObjectMethods(py::module& m) {
 
         std::string device_name = GetDeviceName(device);
 
-        OrtAllocatorInfo info(device_name.c_str(), OrtDeviceAllocator, device);
+        OrtMemoryInfo info(device_name.c_str(), OrtDeviceAllocator, device);
 
-        std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
+        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, (void*)data_ptr, info);
         OrtValue mlvalue;
         mlvalue.Init(p_tensor.release(),
                      DataTypeImpl::GetType<Tensor>(),
@@ -836,15 +809,8 @@ void addObjectMethods(py::module& m) {
       .def_readwrite("world_size", &TrainingParameters::world_size)
       .def_readwrite("gradient_accumulation_steps", &TrainingParameters::gradient_accumulation_steps);
 
-  py::class_<SessionOptions> sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
-=======
-  py::enum_<ExecutionMode>(m, "ExecutionMode")
-      .value("ORT_SEQUENTIAL", ExecutionMode::ORT_SEQUENTIAL)
-      .value("ORT_PARALLEL", ExecutionMode::ORT_PARALLEL);
-
   py::class_<SessionOptions>
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
@@ -924,9 +890,7 @@ Applies to a particular Run() invocation. Default is 0.)pbdoc")
                      "To identify logs generated by a particular Run() invocation.")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
-RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
-      .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
+RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -957,15 +921,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             } else {
               res << "[";
               for (int i = 0; i < shape->dim_size(); ++i) {
-<<<<<<< HEAD
-                if (shape->dim(i).has_dim_value()) {
-                  res << shape->dim(i).dim_value();
-                } else if (shape->dim(i).has_dim_param()) {
-=======
                 if (utils::HasDimValue(shape->dim(i))) {
                   res << shape->dim(i).dim_value();
                 } else if (utils::HasDimParam(shape->dim(i))) {
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
                   res << "'" << shape->dim(i).dim_param() << "'";
                 } else {
                   res << "None";
@@ -992,15 +950,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
             arr.resize(shape->dim_size());
             for (int i = 0; i < shape->dim_size(); ++i) {
-<<<<<<< HEAD
-              if (shape->dim(i).has_dim_value()) {
-                arr[i] = py::cast(shape->dim(i).dim_value());
-              } else if (shape->dim(i).has_dim_param()) {
-=======
               if (utils::HasDimValue(shape->dim(i))) {
                 arr[i] = py::cast(shape->dim(i).dim_value());
               } else if (utils::HasDimParam(shape->dim(i))) {
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
                 arr[i] = py::cast(shape->dim(i).dim_param());
               } else {
                 arr[i] = py::none();
@@ -1031,19 +983,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             InitializeSession(sess, provider_types);
           },
           R"pbdoc(Load a model saved in ONNX format.)pbdoc")
-<<<<<<< HEAD
-      .def(
-          "read_bytes", [](InferenceSession* sess, const py::bytes& serializedModel) {
-            std::istringstream buffer(serializedModel);
-            auto status = sess->Load(buffer);
-            if (!status.IsOK()) {
-              throw std::runtime_error(status.ToString().c_str());
-            }
-            InitializeSession(sess);
-          },
-          R"pbdoc(Load a model serialized in ONNX format.)pbdoc")
-=======
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       .def("run", [](InferenceSession* sess, std::vector<std::string> output_names, std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr) -> std::vector<py::object> {
         NameMLValMap feeds;
         for (auto _ : pyfeeds) {
@@ -1119,12 +1058,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def_property_readonly("model_meta", [](const InferenceSession* sess) -> const onnxruntime::ModelMetadata& {
         auto res = sess->GetModelMetadata();
-<<<<<<< HEAD
-        if (!res.first.IsOK()) {
-          throw std::runtime_error(res.first.ToString().c_str());
-        } else {
-          return *(res.second);
-        }
+        OrtPybindThrowIfError(res.first);
+        return *(res.second);
       })
       .def("run_with_iobinding", [](InferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
@@ -1134,11 +1069,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-=======
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       });
+
   py::class_<onnxruntime::training::TrainingSession, InferenceSession> training_session(m, "TrainingSession");
   training_session.def(py::init<SessionOptions, SessionObjectInitializer>())
       .def(py::init<SessionObjectInitializer, SessionObjectInitializer>())
@@ -1202,7 +1134,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error(status.ToString().c_str());
         }
 
-<<<<<<< HEAD
         auto weights_to_train = parameters.weights_to_train;
         if (weights_to_train.empty()) {
           weights_to_train = sess->GetTrainableModelInitializers(parameters.immutable_weights);
@@ -1245,7 +1176,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
           if (kv.second.IsTensor()) {
-            rmap.insert({kv.first, TensorToPyObj(kv.second, &data_transfer_manager)});
+            py::object obj;
+            GetPyObjFromTensor(kv.second, obj, &data_transfer_manager)
+            rmap.insert({kv.first, obj)});
           } else {
             throw std::runtime_error("Non tensor type in session state tensors is not expected.");
           }
@@ -1275,7 +1208,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_THROW_IF_ERROR(sess->UpdateInitializedTensors(state_tensors, strict));
       });
 }
-=======
+
 #ifdef USE_MIMALLOC
 static struct {
   PyMemAllocatorEx mem;
@@ -1283,7 +1216,6 @@ static struct {
   PyMemAllocatorEx obj;
 } allocators;
 #endif
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";

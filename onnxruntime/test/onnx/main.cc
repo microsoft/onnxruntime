@@ -290,12 +290,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-<<<<<<< HEAD
-      ORT_THROW_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, 0, std::numeric_limits<size_t>::max()));
-=======
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
-#else
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id, std::numeric_limits<size_t>::max()));
+#else 
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
 #endif
@@ -364,7 +360,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                                                 "test_resnet101v2", "test_vgg19", "tf_inception_resnet_v2", "tf_inception_v1", "tf_inception_v3", "tf_inception_v4", "tf_mobilenet_v1_1.0_224",
                                                 "tf_mobilenet_v2_1.0_224", "tf_mobilenet_v2_1.4_224", "tf_nasnet_large", "tf_pnasnet_large", "tf_resnet_v1_50", "tf_resnet_v1_101", "tf_resnet_v1_101",
                                                 "tf_resnet_v2_101", "tf_resnet_v2_152"};
-	
+
     std::unordered_set<std::string> all_disabled_tests;
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
@@ -489,7 +485,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
   broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
   broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
-  broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"}); 
+  broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
   broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
@@ -545,9 +541,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
   broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
   broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
-<<<<<<< HEAD
   broken_tests.insert({"tf_resnet_v1_152", "flaky test"}); //TODO: Investigate cause for flakiness
-=======
   broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #endif
 
@@ -578,7 +572,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
   }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #endif
   // clang-format on
 

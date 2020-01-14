@@ -7,9 +7,8 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
-<<<<<<< HEAD
-size_t profiling::Profiler::max_num_events_ = DEFAULT_MAX_PROFILER_EVENTS;
-=======
+size_t Profiler::max_num_events_ = DEFAULT_MAX_PROFILER_EVENTS;
+
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
 Profiler* Profiler::instance_ = nullptr;
 
@@ -19,7 +18,6 @@ profiling::Profiler::~Profiler() {
 #else
 profiling::Profiler::~Profiler() {}
 #endif
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   ORT_ENFORCE(enabled_);

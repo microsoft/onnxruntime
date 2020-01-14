@@ -47,14 +47,14 @@ std::pair<bool, Node*> IsInputTranspose(const Graph& graph, const Node& node, No
   return std::make_pair(true, const_cast<Node*>(trans_node));
 }
 
-Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
 
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {

@@ -71,8 +71,8 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                               << "' source:" << source.shape() << " target:" << target.shape()
-                               << ". Falling back to lenient merge.";
+                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << ". Falling back to lenient merge.";
 
       ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
     } else {
@@ -1847,7 +1847,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.op_ && node.op_->HasFunction()) {
         auto onnx_function_proto = node.op_->GetFunction();
         auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), *onnx_function_proto,
-            logger_);
+                                                                            logger_);
         function_container_.emplace_back(std::move(func_ptr));
         node.SetFunctionBody(*function_container_.back());
       }
@@ -2162,42 +2162,6 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   return Status::OK();
 }
 
-Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
-  // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
-  // look up the const pointer by name, then find and modify the mutable
-  // pointed-to TensorProto in graph_proto_.
-
-  const auto& initializer_name = new_initializer.name();
-  const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
-  ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
-                    "Failed to find existing initializer with name ", initializer_name, ".");
-
-  const auto& old_initializer = *(name_to_initializer_it->second);
-
-  auto dims_eq = [&old_initializer, &new_initializer]() {
-    if (old_initializer.dims_size() != new_initializer.dims_size()) return false;
-    for (int i = 0; i < old_initializer.dims_size(); ++i) {
-      if (old_initializer.dims(i) != new_initializer.dims(i)) return false;
-    }
-    return true;
-  };
-
-  ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
-  ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
-                    "Replacement tensor's data type does not match.");
-
-  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
-  auto old_mutable_initializer_ptr_it = std::find(
-      mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(), &old_initializer);
-  ORT_ENFORCE(old_mutable_initializer_ptr_it != mutable_initializers.pointer_end(),
-              "graph_proto_ is not in sync with name_to_initial_tensor_");
-  auto& old_mutable_initializer = **old_mutable_initializer_ptr_it;
-
-  old_mutable_initializer = new_initializer;
-
-  return Status::OK();
-}
-
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
   auto iter = name_to_initial_tensor_.find(tensor_name);
   if (name_to_initial_tensor_.end() == iter) {
@@ -2478,12 +2442,12 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-        if (num_resolves_ == 0) {
-          LOGS(logger_, WARNING) << "Removing initializer '"
-                                  << name << "'. It is not used by any node and should be removed from the model.";
-        } else {
-          LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
-        }
+      if (num_resolves_ == 0) {
+        LOGS(logger_, WARNING) << "Removing initializer '"
+                               << name << "'. It is not used by any node and should be removed from the model.";
+      } else {
+        LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+      }
 
       erase_list.push_back(name);
     }
@@ -2522,15 +2486,11 @@ Status Graph::SetGraphInputsOutputs() {
   // and outputs will be inferred.
   const bool loaded_from_model_file = GraphLoadedFromModelFile(graph_proto_);
 
-<<<<<<< HEAD
   if (loaded_from_model_file && !graph_inputs_manually_set_ && !graph_outputs_manually_set_) {
-=======
-  if (loaded_from_model_file) {
     // Reset graph inputs excluding initializers/value_info.
     graph_inputs_excluding_initializers_.clear();
     value_info_.clear();
 
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     // Reset graph inputs/outputs.
     graph_inputs_including_initializers_.clear();
     graph_outputs_.clear();
@@ -2692,7 +2652,7 @@ Status Graph::SetGraphInputsOutputs() {
                                 name + " must be either specified in graph inputs or graph initializers.");
                 }
               } else {
-                // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_ 
+                // If arg_input is of an initializer, we remove it from graph_inputs_excluding_initializers_
                 // whose initial content has both initializers and non-initializers.
                 auto input_pos = std::find(graph_inputs_excluding_initializers_.begin(),
                                            graph_inputs_excluding_initializers_.end(),

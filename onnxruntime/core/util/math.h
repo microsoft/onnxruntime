@@ -57,7 +57,6 @@ void Sqr(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Powx(int N, const T* a, T b, T* y, Provider* provider);
 
-<<<<<<< HEAD
 #define DECLARE_BINARY_OP(name)                                                     \
   template <typename T, class Provider>                                             \
   void name(int N, const T* a, const T* b, T* y, Provider* provider);               \
@@ -67,11 +66,6 @@ void Powx(int N, const T* a, T b, T* y, Provider* provider);
   void name##ToRow(int M, int N, const T* x, T* y, Provider* provider);             \
   template <typename T, class Provider>                                             \
   void name##ToCol(int M, int N, const T* x, T* y, Provider* provider);
-=======
-#define DECLARE_BINARY_OP(name)         \
-  template <typename T, class Provider> \
-  void name(int N, const T* a, const T* b, T* y, Provider* provider);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 DECLARE_BINARY_OP(Add);
 DECLARE_BINARY_OP(Sub);
@@ -90,12 +84,12 @@ void RowwiseMax(int N, int D, const T* x, T* y,
 // dimensional vector y.
 template <typename T, class Provider>
 void RowwiseSum(int N, int D, const T* x, T* y,
-	Provider* provider);
+                Provider* provider);
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
 void Sum(int N, const T* x, T* y, Provider* provider,
-	Tensor* scratch_ptr = nullptr);
+         Tensor* scratch_ptr = nullptr);
 
 template <typename T, class Provider>
 void Scale(int N, float alpha, const T* x, T* y, Provider* provider);

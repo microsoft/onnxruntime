@@ -7,7 +7,7 @@
 #include <array>
 #include <algorithm>
 
-#include "gsl/string_span"
+#include "gsl/gsl"
 
 #include "core/common/status.h"
 #include "core/common/common.h"

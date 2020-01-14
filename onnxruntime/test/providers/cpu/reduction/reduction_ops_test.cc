@@ -314,20 +314,20 @@ TEST(ReductionOpTest, ReduceLogSumAxes01) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 1});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<float>("data", {3, 4, 5},
-    {0.5172141f , 0.36681905f, 0.7489675f, 0.21859895f, 0.6378839f,
-     0.6120873f, 0.74698675f, 0.87222993f, 0.23919299f, 0.4877085f,
-     0.58392614f, 0.56973755f, 0.28744474f, 0.56500393f, 0.13348383f,
-     0.06321382f, 0.20588198f, 0.08760026f, 0.9710815f, 0.6781033f,
-     0.38189054f, 0.9127731f, 0.21229997f, 0.7597165f, 0.36321816f,
-     0.18440539f, 0.44839138f, 0.888846f, 0.54862875f, 0.15642975f,
-     0.5046317f, 0.6035792f, 0.42172152f, 0.55201846f, 0.8684674f,
-     0.8725194f, 0.89469117f, 0.88513845f, 0.48750868f, 0.2512843f,
-     0.54381144f, 0.970685f, 0.44817686f, 0.7655562f, 0.64186585f,
-     0.8696393f, 0.91110307f, 0.12956737f, 0.9199235f, 0.26789218f,
-     0.25372583f, 0.6147827f, 0.67517287f, 0.74066293f, 0.6317299f,
-     0.70738846f, 0.27802366f, 0.15887405f, 0.95882577f, 0.23314993f});
+                       {0.5172141f, 0.36681905f, 0.7489675f, 0.21859895f, 0.6378839f,
+                        0.6120873f, 0.74698675f, 0.87222993f, 0.23919299f, 0.4877085f,
+                        0.58392614f, 0.56973755f, 0.28744474f, 0.56500393f, 0.13348383f,
+                        0.06321382f, 0.20588198f, 0.08760026f, 0.9710815f, 0.6781033f,
+                        0.38189054f, 0.9127731f, 0.21229997f, 0.7597165f, 0.36321816f,
+                        0.18440539f, 0.44839138f, 0.888846f, 0.54862875f, 0.15642975f,
+                        0.5046317f, 0.6035792f, 0.42172152f, 0.55201846f, 0.8684674f,
+                        0.8725194f, 0.89469117f, 0.88513845f, 0.48750868f, 0.2512843f,
+                        0.54381144f, 0.970685f, 0.44817686f, 0.7655562f, 0.64186585f,
+                        0.8696393f, 0.91110307f, 0.12956737f, 0.9199235f, 0.26789218f,
+                        0.25372583f, 0.6147827f, 0.67517287f, 0.74066293f, 0.6317299f,
+                        0.70738846f, 0.27802366f, 0.15887405f, 0.95882577f, 0.23314993f});
   test.AddOutput<float>("reduced", {5},
-    {1.8073791f, 2.0180254f, 1.7606194f, 2.0446842f, 1.6773242f});
+                        {1.8073791f, 2.0180254f, 1.7606194f, 2.0446842f, 1.6773242f});
 
   test.Run();
 }
@@ -884,7 +884,6 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-<<<<<<< HEAD
 TEST(ReductionOpTest, ReduceSum_apex_reduction) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -911,7 +910,7 @@ void test_apex_reduce_sum(
   std::vector<float> Y(n, 0.0f);
   // Random number generator.
   std::default_random_engine generator(0);
-  std::uniform_real_distribution<float> distribution(0.0,1.0);
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
   for (int64_t i = 0; i < m; ++i) {
     for (int64_t j = 0; j < n; ++j) {
       const float value = distribution(generator) / float(m);
@@ -970,8 +969,8 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
 }
 
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
-    test_apex_reduce_sum(4 * 128, 30528);
-    test_apex_reduce_sum(4 * 512, 30528);
+  test_apex_reduce_sum(4 * 128, 30528);
+  test_apex_reduce_sum(4 * 512, 30528);
 }
 
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
@@ -1001,19 +1000,6 @@ TEST(ReductionOpTest, ReduceSum_int64) {
                           5, 6,
                           7, 8,
 
-=======
-TEST(ReductionOpTest, ReduceSum_int64) {
-  OpTester test("ReduceSum");
-  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
-  test.AddAttribute("keepdims", (int64_t)1);
-  test.AddInput<int64_t>("data", {3, 2, 2},
-                         {1, 2,
-                          3, 4,
-
-                          5, 6,
-                          7, 8,
-
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {1, 2, 1}, {33, 45});
@@ -1496,8 +1482,8 @@ TEST(ReductionOpTest, ArgMin_int32) {
   test.Run();
 }
 
-<<<<<<< HEAD
 #ifdef USE_CUDA
+
 void test_all_1d_true(size_t size) {
   std::unique_ptr<bool[]> p_data(new bool[size]);
   for (size_t i = 0; i < size; ++i) {
@@ -1710,11 +1696,11 @@ TEST(ReductionOpTest, ReduceAllL2HalfFloat) {
 }
 
 void TestMultiTensorReduce(
-  const int tensor_count,
-  const int min_tensor_size,
-  const int max_tensor_size,
-  const float min,
-  const float max) {
+    const int tensor_count,
+    const int min_tensor_size,
+    const int max_tensor_size,
+    const float min,
+    const float max) {
   OpTester test("ReduceAllL2", 9, onnxruntime::kOnnxDomain, true);
 
   // Set up random number generator.
@@ -1738,7 +1724,7 @@ void TestMultiTensorReduce(
     ws[i] = std::vector<float>(sizes[i]);
 
     for (int64_t j = 0; j < sizes[i]; ++j) {
-      ws[i][j] = 1.f; //dist(random_engine);
+      ws[i][j] = 1.f;  //dist(random_engine);
       result += ws[i][j] * ws[i][j];
     }
 
@@ -1768,7 +1754,6 @@ TEST(ReductionOpTest, ReduceAllL2Many) {
 
 #endif
 
-=======
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)(-3));
@@ -1827,6 +1812,5 @@ TEST(ReductionOpTest, ReduceDimWithZero) {
   run(test3);
 }
 
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }  // namespace test
 }  // namespace onnxruntime

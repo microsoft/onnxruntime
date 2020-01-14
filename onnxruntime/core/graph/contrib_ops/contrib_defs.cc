@@ -1,11 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-<<<<<<< HEAD
 #include <cmath>
-=======
 #include "core/framework/tensorprotoutils.h"
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -1266,8 +1263,8 @@ activation and leaky_relu_alpha.)DOC")
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   static const char* QuantizeLinear_ver1_doc = R"DOC(
-The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data. 
-The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format), 
+The linear quantization operator. It consumes a full precision data, a scale, a zero point and computes the quantized data.
+The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale), it computes the nearest integer value to arg (in floating-point format),
  rounding halfway cases away from zero. Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
@@ -1323,8 +1320,8 @@ The quantization formula is y = (x / y_scale) + y_zero_point. For (x / y_scale),
       });
 
   static const char* DequantizeLinear_ver1_doc = R"DOC(
-The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data. 
-The dequantization formula is y = (x - x_zero_point) * x_scale. 
+The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
+The dequantization formula is y = (x - x_zero_point) * x_scale.
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
@@ -1582,6 +1579,71 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       });
+
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "data", "Tensor of rank r >= 1.", "T")
+      .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
+      .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input and output types to any tensor type.")
+      .TypeConstraint(
+          "Tind",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indice type to int32 or int64")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 2)) {
+          return;
+        }
+        auto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        auto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        auto data_rank = data_shape.dim_size();
+        auto indices_rank = indices_shape.dim_size();
+        if (data_rank < 1 || indices_rank < 1) {
+          fail_shape_inference("both data and indices tensor need to have rank larger than zero.");
+        }
+        auto last_indice_dimension = indices_shape.dim(indices_rank - 1).dim_value();
+        if (last_indice_dimension > data_rank) {
+          fail_shape_inference("last dimension of indices must not be larger and rank of data tensor");
+        }
+        for (int i = 0; i < indices_rank - 1; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = static_cast<int>(last_indice_dimension); i < data_rank; ++i) {
+          *ctx.getOutputType(0)
+               ->mutable_tensor_type()
+               ->mutable_shape()
+               ->add_dim() = data_shape.dim(i);
+        }
+      })
+      .SetDoc(R"DOC(
+Given `data` tensor of rank r >= 1, and `indices` tensor of rank q >= 1, gather
+slices of `data` into an output tensor of rank q - 1 + r - indices[-1].
+Example 1:
+  data    = [[0,1],[2,3]]
+  indices = [[0,0],[1,1]]
+  output  = [0,3]
+Example 2:
+  data    = [[0,1],[2,3]]
+  indices = [[1],[0]]
+  output  = [[2,3],[0,1]]
+Example 3:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[0,1],[1,0]]
+  output  = [[2,3],[4,5]]
+Example 4:
+  data    = [[[0,1],[2,3]],[[4,5],[6,7]]]
+  indices = [[[0,1]],[[1,0]]]
+  output  = [[[2,3]],[[4,5]]]
+)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kOnnxDomain)
@@ -2058,7 +2120,6 @@ Example 4:
     RegisterNchwcSchemas();
   }
 
-<<<<<<< HEAD
   // TODO: push this to ONNX
   static const char* reduction_doc =
       "Type of reduction to apply to loss: none, sum, mean(default). "
@@ -2513,17 +2574,11 @@ Example 4:
         updateOutputShape(ctx, 0, {});
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gelu")
-=======
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
 the expected transformation of a stochastic regularizer which randomly applies
-the identity or zero map to a neuron's input. The GELU nonlinearity weights 
+the identity or zero map to a neuron's input. The GELU nonlinearity weights
 inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
@@ -2531,28 +2586,17 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(Gelu_ver1_doc)
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       .Input(0, "X", "The input data as Tensor.", "T")
       .Output(0, "Y", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-<<<<<<< HEAD
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-           {{"X_1"}, "Mul", {"X", "One_half"}},
-           {{"X_2"}, "Div", {"X", "Sqrt_two"}},
-           {{"X_3"}, "Erf", {"X_2"}},
-           {{"X_4"}, "Add", {"X_3", "One"}},
-           {{"Y"}, "Mul", {"X_1", "X_4"}}}));
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("GeluGrad")
       .AllowUncheckedAttributes()
@@ -2563,27 +2607,24 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Sqrt_two", static_cast<float>(M_SQRT2)),
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One_half", 0.5f),
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("One", 1.0f),
-           ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Two_sqrt_pi", static_cast<float>(M_2_SQRTPI)),
-           {{"X_1"}, "Mul", {"X", "One_half"}},
-           {{"X_2"}, "Div", {"X", "Sqrt_two"}},
-           {{"X_3"}, "Erf", {"X_2"}},
-           {{"X_4"}, "Add", {"X_3", "One"}},
-           {{"X_5_grad"}, "Mul", {"dY", "X_4"}},
-           {{"X_6_grad"}, "Mul", {"X_5_grad", "One_half"}},
-           {{"X_7"}, "Mul", {"X_2", "X_2"}},
-           {{"X_8"}, "Neg", {"X_7"}},
-           {{"X_9"}, "Exp", {"X_8"}},
-           {{"X_10_grad"}, "Mul", {"Two_sqrt_pi", "X_9"}},
-           {{"X_11_grad"}, "Mul", {"dY", "X_1"}},
-           {{"X_12_grad"}, "Mul", {"X_11_grad", "X_10_grad"}},
-           {{"X_13"}, "Div", {"One", "Sqrt_two"}},
-           {{"X_14_grad"}, "Mul", {"X_12_grad", "X_13"}},
-           {{"dX"}, "Sum", {"X_14_grad", "X_6_grad"}}}));
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* BiasGelu_ver1_doc =
+      R"DOC(Bias Gelu.
+It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(BiasGelu_ver1_doc)
+      .Input(0, "A", "The normal input data.", "T")
+      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
+      .Output(0, "C", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
@@ -2838,26 +2879,10 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .SetDoc("IsFinite")
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
-=======
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  static const char* BiasGelu_ver1_doc =
-      R"DOC(Bias Gelu.
-It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(BiasGelu_ver1_doc)
-      .Input(0, "A", "The normal input data.", "T")
-      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
-      .Output(0, "C", "The output.", "T")
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
-<<<<<<< HEAD
       .TypeConstraint(
           "T1",
           {"tensor(bool)"},
@@ -3000,11 +3025,8 @@ Return true if all elements are true and false otherwise.
           "TOut",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain scale types to float tensors.");
-=======
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 #ifdef MICROSOFT_INTERNAL
   // register internal ops

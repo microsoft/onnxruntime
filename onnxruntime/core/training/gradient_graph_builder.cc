@@ -33,7 +33,7 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
       set_gradient_as_graph_output_(set_gradient_as_graph_output) {
 
   auto rule_based_graph_transformer =
-      std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
+      onnxruntime::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(make_unique<InsertMaxPoolOutput>());
   rule_based_graph_transformer->Register(make_unique<AdjustBatchNormOutputs>());
 
@@ -129,7 +129,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
 }
 
 Status GradientGraphBuilder::Build() {
-  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2);
+  auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logging::LoggingManager::DefaultLogger());
   ORT_RETURN_IF_ERROR(opt_ret);
 
   GraphAugmenter::GraphDefs gradient_graph_defs;

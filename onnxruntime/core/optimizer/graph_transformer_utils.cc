@@ -17,9 +17,6 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
-<<<<<<< HEAD
-#include "core/optimizer/matmul_transpose_fusion.h"
-=======
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
@@ -29,7 +26,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
@@ -110,19 +107,15 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-<<<<<<< HEAD
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
-      //transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
-
-      std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(l1_cuda_execution_providers));
-=======
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      //transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+
+      std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_cuda_execution_providers));
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
@@ -142,7 +135,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
+
+      // Temporarily ignore BiasGelu during GH merge, since is was referencing a cuda provider file with lot of conflicts.
+      // transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};

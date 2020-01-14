@@ -58,17 +58,6 @@ static void UnmapFile(void* param) noexcept {
   delete p;
 }
 
-<<<<<<< HEAD
-static int nftw_remove(
-    const char* fpath, const struct stat* /*sb*/,
-    int /*typeflag*/, struct FTW* /*ftwbuf*/) {
-  const auto result = remove(fpath);
-  if (result != 0) {
-    const int err = errno;
-    LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err
-                          << ", path: " << fpath;
-  }
-=======
 struct FileDescriptorTraits {
   using Handle = int;
   static Handle GetInvalidHandleValue() { return -1; }
@@ -92,7 +81,18 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   do {
     result = retriable_operation(std::forward<TFuncArgs>(args)...);
   } while (result == -1 && errno == EINTR);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+  return result;
+}
+
+int nftw_remove(
+    const char* fpath, const struct stat* /*sb*/,
+    int /*typeflag*/, struct FTW* /*ftwbuf*/) {
+  const auto result = remove(fpath);
+  if (result != 0) {
+    const int err = errno;
+    LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err
+                          << ", path: " << fpath;
+  }
   return result;
 }
 
@@ -175,25 +175,6 @@ class PosixEnv : public Env {
       }
     }
 
-<<<<<<< HEAD
-    if (len == 0) {
-      p = nullptr;
-    } else {
-      long page_size = sysconf(_SC_PAGESIZE);
-      off_t offset_to_page = offset % static_cast<off_t>(page_size);
-      p = mmap(nullptr, len + offset_to_page, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, offset - offset_to_page);
-      if (p == MAP_FAILED) {
-        auto st = ReadBinaryFile(fd, offset, fname, p, len, deleter);
-        (void)close(fd);
-        if (!st.IsOK()) {
-          return st;
-        }
-      } else {
-        // leave the file open
-        deleter.f = UnmapFile;
-        deleter.param = new UnmapFileParam{p, len + offset_to_page, fd};
-        p = reinterpret_cast<char*>(p) + offset_to_page;
-=======
     size_t total_bytes_read = 0;
     while (total_bytes_read < length) {
       constexpr size_t k_max_bytes_to_read = 1 << 30;  // read at most 1GB each time
@@ -210,7 +191,6 @@ class PosixEnv : public Env {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, FAIL, "ReadFileIntoBuffer - unexpected end of file. ",
             "File: ", file_path, ", offset: ", offset, ", length: ", length);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       }
 
       total_bytes_read += bytes_read;

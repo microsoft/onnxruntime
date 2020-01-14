@@ -172,13 +172,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                          \
   } while (0)
 
-#define ORT_THROW_IF_ERROR(expr)                           \
-  do {                                                     \
-    auto _status = (expr);                                 \
-    if ((!_status.IsOK()))                                 \
-      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, _status.ToString()); \
-  } while (0)
-
 // use this macro when cannot early return
 #define ORT_CHECK_AND_SET_RETVAL(expr) \
   do {                                 \

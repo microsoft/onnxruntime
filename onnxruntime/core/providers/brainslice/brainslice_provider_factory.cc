@@ -27,7 +27,7 @@ struct BrainSliceExecutionProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> BrainSliceExecutionProviderFactory::CreateProvider() {
   fpga::FPGAInfo info = {ip_, lead_firmware_, instr_path_.c_str(), data_path_.c_str(), schema_path_.c_str()};
-  return std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
+  return onnxruntime::make_unique<brainslice::BrainSliceExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, bool load_firmware, const char* instr_path, const char* data_path, const char* schema_path) {

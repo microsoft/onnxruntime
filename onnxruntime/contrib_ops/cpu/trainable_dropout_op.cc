@@ -74,7 +74,7 @@ Status TrainableDropout::ComputeImpl(OpKernelContext* context) const {
   std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
   auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataAsSpan<bool>();
-    temp_mask_buffer = std::make_unique<bool[]>(X_shape.Size());
+    temp_mask_buffer = onnxruntime::make_unique<bool[]>(X_shape.Size());
     return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
   }();
 

@@ -78,12 +78,8 @@ option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
-<<<<<<< HEAD
 option(onnxruntime_USE_HOROVOD "Build with HOROVOD support" OFF)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
-option(onnxruntime_USE_EIGEN_THREADPOOL "Use eigen threadpool. Otherwise OpenMP or a homemade one will be used" OFF)
-=======
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir")
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
@@ -199,7 +195,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   if (NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -652,17 +648,13 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-<<<<<<< HEAD
 
   if (onnxruntime_ENABLE_TRAINING)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
   else()
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream per-thread")
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream legacy")
   endif()
 
-=======
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --default-stream legacy")
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
   endif()
@@ -703,7 +695,15 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   add_definitions(-DMICROSOFT_INTERNAL)
 endif()
 
-<<<<<<< HEAD
+if (onnxruntime_USE_DML)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
+  endif()
+
+  add_definitions(-DUSE_DML=1)
+  include(dml)
+endif()
+
 if (onnxruntime_USE_HOROVOD)
   if (WIN32)
     message( FATAL_ERROR "Horovod is not supported on Windows." )
@@ -728,17 +728,6 @@ endif()
 add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 
-=======
-if (onnxruntime_USE_DML)
-  if(NOT WIN32)
-    message(FATAL_ERROR "The DirectML execution provider is only supported when building for Windows.")
-  endif()
-
-  add_definitions(-DUSE_DML=1)
-  include(dml)
-endif()
-
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 

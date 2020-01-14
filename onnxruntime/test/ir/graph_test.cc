@@ -940,11 +940,7 @@ TEST(NameResolutionTest, DuplicateName) {
 }
 
 TEST(GraphUpdateTest, ReplaceInitializedTensor) {
-<<<<<<< HEAD
-  Model model{"GraphUpdateTest"};
-=======
   Model model{"GraphUpdateTest", false, DefaultLoggingManager().DefaultLogger()};
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   auto& graph = model.MainGraph();
   const std::string initializer_name = "initializer";
 
@@ -994,12 +990,7 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     status = graph.ReplaceInitializedTensor(valid_replacement);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-<<<<<<< HEAD
-    auto tensor_data_matches = [](
-        const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
-=======
     auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
       if (a.int32_data_size() != b.int32_data_size()) return false;
       for (int i = 0; i < a.int32_data_size(); ++i) {
         if (a.int32_data(i) != b.int32_data(i)) return false;
@@ -1018,8 +1009,6 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
     ASSERT_TRUE(tensor_data_matches(graph_proto.initializer(0), valid_replacement));
   }
 }
-<<<<<<< HEAD
-=======
 
 TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
   Model m{"test_model", false, DefaultLoggingManager().DefaultLogger()};
@@ -1074,15 +1063,14 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
   validate_proto(graph_proto_from_const_graph);
   validate_proto(graph_proto_from_graph);
 
-  // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused. 
+  // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused.
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0);
-  
+
   ONNX_NAMESPACE::GraphProto graph_proto_from_resolved_graph = graph.ToGraphProto();
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "
                                  << num_initializers << " remain.";
 }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }  // namespace test
 }  // namespace onnxruntime

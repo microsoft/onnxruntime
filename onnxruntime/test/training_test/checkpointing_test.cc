@@ -24,7 +24,7 @@ namespace training {
 namespace test {
 
 namespace {
-const OrtAllocatorInfo cpu_alloc_info(onnxruntime::CPU, OrtDeviceAllocator);
+const OrtMemoryInfo cpu_alloc_info(onnxruntime::CPU, OrtDeviceAllocator);
 
 class OrtValueTensorData {
  public:
@@ -82,7 +82,7 @@ void CompareOrtValuesToTensorProtoValues(
 
     name_to_ort_value_from_tensor_proto.emplace(name, ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(std::make_unique<OrtCallbackInvoker>(callback));
+    tensor_deleters.emplace_back(onnxruntime::make_unique<OrtCallbackInvoker>(callback));
   }
 
   for (const auto& name_and_ort_value : name_to_ort_value) {
@@ -128,7 +128,7 @@ TEST(CheckpointingTest, SaveAndLoad) {
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("test_model.onnx"))};
 
   DataTransferManager data_transfer{};
-  data_transfer.RegisterDataTransfer(std::make_unique<CPUDataTransfer>());
+  data_transfer.RegisterDataTransfer(onnxruntime::make_unique<CPUDataTransfer>());
 
   ASSERT_STATUS_OK(SaveModelCheckpoint(
       checkpoint_path, data_transfer, name_to_ort_value, properties));

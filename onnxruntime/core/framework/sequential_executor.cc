@@ -80,13 +80,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-<<<<<<< HEAD
   // Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-=======
-  // uncomment the line below to dump execution plan
-  //std::cout << std::make_pair(p_seq_exec_plan, &session_state) << "\n";
+#endif
+
   const auto* graph_viewer = session_state.GetGraphViewer();
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -98,7 +96,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   }
 
   diagnostic::marker_series series(series_name);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #endif
 
   for (const auto& node_exec_plan : exec_plan_vec) {
@@ -108,41 +105,35 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     auto node_index = node_exec_plan.node_index;
-<<<<<<< HEAD
 
     // If it is not necessary to execute the node.
     if (only_execute_path_to_fetches && to_be_executed_nodes->count(node_index) == 0) {
       continue;
     }
-=======
+
     const auto& node = *graph_viewer->GetNode(node_exec_plan.node_index);
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
 #endif
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
     auto p_op_kernel = session_state.GetKernel(node_index);
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
-<<<<<<< HEAD
-                             session_state.GetGraphViewer()->GetNode(node_index)->Name());
+                             node.Name());
 
-    std::string node_name = p_op_kernel->Node().Name();
+    std::string node_name = node.Name();
     if (node_name.empty()) {
       // Node name field is often blank in execution graph, so derive something meaningful for profile traces and logs.
-      node_name = p_op_kernel->Node().OpType() + "_" + std::to_string(node_index);
+      node_name = node.OpType() + "_" + std::to_string(node_index);
     }
 
-=======
-                             node.Name());
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_start;
     QueryPerformanceCounter(&kernel_start);
 #endif
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
@@ -199,7 +190,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       kernel_begin_time = session_state.Profiler().StartTime();
     }
 
-<<<<<<< HEAD
     if (is_profiler_enabled) {
       // Calculate total input sizes for this operation.
       input_activation_sizes = 0;
@@ -233,15 +223,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
     }
 
-    const auto& compute_status = p_op_kernel->Compute(&op_kernel_context);
-    if (!compute_status.IsOK()) {
-      std::ostringstream ss;
-      ss << "Non-zero status code returned while running Node: " << node_name
-         << " Status Message: " << compute_status.ErrorMessage();
-      const auto msg_string = ss.str();
-      LOGS(logger, ERROR) << msg_string;
-      return Status(compute_status.Category(), compute_status.Code(), msg_string);
-=======
 #ifdef CONCURRENCY_VISUALIZER
     {
       diagnostic::span span(series, "%s.%d", node.OpType().c_str(), node.Index());
@@ -264,7 +245,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       }
 
 #ifdef CONCURRENCY_VISUALIZER
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     }
 #endif
 
