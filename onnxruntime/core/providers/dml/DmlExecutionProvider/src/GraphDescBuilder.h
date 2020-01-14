@@ -9,7 +9,7 @@ namespace Dml
 {
     struct GraphNodeProperties
     {
-        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfo> 
+        std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfo> 
             internalRegInfo;
 
         // These are currently passed from the partitioning step since the only DML operators current 

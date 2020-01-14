@@ -80,7 +80,7 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInfe
         OVERRIDE_SCHEMA(    7,  true,  Crop);
         OVERRIDE_SCHEMA(    7,  false, Upsample);
         OVERRIDE_SCHEMA_EX( 9,  true,  Upsample, Resize, 1); // Upsample v9 uses Resize's shape inference function.
-        OVERRIDE_SCHEMA(    7,  true,  Slice);
+        OVERRIDE_SCHEMA_EX( 7,  true,  Slice, Slice7);
         OVERRIDE_SCHEMA(    7,  true,  Split);
         OVERRIDE_SCHEMA_EX( 7,  true,  Tile, Tile, 1);
         OVERRIDE_SCHEMA_EX( 8,  true,  Expand, Expand, 1);
