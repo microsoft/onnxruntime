@@ -19,6 +19,7 @@ namespace AttrName
     static constexpr const char* BlockSize = "blocksize";
     static constexpr const char* Border = "border";
     static constexpr const char* Broadcast = "broadcast";
+    static constexpr const char* CeilMode = "ceil_mode";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CountIncludePad = "count_include_pad";
     static constexpr const char* Dilations = "dilations";
@@ -60,6 +61,7 @@ namespace AttrName
     static constexpr const char* Split = "split";
     static constexpr const char* Starts = "starts";
     static constexpr const char* Steepness = "steepness";
+    static constexpr const char* StorageOrder = "storage_order";
     static constexpr const char* Strides = "strides";
     static constexpr const char* Tiles = "tiles";
     static constexpr const char* To = "to";

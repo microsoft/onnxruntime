@@ -253,7 +253,7 @@ struct OrtApi {
 
   // TODO: document the path separator convention? '/' vs '\'
   // TODO: should specify the access characteristics of model_path. Is this read only during the
-  // execution of OrtCreateSession, or does the OrtSession retain a handle to the file/directory
+  // execution of CreateSession, or does the OrtSession retain a handle to the file/directory
   // and continue to access throughout the OrtSession lifetime?
   //  What sort of access is needed to model_path : read or read/write?
   OrtStatus*(ORT_API_CALL* CreateSession)(_In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
@@ -432,22 +432,22 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* GetTensorMutableData)(_Inout_ OrtValue* value, _Outptr_ void** out)NO_EXCEPTION;
 
   /**
-	 * \param value A tensor created from OrtCreateTensor... function.
+	 * \param value A tensor created from CreateTensor... function.
 	 * \param s each A string array. Each string in this array must be null terminated.
 	 * \param s_len length of s
 	 */
   OrtStatus*(ORT_API_CALL* FillStringTensor)(_Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len)NO_EXCEPTION;
 
   /**
-	 * \param value A tensor created from OrtCreateTensor... function.
+	 * \param value A tensor created from CreateTensor... function.
 	 * \param len total data length, not including the trailing '\0' chars.
 	 */
   OrtStatus*(ORT_API_CALL* GetStringTensorDataLength)(_In_ const OrtValue* value, _Out_ size_t* len)NO_EXCEPTION;
 
   /**
 	 * \param s string contents. Each string is NOT null-terminated.
-	 * \param value A tensor created from OrtCreateTensor... function.
-	 * \param s_len total data length, get it from OrtGetStringTensorDataLength
+	 * \param value A tensor created from CreateTensor... function.
+	 * \param s_len total data length, get it from GetStringTensorDataLength
 	 */
   OrtStatus*(ORT_API_CALL* GetStringTensorContent)(_In_ const OrtValue* value, _Out_ void* s, size_t s_len,
                                                    _Out_ size_t* offsets, size_t offsets_len)NO_EXCEPTION;
@@ -470,7 +470,7 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* SetTensorElementType)(_Inout_ OrtTensorTypeAndShapeInfo*, enum ONNXTensorElementDataType type)NO_EXCEPTION;
 
   /**
- * \param info Created from OrtCreateTensorTypeAndShapeInfo() function
+ * \param info Created from CreateTensorTypeAndShapeInfo() function
  * \param dim_values An array with length of `dim_count`. Its elements can contain negative values.
  * \param dim_count length of dim_values
  */

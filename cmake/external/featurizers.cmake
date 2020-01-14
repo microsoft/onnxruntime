@@ -3,15 +3,14 @@
 # This source code should not depend on the onnxruntime and may be built independently
 
 set(featurizers_URL "https://github.com/microsoft/FeaturizersLibrary.git")
-set(featurizers_TAG "3f0f9802553944b75015aad098d856b2d17220df")
+set(featurizers_TAG "573070aeeb77e267da2579ac1d75d92c688bbe97")
 
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})
 set(featurizers_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref})
 
-# Only due to GIT_CONFIG
-# Uncoment UPDATE_COMMAND if you work locally
-# on the featurizers so cmake does not undo your changes.
+# Windows required git config setting
+# and an a switch whether we link to MSVCRT statically or dynamically
 if (WIN32)
     ExternalProject_Add(featurizers_lib
             PREFIX ${featurizers_pref}
@@ -24,8 +23,8 @@ if (WIN32)
             SOURCE_SUBDIR src/Featurizers
             BINARY_DIR ${featurizers_BINARY_DIR}
             CMAKE_ARGS -Dfeaturizers_MSVC_STATIC_RUNTIME=${onnxruntime_MSVC_STATIC_RUNTIME}
-#            UPDATE_COMMAND ""
             INSTALL_COMMAND ""
+            
         )
 else()
     ExternalProject_Add(featurizers_lib
@@ -37,7 +36,6 @@ else()
             SOURCE_SUBDIR src/Featurizers
             BINARY_DIR ${featurizers_BINARY_DIR}
             CMAKE_ARGS -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-#            UPDATE_COMMAND ""
             INSTALL_COMMAND ""
         )
 endif()

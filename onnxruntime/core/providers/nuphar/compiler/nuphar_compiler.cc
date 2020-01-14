@@ -151,8 +151,9 @@ tvm::runtime::PackedFunc NupharCompiler::GetLoweredPackedFunc(
   // JIT-caching and AOT are mutual exclusive.
   // Change it by not always saving a compiled func unless it is in JIT-Caching model.
   // In AOT, there should be another member func explicitly loading
-  tvm::runtime::PackedFunc cached_func = nuphar::LoadTVMPackedFuncFromCache(func_name);
-  if (cached_func == nullptr) {
+  tvm::runtime::PackedFunc cached_func;
+  auto cache_status = nuphar::LoadTVMPackedFuncFromCache(func_name, cached_func);
+  if (cache_status != nuphar::CacheStatus::Found) {
     codegen::CodeGenSettings& settings = codegen::CodeGenSettings::Instance();
 
     if (settings.HasOption(kNupharCacheForceNoJIT)) {
@@ -180,7 +181,9 @@ tvm::runtime::PackedFunc NupharCompiler::GetLoweredPackedFunc(
 
     tvm::runtime::Module module = tvm::build(lowered, tvm_target, tvm_host_target, config);
     tvm_codegen::DumpTVMModuleToFile(func_name, module);
-    nuphar::SaveTVMModuleToCache(func_name, module);
+    if (cache_status == nuphar::CacheStatus::Missing) {
+      nuphar::SaveTVMModuleToCache(func_name, module);
+    }
     cached_func = module.GetFunction(func_name);
   }
 
