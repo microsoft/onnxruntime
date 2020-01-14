@@ -1173,8 +1173,8 @@ struct AdamOptimizerInputOutput {
   // FP32 Outptus
   std::vector<float> m1_new = {0.49f, 0.68f, 0.87f};
   std::vector<float> m2_new = {0.4156f, 0.5245f, 0.6354f};
-  std::vector<float> w_new = {0.9232284f, 1.9051629f, 2.8897603f};
-  std::vector<float> g_new = {-0.0767716f, -0.0948371f, -0.1102397f};
+  std::vector<float> w_new = {0.6199609f, 1.5305318f, 2.4542853f};
+  std::vector<float> g_new = {-0.3800391f, -0.4694682f, -0.5457147f};
 
   // FP16 Outptus
   std::vector<MLFloat16> m1_new_half;
@@ -1533,7 +1533,6 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
   test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
   test.AddInput<float>("loss_scale", {1}, {1.0f});
-  test.AddMissingOptionalInput<MLFloat16>();
   test.AddInput<bool>("DoUpdate", {1}, {false});
 
   // Verify AdamOptimizer outputs

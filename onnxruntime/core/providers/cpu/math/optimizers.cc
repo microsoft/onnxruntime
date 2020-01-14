@@ -58,21 +58,16 @@ Status AdamOptimizer<T>::Compute(OpKernelContext* ctx) const {
   const float eta = *ETA.template Data<float>();
   const int64_t step = *S.template Data<int64_t>();
 
-  // Regularize gradient
-  auto g_regularized = lambda_ * MakeEigenArrayMap<T>(W) + MakeEigenArrayMap<T>(G);
-
   // Update exponentially-averaged historical gradient
-  MakeEigenArrayMap<T>(NM1) = alpha_ * MakeEigenArrayMap<T>(M1) + ((1 - alpha_) * g_regularized);
+  MakeEigenArrayMap<T>(NM1) = alpha_ * MakeEigenArrayMap<T>(M1) + ((1 - alpha_) * MakeEigenArrayMap<T>(G));
 
   // Update exponentially-averaged historical squared gradient
-  MakeEigenArrayMap<T>(NM2) = beta_ * MakeEigenArrayMap<T>(M2) + ((1 - beta_) * g_regularized * g_regularized);
+  MakeEigenArrayMap<T>(NM2) = beta_ * MakeEigenArrayMap<T>(M2) + ((1 - beta_) * MakeEigenArrayMap<T>(G) * MakeEigenArrayMap<T>(G));
 
-  // Update learning rate - use the updated eta for the final weight update
-  const float numerator = std::sqrt(1 - std::pow(beta_, static_cast<float>(step)));
-  const float denom = 1 - std::pow(alpha_, static_cast<float>(step));
-  const float eta_new = eta * numerator / denom;
-
-  const auto& delta = -((eta_new * MakeEigenArrayMap<T>(NM1)) / (MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_));
+  // Compute weight update.
+  const auto& denom = MakeEigenArrayMap<T>(NM2).sqrt() + epsilon_;
+  const auto& update = (MakeEigenArrayMap<T>(NM1) / denom) + (lambda_ * MakeEigenArrayMap<T>(W));
+  const auto& delta = -eta * update;
 
   // Weight, gradient, and step update.
   if (NG != nullptr) {

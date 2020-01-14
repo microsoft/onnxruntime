@@ -361,12 +361,6 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Input(
           8,
-          "global_gradient_norm",
-          "Global gradient norm.",
-          "T_GRAD_NORM",
-          OpSchema::Optional)
-      .Input(
-          9,
           "update_signal",
           "This signal indicates if weight tensors should be updated.",
           "T_BOOL",
@@ -426,7 +420,7 @@ void RegisterGradientSchemas() {
           "epsilon",
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOAT,
-          1e-6f)
+          1e-8f)
       .TypeConstraint(
           "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -451,10 +445,6 @@ void RegisterGradientSchemas() {
           "T_FP16",
           {"tensor(float16)"},
           "Constrain input types to float16 tensors.")
-      .TypeConstraint(
-          "T_GRAD_NORM",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input types to float tensors.")
       .TypeConstraint(
           "T_BOOL",
           {"tensor(bool)"},

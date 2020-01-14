@@ -23,7 +23,7 @@ class AdamOptimizer final : public OpKernel {
     info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("lambda", &lambda_, 0.0f);
-    info.GetAttrOrDefault("epsilon", &epsilon_, 1e-6f);
+    info.GetAttrOrDefault("epsilon", &epsilon_, 1e-8f);
   }
 
   Status Compute(OpKernelContext* context) const override;

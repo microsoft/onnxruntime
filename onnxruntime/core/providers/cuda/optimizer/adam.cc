@@ -11,12 +11,12 @@ namespace onnxruntime {
 namespace cuda {
 
 // TODO: Once Schema is checked in to onnx lets fix this to match that
-#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM)               \
+#define REGISTER_ADAM_KERNEL_TYPED(T1, T2, T3, T4, T_GRAD)                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                      \
       AdamOptimizer,                                                                  \
       kOnnxDomain,                                                                    \
       9,                                                                              \
-      T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM,                             \
+      T1##_##T2##_##T3##_##T4##_##T_GRAD,                                             \
       kCudaExecutionProvider,                                                         \
       KernelDefBuilder()                                                              \
           .Alias(1, 0)                             /* Update step count in-place */   \
@@ -26,34 +26,29 @@ namespace cuda {
           .Alias(5, 2)                             /* Update moment-2 in-place */     \
           .Alias(6, 5)                             /* Update FP16 weights in-place */ \
           .InputMemoryType<OrtMemTypeCPUInput>(1)  /* Keep step count in CPU */       \
-          .InputMemoryType<OrtMemTypeCPUInput>(9)  /* Keep do_update in CPU */        \
+          .InputMemoryType<OrtMemTypeCPUInput>(8)  /* Keep do_update in CPU */        \
           .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */      \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                    \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                    \
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<T4>())                    \
           .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>())            \
-          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>())         \
-          .TypeConstraint("T_GRAD_NORM", DataTypeImpl::GetTensorType<T_GRAD_NORM>()), \
-      AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>);
+          .TypeConstraint("T_FP16", DataTypeImpl::GetTensorType<MLFloat16>()),        \
+      AdamOptimizer<T1, T2, T3, T4, T_GRAD>);
 
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16, float)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, float)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, MLFloat16)
-REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, float)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float)
+REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, float)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, float)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16)
+REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16)
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
-Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
+Status AdamOptimizer<T1, T2, T3, T4, T_GRAD>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T1>::MappedType CudaT1;
   typedef typename ToCudaType<T3>::MappedType CudaT3;
   typedef typename ToCudaType<T4>::MappedType CudaT4;
   typedef typename ToCudaType<T_GRAD>::MappedType CudaT_GRAD;
-  typedef typename ToCudaType<T_GRAD_NORM>::MappedType CudaT_GRAD_NORM;
 
   const Tensor& ETA = *ctx->Input<Tensor>(0);
   const Tensor& S = *ctx->Input<Tensor>(1);
@@ -63,8 +58,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
   const Tensor& M2 = *ctx->Input<Tensor>(5);
   const Tensor* W_FP16 = ctx->Input<Tensor>(6);
   const Tensor* loss_scale_tensor = ctx->Input<Tensor>(7);
-  const Tensor* gradient_norm_tensor = ctx->Input<Tensor>(8);
-  const Tensor* do_update_tensor = ctx->Input<Tensor>(9);
+  const Tensor* do_update_tensor = ctx->Input<Tensor>(8);
 
   Tensor& NS = *ctx->Output(0, S.Shape());
   Tensor& NM1 = *ctx->Output(1, M1.Shape());
@@ -94,30 +88,25 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
   const T2* S_in = S.template Data<T2>();
   T2* S_out = NS.template MutableData<T2>();
 
-  const CudaT_GRAD_NORM* G_norm = nullptr;
-  if (gradient_norm_tensor != nullptr) {
-    G_norm = reinterpret_cast<const CudaT_GRAD_NORM*>(gradient_norm_tensor->template Data<T_GRAD_NORM>());
-  }
-
   if (do_update_tensor != nullptr) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M1, NM1));
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M2, NM2));
+
       if (S_in != S_out) {
         *(S_out) = *(S_in);
       }
-
       if (NW != nullptr) {
         ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, *NW));
       }
       if (NG != nullptr) {
         ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(G, *NG));
       }
-
       if (W_FP16 != nullptr && NW_FP16 != nullptr) {
         ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<MLFloat16>(*W_FP16, *NW_FP16));
       }
+
       return Status::OK();
     }
   }
@@ -130,7 +119,6 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM>::ComputeInternal(OpKer
       reinterpret_cast<const CudaT4*>(M1.template Data<T4>()),
       reinterpret_cast<const CudaT4*>(M2.template Data<T4>()),
       loss_scale,
-      G_norm,
       ToCudaType<T4>::FromFloat(alpha_),
       ToCudaType<T4>::FromFloat(beta_),
       ToCudaType<T4>::FromFloat(lambda_),

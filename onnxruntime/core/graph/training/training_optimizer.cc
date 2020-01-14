@@ -95,7 +95,7 @@ Status SGDOptimizerBuilder::Build(
 Status AdamOptimizerBuilder::Build(
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* gradient_norm_argdef,
+    const ArgDef* /*gradient_norm_argdef*/,
     const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
@@ -187,12 +187,6 @@ Status AdamOptimizerBuilder::Build(
 
       if (!opt_configs[i].loss_scale_input_name.empty()) {
         input_args.push_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
-      } else {
-        input_args.push_back(ArgDef());
-      }
-
-      if (gradient_norm_argdef) {
-        input_args.push_back(*gradient_norm_argdef);
       } else {
         input_args.push_back(ArgDef());
       }

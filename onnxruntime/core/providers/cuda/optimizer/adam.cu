@@ -3,26 +3,23 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/atomic/common.cuh"
 #include "adam.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
+template <typename T1, typename T3, typename T4, typename T_GRAD>
 __global__ void _AdamOptimizer(
     const T1* eta,
-    const T2 update_count,
     const T3* weights,
     const T_GRAD* grads,
     const T4* moment_1,
     const T4* moment_2,
     const T3* loss_scale,
-    const T_GRAD_NORM* grad_norm,
-    T4 alpha,
-    T4 beta,
-    T4 lambda,
-    T4 epsilon,
+    const T4 alpha,
+    const T4 beta,
+    const T4 lambda,
+    const T4 epsilon,
     T4* moment_1_out,
     T4* moment_2_out,
     T3* weights_out,
@@ -30,34 +27,24 @@ __global__ void _AdamOptimizer(
     half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  T_GRAD_NORM g_scale = loss_scale ? T_GRAD_NORM(*loss_scale) : T_GRAD_NORM(1.f);
-  if (grad_norm != nullptr && *grad_norm > g_scale) {
-    const T_GRAD_NORM actual_g_norm = *grad_norm / g_scale;
-    g_scale *= actual_g_norm;
-  }
+  T4 g_scale = loss_scale ? T4(*loss_scale) : T4(1.f);
 
   // Gradient scaling/clipping.
-  const T_GRAD new_grad = T_GRAD(T_GRAD_NORM(grads[id]) / g_scale);
-
-  // Regularize gradient.
-  const T4 g_regularized = lambda * T4(weights[id]) + T4(new_grad);
+  const T4 g = T4(grads[id]) / g_scale;
 
   // A shared constant.
   const T4 one = T4(1.0f);
 
   // Compute exponentially-averaged historical gradient.
-  T4 m1o = alpha * moment_1[id] + (one - alpha) * g_regularized;
+  const T4 m1o = alpha * moment_1[id] + (one - alpha) * g;
 
   // Compute exponentially-averaged historical squared gradient.
-  T4 m2o = beta * moment_2[id] + (one - beta) * g_regularized * g_regularized;
+  const T4 m2o = beta * moment_2[id] + (one - beta) * g * g;
 
-  // Update learning rate - Use the updated eta for the final weight update.
-  const T4 count = T4(static_cast<long long>(update_count));
-  const T4 numerator = _Sqrt(one - _Pow(beta, count));
-  const T4 denom = one - _Pow(alpha, count);
-  const T4 eta_new = T4(*eta) * numerator / denom;
-
-  const T4 delta = -eta_new * m1o / (_Sqrt(m2o) + epsilon);
+  // Compute weight update.
+  const T4 denom = _Sqrt(m2o) + epsilon;
+  const T4 update = (m1o / denom) + (lambda * T4(weights[id]));
+  const T4 delta = -T4(*eta) * update;
 
   // Compute the new gradient.
   if (grads_out) {
@@ -77,16 +64,15 @@ __global__ void _AdamOptimizer(
   moment_2_out[id] = m2o;
 }
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
 void AdamOptimizerImpl(
     const T1* eta,
-    const T2 update_count,
+    const T2 /*update_count*/,
     const T3* weights,
     const T_GRAD* grads,
     const T4* moment_1,
     const T4* moment_2,
     const T3* loss_scale,
-    const T_GRAD_NORM* grad_norm,
     T4 alpha,
     T4 beta,
     T4 lambda,
@@ -100,15 +86,13 @@ void AdamOptimizerImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
 
-  _AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _AdamOptimizer<T1, T3, T4, T_GRAD><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
-      update_count,
       weights,
       grads,
       moment_1,
       moment_2,
       loss_scale,
-      grad_norm,
       alpha,
       beta,
       lambda,
@@ -121,7 +105,7 @@ void AdamOptimizerImpl(
       N);
 }
 
-#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM) \
+#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD)              \
   template void AdamOptimizerImpl(                                         \
       const T1* eta,                                                       \
       const T2 update_count,                                               \
@@ -130,7 +114,6 @@ void AdamOptimizerImpl(
       const T4* moment_1,                                                  \
       const T4* moment_2,                                                  \
       const T3* loss_scale,                                                \
-      const T_GRAD_NORM* grad_norm,                                        \
       T4 alpha,                                                            \
       T4 beta,                                                             \
       T4 lambda,                                                           \
@@ -142,15 +125,12 @@ void AdamOptimizerImpl(
       half* fp16_weights_out,                                              \
       size_t count);
 
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half)
 
 }  // namespace cuda
 }  // namespace onnxruntime
