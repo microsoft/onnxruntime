@@ -27,7 +27,7 @@ inline nonstd::optional<std::string> PreprocessOptional(std::string value) {
   return value.empty() ? nonstd::optional<std::string>() : nonstd::optional<std::string>(std::move(value));
 }
 
-template<typename T>
+template <typename T>
 struct CatImputerTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
