@@ -428,7 +428,7 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   CodedInputStream cis(&fs);
 
   // Allows protobuf library versions < 3.2.0 to parse messages greater than 64MB.
-  cis.SetTotalBytesLimit(INT_MAX, INT_MAX);
+  cis.SetTotalBytesLimit(INT_MAX);
   if (!model_proto->ParseFromCodedStream(&cis)) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }

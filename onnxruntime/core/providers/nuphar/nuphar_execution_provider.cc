@@ -25,6 +25,7 @@ namespace onnxruntime {
 thread_local int64_t NupharSubgraphUnit::counter = 0;
 
 thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExecutionProvider::tls_realized_dims_;
+thread_local int NupharExecutionProvider::per_model_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
 #if USE_TVM_WITH_LLVM
@@ -225,6 +226,17 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           }
         }
       }
+      // reject when pooling on symbolic dims, since shape computation does not support it yet
+      it = attrs.find("kernel_shape");
+      ORT_ENFORCE(it != attrs.end());
+      int kernel_rank = it->second.ints_size();
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      int output_rank = output_shape->dim_size();
+      for (int d = output_rank - kernel_rank; d < output_rank; ++d) {
+        if (output_shape->dim(d).has_dim_param()) {
+          return false;
+        }
+      }
     }
 
     if (node.OpType() == "Slice") {
@@ -300,7 +312,12 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   };
   GraphPartitioner graph_partitioner(is_supported_func);
 
-  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, results).IsOK());
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, per_model_fused_count_, results).IsOK());
+
+  // reset per_model_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
+  // this is the time all graph cut should be finished as ORT handles main graph last
+  if (!graph_viewer.IsSubgraph())
+    per_model_fused_count_ = 0;
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo

@@ -13,13 +13,9 @@ def check_distro_info():
     __my_distro__ = ''
     __my_distro_ver__ = ''
     __my_system__ = platform.system().lower()
-    __my_arch__ = platform.architecture()[0].lower()
 
     __OS_RELEASE_FILE__ = '/etc/os-release'
     __LSB_RELEASE_FILE__ = '/etc/lsb-release'
-
-    if __my_arch__ != '64bit':
-        warnings.warn('Unsupported architecture (%s). ONNX Runtime supports 64bit architecture, only.' % __my_arch__)
 
     if __my_system__ == 'windows':
         __my_distro__ = __my_system__

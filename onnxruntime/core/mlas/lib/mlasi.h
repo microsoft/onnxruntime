@@ -554,21 +554,8 @@ extern "C" {
 // Define the target number of per-thread multiplies before using another
 // thread to perform additional work.
 //
-// The number is derived from performance results running SGEMM across a
-// range of workloads and observing the ideal number of threads to complete
-// that workload.
-//
 
-#if defined(_OPENMP)
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#else
-#if defined(MLAS_TARGET_AMD64)
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (2 * 1024 * 1024)
-#else
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (1 * 1024 * 1024)
-#endif
-#endif
-
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
 
 //
@@ -716,8 +703,10 @@ MlasGetMaximumThreadCount(
 
 #if defined(MLAS_NEON_INTRINSICS)
 typedef float32x4_t MLAS_FLOAT32X4;
+typedef int32x4_t MLAS_INT32X4;
 #elif defined(MLAS_SSE2_INTRINSICS)
 typedef __m128 MLAS_FLOAT32X4;
+typedef __m128i MLAS_INT32X4;
 #endif
 
 inline
@@ -994,6 +983,17 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_SSE2_INTRINSICS)
     __m128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
     return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
+#endif
+}
+
+inline
+MLAS_INT32X4
+MlasBroadcastInt32x4(int32_t Value)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vdupq_n_s32(Value);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_set1_epi32(Value);
 #endif
 }
 

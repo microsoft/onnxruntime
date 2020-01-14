@@ -14,11 +14,6 @@
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
 
-#ifdef MICROSOFT_AUTOML
-#include "automl_ops/automl_featurizers.h"
-namespace dtf = Microsoft::Featurizer::DateTimeFeaturizer;
-#endif
-
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -288,13 +283,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 }
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
-#ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
-                                                                                          provider_type);
-#else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
                                                                           provider_type);
-#endif
 }
 
 void DebugTrap() {

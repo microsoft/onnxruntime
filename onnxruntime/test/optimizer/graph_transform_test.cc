@@ -609,6 +609,23 @@ TEST(GraphTransformationTests, Gemm_Relu_three_input) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
+
+TEST(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
+  auto model_uri = MODEL_FOLDER "gemm_activation_fusion/gemm_activation_fusion.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GemmActivationFusion>(), TransformerLevel::Level2);
+  ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["LeakyRelu"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 0);
+  ASSERT_TRUE(op_to_count["FusedGemm"] == 1);
+}
 #endif
 
 TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
@@ -1317,12 +1334,114 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(op_to_count["Shape"] == 0);
   ASSERT_TRUE(op_to_count["Expand"] == 0);
   ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 0);
+  ASSERT_TRUE(op_to_count["NonZero"] == 0);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["Squeeze"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
   ASSERT_TRUE(op_to_count["Attention"] == 1);
   ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
 }
+
+TEST(GraphTransformationTests, EmbedLayerNormFusionFormat3) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format3.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Expand"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["LayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Cast"], 3);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+}
+
+TEST(GraphTransformationTests, EmbedLayerNormFusionFormat4) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format4.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Shape"] == 0);
+  ASSERT_TRUE(op_to_count["Expand"] == 0);
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Concat"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 0);
+  ASSERT_TRUE(op_to_count["NonZero"] == 0);
+  ASSERT_TRUE(op_to_count["Transpose"] == 0);
+  ASSERT_TRUE(op_to_count["Squeeze"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 0);
+  ASSERT_TRUE(op_to_count["Attention"] == 1);
+  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["EmbedLayerNormalization"] == 1);
+}
+
+TEST(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format5.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["LayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 0);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Cast"], 3);
+  EXPECT_EQ(op_to_count["Attention"], 1);
+  EXPECT_EQ(op_to_count["EmbedLayerNormalization"], 1);
+
+  // Validate the position embedding input.
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "EmbedLayerNormalization") {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[3]->Name());
+      ASSERT_TRUE(tensor_proto != nullptr);
+      EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+      auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+      EXPECT_EQ(initializer->size(), 12);
+
+      std::vector<double> expected_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};
+
+      const float* data = initializer->data<float>();
+      for (size_t i = 0; i < expected_value.size(); i++) {
+        EXPECT_EQ(data[i], static_cast<float>(expected_value[i]));
+      }
+    }
+  }
+}
+
 #endif
 
 }  // namespace test

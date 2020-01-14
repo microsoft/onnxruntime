@@ -1,10 +1,4 @@
 steps:
-- task: SDLNativeRules@2
-  displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-  inputs:
-    userProvideBuildInfo: 'auto'
-  continueOnError: true
-
 - task: CredScan@2
   displayName: 'Run CredScan'
   inputs:
@@ -17,7 +11,28 @@ steps:
     arguments: 'analyze $(Build.BinariesDirectory)\RelWithDebInfo\*.dll  --recurse --verbose'
   continueOnError: true
 
-- task: PublishSecurityAnalysisLogs@2
+- task: DeleteFiles@1
+  displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+  inputs:
+    SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+    Contents: |
+     **/*.obj
+     **/*.pdb
+     **/*.dll
+      
+- task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
+  displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+  continueOnError: true
+
+- task: securedevelopmentteam.vss-secure-development-tools.build-task-report.SdtReport@1
+  displayName: 'Create Security Analysis Report'
+  inputs:
+    BinSkim: true
+    BinSkimBreakOn: WarningAbove
+    CredScan: true
+    SDLNativeRules: true
+
+- task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
   displayName: 'Publish Security Analysis Logs'
   continueOnError: true
 

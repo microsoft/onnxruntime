@@ -30,14 +30,28 @@ Status BiasGelu::ApplyImpl(Graph& graph, bool& modified, int graph_level, const 
     }
 
     std::vector<NodeArg*> gelu_input;
-    const TensorShapeProto* add_input1_shape = node.MutableInputDefs()[0]->Shape();
-    const TensorShapeProto* add_input2_shape = node.MutableInputDefs()[1]->Shape();
-    if (add_input1_shape != nullptr &&
-        add_input1_shape->dim_size() == 1) {
+    const TensorShapeProto* input1_shape = node.MutableInputDefs()[0]->Shape();
+    const TensorShapeProto* input2_shape = node.MutableInputDefs()[1]->Shape();
+
+    if (input1_shape == nullptr ||
+        input2_shape == nullptr ||
+        input1_shape->dim_size() < 1 ||
+        input2_shape->dim_size() < 1) {
+      continue;
+    }
+
+    int last_dim_shape1 = input1_shape->dim_size() - 1;
+    int last_dim_shape2 = input2_shape->dim_size() - 1;
+    if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
+        !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
+        input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
+      continue;
+    }
+
+    if (input1_shape->dim_size() == 1) {
       gelu_input.push_back(node.MutableInputDefs()[1]);
       gelu_input.push_back(node.MutableInputDefs()[0]);
-    } else if (add_input2_shape != nullptr &&
-               add_input2_shape->dim_size() == 1) {
+    } else if (input2_shape->dim_size() == 1) {
       gelu_input.push_back(node.MutableInputDefs()[0]);
       gelu_input.push_back(node.MutableInputDefs()[1]);
     } else {

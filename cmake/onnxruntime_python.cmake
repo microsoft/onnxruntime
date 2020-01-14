@@ -251,7 +251,7 @@ endif()
 
 if (onnxruntime_USE_NUPHAR)
   file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*.*"
+    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD

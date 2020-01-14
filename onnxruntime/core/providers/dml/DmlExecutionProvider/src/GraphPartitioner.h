@@ -43,7 +43,7 @@ namespace Dml
     std::vector<std::unique_ptr<GraphPartition>>
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
-        const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap& graphNodeFactoryMap,
+        const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
@@ -53,7 +53,7 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
-        const winrt::Windows::AI::MachineLearning::implementation::GraphNodeFactoryMap& graphNodeFactoryMap,
+        const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,

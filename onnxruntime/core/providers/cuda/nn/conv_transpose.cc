@@ -44,6 +44,13 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const auto& x_dims = x_shape.GetDims();
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
 
+  if (X->Shape().NumDimensions() != 4) {
+    // This condition is not true for two tests in ONNX tests series:
+    // test_convtranspose_1d_cpu, test_convtranspose_3d_cpu.
+    // TODO: the error message should tell which operator raises it.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 4-dimensional.",
+                           " X: ", X->Shape().ToString().c_str());
+  }
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   std::vector<int64_t> w_dims = w_shape.GetDims();

@@ -3,7 +3,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/tensor/pad.h"
 
 namespace onnxruntime {
 
@@ -19,4 +18,9 @@ class CumSum final : public OpKernel {
   int64_t reverse_;
 };
 
+namespace cumsum_op {
+
+Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out);
+
+}  // namespace cumsum_op
 }  // namespace onnxruntime

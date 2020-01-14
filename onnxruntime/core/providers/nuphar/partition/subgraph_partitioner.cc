@@ -387,7 +387,7 @@ Status SubgraphPartitioner::Partition(
 
     if (codegen::CodeGenSettings::Instance().HasOption(kNupharDumpFusedNodes)) {
       std::ostringstream stream;
-      stream << "[NUPHAR_DUMP_FUSED_NODES]" << std::endl;
+      stream << "[NUPHAR_DUMP_FUSED_NODES] ID " << subgraph.UniqueId() << std::endl;
       stream << "NupharSubgraphUnit of size " << results.back().nodes.size() << " [";
       for (const auto& n : results.back().nodes) {
         stream << "(" << n->Name() << ", " << n->OpType() << ") ";

@@ -1,6 +1,5 @@
 # Defined as pipeline variables
 # variables:
-#   AgentPoolWin : 'Win-CPU'
 #   AgentPoolLinux : 'Linux-CPU'
 #   AgentPoolMacOS : 'macOS-10.13'
 
@@ -8,11 +7,15 @@ parameters:
   DoEsrp: 'false'
 
 jobs: 
-- template: ../../templates/win-ci.yml
+- template: ../../templates/win-ci-2019.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_mklml --build_shared_lib --build_csharp --enable_onnx_tests'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_mklml --build_shared_lib --enable_onnx_tests  --cmake_generator "Visual Studio 16 2019"'
+    BuildArch: 'x64'
+    msbuildArchitecture: 'amd64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -39,7 +42,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
@@ -96,7 +99,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: $(AgentPoolWin)
+  pool: 'Win-CPU-2019'
   dependsOn:
   - Windows_CI_Dev
   - Linux_CI_Dev
@@ -162,6 +165,12 @@ jobs:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
+
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      PlatformsSupported: 'win-x64,linux-x64,osx-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'

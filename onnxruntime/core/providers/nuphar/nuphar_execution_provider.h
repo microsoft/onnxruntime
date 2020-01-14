@@ -153,6 +153,11 @@ class NupharExecutionProvider : public IExecutionProvider {
 
   mutable std::unordered_map<std::string, std::unique_ptr<Tensor>> constant_initializers_used_in_compiled_nodes_;
   mutable std::unordered_map<std::string, int> domain_versions_;
+
+  // used to create unique fused node name, make it thread_local because
+  // subsession of a model with subgraph may create multiple instances of EPs,
+  // and there might be multiple inference sessions running different models concurrently
+  static thread_local int per_model_fused_count_;
 };
 
 }  // namespace onnxruntime

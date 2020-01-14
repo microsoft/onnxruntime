@@ -4,8 +4,9 @@ set -e -o -x
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
 CUDA_VER=cuda10.0-cudnn7.3
+YOCTO_VERSION="4.19"
 
-while getopts c:o:d:r:p:x:a:v: parameter_Option
+while getopts c:o:d:r:p:x:a:v:y: parameter_Option
 do case "${parameter_Option}"
 in
 #android, ubuntu16.04, manylinux2010, ubuntu18.04, CentOS7
@@ -23,6 +24,8 @@ c) CUDA_VER=${OPTARG};;
 a) BUILD_ARCH=${OPTARG};;
 # openvino version tag: 2018_R5, 2019_R1.1 (Default is 2019_R1.1)
 v) OPENVINO_VERSION=${OPTARG};;
+# YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
+y) YOCTO_VERSION=${OPTARG};;
 esac
 done
 
@@ -48,6 +51,15 @@ elif [ $BUILD_OS = "centos7" ]; then
     IMAGE="centos7"
     DOCKER_FILE=Dockerfile.centos
     docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
+elif [ $BUILD_OS = "yocto" ]; then
+    IMAGE="arm-yocto-$YOCTO_VERSION"
+    DOCKER_FILE=Dockerfile.ubuntu_for_arm
+    # ACL 19.05 need yocto 4.19
+    TOOL_CHAIN_SCRIPT=fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4.19-warrior.sh
+    if [ $YOCTO_VERSION = "4.14" ]; then
+        TOOL_CHAIN_SCRIPT=fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4.14-sumo.sh
+    fi
+    docker build -t "onnxruntime-$IMAGE" --build-arg TOOL_CHAIN=$TOOL_CHAIN_SCRIPT --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         IMAGE="$BUILD_OS-$CUDA_VER"
@@ -84,7 +96,7 @@ if [ -z "$NIGHTLY_BUILD" ]; then
     set NIGHTLY_BUILD=0
 fi
 
-if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "ngraph" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "nnapi" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
 else
     RUNTIME="--gpus all"
@@ -104,7 +116,7 @@ docker run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS &
+    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
 wait $!
 
 EXIT_CODE=$?

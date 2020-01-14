@@ -26,13 +26,25 @@ jobs:
       addToPath: true 
       architecture: $(buildArch)
 
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     python -m pip install -q pyopenssl setuptools wheel numpy     
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+    
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_automl --use_dnnl --use_openmp --build_shared_lib --enable_onnx_tests'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --use_dnnl --use_openmp --build_shared_lib --enable_onnx_tests --build_java'
       workingDirectory: '$(Build.BinariesDirectory)'
-     
+
   - task: VSBuild@1
     displayName: 'Build'
     inputs:
@@ -58,27 +70,9 @@ jobs:
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 4.9
     inputs:
-      versionSpec: 4.9.4
+      versionSpec: 4.9.4  
 
-  - task: PowerShell@2
-    displayName: 'Download AzCopy (used for download test data script)'
-    inputs:
-      targetType: 'inline'
-      script: |
-        Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
-
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-
-  - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy     
    
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'        
 
   - task: PythonScript@0
     displayName: 'Download test data'
@@ -96,15 +90,24 @@ jobs:
       arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'      
 
-  - ${{ if eq(variables['BuildConfig'], 'RelWithDebInfo') }}:
-    - task: DotNetCoreCLI@2
-      displayName: 'Test C#'
-      inputs:
-        command: test
-        projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
-        configuration: '$(BuildConfig)'          
-        arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+  - task: DotNetCoreCLI@2
+    displayName: 'Build C#'    
+    inputs:
+      command: build
+      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: '$(BuildConfig)'          
+      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Test C#'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+    inputs:
+      command: test
+      projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
+      configuration: '$(BuildConfig)'          
+      arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - script: |
      mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models  
@@ -112,6 +115,7 @@ jobs:
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --use_dnnl --build_wheel --enable_onnx_tests
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'

@@ -17,6 +17,7 @@ class IDataTransfer {
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const = 0;
+  virtual common::Status CopyTensors(const Tensor* src, Tensor* dst, int size) const;
 };
 
 class CPUDataTransfer : public IDataTransfer {

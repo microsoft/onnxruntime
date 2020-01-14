@@ -46,11 +46,11 @@ def GenerateModel(format, model_name):
         nodes,
         "SkipLayerNorm_format3",  #name
         [  # inputs
-            helper.make_tensor_value_info('A', TensorProto.FLOAT, ['unk_1', 32, 4]),
-            helper.make_tensor_value_info('B', TensorProto.FLOAT, ['unk_1', 32, 4]),
+            helper.make_tensor_value_info('A', TensorProto.FLOAT, [16, 32, 4]),
+            helper.make_tensor_value_info('B', TensorProto.FLOAT, [16, 32, 4]),
         ],
         [  # outputs
-            helper.make_tensor_value_info('C', TensorProto.FLOAT, ['unk_3', 32, 4]),
+            helper.make_tensor_value_info('C', TensorProto.FLOAT, [16, 32, 4]),
         ],
         initializers
     )

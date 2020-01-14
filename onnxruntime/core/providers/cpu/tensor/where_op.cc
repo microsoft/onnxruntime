@@ -22,7 +22,7 @@ namespace onnxruntime {
   WHERE_TYPED_KERNEL_WITH_TYPE_NAME(type, type)
 
 // start with a subset of types, enable more as needed...
-//WHERE_TYPED_KERNEL(uint8_t)
+WHERE_TYPED_KERNEL(uint8_t)
 //WHERE_TYPED_KERNEL(uint16_t)
 //WHERE_TYPED_KERNEL(uint32_t)
 //WHERE_TYPED_KERNEL(uint64_t)
