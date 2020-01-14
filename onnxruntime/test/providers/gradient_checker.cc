@@ -27,14 +27,14 @@ std::pair<int, int> inline CalculateJacobianTransposeIndex(const std::vector<Ten
                                                            int y_output_index,
                                                            int y_flattened_index) {
   int64_t elems_in_prev_output_tensors = 0;
-  for (size_t i = 0; i < y_output_index; i++) {
+  for (int i = 0; i < y_output_index; i++) {
     elems_in_prev_output_tensors += y_infos[i].shape.Size();
   }
 
   int64_t col = elems_in_prev_output_tensors + y_flattened_index;
 
   int64_t elems_in_prev_input_tensors = 0;
-  for (size_t i = 0; i < x_input_index; i++) {
+  for (int i = 0; i < x_input_index; i++) {
     elems_in_prev_input_tensors += x_infos[i].shape.Size();
   }
 
@@ -292,7 +292,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
   // We simply set each input without gradient to test the rest inputs' gradient.
   // In the last loop it tests for the case where all inputs are with gradient.
   size_t total_gradient_variations = check_not_have_gradient ? x_infos.size() + 1 : 1;
-  for (int x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
+  for (size_t x_gradient_variation = 0; x_gradient_variation < total_gradient_variations; x_gradient_variation++) {
     // Initialize theoretical Jacobians to zeros.
     std::vector<std::vector<JAC_T>> jacobian_ts;
     InitJacobians(x_infos, y_infos, &jacobian_ts);

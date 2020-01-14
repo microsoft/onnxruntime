@@ -7,54 +7,36 @@
 #include "core/graph/training/graph_augmenter.h"
 #include "core/framework/data_types.h"
 #include "core/training/optimizer_config.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
 
-// Utils for Constant Node Creation - Currently Used only in in_graph_training_optimizer
-// TODO: Move to an appropriate place if need arises
-// TODO: Add more types as necessary
-template <typename T>
-inline void SetTypedDataToTensor(T val, TensorProto& tensor, int64_t count);
-
-template <>
-inline void SetTypedDataToTensor<MLFloat16>(MLFloat16 val, TensorProto& tensor, int64_t count) {
-  for (int64_t i = 0; i < count; i++) {
-    tensor.add_int32_data(val.val);
-  }
-}
-
-template <>
-inline void SetTypedDataToTensor<float>(float val, TensorProto& tensor, int64_t count) {
-  for (int64_t i = 0; i < count; i++) {
-    tensor.add_float_data(val);
-  }
-}
-
-template <>
-inline void SetTypedDataToTensor<int64_t>(int64_t val, TensorProto& tensor, int64_t count) {
-  for (int64_t i = 0; i < count; i++) {
-    tensor.add_int64_data(val);
-  }
-}
-
-template <>
-inline void SetTypedDataToTensor<bool>(bool val, TensorProto& tensor, int64_t count) {
-  for (int64_t i = 0; i < count; i++) {
-    tensor.add_int32_data(val);
-  }
-}
+// Utils for Constant Node Creation
 
 template <class T>
 TensorProto CreateTensorProto(
     const std::string& name,
     T val,
-    std::vector<int64_t> dims = {1}) {
-  TensorProto tensor_proto;
+    const std::vector<int64_t>& dims = {1}) {
+  size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
+  std::vector<T> values(count, val);
+  TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
   tensor_proto.set_name(name);
-  tensor_proto.set_data_type(data_types_internal::ToTensorDataType<T>());
   std::for_each(dims.begin(), dims.end(), [&](auto dim) { tensor_proto.add_dims(dim); });
-  SetTypedDataToTensor<T>(val, tensor_proto, std::accumulate(dims.begin(), dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{}));
+  return tensor_proto;
+}
+
+template <class T>
+TensorProto CreateTensorProto(
+    const std::string& name,
+    const std::vector<T>& values,
+    const std::vector<int64_t>& dims = {1}) {
+  size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
+  ORT_ENFORCE(values.size() == count);
+  TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
+  tensor_proto.set_name(name);
+  std::for_each(dims.begin(), dims.end(), [&](auto dim) { tensor_proto.add_dims(dim); });
   return tensor_proto;
 }
 

@@ -32,7 +32,7 @@ RUN apt-get update && \
     apt-get install -y \
     build-essential \
     bzip2 \
-    git=1:2.7.4-0ubuntu1.6 \
+    git=1:2.7.4-0ubuntu1.7 \
     wget \
     cpio && \
     apt-get clean -y && \

@@ -10,13 +10,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-std::pair<bool, Node*> IsInputTranspose(const Graph& graph, const Node& node, NodeArg& node_arg) {
-  const auto& node_consumers = graph.GetConsumerNodes(node_arg.Name());
-  if (node_consumers.size() != 1 || node_consumers[0]->Name() != node.Name() ||
-      node_consumers[0]->OpType() != "MatMul") {
-    return std::make_pair(false, nullptr);
-  }
-
+static std::pair<bool, Node*> IsInputTranspose(const Graph& graph, NodeArg& node_arg) {
   auto trans_node = graph.GetProducerNode(node_arg.Name());
   if (trans_node == nullptr || trans_node->OpType() != "Transpose") {
     return std::make_pair(false, nullptr);
@@ -47,37 +41,57 @@ std::pair<bool, Node*> IsInputTranspose(const Graph& graph, const Node& node, No
   return std::make_pair(true, const_cast<Node*>(trans_node));
 }
 
+static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_map<NodeArg*, size_t>& count_map) {
+  const auto& node_consumers = graph.GetConsumerNodes(target->Name());
+  ORT_ENFORCE(!node_consumers.empty());
+  auto it = count_map.find(target);
+  if (it == count_map.end()) {
+    count_map.insert({target, node_consumers.size() - 1});
+    return node_consumers.size() - 1;
+  } else {
+    count_map[target] -= 1;
+    return count_map[target];
+  }
+}
+
 Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
 
+  std::unordered_map<NodeArg*, size_t> consumer_count;
+
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) ||
+    if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {9})) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
     NodeArg* left_input = node.MutableInputDefs()[0];
-    auto left = IsInputTranspose(graph, node, *left_input);
+    auto left = IsInputTranspose(graph, *left_input);
 
     NodeArg* right_input = node.MutableInputDefs()[1];
-    auto right = IsInputTranspose(graph, node, *right_input);
+    auto right = IsInputTranspose(graph, *right_input);
 
     if (!left.first && !right.first) {
       continue;
     }
 
     if (left.first) {
-      removed_nodes.push_front(left.second->Index());
+      size_t left_consumers = UpdateConsumerCount(graph, left_input, consumer_count);
+      if (left_consumers == 0)
+        removed_nodes.push_front(left.second->Index());
       left_input = left.second->MutableInputDefs()[0];
     }
 
     if (right.first) {
-      removed_nodes.push_front(right.second->Index());
+      size_t right_consumers = UpdateConsumerCount(graph, right_input, consumer_count);
+      if (right_consumers == 0)
+        removed_nodes.push_front(right.second->Index());
       right_input = right.second->MutableInputDefs()[0];
     }
 
@@ -89,8 +103,16 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       "fused MatMul and Transpose ",
                                       input_defs,
                                       output_defs, {}, kOnnxDomain);
-    matmul_node.AddAttribute("transA", (int64_t)left.first);
-    matmul_node.AddAttribute("transB", (int64_t)right.first);
+    bool transpose_left = left.first;
+    if (node.OpType() == "TransposeMatMul") {
+      transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());
+    }
+    bool transpose_right = right.first;
+    if (node.OpType() == "TransposeMatMul") {
+      transpose_right ^= static_cast<bool>(node.GetAttributes().at("transB").i());
+    }
+    matmul_node.AddAttribute("transA", (int64_t)transpose_left);
+    matmul_node.AddAttribute("transB", (int64_t)transpose_right);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 

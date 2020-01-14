@@ -88,6 +88,10 @@ option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
+# training options
+option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
 set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
@@ -804,6 +808,9 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   include(onnxruntime_training.cmake)
+  if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
+    include(onnxruntime_training_e2e_tests.cmake)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_CSHARP)

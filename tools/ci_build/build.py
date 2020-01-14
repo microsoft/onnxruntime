@@ -43,7 +43,7 @@ Default behavior is --update --build for cross-compiled builds.
 
 The Update phase will update git submodules, and run cmake to generate makefiles.
 The Build phase will build all projects.
-The Test phase will run all unit tests, and optionally the ONNX tests.
+The Test phase will run tests such as unit tests and ONNX tests.
 
 Use the individual flags to only run the specified stages.
                                      ''')
@@ -61,6 +61,14 @@ Use the individual flags to only run the specified stages.
     Once that's done, run with "--build --parallel --test" to just build in parallel and run tests.''')
     parser.add_argument("--test", action='store_true', help="Run unit tests.")
     parser.add_argument("--skip_tests", action='store_true', help="Skip all tests.")
+
+    # Test options
+    parser.add_argument("--ctest_label_regex",
+                        help="Only run CTest tests with a label matching the pattern (passed to ctest --label-regex).")
+    parser.add_argument("--enable_training_e2e_tests", action="store_true",
+                        help="Enable the training end-to-end tests.")
+    parser.add_argument("--training_e2e_test_data_path",
+                        help="Path to training end-to-end test data directory.")
 
     # enable ONNX tests
     parser.add_argument("--enable_onnx_tests", action='store_true',
@@ -322,6 +330,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
                  "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"),
                  "-Donnxruntime_ENABLE_TRAINING=" + ("ON"),
+                 "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + ("ON" if args.enable_training_e2e_tests else "OFF"),
                  "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
                  "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
@@ -385,6 +394,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
     else:
         cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
+
+    if args.training_e2e_test_data_path is not None:
+        cmake_args += ["-Donnxruntime_TRAINING_E2E_TEST_DATA_ROOT={}".format(
+            os.path.abspath(args.training_e2e_test_data_path))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -572,8 +585,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
           dll_path = os.path.join(args.tensorrt_home, 'lib')
         else:
           dll_path = None
-        run_subprocess([ctest_path, "--build-config", config, "--verbose"],
-                       cwd=cwd, dll_path=dll_path)
+
+        ctest_cmd = [ctest_path, "--build-config", config, "--verbose"]
+        if args.ctest_label_regex is not None:
+          ctest_cmd += ["--label-regex", args.ctest_label_regex]
+
+        run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if enable_python_tests:
             # Disable python tests for TensorRT because many tests are not supported yet

@@ -82,6 +82,8 @@ class TrainingRunner {
     bool use_cuda = false;
     // Whether to use NCCL for distributed training.
     bool use_nccl = false;
+    // Whether to partition the optimizer state across nodes for distributed training.
+    bool partition_optimizer = false;
     // Use Gist on CPU.
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
@@ -108,6 +110,8 @@ class TrainingRunner {
     VectorString histogram_names;
     VectorString norm_names;
 
+    //Default value is -1.0f. When cuda_mem_limit_in_gb < 0, ORT can use all cuda memory available.
+    float cuda_mem_limit_in_gb = -1.0f;
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
     }

@@ -10,6 +10,7 @@
 
 namespace onnxruntime {
 namespace training {
+
 // configuration per optimizer node
 struct OptimizerNodeConfig {
   std::string name{};
@@ -18,7 +19,8 @@ struct OptimizerNodeConfig {
   std::unordered_map<std::string, float> attributes{};
   std::string loss_scale_input_name{};
   bool use_fp16_moments{false};
-  bool update_weight{true};  // Indicates whether Optimizer should do weight update, or output new gradient
+  bool update_weight{true};  // indicates whether Optimizer should do weight update, or output new gradient
+  bool enabled{true};  // indicates whether this weight is included in the Optimizer
 };
 
 // configuration for optimizer portion of graph
@@ -29,8 +31,10 @@ struct OptimizerGraphConfig {
   bool always_do_update{false};
   bool allreduce_in_fp16{false};
   bool use_nccl{false};
+  bool partition_optimizer{false};
   int gradient_accumulation_steps{1};
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
 };
+
 }  // namespace training
 }  // namespace onnxruntime

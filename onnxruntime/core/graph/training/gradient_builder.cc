@@ -388,10 +388,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetSplitGradient) {
   }
 
   if (!input_args.empty()) {
+    auto attributes = SrcNodeAttributes();
+    ORT_ENFORCE(attributes.at("axis").has_i());
+    auto axis = attributes.at("axis").i();
     result.push_back(
         NodeDef("Concat",
                 input_args,
-                {GI(0)}));
+                {GI(0)},
+                {MakeAttribute("axis", axis)}));
   }
   return result;
 }
@@ -407,8 +411,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
   return std::vector<NodeDef>{
       NodeDef("Split",
               {GO(0)},
-              outputs)};
+              outputs,
+              SrcNodeAttributes())};
 }
+
 IMPLEMENT_GRADIENT_BUILDER(GetGatherNDGradient) {
   auto attributes = SrcNodeAttributes();
   ORT_ENFORCE(attributes.at("axis").has_i());
@@ -458,28 +464,32 @@ IMPLEMENT_GRADIENT_BUILDER(GetAveragePoolGradient) {
   return std::vector<NodeDef>{
       NodeDef("AveragePoolGrad",
               {GO(0)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMaxPoolGradient) {
   return std::vector<NodeDef>{
       NodeDef("MaxPoolGrad",
               {GO(0), O(1)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
   return std::vector<NodeDef>{
       NodeDef(SrcNodeOpType() + "Grad",
               {GO(0), I(0), O(0)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLRNGradient) {
   return std::vector<NodeDef>{
       NodeDef("LRNGrad",
               {GO(0), I(0), O(0)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
@@ -508,7 +518,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
   return std::vector<NodeDef>{
       NodeDef("TrainableDropoutGrad",
               {GO(0), O(1), I(1)},
-              {GI(0)})};
+              {GI(0)},
+              {SrcNodeAttributes()})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
@@ -524,21 +535,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   return std::vector<NodeDef>{
       NodeDef("ConvGrad",
               {GO(0), I(0), I(1)},
-              outputs)};
+              outputs,
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
       NodeDef("SoftmaxGrad",
               {GO(0), O(0)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetUnsqueezeGradient) {
   return std::vector<NodeDef>{
       NodeDef("Squeeze",
               {GO(0)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
@@ -790,7 +804,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{"SoftmaxCrossEntropyGrad"},
               {GO(0), O(1), I(1)},
-              {GI(0)})};
+              {GI(0)},
+              SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
@@ -798,12 +813,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient) {
     return std::vector<NodeDef>{
         NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
                 {GO(0), O(1), I(1)},
-                {GI(0)})};
+                {GI(0)},
+                SrcNodeAttributes())};
   } else if (GetSrcNodeInputSize() == 3) {
     return std::vector<NodeDef>{
         NodeDef(OpDef{"SparseSoftmaxCrossEntropyGrad"},
                 {GO(0), O(1), I(1), I(2)},
-                {GI(0)})};
+                {GI(0)},
+                SrcNodeAttributes())};
   } else {
     ORT_ENFORCE(false, "the number of input arguments must be 2 or 3");
   }
@@ -838,7 +855,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
       NodeDef("Expand",
               {IA("scaled_dY"), IA("x_shape")},
               {GI(0)})};
-}  // namespace training
+}
 
 IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
   return std::vector<NodeDef>{
@@ -870,7 +887,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
                 {GO(0), I(0), I(1), O(3), O(4)},
                 {GI(0), GI(1), GI(2)})};
   }
-  
 }
 
 }  // namespace training
