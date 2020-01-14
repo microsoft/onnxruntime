@@ -19,8 +19,14 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/framework/session_options.h"
+
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
+#endif
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
+#include <TraceLoggingActivity.h>
 #endif
 
 namespace onnxruntime {  // forward declarations
@@ -45,51 +51,6 @@ class Notification;
 namespace logging {
 class LoggingManager;
 }
-
-/**
-  * Configuration information for a session.
-  */
-struct SessionOptions {
-  //int num_threads; // not used now until we re-introduce threadpools for async execution
-  bool enable_sequential_execution = true;  // TODO: should we default to sequential execution?
-
-  // enable profiling for this session.
-  bool enable_profiling = false;
-
-  // non empty filepath enables serialization of the transformed optimized model to the specified filepath.
-  std::basic_string<ORTCHAR_T> optimized_model_filepath;
-
-  // enable the memory pattern optimization.
-  // The idea is if the input shapes are the same, we could trace the internal memory allocation
-  // and generate a memory pattern for future request. So next time we could just do one allocation
-  // with a big chunk for all the internal memory allocation.
-  // See class 'OrtValuePatternPlanner'.
-  bool enable_mem_pattern = true;
-
-  // enable the memory arena on CPU
-  // Arena may pre-allocate memory for future usage.
-  // set this option to false if you don't want it.
-  bool enable_cpu_mem_arena = true;
-
-  // the prefix of the profile file. The current time will be appended to the file name.
-  std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");
-
-  std::string session_logid;  ///< logger id to use for session output
-
-  /// Log severity for the inference session. Applies to session load, initialization, etc.
-  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
-  /// Default = -1 (use default logger severity)
-  int session_log_severity_level = -1;
-  int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
-
-  unsigned max_num_graph_transformation_steps = 5;  // TODO choose a good default here?
-
-  // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level1;
-
-  // How many threads in the session thread pool.
-  int session_thread_pool_size = -1;
-};
 
 /**
   * Pre-defined and custom metadata about the model.
@@ -138,6 +99,61 @@ class InferenceSession {
     */
   explicit InferenceSession(const SessionOptions& session_options,
                             logging::LoggingManager* logging_manager = nullptr);
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param model_uri absolute path of the model file.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const std::string& model_uri,
+                   logging::LoggingManager* logging_manager = nullptr);
+#ifdef _WIN32
+  InferenceSession(const SessionOptions& session_options,
+                   const std::wstring& model_uri,
+                   logging::LoggingManager* logging_manager = nullptr);
+#endif
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param istream object of the model.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   std::istream& model_istream,
+                   logging::LoggingManager* logging_manager = nullptr);
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param model_data Model data buffer.
+    @param model_data_len Model data buffer size.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const void* model_data,
+                   int model_data_len,
+                   logging::LoggingManager* logging_manager = nullptr);
 
   virtual ~InferenceSession();
 
@@ -210,6 +226,13 @@ class InferenceSession {
   common::Status Load(const void* model_data, int model_data_len);
 
   /**
+    * Load an ONNX model from the member model_proto_. 
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
+    * @return OK if success.
+    */
+  common::Status Load();
+
+  /**
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
     * This method assumes that a method has been loaded previously.
@@ -268,6 +291,15 @@ class InferenceSession {
   std::pair<common::Status, const InputDefList*> GetModelInputs() const;
 
   /**
+    * Get all definitions of the model for overridable initializers.
+    * This does not include weights. Use this to get the name/type/shapes of the overridable initializers.
+    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
+    * @note lifetime of the returned pointer is valid as long as the Session object is live.
+    * @note for IR < 4 returned list will always be empty.
+    */
+  std::pair<common::Status, const InputDefList*> GetOverridableInitializers() const;
+
+  /**
     * Get all output definitions of the model. Use this to get the name/type/shapes of the outputs.
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -278,6 +310,17 @@ class InferenceSession {
     * Get the current number of in-progress concurrent Run calls.
     */
   int GetCurrentNumRuns() const;
+
+  /**
+    * Get the names of registered Execution Providers. The returned vector is ordered by Execution Provider
+    * priority. The first provider in the vector has the highest priority.
+    */
+  const std::vector<std::string>& GetRegisteredProviderTypes() const;
+
+  /*
+   * Get the options this session was initialized with.
+   */
+  const SessionOptions& GetSessionOptions() const;
 
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
@@ -335,8 +378,15 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  std::unique_ptr<SessionState> session_state_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  void ConstructorCommon(const SessionOptions& session_options,
+                         logging::LoggingManager* logging_manager);
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
@@ -387,9 +437,9 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  const SessionOptions session_options_;
+  SessionOptions session_options_;
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
   // will be run regardless of the level set.
@@ -408,19 +458,17 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
+<<<<<<< HEAD
  protected:
   bool IsInitialized() const;
 
  private:
+=======
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
- protected:
-  // Immutable state for each op in the model. Shared by all executors.
-  // It has a dependency on execution_providers_.
-  SessionState session_state_;
-
- private:
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 
@@ -459,6 +507,23 @@ class InferenceSession {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
+
+  // used to support platform telemetry
+  static std::atomic<uint32_t> global_session_id_;                  // a monotonically increasing session id
+  uint32_t session_id_;                                             // the current session's id
+  uint32_t total_runs_since_last_;                                  // the total number of Run() calls since the last report
+  long long total_run_duration_since_last_;                         // the total duration (us) of Run() calls since the last report
+  TimePoint time_sent_last_;                                        // the TimePoint of the last report
+  const long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+  std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  bool session_activity_started_ = false;
+  TraceLoggingActivity<telemetry_provider_handle> session_activity;
+#endif
+
+  // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
 };
 
 struct SessionIOBinding {

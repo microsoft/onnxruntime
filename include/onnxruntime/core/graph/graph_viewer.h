@@ -38,6 +38,9 @@ class GraphViewer {
   */
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
 
+  /** Returns true if an initializer value can be overridden by a graph input with the same name. */
+  bool CanOverrideInitializer() const noexcept;
+
   /**
   Gets the Graph inputs, excluding initializers.
   @returns Collection of NodeArg pointers for the graph inputs, excluding inputs that have matching initializers.
@@ -102,11 +105,22 @@ class GraphViewer {
     return graph_->DomainToVersionMap();
   }
 
-  /** Check if this is a Subgraph */
+  /** Checks if this is a Subgraph */
   bool IsSubgraph() const;
 
+<<<<<<< HEAD
   /** Get the internal graph*/
   const Graph* GetGraph() const { return graph_; }
+=======
+  /** 
+  returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime. 
+  @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name' if not found in 'graph_'.
+  */
+  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
+  const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);

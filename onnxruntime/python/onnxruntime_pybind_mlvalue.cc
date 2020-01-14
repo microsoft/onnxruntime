@@ -12,6 +12,9 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 #include "core/framework/allocator.h"
+#include "core/framework/TensorSeq.h"
+#include "core/framework/data_types.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 
 using namespace std;
 namespace onnxruntime {
@@ -120,16 +123,15 @@ bool PyObjectCheck_Array(PyObject* o) {
   return PyObject_HasAttrString(o, "__array_finalize__");
 }
 
-void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
-                         OrtValue* p_mlvalue) {
+std::unique_ptr<Tensor> CreateTensor(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject) {
   PyArrayObject* darray = PyArray_GETCONTIGUOUS(pyObject);
   if (darray == NULL) {
     throw std::runtime_error(std::string("The object must be a contiguous array for input '") + name_input + std::string("'."));
   }
   bool dref = false;
+  std::unique_ptr<Tensor> p_tensor;
   try {
     const int npy_type = PyArray_TYPE(darray);
-
     // numpy requires long int as its dims.
     int ndim = PyArray_NDIM(darray);
     npy_intp* npy_dims = PyArray_DIMS(darray);
@@ -140,71 +142,73 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
 
     TensorShape shape(dims);
     auto element_type = NumpyToOnnxRuntimeTensorType(npy_type);
-    std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
-    if (npy_type == NPY_UNICODE) {
-      // Copy string data which needs to be done after Tensor is allocated.
-      // Strings are Python strings or numpy.unicode string.
-      std::string* dst = p_tensor->MutableData<std::string>();
-      auto item_size = PyArray_ITEMSIZE(darray);
-      auto num_chars = item_size / PyUnicode_4BYTE_KIND;
-      char* src = static_cast<char*>(PyArray_DATA(darray));
-      const char* str;
-      Py_ssize_t size;
-      PyObject* pStr;
-      for (int i = 0; i < shape.Size(); i++, src += item_size) {
-        // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
-        pStr = PyUnicode_FromKindAndData(PyUnicode_4BYTE_KIND, src, num_chars);
-        str = PyUnicode_AsUTF8AndSize(pStr, &size);
-        if (str == NULL) {
-          dst[i] = "";
-        } else {
-          // Size is equal to the longest string size, numpy stores
-          // strings in a single array. Those code assumes a string ends with a final 0.
-          dst[i] = str;
-        }
-        Py_XDECREF(pStr);
-      }
-    } else if (npy_type == NPY_STRING || npy_type == NPY_VOID) {
-      // Copy string data which needs to be done after Tensor is allocated.
-      // Strings are given as bytes (encoded strings).
-      // NPY_VOID does not trim final 0.
-      // NPY_STRING assumes bytes string ends with a final 0.
-      std::string* dst = p_tensor->MutableData<std::string>();
-      auto item_size = PyArray_ITEMSIZE(darray);
-      char* src = static_cast<char*>(PyArray_DATA(darray));
-      for (int i = 0; i < shape.Size(); i++, src += item_size) {
-        if (npy_type == NPY_STRING) {
-          dst[i] = src;
-        } else {
-          dst[i].resize(item_size);
-          memcpy((void*)dst[i].c_str(), src, item_size);
-        }
-      }
-    } else if (npy_type == NPY_OBJECT) {
-      // Converts object into string.
-      std::string* dst = p_tensor->MutableData<std::string>();
-      auto item_size = PyArray_ITEMSIZE(darray);
-      char* src = static_cast<char*>(PyArray_DATA(darray));
-      PyObject *item, *pStr;
-      for (int i = 0; i < shape.Size(); ++i, src += item_size) {
-        // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
-        item = PyArray_GETITEM(darray, src);
-        pStr = PyObject_Str(item);
-        dst[i] = py::reinterpret_borrow<py::str>(pStr);
-        Py_XDECREF(pStr);
-      }
+    if (pyObject == darray && npy_type != NPY_UNICODE && npy_type != NPY_STRING &&
+        npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
+      p_tensor = onnxruntime::make_unique<Tensor>(
+          element_type, shape, static_cast<void*>(PyArray_DATA(darray)), alloc->Info());
     } else {
-      void* buffer = p_tensor->MutableDataRaw();
-      size_t len;
-      if (!IAllocator::CalcMemSizeForArray(element_type->Size(), shape.Size(), &len)) {
-        throw std::runtime_error("length overflow");
+      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+      if (npy_type == NPY_UNICODE) {
+        // Copy string data which needs to be done after Tensor is allocated.
+        // Strings are Python strings or numpy.unicode string.
+        std::string* dst = p_tensor->MutableData<std::string>();
+        auto item_size = PyArray_ITEMSIZE(darray);
+        auto num_chars = item_size / PyUnicode_4BYTE_KIND;
+        char* src = static_cast<char*>(PyArray_DATA(darray));
+        const char* str;
+        Py_ssize_t size;
+        PyObject* pStr;
+        for (int i = 0; i < shape.Size(); i++, src += item_size) {
+          // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
+          pStr = PyUnicode_FromKindAndData(PyUnicode_4BYTE_KIND, src, num_chars);
+          str = PyUnicode_AsUTF8AndSize(pStr, &size);
+          if (str == NULL) {
+            dst[i] = "";
+          } else {
+            // Size is equal to the longest string size, numpy stores
+            // strings in a single array. Those code assumes a string ends with a final 0.
+            dst[i] = str;
+          }
+          Py_XDECREF(pStr);
+        }
+      } else if (npy_type == NPY_STRING || npy_type == NPY_VOID) {
+        // Copy string data which needs to be done after Tensor is allocated.
+        // Strings are given as bytes (encoded strings).
+        // NPY_VOID does not trim final 0.
+        // NPY_STRING assumes bytes string ends with a final 0.
+        std::string* dst = p_tensor->MutableData<std::string>();
+        auto item_size = PyArray_ITEMSIZE(darray);
+        char* src = static_cast<char*>(PyArray_DATA(darray));
+        for (int i = 0; i < shape.Size(); i++, src += item_size) {
+          if (npy_type == NPY_STRING) {
+            dst[i] = src;
+          } else {
+            dst[i].resize(item_size);
+            memcpy((void*)dst[i].c_str(), src, item_size);
+          }
+        }
+      } else if (npy_type == NPY_OBJECT) {
+        // Converts object into string.
+        std::string* dst = p_tensor->MutableData<std::string>();
+        auto item_size = PyArray_ITEMSIZE(darray);
+        char* src = static_cast<char*>(PyArray_DATA(darray));
+        PyObject *item, *pStr;
+        for (int i = 0; i < shape.Size(); ++i, src += item_size) {
+          // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
+          item = PyArray_GETITEM(darray, src);
+          pStr = PyObject_Str(item);
+          dst[i] = py::reinterpret_borrow<py::str>(pStr);
+          Py_XDECREF(pStr);
+        }
+      } else {
+        void* buffer = p_tensor->MutableDataRaw();
+        size_t len;
+        if (!IAllocator::CalcMemSizeForArray(element_type->Size(), shape.Size(), &len)) {
+          throw std::runtime_error("length overflow");
+        }
+        memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), len);
       }
-      memcpy(buffer, static_cast<void*>(PyArray_DATA(darray)), len);
     }
-
-    p_mlvalue->Init(p_tensor.release(),
-                    DataTypeImpl::GetType<Tensor>(),
-                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
   } catch (...) {
     if (!dref) {
       Py_XDECREF(darray);
@@ -220,6 +224,61 @@ void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyAr
   if (!dref) {
     Py_XDECREF(darray);
   }
+
+  return p_tensor;
+}
+
+void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
+                             const InputDefList* input_def_list, PyObject* pylist_obj, OrtValue* p_mlvalue) {
+  // get sequence type from the model
+  const auto& def_list = *input_def_list;
+  auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
+                             [&name_input](const NodeArg* node_arg) { return name_input == node_arg->Name(); });
+  if (ret_it == std::end(def_list)) {
+    throw std::runtime_error("Failed to find input with name: " + name_input + " in the model input def list");
+  }
+  const auto* type_proto = (*ret_it)->TypeAsProto();
+  if (!type_proto || !(type_proto->has_sequence_type())) {
+    throw std::runtime_error("Either type_proto was null or it was not of sequence type");
+  }
+
+  // populate the seq
+  std::vector<Tensor> tensors;
+  auto list_size = PyList_Size(pylist_obj);
+  if (list_size > 0) {
+    tensors.resize(list_size);
+    for (Py_ssize_t i = 0; i < list_size; ++i) {
+      auto* py_obj = PyList_GetItem(pylist_obj, i);
+      if (!PyObjectCheck_Array(py_obj)) {
+        throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
+      }
+      auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
+      tensors[i] = std::move(*p_tensor);
+    }
+  }
+
+    // set the seq type
+  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto->sequence_type().elem_type().tensor_type().elem_type()));
+  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>(seq_dtype);
+  p_seq_tensors->SetElements(std::move(tensors));
+  auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+  p_mlvalue->Init(p_seq_tensors.release(),
+                  ml_tensor_sequence,
+                  ml_tensor_sequence->GetDeleteFunc());
+}
+
+void CreateTensorMLValue(AllocatorPtr alloc, const std::string& name_input, PyArrayObject* pyObject,
+                         OrtValue* p_mlvalue) {
+  auto p_tensor = CreateTensor(alloc, name_input, pyObject);
+  if (!p_tensor) {
+    throw std::runtime_error("Got exception while creating tensor for input: " + name_input);
+  }
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  p_mlvalue->Init(p_tensor.release(),
+                  ml_tensor,
+                  ml_tensor->GetDeleteFunc());
 }
 
 std::string _get_type_name(int64_t&) {
@@ -277,7 +336,7 @@ void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::string& na
                           PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
                           ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
-  dst = std::make_unique<std::map<KeyType, ValueType>>();
+  dst = onnxruntime::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
   p_mlvalue->Init(dst.release(), DataTypeImpl::GetType<std::map<KeyType, ValueType>>(),
                   DataTypeImpl::GetType<std::map<KeyType, ValueType>>()->GetDeleteFunc());
@@ -288,7 +347,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                                 PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
-  dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
+  dstVector = onnxruntime::make_unique<std::vector<std::map<KeyType, ValueType>>>();
   int index = 0;
   do {
     dstVector->push_back(std::map<KeyType, ValueType>());
@@ -424,11 +483,15 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
   }
 }
 
-void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, OrtValue* p_mlvalue) {
+void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
+                          py::object& value, OrtValue* p_mlvalue) {
   if (PyObjectCheck_Array(value.ptr())) {
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());
     CreateTensorMLValue(alloc, name_input, arr, p_mlvalue);
+  } else if (PyList_Check(value.ptr())) {
+    auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
+    CreateSequenceOfTensors(alloc, name_input, input_def_list, seq_tensors, p_mlvalue);
   } else if (PyDict_Check(value.ptr())) {
     CreateMapMLValue_AgnosticVectorMap((PyObject*)NULL, value.ptr(), alloc, name_input, p_mlvalue);
   } else {

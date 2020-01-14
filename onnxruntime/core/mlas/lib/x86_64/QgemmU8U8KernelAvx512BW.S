@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    QgemmU8U8KernelAvx512BW.S
+    QgemmU8U8KernelAvx512BW.s
 
 Abstract:
 
@@ -28,40 +28,27 @@ Abstract:
 
 Macro Description:
 
-    This macro generates code to multiply and accumulator a single row of the
+    This macro generates code to multiply and accumulator a single cell of the
     output block.
 
 Arguments:
 
-    ColumnCount - Supplies the number of columns to produce.
+    AccumReg - Supplies the register to accumulate into.
 
-    Vec1Reg - Supplies the high block accumulator register (when ColumnCount
-        is 32).
+    Mult1Reg - Supplies the first multiplication operand register.
 
-    Vec2Reg - Supplies the low block accumulator register.
+    Mult2Reg - Supplies the second multiplication operand register.
 
 Implicit Arguments:
 
-    zmm28 - Supplies the first vector loaded from matrix B.
-
-    zmm29 - Supplies the second vector loaded from matrix B (when ColumnCount
-        is 32).
-
-    zmm30 - Supplies the broadcast value loaded from matrix A.
+    zmm4 - Supplies a scratch register for intermediate results.
 
 --*/
 
-        .macro MultiplyAccumulateRow ColumnCount, Vec1Reg, Vec2Reg
+        .macro MultiplyAccumulateCell AccumReg, Mult1Reg, Mult2Reg
 
-.if \ColumnCount\() == 32
-        vpmaddwd zmm31,zmm30,zmm28
-        vpaddd  \Vec1Reg\(),\Vec1Reg\(),zmm31
-        vpmaddwd zmm30,zmm30,zmm29
-        vpaddd  \Vec2Reg\(),\Vec2Reg\(),zmm30
-.else
-        vpmaddwd zmm31,zmm30,zmm28
-        vpaddd  \Vec2Reg\(),\Vec2Reg\(),zmm31
-.endif
+        vpmaddwd zmm4,\Mult1Reg\(),\Mult2Reg\()
+        vpaddd  \AccumReg\(),\AccumReg\(),zmm4
 
         .endm
 
@@ -78,36 +65,62 @@ Arguments:
 
     RowCount - Supplies the number of rows to produce.
 
-Implicit Arguments:
+    VectorOffset - Supplies the byte offset from matrix B to fetch elements.
 
-    rdi - Supplies the address into the matrix A data.
+    BroadcastOffset - Supplies the byte offset from matrix A to fetch elements.
+
+Implicit Arguments:
 
     rbx - Supplies the address into the matrix A data plus 3 rows.
 
+    rdi - Supplies the address into the matrix A data.
+
     rsi - Supplies the address into the matrix B data.
 
-    r10 - Supplies the length in bytes of a row from matrix A.
+    rcx - Supplies the length in bytes of a row from matrix A.
 
-    zmm16-zmm27 - Supplies the block accumulators.
+    r14 - Supplies the stride in bytes of between packed blocks of matrix B.
+
+    zmm14-zmm31 - Supplies the block accumulators.
 
 --*/
 
-        .macro ComputeBlock ColumnCount, RowCount
+        .macro ComputeBlock ColumnCount, RowCount, VectorOffset, BroadcastOffset
 
-        vpmovzxbw zmm28,YMMWORD PTR [rsi]
-        EmitIfCountGE \ColumnCount\(), 32, "vpmovzxbw zmm29,YMMWORD PTR [rsi+r10*8]"
-        EmitIfCountGE \RowCount\(), 1, "vpbroadcastd zmm30,DWORD PTR [rdi]"
-        EmitIfCountGE \RowCount\(), 1, "MultiplyAccumulateRow \ColumnCount\(), zmm16, zmm17"
-        EmitIfCountGE \RowCount\(), 2, "vpbroadcastd zmm30,DWORD PTR [rdi+r10]"
-        EmitIfCountGE \RowCount\(), 2, "MultiplyAccumulateRow \ColumnCount\(), zmm18, zmm19"
-        EmitIfCountGE \RowCount\(), 3, "vpbroadcastd zmm30,DWORD PTR [rdi+r10*2]"
-        EmitIfCountGE \RowCount\(), 3, "MultiplyAccumulateRow \ColumnCount\(), zmm20, zmm21"
-        EmitIfCountGE \RowCount\(), 4, "vpbroadcastd zmm30,DWORD PTR [rbx]"
-        EmitIfCountGE \RowCount\(), 4, "MultiplyAccumulateRow \ColumnCount\(), zmm22, zmm23"
-        EmitIfCountGE \RowCount\(), 5, "vpbroadcastd zmm30,DWORD PTR [rbx+r10]"
-        EmitIfCountGE \RowCount\(), 5, "MultiplyAccumulateRow \ColumnCount\(), zmm24, zmm25"
-        EmitIfCountGE \RowCount\(), 6, "vpbroadcastd zmm30,DWORD PTR [rbx+r10*2]"
-        EmitIfCountGE \RowCount\(), 6, "MultiplyAccumulateRow \ColumnCount\(), zmm26, zmm27"
+.if \ColumnCount\() >= 48
+        vpmovzxbw zmm0,YMMWORD PTR [rsi+\VectorOffset\()]
+        vpmovzxbw zmm1,YMMWORD PTR [rsi+r14+\VectorOffset\()]
+        vpmovzxbw zmm2,YMMWORD PTR [rsi+r14*2+\VectorOffset\()]
+.elseif \ColumnCount\() >= 32
+        vpmovzxbw zmm1,YMMWORD PTR [rsi+\VectorOffset\()]
+        vpmovzxbw zmm2,YMMWORD PTR [rsi+r14+\VectorOffset\()]
+.else
+        vpmovzxbw zmm2,YMMWORD PTR [rsi+\VectorOffset\()]
+.endif
+        EmitIfCountGE \RowCount\(), 1, "vpbroadcastd zmm3,DWORD PTR [rdi+\BroadcastOffset\()]"
+        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm26,zmm3,zmm0"
+        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 32, "MultiplyAccumulateCell zmm20,zmm3,zmm1"
+        EmitIfCount2GE \RowCount\(), 1, \ColumnCount\(), 16, "MultiplyAccumulateCell zmm14,zmm3,zmm2"
+        EmitIfCountGE \RowCount\(), 2, "vpbroadcastd zmm3,DWORD PTR [rdi+rcx+\BroadcastOffset\()]"
+        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm27,zmm3,zmm0"
+        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 32, "MultiplyAccumulateCell zmm21,zmm3,zmm1"
+        EmitIfCount2GE \RowCount\(), 2, \ColumnCount\(), 16, "MultiplyAccumulateCell zmm15,zmm3,zmm2"
+        EmitIfCountGE \RowCount\(), 3, "vpbroadcastd zmm3,DWORD PTR [rdi+rcx*2+\BroadcastOffset\()]"
+        EmitIfCount2GE \RowCount\(), 3, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm28,zmm3,zmm0"
+        EmitIfCount2GE \RowCount\(), 3, \ColumnCount\(), 32, "MultiplyAccumulateCell zmm22,zmm3,zmm1"
+        EmitIfCount2GE \RowCount\(), 3, \ColumnCount\(), 16, "MultiplyAccumulateCell zmm16,zmm3,zmm2"
+        EmitIfCountGE \RowCount\(), 4, "vpbroadcastd zmm3,DWORD PTR [rbx+\BroadcastOffset\()]"
+        EmitIfCount2GE \RowCount\(), 4, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm29,zmm3,zmm0"
+        EmitIfCount2GE \RowCount\(), 4, \ColumnCount\(), 32, "MultiplyAccumulateCell zmm23,zmm3,zmm1"
+        EmitIfCount2GE \RowCount\(), 4, \ColumnCount\(), 16, "MultiplyAccumulateCell zmm17,zmm3,zmm2"
+        EmitIfCountGE \RowCount\(), 5, "vpbroadcastd zmm3,DWORD PTR [rbx+rcx+\BroadcastOffset\()]"
+        EmitIfCount2GE \RowCount\(), 5, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm30,zmm3,zmm0"
+        EmitIfCount2GE \RowCount\(), 5, \ColumnCount\(), 32, "MultiplyAccumulateCell zmm24,zmm3,zmm1"
+        EmitIfCount2GE \RowCount\(), 5, \ColumnCount\(), 16, "MultiplyAccumulateCell zmm18,zmm3,zmm2"
+        EmitIfCountGE \RowCount\(), 6, "vpbroadcastd zmm3,DWORD PTR [rbx+rcx*2+\BroadcastOffset\()]"
+        EmitIfCount2GE \RowCount\(), 6, \ColumnCount\(), 48, "MultiplyAccumulateCell zmm31,zmm3,zmm0"
+        EmitIfCount2GE \RowCount\(), 6, \ColumnCount\(), 32, "MultiplyAccumulateCell zmm25,zmm3,zmm1"
+        EmitIfCount2GE \RowCount\(), 6, \ColumnCount\(), 16, "MultiplyAccumulateCell zmm19,zmm3,zmm2"
 
         .endm
 
@@ -115,6 +128,6 @@ Implicit Arguments:
 // Generate the GEMM kernel.
 //
 
-GemmU8U8KernelAvx512Function Avx512BW
+GemmU8X8KernelAvx512Function U8U8, Avx512BW
 
         .end

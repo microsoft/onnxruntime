@@ -57,8 +57,29 @@ TEST(MathOpTest, Clip) {
                          -5.0f, 0.0f, 5.0f,
                          -5.0f, 2.0f, 5.0f});
 
-  // nGraph does not support Clip opset 11 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  // nGraph and Tensorrt does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, ClipDimWithZero) {
+  std::vector<int64_t> dims{3, 0};  // dim with value of zero should be handled
+
+  OpTester test("Clip", -1);  // latest opset
+  test.AddInput<float>("X", dims, {});
+  test.AddInput<float>("min", {}, {-5});
+  test.AddInput<float>("max", {}, {5});
+  test.AddOutput<float>("Y", dims, {});
+
+  // nGraph and Tensorrt does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
+
+  OpTester test1("Clip");  //
+  test1.AddInput<float>("X", dims, {});
+  test1.AddAttribute("min", -10.0f);
+  test1.AddAttribute("max", 10.0f);
+  test1.AddOutput<float>("Y", dims, {});
+  // TRT doesn't handle this
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

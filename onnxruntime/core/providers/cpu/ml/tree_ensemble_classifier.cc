@@ -215,11 +215,12 @@ void TreeEnsembleClassifier<T>::Initialize() {
   }
 
   // leafnode data, these are the votes that leaves do
+  using LeafNodeData = std::tuple<int64_t, int64_t, int64_t, float>;
   for (size_t i = 0, end = class_nodeids_.size(); i < end; ++i) {
     leafnodedata_.push_back(std::make_tuple(class_treeids_[i], class_nodeids_[i], class_ids_[i], class_weights_[i]));
     weights_classes_.insert(class_ids_[i]);
   }
-  std::sort(std::begin(leafnodedata_), std::end(leafnodedata_), [](auto const& t1, auto const& t2) {
+  std::sort(std::begin(leafnodedata_), std::end(leafnodedata_), [](LeafNodeData const& t1, LeafNodeData const& t2) {
     if (std::get<0>(t1) != std::get<0>(t2))
       return std::get<0>(t1) < std::get<0>(t2);
 

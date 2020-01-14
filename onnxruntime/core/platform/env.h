@@ -21,11 +21,13 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/pointers>
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
+#include "core/platform/telemetry.h"
+#include "core/session/onnxruntime_c_api.h"  // for ORTCHAR_T
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -36,8 +38,10 @@ namespace onnxruntime {
 
 #ifdef _WIN32
 using PIDType = unsigned long;
+using FileOffsetType = int64_t;
 #else
 using PIDType = pid_t;
+using FileOffsetType = off_t;
 #endif
 
 /// \brief An interface used by the onnxruntime implementation to
@@ -73,21 +77,38 @@ class Env {
   /// On Windows, it's the min time to sleep, not the actual one.
   virtual void SleepForMicroseconds(int64_t micros) const = 0;
 
-#ifndef _WIN32
   /**
-   *
-   * \param file_path file_path must point to a regular file, which can't be a pipe/socket/...
-   * \param[out] p  allocated buffer with the file data
-   * \param[in] offset file offset. If offset>0, then len must also be >0.
-   * \param[in, out] len length to read(or has read). If len==0, read the whole file.
-   * @return
+   * Gets the length of the specified file.
    */
-  virtual common::Status ReadFileAsString(const char* file_path, off_t offset, void*& p, size_t& len,
-      OrtCallback& deleter) const = 0;
-#else
-  virtual common::Status ReadFileAsString(const wchar_t* file_path, int64_t offset, void*& p, size_t& len,
-                                          OrtCallback& deleter) const = 0;
-#endif
+  virtual common::Status GetFileLength(
+      const ORTCHAR_T* file_path, size_t& length) const = 0;
+
+  /**
+   * Copies the content of the file into the provided buffer.
+   * @param file_path The path to the file.
+   * @param offset The file offset from which to start reading.
+   * @param length The length in bytes to read.
+   * @param buffer The buffer in which to write.
+   */
+  virtual common::Status ReadFileIntoBuffer(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      gsl::span<char> buffer) const = 0;
+
+  using MappedMemoryPtr = std::unique_ptr<char[], OrtCallbackInvoker>;
+
+  /**
+   * Maps the content of the file into memory.
+   * This is a copy-on-write mapping, so any changes are not written to the
+   * actual file.
+   * @param file_path The path to the file.
+   * @param offset The file offset from which to start the mapping.
+   * @param length The length in bytes of the mapping.
+   * @param[out] mapped_memory A smart pointer to the mapped memory which
+   *             unmaps the memory (unless release()'d) when destroyed.
+   */
+  virtual common::Status MapFileIntoMemory(
+      const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+      MappedMemoryPtr& mapped_memory) const = 0;
 
 #ifdef _WIN32
   /// \brief Returns true if the directory exists.
@@ -146,6 +167,15 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadDynamicLibrary() can use
   virtual std::string FormatLibraryFileName(const std::string& name, const std::string& version) const = 0;
+
+  // \brief returns a provider that will handle telemetry on the current platform
+  virtual const Telemetry& GetTelemetryProvider() const = 0;
+
+  // \brief returns a value for the queried variable name (var_name)
+  //
+  // Returns the corresponding value stored in the environment variable if available
+  // Returns empty string if there is no such environment variable available
+  virtual std::string GetEnvironmentVar(const std::string& var_name) const = 0;
 
  protected:
   Env();

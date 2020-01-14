@@ -4,7 +4,7 @@
 #include "core/codegen/mti/tensor/concat_ops.h"
 
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include <topi/transform.h>
 
 namespace onnxruntime {

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cudnn_common.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -143,6 +143,9 @@ const double Consts<double>::Zero = 0;
 const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
+
+std::vector<cudaDeviceProp> DeviceProp::s_cachedDeviceProps;
+std::once_flag DeviceProp::s_cachedDevicePropsInitFlag;
 
 }  // namespace cuda
 }  // namespace onnxruntime

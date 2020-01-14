@@ -4,6 +4,7 @@
 #include "core/session/environment.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 GTEST_API_ int main(int argc, char** argv) {
   int status = 0;

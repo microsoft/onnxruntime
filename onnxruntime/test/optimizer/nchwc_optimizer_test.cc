@@ -79,25 +79,27 @@ struct NchwcTestHelper {
     return &graph_.GetOrCreateNodeArg(name, nullptr);
   }
 
-  NodeArg* MakeInitializer(const std::vector<int64_t>& shape) {
+  NodeArg* MakeInitializer(const std::vector<int64_t>& shape, const std::vector<float>& data) {
     std::string name = graph_.GenerateNodeArgName("constant");
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-    int64_t num_elements = 1;
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);
-      num_elements *= dim;
     }
 
-    auto random_data = FillRandomData(static_cast<size_t>(num_elements));
-    tensor_proto.mutable_float_data()->Resize(static_cast<int>(num_elements), 0.0f);
-    memcpy(tensor_proto.mutable_float_data()->mutable_data(), random_data.data(), random_data.size() * sizeof(float));
+    tensor_proto.mutable_float_data()->Resize(static_cast<int>(data.size()), 0.0f);
+    memcpy(tensor_proto.mutable_float_data()->mutable_data(), data.data(), data.size() * sizeof(float));
 
     graph_.AddInitializedTensor(tensor_proto);
 
     return &graph_.GetOrCreateNodeArg(name, nullptr);
+  }
+
+  NodeArg* MakeInitializer(const std::vector<int64_t>& shape) {
+    int64_t num_elements = std::accumulate(shape.begin(), shape.end(), int64_t(1), std::multiplies<int64_t>{});
+    return MakeInitializer(shape, FillRandomData(static_cast<size_t>(num_elements)));
   }
 
   Node& AddNode(const std::string& op_type,
@@ -110,10 +112,29 @@ struct NchwcTestHelper {
                           output_args);
   }
 
-  Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape) {
+  Node& AddConvNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& weights_shape, bool no_bias = false) {
     auto* weights_arg = MakeInitializer(weights_shape);
-    auto* biases_arg = MakeInitializer({weights_shape[0]});
-    return AddNode("Conv", {input_arg, weights_arg, biases_arg}, {output_arg});
+    std::vector<NodeArg*> input_args = {input_arg, weights_arg};
+    if (!no_bias) {
+      auto* biases_arg = MakeInitializer({weights_shape[0]});
+      input_args.push_back(biases_arg);
+    }
+    return AddNode("Conv", input_args, {output_arg});
+  }
+
+  Node& AddClipNode(NodeArg* input_arg, NodeArg* output_arg, float min, float max) {
+    int opset_version = graph_.DomainToVersionMap().find(kOnnxDomain)->second;
+    std::vector<NodeArg*> input_args = {input_arg};
+    if (opset_version >= 11) {
+      input_args.push_back(MakeInitializer({1}, {min}));
+      input_args.push_back(MakeInitializer({1}, {max}));
+    }
+    auto& node = AddNode("Clip", input_args, {output_arg});
+    if (opset_version < 11) {
+      node.AddAttribute("min", min);
+      node.AddAttribute("max", max);
+    }
+    return node;
   }
 
   std::vector<float> FillRandomData(size_t count) {
@@ -140,7 +161,7 @@ struct NchwcTestHelper {
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
                           const std::function<void(NchwcInferenceSession& session)>& check_nchwc_graph,
-                          int opset_version = 10) {
+                          int opset_version = 11) {
   // Ignore the test if NCHWc is not supported by the platform.
   if (MlasNchwcGetBlockSize() <= 1) {
     return;
@@ -149,7 +170,8 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
-  Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  Model model("nchwc", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
@@ -211,10 +233,10 @@ TEST(NchwcOptimizerTests, ConvNchw) {
       auto* conv_output_arg = output_arg;
       if (!activation_op_type.empty()) {
         conv_output_arg = helper.MakeIntermediate();
-        auto& act_node = helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
         if (activation_op_type == "Clip") {
-          act_node.AddAttribute("min", 0.0f);
-          act_node.AddAttribute("max", 6.0f);
+          helper.AddClipNode(conv_output_arg, output_arg, 0.0f, 6.0f);
+        } else {
+          helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
         }
       }
 
@@ -251,10 +273,10 @@ TEST(NchwcOptimizerTests, ConvNchwc) {
       auto* conv_output_arg = output_arg;
       if (!activation_op_type.empty()) {
         conv_output_arg = helper.MakeIntermediate();
-        auto& act_node = helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
         if (activation_op_type == "Clip") {
-          act_node.AddAttribute("min", -6.0f);
-          act_node.AddAttribute("max", 6.0f);
+          helper.AddClipNode(conv_output_arg, output_arg, -6.0f, 6.0f);
+        } else {
+          helper.AddNode(activation_op_type, {conv_output_arg}, {output_arg});
         }
       }
 
@@ -529,13 +551,38 @@ TEST(NchwcOptimizerTests, ConvAddFusion) {
   // Verify that Add or Sum can be fused into a preceding NCHWc Conv node,
   // with an optional Relu node following.
   std::vector<std::string> op_types = {"Add", "Sum"};
-  static const int opset_versions[] = {7, 10};
+  static const int opset_versions[] = {7, 10, 11};
   for (auto& op_type : op_types) {
     for (auto opset_version : opset_versions) {
       test_case(op_type, opset_version, false);
       test_case(op_type, opset_version, true);
     }
   }
+}
+
+TEST(NchwcOptimizerTests, ConvNoBiasAddFusion) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput({1, 32, 28, 28});
+    auto* conv1_output_arg = helper.MakeIntermediate();
+    auto* conv2_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv1_output_arg, {32, 32, 3, 3}, true);
+    helper.AddConvNode(input_arg, conv2_output_arg, {32, 32, 3, 3}, true);
+    helper.AddNode("Add", {conv1_output_arg, conv2_output_arg}, {output_arg});
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Add"], 0);
+  };
+
+  // Verify that the optimizer can do the Conv/Add fusion when the Conv nodes
+  // are missing the optional bias tensor.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
 TEST(NchwcOptimizerTests, FusedConvAddFusion) {

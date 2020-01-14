@@ -36,17 +36,16 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto* repeats = repeats_tensor.template Data<int64_t>();
   const auto& input_shape = input_tensor.Shape().GetDims();
   std::vector<int64_t> output_dims(input_shape);
-  for (auto axis = 0; axis < rank; axis++)
+  for (size_t axis = 0; axis < rank; axis++)
     output_dims[axis] *= repeats[axis];
   TensorShape outputShape(output_dims);
   auto& output_tensor = *ctx->Output(0, outputShape);
 
   T* output_data = output_tensor.template MutableData<T>();
   const T* input_data = input_tensor.template Data<T>();
-  int device_id = GetDeviceId();
-  CudaAsyncBuffer<int64_t> input_strides(this, device_id, rank);
-  CudaAsyncBuffer<fast_divmod> fdm_input_shape(this, device_id, rank);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, device_id, rank);
+  CudaAsyncBuffer<int64_t> input_strides(this, rank);
+  CudaAsyncBuffer<fast_divmod> fdm_input_shape(this, rank);
+  CudaAsyncBuffer<fast_divmod> fdm_output_strides(this, rank);
 
   ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_shape));
   ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
@@ -59,14 +58,16 @@ Status Tile<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
   ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
 
-  TileImpl(
-      rank,
-      fdm_input_shape.GpuPtr(),
-      input_strides.GpuPtr(),
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_data),
-      fdm_output_strides.GpuPtr(),
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data),
-      output_tensor.Shape().Size());
+  if (output_tensor.Shape().Size() > 0) {
+    TileImpl(
+        rank,
+        fdm_input_shape.GpuPtr(),
+        input_strides.GpuPtr(),
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_data),
+        fdm_output_strides.GpuPtr(),
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data),
+        output_tensor.Shape().Size());
+  }
 
   return Status::OK();
 }

@@ -62,6 +62,6 @@ class ParallelExecutor : public IExecutor {
 
   const bool& terminate_flag_;
   // TODO: Temporary threadpool for the executor.  This is a costly way to handle the problem.
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> executor_pool_;
+  onnxruntime::concurrency::ThreadPool* const executor_pool_{};
 };
 }  // namespace onnxruntime

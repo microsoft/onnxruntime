@@ -5,53 +5,10 @@
 
 #include "core/codegen/common/op_macro.h"
 #include "core/codegen/mti/math/unary_ops.h"
-#include "core/framework/op_kernel_info.h"
+#include "core/codegen/passes/op_ir_creator/math/unary_funcs.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {
-
-// helper class for unary_ops with alpha
-class FuncWithAlpha {
- public:
-  FuncWithAlpha(const Node& node) {
-    ProtoHelperNodeContext ctx(node);
-    OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
-    ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha_).IsOK());
-  }
-
- protected:
-  float alpha_;
-};
-
-// helper class for unary_ops with alpha and beta
-class FuncWithAlphaBeta {
- public:
-  FuncWithAlphaBeta(const Node& node) {
-    ProtoHelperNodeContext ctx(node);
-    OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
-    ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(attrs.GetAttr<float>("beta", &beta_).IsOK());
-  }
-
- protected:
-  float alpha_;
-  float beta_;
-};
-
-// helper class for unary_ops with alpha and gamma
-class FuncWithAlphaGamma {
- public:
-  FuncWithAlphaGamma(const Node& node) {
-    ProtoHelperNodeContext ctx(node);
-    OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
-    ORT_ENFORCE(attrs.GetAttr<float>("alpha", &alpha_).IsOK());
-    ORT_ENFORCE(attrs.GetAttr<float>("gamma", &gamma_).IsOK());
-  }
-
- protected:
-  float alpha_;
-  float gamma_;
-};
 
 // helper macro declares unary_ops helper class without attribute
 #define FuncClass(name)                                  \

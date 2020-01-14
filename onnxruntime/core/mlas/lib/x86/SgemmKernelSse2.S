@@ -25,20 +25,21 @@ Abstract:
 // Stack frame layout for the SGEMM kernel.
 //
 
-#define SgemmKernelFrame 0
-#define SgemmKernelFrame_SavedEsi 4
-#define SgemmKernelFrame_SavedEbx 8
-#define SgemmKernelFrame_SavedEbp 12
-#define SgemmKernelFrame_ReturnAddress 16
-#define SgemmKernelFrame_MatrixA 20
-#define SgemmKernelFrame_MatrixB 24
-#define SgemmKernelFrame_MatrixC 28
-#define SgemmKernelFrame_CountK 32
-#define SgemmKernelFrame_CountM 36
-#define SgemmKernelFrame_CountN 40
-#define SgemmKernelFrame_lda 44
-#define SgemmKernelFrame_ldc 48
-#define SgemmKernelFrame_alpha 52
+        .equ    .LSgemmKernelFrame_SavedEdi, 0
+        .equ    .LSgemmKernelFrame_SavedEsi, 4
+        .equ    .LSgemmKernelFrame_SavedEbx, 8
+        .equ    .LSgemmKernelFrame_SavedEbp, 12
+        .equ    .LSgemmKernelFrame_ReturnAddress, 16
+        .equ    .LSgemmKernelFrame_MatrixA, 20
+        .equ    .LSgemmKernelFrame_MatrixB, 24
+        .equ    .LSgemmKernelFrame_MatrixC, 28
+        .equ    .LSgemmKernelFrame_CountK, 32
+        .equ    .LSgemmKernelFrame_CountM, 36
+        .equ    .LSgemmKernelFrame_CountN, 40
+        .equ    .LSgemmKernelFrame_lda, 44
+        .equ    .LSgemmKernelFrame_ldc, 48
+        .equ    .LSgemmKernelFrame_alpha, 52
+        .equ    .LSgemmKernelFrame_ZeroMode, 56
 
         .text
 
@@ -46,8 +47,7 @@ Abstract:
 
 Macro Description:
 
-    This macro multiplies and accumulates for a Nx1 block (where N is 1,2,3,4)
-    of the output matrix.
+    This macro multiplies and accumulates for a Nx1 block of the output matrix.
 
 Arguments:
 
@@ -123,7 +123,6 @@ Implicit Arguments:
 
         .endm
 
-
 /*++
 
 Macro Description:
@@ -135,7 +134,7 @@ Arguments:
 
     ComputeBlock - Supplies the macro to compute a single block.
 
-    Count - Supplies the number of rows to access from matrix A.
+    RowCount - Supplies the number of rows to process.
 
 Implicit Arguments:
 
@@ -152,36 +151,36 @@ Implicit Arguments:
 
 --*/
 
-        .macro ComputeBlockSseLoop Mode, Count
+        .macro ComputeBlockSseLoop RowCount
 
         sub     edi,4
-        jb      .L\Mode\().\Count\().ProcessRemainingBlocks
+        jb      .LProcessRemainingBlocks\@
 
-.L\Mode\().\Count\().ComputeBlockBy4Loop:
+.LComputeBlockBy4Loop\@:
         movups  xmm1,XMMWORD PTR [ecx]
-        ComputeBlockSseBy\Count\() 0, 0x00
-        ComputeBlockSseBy\Count\() 16*4, 0x55
+        ComputeBlockSseBy\RowCount\() 0, 0x00
+        ComputeBlockSseBy\RowCount\() 16*4, 0x55
         sub     edx,-32*4                   # advance matrix B by 32 columns
-        ComputeBlockSseBy\Count\() 0, 0xAA
-        ComputeBlockSseBy\Count\() 16*4, 0xFF
+        ComputeBlockSseBy\RowCount\() 0, 0xAA
+        ComputeBlockSseBy\RowCount\() 16*4, 0xFF
         sub     edx,-32*4                   # advance matrix B by 32 columns
         add     ecx,4*4                     # advance matrix A by 4 columns
         sub     edi,4
-        jae     .L\Mode\().\Count\().ComputeBlockBy4Loop
+        jae     .LComputeBlockBy4Loop\@
 
-.L\Mode\().\Count\().ProcessRemainingBlocks:
+.LProcessRemainingBlocks\@:
         add     edi,4                       # correct for over-subtract above
-        jz      .L\Mode\().\Count\().OutputBlock
+        jz      .LOutputBlock\@
 
-.L\Mode\().\Count\().ComputeBlockBy1Loop:
+.LComputeBlockBy1Loop\@:
         movss   xmm1,DWORD PTR [ecx]
-        ComputeBlockSseBy\Count\() 0, 0x00
+        ComputeBlockSseBy\RowCount\() 0, 0x00
         add     edx,16*4                    # advance matrix B by 16 columns
         add     ecx,4                       # advance matrix A by 1 column
         dec     edi
-        jne     .L\Mode\().\Count\().ComputeBlockBy1Loop
+        jne     .LComputeBlockBy1Loop\@
 
-.L\Mode\().\Count\().OutputBlock:
+.LOutputBlock\@:
 
         .endm
 
@@ -215,7 +214,10 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    Alpha - Supplies the scaler multiplier (see SGEMM definition).
+    Alpha - Supplies the scalar multiplier (see SGEMM definition).
+
+    ZeroMode - Supplies true if the output matrix must be zero initialized,
+        else false if the output matrix is accumulated into.
 
 Return Value:
 
@@ -223,71 +225,69 @@ Return Value:
 
 --*/
 
-        .macro  SgemmKernelSseFunction Mode
-
-        .globl  C_UNDERSCORE(MlasSgemmKernel\Mode\()Sse)
-C_UNDERSCORE(MlasSgemmKernel\Mode\()Sse):
+        .globl  C_UNDERSCORE(MlasGemmFloatKernelSse)
+C_UNDERSCORE(MlasGemmFloatKernelSse):
 
         push    ebp
         push    ebx
         push    esi
         push    edi
-        mov     edx,SgemmKernelFrame_MatrixB[esp]
-        mov     esi,SgemmKernelFrame_MatrixC[esp]
-        mov     ebp,SgemmKernelFrame_CountN[esp]
+        mov     edx,.LSgemmKernelFrame_MatrixB[esp]
+        mov     esi,.LSgemmKernelFrame_MatrixC[esp]
+        mov     ebp,.LSgemmKernelFrame_CountN[esp]
 
 //
 // Process 1 row of the matrices.
 //
 
-        mov     eax,SgemmKernelFrame_CountK[esp]
-        mov     ebx,SgemmKernelFrame_MatrixA[esp]
+        mov     eax,.LSgemmKernelFrame_CountK[esp]
+        mov     ebx,.LSgemmKernelFrame_MatrixA[esp]
         cmp     ebp,12
-        jbe     .L\Mode\().ProcessRemainingCountN
+        jbe     .LProcessRemainingCountN
 
-.L\Mode\().ProcessNextColumnLoop16x1:
+.LProcessNextColumnLoop16x1:
         mov     edi,eax                     # reload CountK
         mov     ecx,ebx                     # reload matrix A
         xorps   xmm4,xmm4                   # clear block accumulators
         xorps   xmm5,xmm5
         xorps   xmm6,xmm6
         xorps   xmm7,xmm7
-        ComputeBlockSseLoop \Mode\(), 4
-        movss   xmm2,DWORD PTR SgemmKernelFrame_alpha[esp]
+        ComputeBlockSseLoop 4
+        movss   xmm2,DWORD PTR .LSgemmKernelFrame_alpha[esp]
         shufps  xmm2,xmm2,0
         mulps   xmm4,xmm2                   # multiply by alpha
         mulps   xmm5,xmm2
         mulps   xmm6,xmm2
         mulps   xmm7,xmm2
-.ifeqs "\Mode\()","Add"
+        sub     ebp,16
+        jb      .LOutputMasked16x1Block
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateOutput16x1
         movups  xmm0,XMMWORD PTR [esi]
         movups  xmm1,XMMWORD PTR [esi+16]
         movups  xmm2,XMMWORD PTR [esi+32]
+        movups  xmm3,XMMWORD PTR [esi+48]
         addps   xmm4,xmm0
         addps   xmm5,xmm1
         addps   xmm6,xmm2
-.endif
+        addps   xmm7,xmm3
+
+.LSkipAccumulateOutput16x1:
         movups  XMMWORD PTR [esi],xmm4
         movups  XMMWORD PTR [esi+16],xmm5
         movups  XMMWORD PTR [esi+32],xmm6
-        sub     ebp,16
-        jb      .L\Mode\().OutputMasked16x1Block
-.ifeqs "\Mode\()","Add"
-        movups  xmm3,XMMWORD PTR [esi+48]
-        addps   xmm7,xmm3
-.endif
         movups  XMMWORD PTR [esi+48],xmm7
         add     esi,16*4                    # advance matrix C by 16 columns
         cmp     ebp,12
-        ja      .L\Mode\().ProcessNextColumnLoop16x1
+        ja      .LProcessNextColumnLoop16x1
         test    ebp,ebp
-        jnz     .L\Mode\().ProcessRemainingCountN
+        jnz     .LProcessRemainingCountN
 
 //
 // Restore non-volatile registers and return.
 //
 
-.L\Mode\().ExitKernel:
+.LExitKernel:
         mov     eax,1                       # return 1 row handled
         pop     edi
         pop     esi
@@ -299,91 +299,109 @@ C_UNDERSCORE(MlasSgemmKernel\Mode\()Sse):
 // Process the remaining 1 to 12 columns of the matrices.
 //
 
-.L\Mode\().ProcessRemainingCountN:
+.LProcessRemainingCountN:
         mov     edi,eax                     # reload CountK
         mov     ecx,ebx                     # reload matrix A
-        movss   xmm4,DWORD PTR SgemmKernelFrame_alpha[esp]
+        movss   xmm4,DWORD PTR .LSgemmKernelFrame_alpha[esp]
         shufps  xmm4,xmm4,0
         xorps   xmm5,xmm5                   # clear block accumulators
         xorps   xmm6,xmm6
         xorps   xmm7,xmm7
         cmp     ebp,4
-        jbe     .L\Mode\().ProcessRemainingCountN4OrLess
+        jbe     .LProcessRemainingCountN4OrLess
         cmp     ebp,8
-        jbe     .L\Mode\().ProcessRemainingCountN8OrLess
+        jbe     .LProcessRemainingCountN8OrLess
 
-.L\Mode\().ProcessRemainingCountN12OrLess:
-        ComputeBlockSseLoop \Mode\(), 3
+.LProcessRemainingCountN12OrLess:
+        ComputeBlockSseLoop 3
         mulps   xmm5,xmm4                   # multiply by alpha
         mulps   xmm6,xmm4
         mulps   xmm7,xmm4
-.ifeqs "\Mode\()","Add"
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateLeadingN12OrLess
         movups  xmm0,XMMWORD PTR [esi]
         movups  xmm1,XMMWORD PTR [esi+16]
         addps   xmm5,xmm0
         addps   xmm6,xmm1
-.endif
+
+.LSkipAccumulateLeadingN12OrLess:
         movups  XMMWORD PTR [esi],xmm5
         movups  XMMWORD PTR [esi+16],xmm6
         add     esi,8*4                     # advance matrix C by 8 columns
-        jmp     .L\Mode\().OutputTrailingBlock
+        jmp     .LOutputTrailingBlock
 
-.L\Mode\().ProcessRemainingCountN8OrLess:
-        ComputeBlockSseLoop \Mode\(), 2
+.LProcessRemainingCountN8OrLess:
+        ComputeBlockSseLoop 2
         mulps   xmm6,xmm4                   # multiply by alpha
         mulps   xmm7,xmm4
-.ifeqs "\Mode\()","Add"
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateLeadingN8OrLess
         movups  xmm0,XMMWORD PTR [esi]
         addps   xmm6,xmm0
-.endif
+
+.LSkipAccumulateLeadingN8OrLess:
         movups  XMMWORD PTR [esi],xmm6
         add     esi,4*4                     # advance matrix C by 4 columns
-        jmp     .L\Mode\().OutputTrailingBlock
+        jmp     .LOutputTrailingBlock
 
-.L\Mode\().ProcessRemainingCountN4OrLess:
-        ComputeBlockSseLoop \Mode\(), 1
+.LProcessRemainingCountN4OrLess:
+        ComputeBlockSseLoop 1
         mulps   xmm7,xmm4                   # multiply by alpha
-        jmp     .L\Mode\().OutputTrailingBlock
+        jmp     .LOutputTrailingBlock
 
-.L\Mode\().OutputMasked16x1Block:
+.LOutputMasked16x1Block:
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateLeading16x1Block
+        movups  xmm0,XMMWORD PTR [esi]
+        movups  xmm1,XMMWORD PTR [esi+16]
+        movups  xmm2,XMMWORD PTR [esi+32]
+        addps   xmm4,xmm0
+        addps   xmm5,xmm1
+        addps   xmm6,xmm2
+
+.LSkipAccumulateLeading16x1Block:
+        movups  XMMWORD PTR [esi],xmm4
+        movups  XMMWORD PTR [esi+16],xmm5
+        movups  XMMWORD PTR [esi+32],xmm6
         add     esi,12*4                    # advance matrix C by 12 columns
 
-.L\Mode\().OutputTrailingBlock:
+.LOutputTrailingBlock:
         test    ebp,3
-        jz      .L\Mode\().OutputTrailingBlock4Elements
+        jz      .LOutputTrailingBlock4Elements
         test    ebp,2
-        jz      .L\Mode\().OutputTrailingBlock1Element
+        jz      .LOutputTrailingBlock1Element
 
-.L\Mode\().OutputTrailingBlock2Elements:
-.ifeqs "\Mode\()","Add"
+.LOutputTrailingBlock2Elements:
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateTrailingBlock2Elements
         movsd   xmm0,QWORD PTR [esi]
         addps   xmm7,xmm0
-.endif
+
+.LSkipAccumulateTrailingBlock2Elements:
         movsd   QWORD PTR [esi],xmm7
         test    ebp,1
-        jz      .L\Mode\().ExitKernel
+        jz      .LExitKernel
         shufps  xmm7,xmm7,0xAA              # shuffle third float down
         add     esi,2*4                     # advance matrix C by 2 columns
 
-.L\Mode\().OutputTrailingBlock1Element:
-.ifeqs "\Mode\()","Add"
+.LOutputTrailingBlock1Element:
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateTrailingBlock1Element
         movss   xmm0,DWORD PTR [esi]
         addss   xmm7,xmm0
-.endif
-        movss   DWORD PTR [esi],xmm7
-        jmp     .L\Mode\().ExitKernel
 
-.L\Mode\().OutputTrailingBlock4Elements:
-.ifeqs "\Mode\()","Add"
+.LSkipAccumulateTrailingBlock1Element:
+        movss   DWORD PTR [esi],xmm7
+        jmp     .LExitKernel
+
+.LOutputTrailingBlock4Elements:
+        cmp     BYTE PTR .LSgemmKernelFrame_ZeroMode[esp],0
+        jnz     .LSkipAccumulateTrailingBlock4Elements
         movups  xmm0,XMMWORD PTR [esi]
         addps   xmm7,xmm0
-.endif
+
+.LSkipAccumulateTrailingBlock4Elements:
         movups  XMMWORD PTR [esi],xmm7
-        jmp     .L\Mode\().ExitKernel
-
-        .endm
-
-        SgemmKernelSseFunction Zero
-        SgemmKernelSseFunction Add
+        jmp     .LExitKernel
 
         .end

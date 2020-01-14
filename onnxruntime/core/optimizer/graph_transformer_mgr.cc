@@ -8,7 +8,7 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level) const {
+common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const {
   const auto& transformers = level_to_transformer_map_.find(level);
   if (transformers == level_to_transformer_map_.end()) {
     return Status::OK();
@@ -18,7 +18,7 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
     bool graph_changed = false;
     for (const auto& transformer : transformers->second) {
       bool modified = false;
-      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified));
+      ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
       graph_changed = graph_changed || modified;
     }
     if (!graph_changed) {

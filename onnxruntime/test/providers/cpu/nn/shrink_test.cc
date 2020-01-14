@@ -68,7 +68,7 @@ std::vector<ShrinkTestData<T>> GenerateUnsignedTestCases() {
 }
 
 template <typename T>
-void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases, const std::unordered_set<std::string>& excluded_provider_types = {}) {
+void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases) {
   for (const auto& test_data : test_cases) {
     OpTester test("Shrink", 9);
 
@@ -82,7 +82,7 @@ void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases, const std::
 
     test.AddInput<T>("X", test_data.input_dimensions, test_data.input_vals);
     test.AddOutput<T>("Y", test_data.expected_dimensions, test_data.expected_vals);
-    test.Run(OpTester::ExpectResult::kExpectSuccess, {}, excluded_provider_types);
+    test.Run();
   }
 }
 
@@ -101,7 +101,7 @@ TEST(MathOpTest, ShrinkInt8Type) {
 
 TEST(MathOpTest, ShrinkUint8Type) {
   const auto& test_cases = GenerateUnsignedTestCases<uint8_t>();
-  RunShrinkTest<uint8_t>(test_cases, {kNGraphExecutionProvider});
+  RunShrinkTest<uint8_t>(test_cases);
 }
 
 TEST(MathOpTest, ShrinkInt16Type) {
@@ -111,7 +111,7 @@ TEST(MathOpTest, ShrinkInt16Type) {
 
 TEST(MathOpTest, ShrinkUint16Type) {
   const auto& test_cases = GenerateUnsignedTestCases<uint16_t>();
-  RunShrinkTest<uint16_t>(test_cases, {kNGraphExecutionProvider});
+  RunShrinkTest<uint16_t>(test_cases);
 }
 
 TEST(MathOpTest, ShrinkInt32Type) {
@@ -121,7 +121,7 @@ TEST(MathOpTest, ShrinkInt32Type) {
 
 TEST(MathOpTest, ShrinkUint32Type) {
   const auto& test_cases = GenerateUnsignedTestCases<uint32_t>();
-  RunShrinkTest<uint32_t>(test_cases, {kNGraphExecutionProvider});
+  RunShrinkTest<uint32_t>(test_cases);
 }
 
 TEST(MathOpTest, ShrinkInt64Type) {
@@ -131,7 +131,7 @@ TEST(MathOpTest, ShrinkInt64Type) {
 
 TEST(MathOpTest, ShrinkUint64Type) {
   const auto& test_cases = GenerateUnsignedTestCases<uint64_t>();
-  RunShrinkTest<uint64_t>(test_cases, {kNGraphExecutionProvider});
+  RunShrinkTest<uint64_t>(test_cases);
 }
 
 TEST(MathOpTest, ShrinkFloatType) {

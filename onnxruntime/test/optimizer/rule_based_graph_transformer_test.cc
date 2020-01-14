@@ -18,25 +18,27 @@ namespace onnxruntime {
 namespace test {
 
 TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+  auto model_uri = ORT_TSTR("testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx");
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
   
   // Create rule based transformer with a dummy rewrite rule and register it with Cuda as compatible provider
   std::unordered_set<std::string> compatible_provider{onnxruntime::kCudaExecutionProvider};
-  auto dummy_rule = std::make_unique<DummyRewriteRule>("DummyRule");
+  auto dummy_rule = onnxruntime::make_unique<DummyRewriteRule>("DummyRule");
   const auto* dummy_rule_ptr = dummy_rule.get();
 
-  auto graph_transformer = std::make_unique<RuleBasedGraphTransformer>("CUDATopDownTransformer", compatible_provider);
+  auto graph_transformer = onnxruntime::make_unique<RuleBasedGraphTransformer>("CUDATopDownTransformer", compatible_provider);
   graph_transformer->Register(std::move(dummy_rule));  
 
   // Create rule based transformer with a dummy rewrite rule and register it with CPU as compatible provider
-  auto dummy_rule1 = std::make_unique<DummyRewriteRule>("DummyRule1");
+  auto dummy_rule1 = onnxruntime::make_unique<DummyRewriteRule>("DummyRule1");
   const auto* dummy_rule1_ptr = dummy_rule1.get();
 
-  auto graph_transformer1 = std::make_unique<RuleBasedGraphTransformer>("CPUTopDownTransformer");
+  auto graph_transformer1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("CPUTopDownTransformer");
 
   graph_transformer1->Register(std::move(dummy_rule1));  
 
@@ -44,7 +46,8 @@ TEST(RuleBasedGraphTransformerTest, TestCompatibleProviders) {
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level2);
   graph_transformation_mgr.Register(std::move(graph_transformer1), TransformerLevel::Level2);
 
-  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2,
+                                             DefaultLoggingManager().DefaultLogger());
 
   // Validate transformer registered with CUDA as compatible provider is not called.
   ASSERT_FALSE(dummy_rule_ptr->IsRewriteRuleInvoked());

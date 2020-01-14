@@ -2,13 +2,20 @@
 // Licensed under the MIT License.
 
 #pragma once
+<<<<<<< HEAD
 #include <random>
+=======
+
+#include<random>
+
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
+<<<<<<< HEAD
 class RandomValueGenerator {
  public:
   enum class RandomSeedType {
@@ -41,6 +48,15 @@ inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
   int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
   std::vector<T> val(size, T(0));
   return val;
+=======
+template <class T>
+inline void FillRandom(std::vector<T>& val, T min, T max) {
+  static std::default_random_engine generator;
+  std::uniform_real_distribution<float> distribution(min, max);
+  for (size_t i = 0; i < val.size(); ++i) {
+    val[i] = T(distribution(generator));
+  }
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }
 
 inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
@@ -70,5 +86,17 @@ inline void Normalize(std::vector<float>& v,
   }
 }
 
+<<<<<<< HEAD
+=======
+inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
+  std::vector<MLFloat16> result;
+  result.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    result.push_back(MLFloat16(math::floatToHalf(data[i])));
+  }
+  return result;
+}
+
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }  // namespace test
 }  // namespace onnxruntime

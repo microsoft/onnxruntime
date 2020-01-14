@@ -94,7 +94,7 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
 
             timestamps[(int)TimingPoint.Start] = DateTime.Now;
             SessionOptions options = new SessionOptions();
-            if (parallelExecution) options.EnableSequentialExecution = false;
+            if (parallelExecution) options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
             options.GraphOptimizationLevel = optLevel;
             using (var session = new InferenceSession(modelPath, options))
             {

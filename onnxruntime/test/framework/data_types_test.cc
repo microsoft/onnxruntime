@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -28,6 +29,7 @@ struct TestMap {
 
 // Try recursive type registration and compatibility tests
 using TestMapToMapInt64ToFloat = TestMap<int64_t, MapInt64ToFloat>;
+using VectorInt64 = std::vector<int64_t>;
 using TestMapStringToVectorInt64 = TestMap<std::string, VectorInt64>;
 
 // Trial to see if we resolve the setter properly
@@ -39,6 +41,7 @@ struct TestSequence {
   using value_type = T;
 };
 
+using VectorString = std::vector<std::string>;
 using TestSequenceOfSequence = TestSequence<VectorString>;
 
 /// Adding an Opaque type with type parameters
@@ -80,6 +83,8 @@ ORT_REGISTER_MAP(TestMapMLFloat16ToFloat);
 ORT_REGISTER_SEQ(MyOpaqueSeqCpp_1);
 ORT_REGISTER_SEQ(MyOpaqueSeqCpp_2);
 ORT_REGISTER_SEQ(TestSequenceOfSequence);
+ORT_REGISTER_SEQ(VectorString);
+ORT_REGISTER_SEQ(VectorInt64);
 
 ORT_REGISTER_OPAQUE_TYPE(TestOpaqueType_1, TestOpaqueDomain_1, TestOpaqueName_1);
 ORT_REGISTER_OPAQUE_TYPE(TestOpaqueType_2, TestOpaqueDomain_2, TestOpaqueName_2);
@@ -217,18 +222,43 @@ TEST_F(DataTypeTest, OpaqueRegistrationTest) {
 
   EXPECT_FALSE(DataTypeImpl::GetType<TestOpaqueType_1>()->IsCompatible(opaque_proto_1));
   EXPECT_TRUE(DataTypeImpl::GetType<TestOpaqueType_2>()->IsCompatible(opaque_proto_1));
+
+  auto op_ml1 = DataTypeImpl::GetType<TestOpaqueType_1>();
+  auto op_ml2 = DataTypeImpl::GetType<TestOpaqueType_2>();
+  // Test IsOpaqueType
+  EXPECT_TRUE(utils::IsOpaqueType(op_ml1, TestOpaqueDomain_1, TestOpaqueName_1));
+  EXPECT_FALSE(utils::IsOpaqueType(op_ml1, TestOpaqueDomain_1, TestOpaqueName_2));
+  EXPECT_TRUE(utils::IsOpaqueType(op_ml2, TestOpaqueDomain_2, TestOpaqueName_2));
+  EXPECT_FALSE(utils::IsOpaqueType(op_ml2, TestOpaqueDomain_1, TestOpaqueName_2));
+  EXPECT_FALSE(utils::IsOpaqueType(DataTypeImpl::GetTensorType<float>(), TestOpaqueDomain_1, TestOpaqueName_1));
+
+  utils::ContainerChecker c_checker(DataTypeImpl::GetType<MyOpaqueMapCpp_1>());
+  EXPECT_TRUE(c_checker.IsMap());
+  bool result = c_checker.IsMapOf<int64_t, TestOpaqueType_1>();
+  EXPECT_TRUE(result);
 }
 
 TEST_F(DataTypeTest, MapStringStringTest) {
   TensorTypeProto<TensorProto_DataType_FLOAT> tensor_type;
+  auto ml_str_str = DataTypeImpl::GetType<MapStringToString>();
   EXPECT_TRUE(DataTypeImpl::GetTensorType<float>()->IsCompatible(tensor_type));
   EXPECT_FALSE(DataTypeImpl::GetTensorType<uint64_t>()->IsCompatible(tensor_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(tensor_type));
+  EXPECT_FALSE(ml_str_str->IsCompatible(tensor_type));
+  utils::ContainerChecker c_checker(ml_str_str);
+  bool result = c_checker.IsMapOf<std::string, std::string>();
+  EXPECT_TRUE(result);
+  result =  c_checker.IsMapOf<std::string, int64_t>();
+  EXPECT_FALSE(result);
+
+  utils::ContainerChecker c_checker1(DataTypeImpl::GetTensorType<float>());
+  result =  c_checker1.IsMapOf<std::string, int64_t>();
+  EXPECT_FALSE(result);
+
 
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_STRING> maps2s_type;
   MapTypeProto<TensorProto_DataType_STRING, TensorProto_DataType_INT64> maps2i_type;
-  EXPECT_TRUE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(maps2s_type));
-  EXPECT_FALSE(DataTypeImpl::GetType<MapStringToString>()->IsCompatible(maps2i_type));
+  EXPECT_TRUE(ml_str_str->IsCompatible(maps2s_type));
+  EXPECT_FALSE(ml_str_str->IsCompatible(maps2i_type));
 }
 
 TEST_F(DataTypeTest, MapStringInt64Test) {
@@ -238,6 +268,10 @@ TEST_F(DataTypeTest, MapStringInt64Test) {
   EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2s_type));
   EXPECT_TRUE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(maps2i_type));
   EXPECT_FALSE(DataTypeImpl::GetType<MapStringToInt64>()->IsCompatible(tensor_type));
+
+  utils::ContainerChecker c_checker(DataTypeImpl::GetType<MapStringToInt64>());
+  bool result = c_checker.IsMapOf<std::string, int64_t>();
+  EXPECT_TRUE(result);
 }
 
 TEST_F(DataTypeTest, MapStringFloatTest) {
@@ -335,6 +369,9 @@ TEST_F(DataTypeTest, VectorMapStringToFloatTest) {
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2d_type));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(mapi2i_type));
   EXPECT_FALSE(DataTypeImpl::GetType<VectorMapStringToFloat>()->IsCompatible(tensor_type));
+  utils::ContainerChecker c_check(DataTypeImpl::GetType<VectorMapStringToFloat>());
+  bool result =  c_check.IsSequenceOf<MapStringToFloat>();
+  EXPECT_TRUE(result);
 }
 
 TEST_F(DataTypeTest, VectorMapInt64ToFloatTest) {
@@ -390,6 +427,20 @@ TEST_F(DataTypeTest, BFloat16Test) {
 
 TEST_F(DataTypeTest, DataUtilsTest) {
   using namespace ONNX_NAMESPACE::Utils;
+  // Test simple seq
+  {
+    const std::string seq_float("seq(tensor(float))");
+    const auto* seq_proto = DataTypeImpl::GetSequenceTensorType<float>()->GetTypeProto();
+    EXPECT_NE(seq_proto, nullptr);
+    DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
+    EXPECT_NE(seq_dt, nullptr);
+    EXPECT_EQ(seq_float, *seq_dt);
+    DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
+    // Expect internalized strings
+    EXPECT_EQ(seq_dt, seq_from_str);
+    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
+    EXPECT_TRUE(DataTypeImpl::GetSequenceTensorType<float>()->IsCompatible(from_dt_proto));
+  }
   // Test Tensor
   {
     const std::string tensor_uint64("tensor(uint64)");
@@ -493,20 +544,6 @@ TEST_F(DataTypeTest, DataUtilsTest) {
     EXPECT_EQ(map_dt, map_from_str);
     const auto& from_dt_proto = DataTypeUtils::ToTypeProto(map_dt);
     EXPECT_TRUE(DataTypeImpl::GetType<MyOpaqueMapCpp_2>()->IsCompatible(from_dt_proto));
-  }
-  // Test simple seq
-  {
-    const std::string seq_float("seq(tensor(float))");
-    const auto* seq_proto = DataTypeImpl::GetType<VectorFloat>()->GetTypeProto();
-    EXPECT_NE(seq_proto, nullptr);
-    DataType seq_dt = DataTypeUtils::ToType(*seq_proto);
-    EXPECT_NE(seq_dt, nullptr);
-    EXPECT_EQ(seq_float, *seq_dt);
-    DataType seq_from_str = DataTypeUtils::ToType(*seq_dt);
-    // Expect internalized strings
-    EXPECT_EQ(seq_dt, seq_from_str);
-    const auto& from_dt_proto = DataTypeUtils::ToTypeProto(seq_dt);
-    EXPECT_TRUE(DataTypeImpl::GetType<VectorFloat>()->IsCompatible(from_dt_proto));
   }
   // Test Sequence with recursion
   {

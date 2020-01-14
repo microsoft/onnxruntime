@@ -17,8 +17,6 @@
 #include "core/session/IOBinding.h"
 #include "core/training/training_session.h"
 
-
-using namespace std;
 namespace onnxruntime {
 namespace python {
 
@@ -26,9 +24,14 @@ namespace py = pybind11;
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
+<<<<<<< HEAD
 MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type);
 
 void CreateGenericMLValue(AllocatorPtr alloc, const std::string& name_input, py::object& value, OrtValue* p_mlvalue);
+=======
+void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
+                          py::object& value, OrtValue* p_mlvalue);
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 }  // namespace python
 }  // namespace onnxruntime

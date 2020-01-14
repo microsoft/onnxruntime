@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/feature_vectorizer.h"
 
-#include <gsl/span>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace ml {
@@ -59,21 +59,20 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
     auto feature_size = input_dimensions_[index];
 
-    auto data_type = input_tensor.DataType();
     auto cur_out = out.begin() + feature_offset;
 
-    if (data_type == DataTypeImpl::GetType<float>()) {
+    if (input_tensor.IsDataType<float>()) {
       // straight copy for float to float
       VectorizeTensor<float>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int32_t>()) {
+    } else if (input_tensor.IsDataType<int32_t>()) {
       VectorizeTensor<int32_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<int64_t>()) {
+    } else if (input_tensor.IsDataType<int64_t>()) {
       VectorizeTensor<int64_t>(input_tensor, feature_size, total_dimensions_, cur_out);
-    } else if (data_type == DataTypeImpl::GetType<double>()) {
+    } else if (input_tensor.IsDataType<double>()) {
       VectorizeTensor<double>(input_tensor, feature_size, total_dimensions_, cur_out);
     } else {
       // should never happen. graph validation should have failed
-      ORT_THROW("Invalid input type:", data_type);
+      ORT_THROW("Invalid input type:", input_tensor.DataType());
     }
 
     // move to start of next feature
@@ -120,7 +119,7 @@ static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
                          typename gsl::span<const T>::const_iterator end,
                          gsl::span<float>::iterator out_iter) {
   std::for_each(begin, end,
-                [&out_iter](const typename gsl::span<T>::const_iterator::reference value) {
+                [&out_iter](const typename gsl::span<T>::const_reference value) {
                   *out_iter = static_cast<float>(value);
                   ++out_iter;
                 });

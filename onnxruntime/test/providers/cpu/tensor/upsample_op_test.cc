@@ -264,7 +264,7 @@ TEST(UpsampleOpTest, UpsampleOpNearest2XTest_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: nvinfer1::query::Ports<nvinfer1::query::AbstractTensor>&): Assertion `!formats.empty()' failed
 }
 
-TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
+TEST(UpsampleOpTest, UpsampleOp4DBilinearTest) {
   OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};
@@ -295,7 +295,30 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest) {
   test.Run();
 }
 
-TEST(UpsampleOpTest, UpsampleOpBilinearTest_NoScale) {
+TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
+  OpTester test("Upsample");
+
+  std::vector<float> scales{2.0f, 4.0f};
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("scales", scales);
+
+  const int64_t H = 2, W = 2;
+  std::vector<float> X = {1.0f, 3.0f,
+                          3.0f, 5.0f};
+
+  test.AddInput<float>("X", {H, W}, X);
+
+  std::vector<float> Y = {
+      1.0f, 1.5f, 2.0f, 2.5f, 3.0f, 3.0f, 3.0f, 3.0f,
+      2.0f, 2.5f, 3.0f, 3.5f, 4.0f, 4.0f, 4.0f, 4.0f,
+      3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.0f, 5.0f, 5.0f,
+      3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.0f, 5.0f, 5.0f};
+
+  test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
+  test.Run();
+}
+
+TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {
   OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
@@ -321,7 +344,7 @@ TEST(UpsampleOpTest, UpsampleOpBilinearTest_NoScale) {
   test.Run();
 }
 
-TEST(UpsampleOpTest, UpsampleOpBilinearTest_int32) {
+TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_int32) {
   OpTester test("Upsample");
 
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 4.0f};

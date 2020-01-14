@@ -19,11 +19,20 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ScaledTanh<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ThresholdedRelu,
     1,
+	9,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ThresholdedRelu<float>);
 
-} // namespace contrib
+ONNX_OPERATOR_KERNEL_EX(
+    Gelu,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Gelu<float>);
+
+}  // namespace contrib
 }  // namespace onnxruntime

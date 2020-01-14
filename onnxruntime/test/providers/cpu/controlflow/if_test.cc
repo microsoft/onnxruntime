@@ -23,7 +23,7 @@ struct RunOptions {
   bool include_dim_values_in_subgraph = true;
   bool mixed_execution_providers = false;
 };
-}
+}  // namespace
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options);
 
@@ -44,7 +44,8 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
 
 class IfOpTester : public OpTester {
  public:
-  IfOpTester(const RunOptions& options) : OpTester("If"), options_{options} {
+  IfOpTester(const RunOptions& options, int opset_version = 10)
+      : OpTester("If", opset_version), options_{options}, opset_version_(opset_version) {
   }
 
  protected:
@@ -73,7 +74,18 @@ class IfOpTester : public OpTester {
       inputs = {split_input};
       outputs = {&split_out_0, &split_out_1};
 
-      graph.AddNode("split", "Split", "Split into 2", inputs, outputs);
+      auto& split_node = graph.AddNode("split", "Split", "Split into 2", inputs, outputs);
+      if (opset_version_ > 10) {
+        AttributeProto attr_proto;
+        attr_proto.set_name("split");
+        attr_proto.set_type(AttributeProto_AttributeType_INTS);
+
+        auto* split_attribute = attr_proto.mutable_ints();
+        *split_attribute->Add() = 1;  // split "unevenly" to create different shapes across the "then" and "else" branches
+        *split_attribute->Add() = 2;
+
+        split_node.AddAttribute("split", attr_proto);
+      }
     }
 
     // add If node
@@ -85,8 +97,8 @@ class IfOpTester : public OpTester {
 
       auto then_proto = CreateSubgraph(true, options_);
       auto else_proto = CreateSubgraph(false, options_);
-      if_node.AddAttribute("then_branch", {then_proto});
-      if_node.AddAttribute("else_branch", {else_proto});
+      if_node.AddAttribute("then_branch", then_proto);
+      if_node.AddAttribute("else_branch", else_proto);
     }
 
     // add Identity node so if_graph_input_0 comes from graph inputs
@@ -99,13 +111,14 @@ class IfOpTester : public OpTester {
 
  private:
   RunOptions options_;
+  int opset_version_;
 };
 
 /* Subgraphs looks like this. All inputs come from outer scope so we just
    create a NodeArg with the input name. The numbers in [] are the values the tests are expected to produce
    as output from each node.
 
-THEN branch
+THEN branch (all opset versions)
     split_out_0    if_input_0   [1]
              \          |
        [1]    \         |
@@ -113,20 +126,28 @@ THEN branch
                         |
                    add_out_0    [2]
 
-ELSE branch
+ELSE branch (opset 10 and below)
     split_out_1    if_input_0   [1]
             \          |
       [10]   \         |
               \------[Add]
                         |
                    add_out_1    [11]
+
+ELSE branch (opset 11 and above)
+    split_out_1    if_input_0   [1]
+            \          |
+  [10, 10]   \         |
+              \------[Add]
+                        |
+                   add_out_1    [11, 11]
 */
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const RunOptions& options) {
   bool include_dim_values = options.include_dim_values_in_subgraph;
   bool sym_dim_zero = options.symbolic_dim_value_in_main_graph == 0;
 
-  Model model(then_branch ? "If_then" : "If_else");
+  Model model(then_branch ? "If_then" : "If_else", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -185,8 +206,9 @@ void RunTest(bool condition_value,
              RunOptions options,
              bool is_tensorrt_supported = true,
              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-             const std::string& failure_message = "") {
-  IfOpTester test{options};
+             const std::string& failure_message = "",
+             int opset_version = 10) {
+  IfOpTester test{options, opset_version};
 
   test.AddShapeToTensorData(options.include_dim_values_in_main_graph,
                             options.symbolic_dim_value_in_main_graph);
@@ -196,18 +218,26 @@ void RunTest(bool condition_value,
   // it's outputs are 1:1 with the graph outputs.
 
   // simple tensor that we split into 2, and use one output for the 'then' and one for the 'else' branch in the If
-  test.AddInput<float>("split_input", {2}, {1.f, 10.f});
+  if (opset_version != 11) {
+    test.AddInput<float>("split_input", {2}, {1.f, 10.f});
+  } else {
+    // in the opset 11 test case, we are going to split "unevenly", to create different shapes in "then" and "else" branches
+    test.AddInput<float>("split_input", {3}, {1.f, 10.f, 10.f});
+  }
 
   // graph input to specify which branch to take
   test.AddInput<bool>("if_cond", {1}, {condition_value});
 
   test.AddInput<float>("if_graph_input_0", {1}, {1.f});
 
-  std::vector<int64_t> output_shape{1};
-  if (condition_value) {
-    test.AddOutput<float>("if_out_0", output_shape, {2.f});
-  } else {
-    test.AddOutput<float>("if_out_0", output_shape, {11.f});
+  if (opset_version != 11 && condition_value) {
+    test.AddOutput<float>("if_out_0", {1}, {2.f});
+  } else if (opset_version != 11) {
+    test.AddOutput<float>("if_out_0", {1}, {11.f});
+  } else if (opset_version == 11 && condition_value) {
+    test.AddOutput<float>("if_out_0", {1}, {2.f});
+  } else if (opset_version == 11) {
+    test.AddOutput<float>("if_out_0", {2}, {11.f, 11.f});
   }
 
   std::unordered_set<std::string> excluded_providers;
@@ -216,8 +246,8 @@ void RunTest(bool condition_value,
     excluded_providers.insert(kTensorrtExecutionProvider);
   }
   if (options.mixed_execution_providers) {
-    // we want the CUDA provider to be first, and the CPU provider second. all except the Scannode should run on
-    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the Scan node correctly.
+    // we want the CUDA provider to be first, and the CPU provider second. all except the If should run on
+    // CUDA given that, which creates the scenario where we need to copy to/from CPU to execute the If node correctly.
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -266,6 +296,21 @@ TEST(If, MixedExecutionProviders) {
   options.mixed_execution_providers = true;
   RunTest(true, options);
 }
+
+TEST(If, MixedExecutionProvidersOpset11) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  RunTest(true, options, false, test::OpTester::ExpectResult::kExpectSuccess, "", 11);
+}
+
+TEST(If, MixedExecutionProvidersNoShapeInSubgraph) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  options.include_dim_values_in_main_graph = true;
+  options.symbolic_dim_value_in_main_graph = 0;
+  options.include_dim_values_in_subgraph = false;
+  RunTest(true, options);
+}
 #endif  // USE_CUDA
 
 TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_True) {
@@ -284,6 +329,14 @@ TEST(If, SymbolicShapeInMainGraph_NoShapeInSubgraph_False) {
   options.include_dim_values_in_subgraph = false;
 
   RunTest(false, options, false);
+}
+
+TEST(If, Opset11ThenAndElseBranchesProduceDifferentOutputShapes) {
+  RunOptions options{};
+  options.include_dim_values_in_main_graph = true;
+  options.include_dim_values_in_subgraph = false;
+
+  RunTest(false, options, false, OpTester::ExpectResult::kExpectSuccess, "", 11);
 }
 
 }  // namespace test

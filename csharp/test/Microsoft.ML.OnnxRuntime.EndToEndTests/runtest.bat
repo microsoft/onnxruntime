@@ -11,6 +11,11 @@ SET dn="C:\Program Files\dotnet\dotnet"
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
 IF NOT "%3"=="" (SET TargetArch=%3)
+IF NOT "%4"=="" (
+    SET CurrentOnnxRuntimeVersion=%4
+) ELSE (
+    echo "Usage: runtest.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion"
+)
 
 IF "%TargetArch%"=="x86" (
   SET dn="C:\Program Files (x86)\dotnet\dotnet"
@@ -19,16 +24,6 @@ IF "%TargetArch%"=="x86" (
 )
 
 ECHO Target Framework is %TargetFramework%
-REM WorkingDirectory is Build.SourcesDirectory\csharp
-SET /p MajorVersionNumber=<..\VERSION_NUMBER
-SET VersionSuffix=
-IF NOT DEFINED IsReleaseBuild (
-    FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO ( 
-        set VersionSuffix=-dev-%%F 
-    )
-)
-
-SET CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
 
 REM Update if CUDA lib paths if set
 SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%\bin;%PATH%

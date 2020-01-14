@@ -17,17 +17,17 @@ constexpr const char* NNAPI = "Nnapi";
 NnapiExecutionProvider::NnapiExecutionProvider()
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider} {
   DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                              [](int) { return std::make_unique<CPUAllocator>(
-                                                            std::make_unique<OrtAllocatorInfo>(NNAPI,
+                                              [](int) { return onnxruntime::make_unique<CPUAllocator>(
+                                                            onnxruntime::make_unique<OrtMemoryInfo>(NNAPI,
                                                                                                OrtAllocatorType::OrtDeviceAllocator)); },
                                               std::numeric_limits<size_t>::max()};
   InsertAllocator(CreateAllocator(device_info));
 
-  DeviceAllocatorRegistrationInfo cpu_allocator_info({OrtMemTypeCPUOutput,
-                                                      [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtAllocatorInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
+  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUOutput,
+                                                      [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput)); },
                                                       std::numeric_limits<size_t>::max()});
 
-  InsertAllocator(CreateAllocator(cpu_allocator_info));
+  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
@@ -42,7 +42,8 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   // This method is based on that of TRT EP
   // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap());
+  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(),
+                           std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
   onnxruntime::Graph& graph_build = model.MainGraph();
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::set<NodeArg*> all_node_inputs;
@@ -72,7 +73,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   const auto supported_nodes_vector = GetSupportedNodes(model_proto);
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
 
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -86,7 +87,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       for (const auto& index : group) {
         node_set.insert(node_index[index]);
       }
-      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
       std::unordered_set<const NodeArg*> erased;
@@ -170,7 +171,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 
       // Assign inputs and outputs to subgraph's meta_def
-      auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+      auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
       meta_def->name = "NNAPI_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
@@ -185,7 +186,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       meta_def->since_version = 1;
       sub_graph->SetMetaDef(meta_def);
 
-      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
@@ -202,7 +203,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<onnxruntime::No
     }
     const Graph& graph_body = func_body->Body();
     onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(),
-                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap());
+                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
+                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);

@@ -16,6 +16,7 @@ trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 """
 import onnxruntime as rt
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 import numpy
 from onnxruntime.datasets import get_example
 
@@ -53,9 +54,12 @@ except Exception as e:
 # and *onnxruntime* will then return all the outputs.
 
 x = numpy.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=numpy.float32)
-res = sess.run(None, {input_name: x})
-print("All outputs")
-print(res)
+try:
+    res = sess.run(None, {input_name: x})
+    print("All outputs")
+    print(res)
+except (RuntimeError, InvalidArgument) as e:
+    print(e)
 
 #########################
 # The same goes if the input name is misspelled.
@@ -78,8 +82,11 @@ for x in [
         numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
         numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
         ]:
-    r = sess.run([output_name], {input_name: x})
-    print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    try:
+        r = sess.run([output_name], {input_name: x})
+        print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    except (RuntimeError, InvalidArgument) as e:
+        print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 for x in [
         numpy.array([1.0, 2.0, 3.0, 4.0], dtype=numpy.float32),
@@ -88,8 +95,11 @@ for x in [
         numpy.array([1.0, 2.0, 3.0], dtype=numpy.float32),
         numpy.array([[1.0, 2.0, 3.0]], dtype=numpy.float32),
         ]:
-    r = sess.run(None, {input_name: x})
-    print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
+    try:
+        r = sess.run(None, {input_name: x})
+        print("Shape={0} and predicted probabilities={1}".format(x.shape, r[1]))
+    except (RuntimeError, InvalidArgument) as e:
+        print("ERROR with Shape={0} - {1}".format(x.shape, e))
 
 #########################
 # It does not fail either if the number of dimension
@@ -100,5 +110,8 @@ for x in [
         numpy.array([[[1.0, 2.0, 3.0]]], dtype=numpy.float32),
         numpy.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=numpy.float32),
         ]:
-    r = sess.run([output_name], {input_name: x})
-    print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    try:
+        r = sess.run([output_name], {input_name: x})
+        print("Shape={0} and predicted labels={1}".format(x.shape, r))
+    except (RuntimeError, InvalidArgument) as e:
+        print("ERROR with Shape={0} - {1}".format(x.shape, e))

@@ -1,0 +1,89 @@
+diff --git a/cmake/external_mkldnn_v1.cmake b/cmake/external_mkldnn_v1.cmake
+index fb77250c8..94185ff34 100644
+--- a/cmake/external_mkldnn_v1.cmake
++++ b/cmake/external_mkldnn_v1.cmake
+@@ -200,6 +200,8 @@ if (WIN32)
+         CONFIGURE_COMMAND
+         PATCH_COMMAND ${MKLDNN_PATCH_REVERT_COMMAND}
+         COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/${MKLDNN_PATCH_FILE}
++        COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/mkldnn_constexpr.patch
++        COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/mkldnn_memory_zero_pad.patch
+         CMAKE_GENERATOR ${CMAKE_GENERATOR}
+         CMAKE_GENERATOR_PLATFORM ${CMAKE_GENERATOR_PLATFORM}
+         CMAKE_GENERATOR_TOOLSET ${CMAKE_GENERATOR_TOOLSET}
+@@ -233,6 +235,7 @@ else()
+         CONFIGURE_COMMAND
+         PATCH_COMMAND ${MKLDNN_PATCH_REVERT_COMMAND}
+         COMMAND git apply ${CMAKE_SOURCE_DIR}/cmake/${MKLDNN_PATCH_FILE}
++        COMMAND git apply --ignore-space-change --ignore-whitespace ${CMAKE_SOURCE_DIR}/cmake/mkldnn_memory_zero_pad.patch
+         CMAKE_GENERATOR ${CMAKE_GENERATOR}
+         CMAKE_GENERATOR_PLATFORM ${CMAKE_GENERATOR_PLATFORM}
+         CMAKE_GENERATOR_TOOLSET ${CMAKE_GENERATOR_TOOLSET}
+diff --git a/cmake/mkldnn_constexpr.patch b/cmake/mkldnn_constexpr.patch
+new file mode 100644
+index 000000000..27a869cd7
+--- /dev/null
++++ b/cmake/mkldnn_constexpr.patch
+@@ -0,0 +1,43 @@
++diff --git a/src/cpu/rnn/rnn_reorders.hpp b/src/cpu/rnn/rnn_reorders.hpp
++index fbfedd01..786d4f8f 100644
++--- a/src/cpu/rnn/rnn_reorders.hpp
+++++ b/src/cpu/rnn/rnn_reorders.hpp
++@@ -128,7 +128,7 @@ struct rnn_weights_reorder_t : public cpu_primitive_t {
++             return status::success;
++         }
++ 
++-        format_tag_t itag_;
+++        format_tag_t itag_ = mkldnn_format_tag_undef;
++ 
++     private:
++         void init_scratchpad() {
++diff --git a/src/cpu/simple_concat.hpp b/src/cpu/simple_concat.hpp
++index fe84eb14..f1b2bd17 100644
++--- a/src/cpu/simple_concat.hpp
+++++ b/src/cpu/simple_concat.hpp
++@@ -98,9 +98,9 @@ struct simple_concat_t: public cpu_primitive_t {
++             return status::success;
++         }
++ 
++-        int perm_[MKLDNN_MAX_NDIMS];
++-        int iperm_[MKLDNN_MAX_NDIMS];
++-        dims_t blocks_;
+++        int perm_[MKLDNN_MAX_NDIMS] {};
+++        int iperm_[MKLDNN_MAX_NDIMS] {};
+++        dims_t blocks_ {};
++ 
++         dim_t nelems_to_concat(const memory_desc_wrapper &data_d) const {
++             const int ndims = data_d.ndims();
++diff --git a/src/cpu/simple_sum.hpp b/src/cpu/simple_sum.hpp
++index 46a24810..c5376eab 100644
++--- a/src/cpu/simple_sum.hpp
+++++ b/src/cpu/simple_sum.hpp
++@@ -71,7 +71,7 @@ struct simple_sum_t: public cpu_primitive_t {
++         }
++ 
++         sum_bf16_params_t bf16_p_;
++-        dim_t block_size_, nelems_, blocks_number_, tail_;
+++        dim_t block_size_ = 0, nelems_ = 0, blocks_number_ = 0, tail_ = 0;
++ 
++     private:
++         const dim_t cacheline_size_ = 64; // bytes
+diff --git a/cmake/mkldnn_memory_zero_pad.patch b/cmake/mkldnn_memory_zero_pad.patch
+new file mode 100644
+index 000000000..c0044a46c
+--- /dev/null
++++ b/cmake/mkldnn_memory_zero_pad.patch
+@@ -0,0 +1,13 @@
++diff --git a/src/common/memory_zero_pad.cpp b/src/common/memory_zero_pad.cpp
++index d10be49d..fbe11b08 100644
++--- a/src/common/memory_zero_pad.cpp
+++++ b/src/common/memory_zero_pad.cpp
++@@ -63,7 +63,7 @@ void typed_zero_pad_blk(
++ 
++     const int A = A_blocked ? pdims[0] / blksize : dims[0];
++     const int B = B_blocked ? pdims[1] / blksize : dims[1];
++-    const int C = C_blocked ? pdims[2] / blksize : dims[2];
+++    const int C = m_d.ndims() > 2 ? (C_blocked ? pdims[2] / blksize : dims[2]) : 1;
++     const int D = m_d.ndims() > 3 ? dims[3] : 1;
++     const int E = m_d.ndims() > 4 ? dims[4] : 1;
++     const int F = m_d.ndims() > 5 ? dims[5] : 1;

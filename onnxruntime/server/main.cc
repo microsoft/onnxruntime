@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
   logger->info("Model path: {}", config.model_path);
 
   try {
-    env->InitializeModel(config.model_path);
+    env->InitializeModel(config.model_path, "default", "1");
     logger->debug("Initialize Model Successfully!");
   } catch (const Ort::Exception& ex) {
     logger->critical("Initialize Model Failed: {} ---- Error: [{}]", ex.GetOrtErrorCode(), ex.what());
@@ -104,10 +104,17 @@ int main(int argc, char* argv[]) {
       });
 
   app.RegisterPost(
-      R"(/v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))",
+      R"(/(?:v1/models/([^/:]+)(?:/versions/(\d+))?:(classify|regress|predict))|(?:score()()()))",
       [&env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
         server::Predict(name, version, action, context, env);
       });
+
+  app.RegisterPost(
+    R"(/score()()())",
+     [&env](const auto& name, const auto& version, const auto& action, auto& context) -> void {
+        server::Predict(name, version, action, context, env);
+      }
+  );
 
   app.Bind(boost_address, config.http_port)
       .NumThreads(config.num_http_threads)

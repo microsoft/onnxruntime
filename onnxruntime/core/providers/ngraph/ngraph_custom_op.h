@@ -29,12 +29,12 @@ class NGRAPHCustomOp {
                  const ONNX_NAMESPACE::ModelProto& model_proto,
                  const std::shared_ptr<ngraph::runtime::Backend>& ng_backend);
 
-  Status Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const;
+  Status Compute(const OrtApi* api, OrtKernelContext* context) const;
 
   ~NGRAPHCustomOp();
 
  private:
-  void Initialize(const OrtCustomOpApi* api, OrtKernelContext* context) const;
+  Status Initialize(const OrtApi* api, OrtKernelContext* context) const;
 
   std::shared_ptr<ngraph::runtime::Backend> ng_backend_;
 
@@ -57,7 +57,7 @@ class NGRAPHCustomOp {
 */
   mutable std::unordered_map<std::string, std::shared_ptr<ngraph::runtime::Executable>> ng_exe_map_;
   mutable std::list<std::string> keyCache;
-  
+
   mutable std::mutex compute_lock_;
 
   mutable ONNX_NAMESPACE::ModelProto model_proto_;

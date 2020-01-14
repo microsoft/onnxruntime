@@ -17,39 +17,26 @@ limitations under the License.
 
 namespace onnxruntime {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    NonMaxSuppression,
+    kOnnxDomain,
+    10, 10,
+    kCpuExecutionProvider,
+    KernelDefBuilder(),
+    NonMaxSuppression);
+
 ONNX_OPERATOR_KERNEL_EX(
     NonMaxSuppression,
     kOnnxDomain,
-    10,
+    11,
     kCpuExecutionProvider,
     KernelDefBuilder(),
     NonMaxSuppression);
 
 using namespace nms_helpers;
 
-// CPU version
-namespace nms_helpers {
-Status GetThresholdsFromInputs(const PrepareContext& pc,
-                               int64_t& max_output_boxes_per_class,
-                               float& iou_threshold,
-                               float& score_threshold) {
-  if (pc.max_output_boxes_per_class_ != nullptr) {
-    max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
-  }
-
-  if (pc.iou_threshold_ != nullptr) {
-    iou_threshold = *pc.iou_threshold_;
-    ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1.f), "iou_threshold must be in range [0, 1].");
-  }
-
-  if (pc.score_threshold_ != nullptr) {
-    score_threshold = *pc.score_threshold_;
-  }
-
-  return Status::OK();
-}
-}  // namespace nms_helpers
-
+// This works for both CPU and GPU.
+// CUDA kernel declare OrtMemTypeCPUInput for max_output_boxes_per_class(2), iou_threshold(3) and score_threshold(4)
 Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) {
   const auto* boxes_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(boxes_tensor);
@@ -99,6 +86,26 @@ Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContex
   pc.num_batches_ = boxes_dims[0];
   pc.num_classes_ = scores_dims[1];
   pc.num_boxes_ = boxes_dims[1];
+
+  return Status::OK();
+}
+
+Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc,
+                                                      int64_t& max_output_boxes_per_class,
+                                                      float& iou_threshold,
+                                                      float& score_threshold) {
+  if (pc.max_output_boxes_per_class_ != nullptr) {
+    max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
+  }
+
+  if (pc.iou_threshold_ != nullptr) {
+    iou_threshold = *pc.iou_threshold_;
+    ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1.f), "iou_threshold must be in range [0, 1].");
+  }
+
+  if (pc.score_threshold_ != nullptr) {
+    score_threshold = *pc.score_threshold_;
+  }
 
   return Status::OK();
 }
@@ -158,7 +165,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
       }
 
       ScoreIndexPair next_top_score;
-      std::vector<int64_t> selected_indicies_inside_class;
+      std::vector<int64_t> selected_indices_inside_class;
       // Get the next box with top score, filter by iou_threshold
       while (!sorted_scores_with_index.empty()) {
         next_top_score = sorted_scores_with_index.top();
@@ -166,7 +173,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
         bool selected = true;
         // Check with existing selected boxes for this class, suppress if exceed the IOU (Intersection Over Union) threshold
-        for (int64_t selected_index : selected_indicies_inside_class) {
+        for (int64_t selected_index : selected_indices_inside_class) {
           if (SuppressByIOU(boxes_data + box_offset, selected_index, next_top_score.index_,
                             center_point_box, iou_threshold)) {
             selected = false;
@@ -176,10 +183,10 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
 
         if (selected) {
           if (max_output_boxes_per_class > 0 &&
-              static_cast<int64_t>(selected_indicies_inside_class.size()) >= max_output_boxes_per_class) {
+              static_cast<int64_t>(selected_indices_inside_class.size()) >= max_output_boxes_per_class) {
             break;
           }
-          selected_indicies_inside_class.push_back(next_top_score.index_);
+          selected_indices_inside_class.push_back(next_top_score.index_);
           selected_indices.emplace_back(batch_index, class_index, next_top_score.index_);
         }
       }  //while

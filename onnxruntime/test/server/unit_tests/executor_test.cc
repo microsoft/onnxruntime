@@ -16,13 +16,26 @@ namespace onnxruntime {
 namespace server {
 namespace test {
 
-TEST(ExecutorTests, TestMul_1) {
-  const static auto model_file = "testdata/mul_1.onnx";
+class ExecutorTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const static auto model_file = "testdata/mul_1.onnx";
+
+    onnxruntime::server::ServerEnvironment* env = ServerEnv();
+    env->InitializeModel(model_file, "Name", "version");
+  }
+
+  void TearDown() override {
+    onnxruntime::server::ServerEnvironment* env = ServerEnv();
+    env->UnloadModel("Name", "version");
+  }
+};
+
+TEST_F(ExecutorTest, TestMul_1) {
   const static auto input_json = R"({"inputs":{"X":{"dims":[3,2],"dataType":1,"floatData":[1,2,3,4,5,6]}},"outputFilter":["Y"]})";
   const static auto expected = R"({"outputs":{"Y":{"dims":["3","2"],"dataType":1,"floatData":[1,4,9,16,25,36]}}})";
 
   onnxruntime::server::ServerEnvironment* env = ServerEnv();
-  env->InitializeModel(model_file);
 
   onnxruntime::server::Executor executor(env, "RequestId");
   onnxruntime::server::PredictRequest request{};

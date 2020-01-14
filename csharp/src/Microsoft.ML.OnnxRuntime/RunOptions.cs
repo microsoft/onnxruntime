@@ -46,7 +46,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Log tag to be used during the run. default = ""
         /// </summary>
-        public string LogTag 
+        public string LogId 
         {
             get
             {
@@ -65,7 +65,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Sets a flag to terminate any other Run() call that is using the same RunOptions object 
+        /// Sets a flag to terminate all Run() calls that are currently using this RunOptions object 
         /// Default = false
         /// </summary>
         public bool Terminate
@@ -78,12 +78,12 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_terminate && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsEnableTerminate(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetTerminate(_nativePtr));
                     _terminate = true;
                 }
                 else if (_terminate && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsDisableTerminate(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsUnsetTerminate(_nativePtr));
                     _terminate = false;
                 }
             }

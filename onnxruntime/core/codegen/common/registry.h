@@ -21,6 +21,8 @@ class RegistryBase {
  public:
   RegistryBase() = default;
 
+  virtual ~RegistryBase() = default;
+
   bool Contains(const std::string& name) const {
     return contents_.count(name) > 0;
   }

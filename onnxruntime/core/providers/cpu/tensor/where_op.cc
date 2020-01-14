@@ -41,11 +41,15 @@ WHERE_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
 #undef WHERE_TYPED_KERNEL
 
 namespace {
-template <typename T>
-constexpr bool IsEigenScalarCompatible = std::is_arithmetic<T>::value;
+
+template<typename T, typename R>
+using EnableIfEigenScalar = typename std::enable_if<std::is_arithmetic<T>::value, R>::type;
+
+template <typename T, typename R>
+using EnableIfEigenNotScalar = typename std::enable_if<!std::is_arithmetic<T>::value, R>::type;
 
 template <typename T>
-std::enable_if_t<IsEigenScalarCompatible<T>, void>
+EnableIfEigenScalar<T, void>
 SelectBroadcastLoop(bool target,
                     TBroadcaster<bool, T>* select_broadcaster,
                     TBroadcastOutput<T>* select_broadcast_output) {
@@ -69,7 +73,7 @@ SelectBroadcastLoop(bool target,
 }
 
 template <typename T>
-std::enable_if_t<!IsEigenScalarCompatible<T>, void>
+EnableIfEigenNotScalar<T, void>
 SelectBroadcastLoop(bool target, TBroadcaster<bool, T>* select_broadcaster,
                     TBroadcastOutput<T>* select_broadcast_output) {
   BroadcastLoopSpan(
@@ -110,10 +114,10 @@ std::unique_ptr<Tensor> Select(bool target, const Tensor& condition_tensor, cons
 }
 
 template <typename T>
-std::enable_if_t<IsEigenScalarCompatible<T>, void>
+EnableIfEigenScalar<T, void>
 MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
   const auto merge_scalar_and_vector = [](EigenVectorMap<T> output,
-                                      const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
+                                          const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
     if (scalar_value != T{}) {
       output = EigenVectorMap<T>::PlainObject::Constant(vector_value.size(), scalar_value);
     } else {
@@ -137,7 +141,7 @@ MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* m
 }
 
 template <typename T>
-std::enable_if_t<!IsEigenScalarCompatible<T>, void>
+EnableIfEigenNotScalar<T, void>
 MergeBroadcastLoop(TBroadcaster<T, T>* merge_broadcaster, TBroadcastOutput<T>* merge_broadcast_output) {
   const auto merge_scalar_and_vector = [](gsl::span<T> output, const T& scalar_value, gsl::span<const T> vector_value) {
     if (!scalar_value.empty()) {

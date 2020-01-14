@@ -40,9 +40,8 @@ class KernelRegistry {
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
 #ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
-// This is used by the opkernel doc generator to enlist all registered operators for a given provider's opkernel
-  const KernelCreateMap& GetKernelCreateMap() const
-  {
+  // This is used by the opkernel doc generator to enlist all registered operators for a given provider's opkernel
+  const KernelCreateMap& GetKernelCreateMap() const {
     return kernel_creator_fn_map_;
   }
 #endif
@@ -64,10 +63,19 @@ class KernelRegistry {
   // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
   static bool VerifyKernelDef(const onnxruntime::Node& node,
                               const KernelDef& kernel_def,
-                              std::string& error_str,
-                              onnxruntime::ProviderType exec_provider = "");
+                              std::string& error_str);
 
+  static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
+    std::string key(op_name);
+    key.append(1, ' ').append(domain.empty() ? kOnnxDomainAlias : domain).append(1, ' ').append(provider);
+    return key;
+  }
+
+  static std::string GetMapKey(const KernelDef& kernel_def) {
+    return GetMapKey(kernel_def.OpName(), kernel_def.Domain(), kernel_def.Provider());
+  }
   // Kernel create function map from op name to kernel creation info.
+  // key is opname+domain_name+provider_name
   KernelCreateMap kernel_creator_fn_map_;
 };
 }  // namespace onnxruntime

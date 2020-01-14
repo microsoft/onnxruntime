@@ -9,6 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+<<<<<<< HEAD
 template <typename T> struct AccumulateType {};
 template <> struct AccumulateType<float> { using type = float; };
 template <> struct AccumulateType<MLFloat16> { using type = float; };
@@ -52,11 +53,22 @@ Status SoftMaxComputeHelper(
   return Status::OK();
 }
 
+=======
+// opset 11 added explicit support for negative axis. implementation already supported it.
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 #define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      1,                                                                        \
+      11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -94,9 +106,19 @@ SPECIALIZED_COMPUTE(MLFloat16)
 template <typename T>
 Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
+<<<<<<< HEAD
 
   const Tensor* dY = ctx->Input<Tensor>(0);
   const TensorShape input_shape{dY->Shape()};
+=======
+  const Tensor& X = *ctx->Input<Tensor>(0);
+  const TensorShape& input_shape{X.Shape()};
+
+  Tensor* Y = ctx->Output(0, input_shape);
+  // special case when there is a dim value of 0 in the shape.
+  if (input_shape.Size() == 0)
+    return Status::OK();
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   const Tensor* Y = ctx->Input<Tensor>(1);
 

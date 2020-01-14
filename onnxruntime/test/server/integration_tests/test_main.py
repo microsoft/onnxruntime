@@ -28,3 +28,9 @@ if __name__ == '__main__':
     runner = unittest.TextTestRunner(verbosity=2)
 
     results = runner.run(suites)
+    
+    if results.wasSuccessful():
+        exit(0)
+    else:
+        exit(1)
+ 

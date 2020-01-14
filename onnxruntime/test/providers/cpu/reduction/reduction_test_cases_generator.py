@@ -78,7 +78,7 @@ def PrintDisableOptimizations():
 
 def PrintReenableOptimizations():
     print ("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
-    print ("t#pragma optimize (\"\", on)")
+    print ("\t#pragma optimize (\"\", on)")
     print ("#elif defined(__GNUC__)")
     print ("#if defined(__clang__)")
     print ("\t#pragma clang optimize on")
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     input_shape = [2,3,2,2,3]
     np.random.seed(0)
     input_data = np.random.uniform(size=input_shape)
-    axes_options = [(2,3), (2, 1, 4), (0, 2, 3), (0,), (2,), (4,), None]
+    axes_options = [(-1,3), (2,3), (2, 1, 4), (0,-2,-3), (0, 2, 3), (0,), (2,), (4,), None]
     keepdims_options = [0, 1]
     ops = ["ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", 
            "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "ArgMax", "ArgMin"]

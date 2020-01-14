@@ -9,14 +9,14 @@
 using namespace onnxruntime;
 
 TEST_F(CApiTest, allocation_info) {
-  OrtAllocatorInfo *info1, *info2;
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
-  ORT_THROW_ON_ERROR(OrtCreateCpuAllocatorInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
+  OrtMemoryInfo *info1, *info2;
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
   int result;
-  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
-  OrtReleaseAllocatorInfo(info1);
-  OrtReleaseAllocatorInfo(info2);
+  Ort::GetApi().ReleaseMemoryInfo(info1);
+  Ort::GetApi().ReleaseMemoryInfo(info2);
 }
 
 TEST_F(CApiTest, DefaultAllocator) {
@@ -25,9 +25,9 @@ TEST_F(CApiTest, DefaultAllocator) {
   ASSERT_NE(p, nullptr);
   memset(p, 0, 100);
   default_allocator.Free(p);
-  const OrtAllocatorInfo* info1 = default_allocator.GetInfo();
-  const OrtAllocatorInfo* info2 = static_cast<OrtAllocator*>(default_allocator)->Info(default_allocator);
+  const OrtMemoryInfo* info1 = default_allocator.GetInfo();
+  const OrtMemoryInfo* info2 = static_cast<OrtAllocator*>(default_allocator)->Info(default_allocator);
   int result;
-  ORT_THROW_ON_ERROR(OrtCompareAllocatorInfo(info1, info2, &result));
+  Ort::ThrowOnError(Ort::GetApi().CompareMemoryInfo(info1, info2, &result));
   ASSERT_EQ(0, result);
 }

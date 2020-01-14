@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 

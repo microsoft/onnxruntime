@@ -24,6 +24,7 @@ __global__ void _GatherKernel(
   int indices_index, offset;
   block_size.divmod(block_offset, indices_index, offset);
   int64_t idx = indices_data[indices_index];
+  idx = idx < 0 ? idx + indices_max : idx;
   if (idx < 0 || idx >= indices_max) {
     output_data[id] = 0;
     return;

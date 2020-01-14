@@ -49,7 +49,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
     auto input_data = X.template Data<T>();
     auto end_data = input_data + total_items;
     std::transform(
-        input_data, end_data, output_data, [](auto v) {
+        input_data, end_data, output_data, [](T v) {
           return (v == std::numeric_limits<T>::infinity());
         });
 
@@ -57,7 +57,7 @@ void ComputeImpl(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_n
     auto input_data = X.template Data<T>();
     auto end_data = input_data + total_items;
     std::transform(
-        input_data, end_data, output_data, [](auto v) {
+        input_data, end_data, output_data, [](T v) {
           return (v == -std::numeric_limits<T>::infinity());
         });
   } else {
@@ -75,14 +75,13 @@ Status IsInf::Compute(OpKernelContext* context) const {
 
   using namespace isinf_internal;
 
-  auto dtype = X.DataType();
-  if (dtype == DataTypeImpl::GetType<float>()) {
+  if (X.IsDataType<float>()) {
     ComputeImpl<float>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
+  } else if (X.IsDataType<double>()) {
     ComputeImpl<double>(X, Y, detect_positive_ != 0, detect_negative_ != 0);
   } else {
     // should not reach this as no kernel is registered for this condition to be triggered - just an additional safety check
-    ORT_THROW("Data type X must be float or double, but instead got ", dtype);
+    ORT_THROW("Data type X must be float or double, but instead got ", X.DataType());
   }
 
   return Status::OK();

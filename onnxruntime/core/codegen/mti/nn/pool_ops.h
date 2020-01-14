@@ -6,27 +6,31 @@
 #include <tvm/tvm.h>
 
 namespace onnxruntime {
+
+// Forward declaration
+struct PoolAttributes;
+
 namespace tvm_codegen {
 
 tvm::Tensor MaxPool(const tvm::Tensor& input,
-                    const tvm::Array<tvm::Expr>& kernel_size,
-                    const tvm::Array<tvm::Expr>& stride_size,
-                    const tvm::Array<tvm::Expr>& padding_size,
-                    const std::string& layout,
-                    bool count_include_pad);
+                    const PoolAttributes& pool_attrs,
+                    const tvm::Array<tvm::Expr>& output_shape,
+                    const std::string& name = "max_pool");
 
 tvm::Tensor AveragePool(const tvm::Tensor& input,
-                        const tvm::Array<tvm::Expr>& kernel_size,
-                        const tvm::Array<tvm::Expr>& stride_size,
-                        const tvm::Array<tvm::Expr>& padding_size,
-                        const std::string& layout,
-                        bool count_include_pad);
+                        const PoolAttributes& pool_attrs,
+                        const tvm::Array<tvm::Expr>& output_shape,
+                        const std::string& name = "average_pool");
 
 tvm::Tensor GlobalMaxPool(const tvm::Tensor& input,
-                          const std::string& layout);
+                          const PoolAttributes& pool_attrs,
+                          const tvm::Array<tvm::Expr>& output_shape,
+                          const std::string& name = "global_max_pool");
 
 tvm::Tensor GlobalAveragePool(const tvm::Tensor& input,
-                              const std::string& layout);
+                              const PoolAttributes& pool_attrs,
+                              const tvm::Array<tvm::Expr>& output_shape,
+                              const std::string& name = "global_average_pool");
 
 }  // namespace tvm_codegen
 }  // namespace onnxruntime

@@ -6,10 +6,11 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
-#include <gsl/pointers>
+#include <gsl/gsl>
 
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -17,22 +18,12 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
+#include "core/session/ort_apis.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace {
-
-#ifdef __GNUC__
-constexpr inline bool IsLittleEndianOrder() noexcept { return __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__; }
-#else
-// On Windows and Mac, this function should always return true
-GSL_SUPPRESS(type .1)  // allow use of reinterpret_cast for this special case
-inline bool IsLittleEndianOrder() noexcept {
-  static int n = 1;
-  return (*reinterpret_cast<char*>(&n) == 1);
-}
-#endif
 
 std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
@@ -48,35 +39,19 @@ std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorP
 template <typename T>
 static Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length, size_t expected_size,
                                       /*out*/ T* p_data) {
-  // allow this low level routine to be somewhat unsafe. assuming it's thoroughly tested and valid
-  GSL_SUPPRESS(type)       // type.1 reinterpret-cast; type.4 C-style casts; type.5 'T result;' is uninitialized;
-  GSL_SUPPRESS(bounds .1)  // pointer arithmetic
-  GSL_SUPPRESS(f .23)      // buff and temp_bytes never tested for nullness and could be gsl::not_null
-  {
-    size_t expected_size_in_bytes;
-    if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
-      return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "size overflow");
-    }
-    if (raw_data_length != expected_size_in_bytes)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
-                             expected_size_in_bytes, ", got ", raw_data_length);
-    if (IsLittleEndianOrder()) {
-      memcpy(p_data, raw_data, raw_data_length);
-    } else {
-      const size_t type_size = sizeof(T);
-      const char* buff = reinterpret_cast<const char*>(raw_data);
-      for (size_t i = 0; i < raw_data_length; i += type_size, buff += type_size) {
-        T result;
-        const char* temp_bytes = reinterpret_cast<char*>(&result);
-        for (size_t j = 0; j < type_size; ++j) {
-          memcpy((void*)&temp_bytes[j], (void*)&buff[type_size - 1 - i], 1);
-        }
-        p_data[i] = result;
-      }
-    }
-    return Status::OK();
+  size_t expected_size_in_bytes;
+  if (!onnxruntime::IAllocator::CalcMemSizeForArray(expected_size, sizeof(T), &expected_size_in_bytes)) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::INVALID_ARGUMENT, "size overflow");
   }
+  if (raw_data_length != expected_size_in_bytes)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
+                           expected_size_in_bytes, ", got ", raw_data_length);
+
+  const char* const raw_data_bytes = reinterpret_cast<const char*>(raw_data);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(
+      gsl::make_span(raw_data_bytes, raw_data_length), gsl::make_span(p_data, expected_size)));
+  return Status::OK();
 }
 }  // namespace
 
@@ -278,8 +253,8 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   const auto& dims = tensor_shape_proto.dim();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i].has_dim_value() ? dims[i].dim_value()
-                                                  : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
+    tensor_shape_vec[i] = HasDimValue(dims[i]) ? dims[i].dim_value()
+                                               : -1; /* symbolic dimensions are represented as -1 in onnxruntime*/
   }
   return TensorShape(std::move(tensor_shape_vec));
 }
@@ -319,8 +294,8 @@ ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t i
     for (size_t i = 0, n = tensor_size; i < n; ++i) {
       new (ptr + i) std::string();
     }
-  } catch (std::exception& ex) {
-    return OrtCreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+  } catch (const std::exception& ex) {
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
   }
   return nullptr;
 }
@@ -353,6 +328,40 @@ class AutoDelete {
   }
 };
 
+static void DeleteCharArray(void* param) noexcept {
+  auto arr = reinterpret_cast<char*>(param);
+  delete[] arr;
+}
+
+static Status GetFileContent(
+    const Env& env, const ORTCHAR_T* file_path, FileOffsetType offset, size_t length,
+    void*& raw_buffer, OrtCallback& deleter) {
+  // query length if it is 0
+  if (length == 0) {
+    ORT_RETURN_IF_ERROR(env.GetFileLength(file_path, length));
+  }
+
+  // first, try to map into memory
+  {
+    Env::MappedMemoryPtr mapped_memory{};
+    auto status = env.MapFileIntoMemory(file_path, offset, length, mapped_memory);
+    if (status.IsOK()) {
+      deleter = mapped_memory.get_deleter().callback;
+      raw_buffer = mapped_memory.release();
+      return Status::OK();
+    }
+  }
+
+  // if that fails, try to copy
+  auto buffer = onnxruntime::make_unique<char[]>(length);
+  ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
+      file_path, offset, length, gsl::make_span(buffer.get(), length)));
+
+  deleter = OrtCallback{DeleteCharArray, buffer.get()};
+  raw_buffer = buffer.release();
+  return Status::OK();
+}
+
 static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
   to.f = from.f;
   to.param = from.param;
@@ -363,11 +372,11 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
                             const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
                             OrtCallback& deleter) {
-  const OrtAllocatorInfo& allocator = m.GetAllocInfo();
+  const OrtMemoryInfo& allocator = m.GetAllocInfo();
   ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
   deleter.f = nullptr;
   deleter.param = nullptr;
-  const void* raw_data = nullptr;
+  void* raw_data = nullptr;
   size_t raw_data_len = 0;
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   AutoDelete deleter_for_file_data;
@@ -388,20 +397,23 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
       }
       raw_data_len = external_data_info->GetLength();
       // load the file
-      {
-        void* file_data;
-        ORT_RETURN_IF_ERROR(env.ReadFileAsString(full_path.c_str(), external_data_info->GetOffset(),
-                                                 file_data, raw_data_len, deleter_for_file_data.d));
-        raw_data = file_data;
-      }
-    } else if (tensor_proto.has_raw_data()) {
+      ORT_RETURN_IF_ERROR(GetFileContent(
+          env, full_path.c_str(), external_data_info->GetOffset(), raw_data_len,
+          raw_data, deleter_for_file_data.d));
+    } else if (utils::HasRawData(tensor_proto)) {
       if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
         return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-      raw_data = tensor_proto.raw_data().data();
+      raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+      // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
+      //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
+      //auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
+      //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
+      //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
+      //raw_data = buffer.release();
       raw_data_len = tensor_proto.raw_data().size();
     }
-    if (IsLittleEndianOrder() && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
-      tensor_data = const_cast<void*>(raw_data);
+    if (endian::native == endian::little && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
+      tensor_data = raw_data;
       MoveOrtCallback(deleter_for_file_data.d, deleter);
     } else {
       void* preallocated = m.GetBuffer();
@@ -445,7 +457,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
             if (status != nullptr) {
-              OrtReleaseStatus(status);
+              OrtApis::ReleaseStatus(status);
               return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
             }
 
@@ -467,8 +479,10 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
   std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
   TensorShape tensor_shape{tensor_shape_vec};
-  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), DataTypeImpl::GetType<Tensor>(),
-             DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), ml_tensor,
+             ml_tensor->GetDeleteFunc());
   return Status::OK();
 }
 
@@ -503,44 +517,10 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
-TensorProto::DataType GetTensorProtoType(const Tensor& tensor) {
-  auto tensor_type = tensor.DataType();
-  TensorProto::DataType dtype = TensorProto_DataType_UNDEFINED;
-
-  if (tensor_type == DataTypeImpl::GetType<float>())
-    dtype = TensorProto_DataType_FLOAT;
-  else if (tensor_type == DataTypeImpl::GetType<double>())
-    dtype = TensorProto_DataType_DOUBLE;
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())
-    dtype = TensorProto_DataType_INT8;
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())
-    dtype = TensorProto_DataType_INT16;
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())
-    dtype = TensorProto_DataType_INT32;
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())
-    dtype = TensorProto_DataType_INT64;
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())
-    dtype = TensorProto_DataType_UINT8;
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())
-    dtype = TensorProto_DataType_UINT16;
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())
-    dtype = TensorProto_DataType_UINT32;
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())
-    dtype = TensorProto_DataType_UINT64;
-  else if (tensor_type == DataTypeImpl::GetType<bool>())
-    dtype = TensorProto_DataType_BOOL;
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())
-    dtype = TensorProto_DataType_FLOAT16;
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())
-    dtype = TensorProto_DataType_BFLOAT16;
-
-  return dtype;
-}
-
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
                                                 const ONNX_NAMESPACE::TypeProto& tensor_proto_type) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  ORT_ENFORCE(IsLittleEndianOrder());
+  ORT_ENFORCE(endian::native == endian::little);
 
   // Set name, dimensions, type, and data of the TensorProto.
   ONNX_NAMESPACE::TensorProto tensor_proto;

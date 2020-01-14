@@ -3,24 +3,28 @@
 
 #pragma once
 
-#include "core/providers/cpu/nn/conv_base.h"
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
 template <typename T>
-class Conv : public OpKernel, public ConvBase {
+class Conv : public OpKernel {
  public:
-  Conv(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ConvAttributes conv_attrs_;
 };
 
 template <>
-class Conv<float> : public OpKernel, public ConvBase {
+class Conv<float> : public OpKernel {
  public:
-  Conv<float>(const OpKernelInfo& info) : OpKernel(info), ConvBase(info) {
+  Conv<float>(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     activation_.ActivationKind = MlasIdentityActivation;
   }
 
@@ -28,6 +32,8 @@ class Conv<float> : public OpKernel, public ConvBase {
 
  protected:
   MLAS_ACTIVATION activation_;
+
+  ConvAttributes conv_attrs_;
 };
 
 }  // namespace onnxruntime

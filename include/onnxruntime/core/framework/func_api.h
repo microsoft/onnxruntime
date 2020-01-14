@@ -20,7 +20,7 @@ using FunctionState = void*;
 // take the ComputeContext, and create a function state.
 using CreateFunctionStateC = int (*)(ComputeContext*, FunctionState*);
 // pass in the function state and input/output tensors, perform compute and return status
-using ComputeFuncC = Status (*)(FunctionState, const OrtCustomOpApi*, OrtKernelContext*);
+using ComputeFuncC = Status (*)(FunctionState, const OrtApi*, OrtKernelContext*);
 // release the function state.
 using DestroyFunctionStateC = void (*)(FunctionState);
 }  // namespace onnxruntime

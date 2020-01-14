@@ -8,6 +8,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-void RegisterCpuContribKernels(KernelRegistry& kernel_registry);
+Status RegisterCpuContribKernels(KernelRegistry& kernel_registry);
 } // namespace contrib
 }  // namespace onnxruntime

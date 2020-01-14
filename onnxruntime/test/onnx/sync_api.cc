@@ -71,7 +71,7 @@ static std::once_flag default_pool_init;
 PThreadPool GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
+    default_pool = onnxruntime::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();
 }

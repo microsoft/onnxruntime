@@ -14,13 +14,14 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
   p->lhs_tensor = context->Input<Tensor>(0);
   p->rhs_tensor = context->Input<Tensor>(1);
   if (!(p->lhs_tensor->Shape() == p->rhs_tensor->Shape()))
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ", p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ",
+                           p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
   p->output_tensor = context->Output(0, p->lhs_tensor->Shape());
   p->output_rank_or_simple_broadcast = static_cast<int32_t>(SimpleBroadcast::NoBroadcast);
   return Status::OK();
 }
 
- Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
+Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_shape, const TensorShape& rhs_shape, TensorShape& out_shape) {
   size_t lhs_rank = lhs_shape.NumDimensions();
   size_t rhs_rank = rhs_shape.NumDimensions();
   size_t out_rank = std::max(lhs_rank, rhs_rank);
@@ -33,7 +34,9 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
     int64_t rhs_dim = 1;
     if (i < rhs_rank)
       rhs_dim = rhs_shape[rhs_rank - 1 - i];
-    int64_t out_dim = std::max(lhs_dim, rhs_dim);
+    int64_t max = std::max(lhs_dim, rhs_dim);
+    int64_t min = std::min(lhs_dim, rhs_dim);
+    int64_t out_dim = (min == 0 ? min : max);  // special case a dim value of 0.
     if (lhs_dim != out_dim && lhs_dim != 1)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, node_name, ": left operand cannot broadcast on dim ", lhs_rank - 1 - i,
                              " LeftShape: ", lhs_shape.ToString(), ", RightShape: ", rhs_shape.ToString());
@@ -78,6 +81,25 @@ Status BinaryElementwiseBroadcastPrepare(
   const auto& output_shape = output_tensor->Shape();
 
   ORT_RETURN_IF_ERROR(p->BinaryElementwiseBroadcastPrepareHelper(lhs_shape, rhs_shape, output_shape));
+<<<<<<< HEAD
+=======
+
+  return Status::OK();
+}
+
+template <>
+Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, BinaryElementwisePreparation* p) const {
+  auto lhs_tensor = context->Input<Tensor>(0);
+  auto rhs_tensor = context->Input<Tensor>(1);
+  const auto& lhs_shape = lhs_tensor->Shape();
+  const auto& rhs_shape = rhs_tensor->Shape();
+
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), lhs_shape, rhs_shape, output_shape));
+  auto output_tensor = context->Output(0, output_shape);
+
+  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, p));
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   return Status::OK();
 }
@@ -92,15 +114,14 @@ Status BinaryElementwiseBroadcastPrepare(
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
+      x,                                                                                                                                  \
+      kOnnxDomain,                                                                                                                        \
+      ver,                                                                                                                                \
+      T,                                                                                                                                  \
+      kCudaExecutionProvider,                                                                                                             \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T) \
@@ -117,8 +138,14 @@ Status BinaryElementwiseBroadcastPrepare(
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
+<<<<<<< HEAD
     BinaryElementwisePreparation prepare;                                                                  \
     Prepare(context, &prepare);                                                          \
+=======
+    BinaryElementwisePreparation prepare(this);                                                                  \
+    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
+    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                     \
@@ -137,10 +164,9 @@ Status BinaryElementwiseBroadcastPrepare(
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
 
-#define BINARY_LOGICALOP_TYPED(name, ver, T)                    \
+#define BINARY_LOGICALOP_TYPED(name, ver, T)                       \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
   BINARY_ELEMENTWISE_COMPUTE(name, T)
-
 
 // since different ops has different types, we cannot use BINARY_OPS() directly
 // the postfix of means the types supported by the op:
@@ -169,14 +195,19 @@ Status BinaryElementwiseBroadcastPrepare(
   BINARY_OP_TYPED(name, ver, int64_t)  \
   BINARY_OP_HFD(name, ver)
 
-#define BINARY_OP_REGISTER_OIL(name, ver)                        \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)      \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
+#define BINARY_OP_REGISTER_OIL(name, ver)                      \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)
 
-#define BINARY_LOGICALOP_REGISTER_OIL(name, ver)                          \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, bool)     \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)  \
+#define BINARY_OP_REGISTER_VERSIONED_OIL(name, startver, endver)                      \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, bool)    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int32_t) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int64_t)
+
+#define BINARY_LOGICALOP_REGISTER_OIL(name, ver)                         \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, bool)    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t) \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)
 
 #define BINARY_OP_REGISTER_HFD(name, ver)                        \
@@ -191,13 +222,13 @@ Status BinaryElementwiseBroadcastPrepare(
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)  \
   BINARY_OP_REGISTER_HFD(name, ver)
 
-#define BINARY_LOGICALOP_REGISTER_UZILHFD(name, ver)                        \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint32_t)   \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint64_t)   \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)    \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)    \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, MLFloat16)  \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, float)      \
+#define BINARY_LOGICALOP_REGISTER_UZILHFD(name, ver)                       \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint32_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, uint64_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, MLFloat16) \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, float)     \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, double)
 
 #define BINARY_OP_REGISTER_VERSIONED_HFD(name, startver, endver)                        \
@@ -222,33 +253,45 @@ BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_HFD(PRelu, 7)
 
-template <typename T>
-Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+template <typename T, typename CudaT>
+Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const {
   const auto& node = Node();
   const auto& node_name = node.Name();
   auto input_count = node.InputArgCount().front();
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
 
+  auto lhs_tensor = context->Input<Tensor>(0);
   if (input_count == 1) {
-    auto input_tensor = context->Input<Tensor>(0);
-    const auto& input_shape = input_tensor->Shape();
+    const auto& input_shape = lhs_tensor->Shape();
     auto output_tensor = context->Output(0, input_shape);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), input_tensor->DataRaw(), sizeof(CudaT) * input_shape.Size(), cudaMemcpyDeviceToDevice));
+    if (lhs_tensor->DataRaw() != output_tensor->DataRaw()) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor->MutableDataRaw(), lhs_tensor->DataRaw(), sizeof(CudaT) * input_shape.Size(), cudaMemcpyDeviceToDevice));
+    }
   } else {
     // compute output shape first, using broadcast rule
     TensorShape output_shape;
-    ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, context->Input<Tensor>(0)->Shape(), context->Input<Tensor>(1)->Shape(), output_shape));
-    for (int index = 2; index < input_count; index++) {
-      TensorShape previous_output_shape = output_shape;
+    TensorShape previous_output_shape = lhs_tensor->Shape();
+    for (int index = 1; index < input_count; index++) {
       ORT_RETURN_IF_ERROR(ComputeOutputShape(node_name, previous_output_shape, context->Input<Tensor>(index)->Shape(), output_shape));
+      previous_output_shape = output_shape;
     }
     Tensor* output_tensor = context->Output(0, output_shape);
+<<<<<<< HEAD
     BinaryElementwisePreparation prepare;
     if (input_count == 2) {
       // special case for 2 tensors to avoid memset zero
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(context->Input<Tensor>(0), context->Input<Tensor>(1), output_tensor, &prepare));
       Impl_Add<CudaT>(
+=======
+    BinaryElementwisePreparation prepare(this);
+
+    auto rhs_tensor = context->Input<Tensor>(1);
+    if (input_count == 2) {
+      // special case for 2 tensors to avoid memset zero
+      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare));
+      ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
+      Impl_Compute(
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
           prepare.output_rank_or_simple_broadcast,
           &prepare.lhs_padded_strides,
           reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -262,9 +305,30 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
     } else {
       // for more than 2 inputs, we need to accumulate into output tensor, as the shape from input0 + input1 might be different from output shape
       CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
+<<<<<<< HEAD
       for (int index = 0; index < input_count; index++) {
         ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
         Impl_Add<CudaT>(
+=======
+
+      ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, lhs_tensor, output_tensor, &prepare));
+      ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
+      Impl_Add(
+          prepare.output_rank_or_simple_broadcast,
+          prepare.lhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+          prepare.rhs_padded_strides.GpuPtr(),
+          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+          prepare.fdm_output_strides.GpuPtr(),
+          prepare.fdm_H,
+          prepare.fdm_C,
+          reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+          prepare.output_tensor->Shape().Size());
+
+      for (int index = 1; index < input_count; index++) {
+        ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
+        Impl_Compute(
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
             prepare.output_rank_or_simple_broadcast,
             &prepare.lhs_padded_strides,
             reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -280,15 +344,18 @@ Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
   }
   return Status::OK();
 }
+template <typename T>
+Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
+  this->ComputeMethod(context, &Impl_Add);
+
+  return Status::OK();
+}
 
 template <typename T>
 Status Max<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  const auto& node = Node();
-  const auto& node_name = node.Name();
-  auto input_count = node.InputArgCount().front();
-  ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
+  this->ComputeMethod(context, &Impl_Max);
 
+<<<<<<< HEAD
   if (input_count == 1) {
     auto input_tensor = context->Input<Tensor>(0);
     const auto& input_shape = input_tensor->Shape();
@@ -334,11 +401,14 @@ Status Max<T>::ComputeInternal(OpKernelContext* context) const {
           prepare.output_tensor->Shape().Size());
     }
   }
+=======
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   return Status::OK();
 }
 
 template <typename T>
 Status Min<T>::ComputeInternal(OpKernelContext* context) const {
+<<<<<<< HEAD
   typedef typename ToCudaType<T>::MappedType CudaT;
   const auto& node = Node();
   const auto& node_name = node.Name();
@@ -391,11 +461,16 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
           prepare.output_tensor->Shape().Size());
     }
   }
+=======
+  this->ComputeMethod(context, &Impl_Min);
+
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   return Status::OK();
 }
 
 //Greater op output tensor type is bool, so it cannot directly fit in the macros
 //for other elementwise ops
+<<<<<<< HEAD
 template <typename T>
 Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -412,8 +487,16 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(input0, input1, output_tensor, &prepare));
 
+=======
+template <typename T, typename CudaT>
+Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
+  BinaryElementwisePreparation prepare(this);
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
+  size_t output_size = prepare.output_tensor->Shape().Size();
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
-  Impl_Greater<CudaT>(
+  ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
+  Impl_Compare(
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
@@ -423,28 +506,26 @@ Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<CudaT*>(output_buffer.get()),
-      output_size);
+      prepare.output_tensor->Shape().Size());
 
   Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
       reinterpret_cast<CudaT*>(output_buffer.get()),
-      reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
+      reinterpret_cast<ToCudaType<bool>::MappedType*>(prepare.output_tensor->template MutableData<bool>()),
       output_size);
+
   return Status::OK();
 }
 
+//Greater op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
 template <typename T>
-Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  const onnxruntime::Node& node = OpKernel::Node();
-  const std::string& name = node.Name();
+Status Greater<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &Impl_Greater);
 
-  const Tensor* input0 = context->Input<Tensor>(0);
-  const Tensor* input1 = context->Input<Tensor>(1);
-  TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(name, input0->Shape(), input1->Shape(), output_shape));
-  size_t output_size = output_shape.Size();
-  Tensor* output_tensor = context->Output(0, output_shape);
+  return Status::OK();
+}
 
+<<<<<<< HEAD
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(input0, input1, output_tensor, &prepare));
 
@@ -460,23 +541,36 @@ Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
       prepare.fdm_C,
       reinterpret_cast<CudaT*>(output_buffer.get()),
       output_size);
+=======
+template <typename T>
+Status Equal<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &Impl_Equal);
 
-  Impl_Cast<CudaT, ToCudaType<bool>::MappedType>(
-      reinterpret_cast<CudaT*>(output_buffer.get()),
-      reinterpret_cast<ToCudaType<bool>::MappedType*>(output_tensor->template MutableData<bool>()),
-      output_size);
+  return Status::OK();
+}
+
+//Less op output tensor type is bool, so it cannot directly fit in the macros
+//for other elementwise ops
+template <typename T>
+Status Less<T>::ComputeInternal(OpKernelContext* context) const {
+  this->CompareMethod(context, &Impl_Less);
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+
   return Status::OK();
 }
 
 BINARY_OP_REGISTER_UZILHFD(Sum, 8)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 9)
-BINARY_OP_REGISTER_OIL(Equal, 7)
+BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 7, 10)
+BINARY_OP_REGISTER_OIL(Equal, 11)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_OP_REGISTER_HFD(Max, 8)
 BINARY_OP_REGISTER_VERSIONED_HFD(Max, 6, 7)
 BINARY_OP_REGISTER_HFD(Min, 8)
 BINARY_OP_REGISTER_VERSIONED_HFD(Min, 6, 7)
+BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 9)
+BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
 
 }  // namespace cuda
 }  // namespace onnxruntime

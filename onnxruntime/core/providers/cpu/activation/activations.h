@@ -191,6 +191,7 @@ class ThresholdedRelu final : public OpKernel {
  private:
   const float alpha_;
 };
+<<<<<<< HEAD
 
 // Currently added for training purposed Op are put in contrib namespace.
 // Todo: we need unify a place to manage all Ops added for training.
@@ -230,4 +231,6 @@ class GeluGrad final : public OpKernel {
 };
 }  // namespace contrib
 
+=======
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }  // namespace onnxruntime

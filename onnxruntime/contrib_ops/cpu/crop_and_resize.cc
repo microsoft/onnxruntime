@@ -33,7 +33,7 @@ namespace contrib {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
       CropAndResize,                                                     \
       kMSDomain,                                                         \
-      1,                                                                \
+      1,                                                                 \
       data_type,                                                         \
       kCpuExecutionProvider,                                             \
       KernelDefBuilder()                                                 \
@@ -44,24 +44,23 @@ namespace contrib {
 ADD_TYPED_CROPANDRESIZE_OP(float);
 
 template <typename T>
-void CropAndResizeForward(
-    int64_t nthreads,
-    const T* bottom_data,
-    float extrapolation_value,
-    int64_t channels,
-    int64_t height,
-    int64_t width,
-    int32_t pooled_height,
-    int32_t pooled_width,
-    const T* bottom_rois,
-    int64_t num_roi_cols,
-    T* top_data,
-    const std::string& mode,
-    const int32_t* batch_indices_ptr,
-    const ThreadPool* ttp) {
-  int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
+void CropAndResizeForward(const TensorShape& output_shape,
+                          const T* bottom_data,
+                          float extrapolation_value,
+                          int64_t height,
+                          int64_t width,
+                          const T* bottom_rois,
+                          int64_t num_roi_cols,
+                          T* top_data,
+                          const std::string& mode,
+                          const int32_t* batch_indices_ptr,
+                          ThreadPool* ttp) {
+  int64_t n_rois = output_shape[0];
+  int64_t channels = output_shape[1];
+  int64_t pooled_height = output_shape[2];
+  int64_t pooled_width = output_shape[3];
 
-  std::function<void(int32_t)> work_object = [&](int32_t n) {
+  ThreadPool::TryBatchParallelFor(ttp, static_cast<int32_t>(n_rois), [&](int32_t n) {
     int64_t index_n = n * channels * pooled_width * pooled_height;
 
     const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
@@ -72,36 +71,34 @@ void CropAndResizeForward(
     T roi_end_w = offset_bottom_rois[3];
     T roi_end_h = offset_bottom_rois[2];
 
-    T height_scale =
-        (pooled_height > 1)
-        ? (roi_end_h - roi_start_h) * (height - 1) / (pooled_height - 1)
-        : 0;
-    T width_scale =
-        (pooled_width > 1) ? (roi_end_w - roi_start_w) * (width - 1) / (pooled_width - 1)
-        : 0;
+    T height_scale = (pooled_height > 1)
+                         ? (roi_end_h - roi_start_h) * (height - 1) / (pooled_height - 1)
+                         : 0;
+    T width_scale = (pooled_width > 1)
+                        ? (roi_end_w - roi_start_w) * (width - 1) / (pooled_width - 1)
+                        : 0;
 
     for (auto ph = 0; ph < pooled_height; ph++) {
       T in_y = static_cast<T>((pooled_height > 1)
-        ? roi_start_h * (height - 1) + ph * height_scale
-        : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
+                                  ? roi_start_h * (height - 1) + ph * height_scale
+                                  : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
       if (ph == pooled_height - 1) {
         in_y = static_cast<T>((pooled_height > 1)
-        ? roi_end_h * (height - 1)
-        : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
+                                  ? roi_end_h * (height - 1)
+                                  : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
       }
       if (ph == 0) {
         in_y = static_cast<T>((pooled_height > 1)
-        ? roi_start_h * (height - 1)
-        : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
+                                  ? roi_start_h * (height - 1)
+                                  : 0.5 * (roi_start_h + roi_end_h) * (height - 1));
       }
       if (in_y < 0 || in_y > height - 1) {
         for (int64_t pw = 0; pw < pooled_width; pw++) {
-        for (int64_t c = 0; c < channels; c++)
-        {
-          int64_t index_n_c = index_n + c * pooled_width * pooled_height;
-          int64_t index = index_n_c + ph * pooled_width + pw;
-          top_data[index] = extrapolation_value;
-        }
+          for (int64_t c = 0; c < channels; c++) {
+            int64_t index_n_c = index_n + c * pooled_width * pooled_height;
+            int64_t index = index_n_c + ph * pooled_width + pw;
+            top_data[index] = extrapolation_value;
+          }
         }
         continue;
       }
@@ -112,26 +109,25 @@ void CropAndResizeForward(
 
       for (auto pw = 0; pw < pooled_width; pw++) {
         T in_x = static_cast<T>((pooled_width > 1)
-        ? roi_start_w * (width - 1) + pw * width_scale
-        : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
+                                    ? roi_start_w * (width - 1) + pw * width_scale
+                                    : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
         if (pw == pooled_width - 1) {
-        in_x = static_cast<T>((pooled_width > 1)
-          ? roi_end_w * (width - 1)
-          : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
+          in_x = static_cast<T>((pooled_width > 1)
+                                    ? roi_end_w * (width - 1)
+                                    : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
         }
         if (pw == 0) {
-        in_x = static_cast<T>((pooled_width > 1)
-          ? roi_start_w * (width - 1)
-          : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
+          in_x = static_cast<T>((pooled_width > 1)
+                                    ? roi_start_w * (width - 1)
+                                    : 0.5 * (roi_start_w + roi_end_w) * (width - 1));
         }
         if (in_x < 0 || in_x > width - 1) {
-        for (int64_t c = 0; c < channels; c++)
-        {
-          int64_t index_n_c = index_n + c * pooled_width * pooled_height;
-          int64_t index = index_n_c + ph * pooled_width + pw;
-          top_data[index] = extrapolation_value;
-        }
-        continue;
+          for (int64_t c = 0; c < channels; c++) {
+            int64_t index_n_c = index_n + c * pooled_width * pooled_height;
+            int64_t index = index_n_c + ph * pooled_width + pw;
+            top_data[index] = extrapolation_value;
+          }
+          continue;
         }
 
         T output_val = extrapolation_value;
@@ -144,12 +140,11 @@ void CropAndResizeForward(
           auto bottom_left_index = bottom_y_index * width + left_x_index;
           auto bottom_right_index = bottom_y_index * width + right_x_index;
 
-          for (auto c = 0; c < channels; c++)
-          {
+          for (auto c = 0; c < channels; c++) {
             int64_t index_n_c = index_n + c * pooled_width * pooled_height;
             int64_t index = index_n_c + ph * pooled_width + pw;
             const T* offset_bottom_data =
-            bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
+                bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
             const float top_left(static_cast<float>(offset_bottom_data[top_left_index]));
             const float top_right(static_cast<float>(offset_bottom_data[top_right_index]));
             const float bottom_left(static_cast<float>(offset_bottom_data[bottom_left_index]));
@@ -159,25 +154,22 @@ void CropAndResizeForward(
             output_val = top + (bottom - top) * y_lerp;
             top_data[index] = output_val;
           }
-        }
-        else {  // mode == "nearest"
+        } else {  // mode == "nearest"
           const int closest_x_index = static_cast<int>(roundf(static_cast<float>(in_x)));
           const int closest_y_index = static_cast<int>(roundf(static_cast<float>(in_y)));
           auto closest_index = closest_y_index * width + closest_x_index;
 
-          for (auto c = 0; c < channels; c++)
-          {
+          for (auto c = 0; c < channels; c++) {
             int64_t index_n_c = index_n + c * pooled_width * pooled_height;
             int64_t index = index_n_c + ph * pooled_width + pw;
             const T* offset_bottom_data =
-              bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
+                bottom_data + static_cast<int64_t>((roi_batch_ind * channels + c) * height * width);
             top_data[index] = static_cast<float>(offset_bottom_data[closest_index]);
           }
         }
       }  // for pw
     }    // for ph
-  };     // for n
-  const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  });    // for n
 }
 
 template <typename T>
@@ -205,6 +197,7 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
                   "Number of dimensions for crop size should be exactly 1");
   }
 
+  auto channels = x_dims[1];
   auto num_rois = batch_indices_dims[0];
   auto num_roi_cols = rois_dims[1];
   auto crop_size_data = crop_size_ptr->Data<int32_t>();
@@ -216,23 +209,20 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
     return status;
   }
 
-  auto& Y = *context->Output(0, {num_rois, x_dims[1], crop_height, crop_width});
-  int64_t output_size = Y.Shape().Size();
+  TensorShape Y_shape = {num_rois, channels, crop_height, crop_width};
+  auto& Y = *context->Output(0, Y_shape);
   CropAndResizeForward<T>(
-      output_size,  // num threads
+      Y_shape,
       X_ptr->Data<T>(),
       extrapolation_value_,
-      x_dims[1],  // num channels
       x_dims[2],  // height
       x_dims[3],  // width
-      crop_height,
-      crop_width,
       rois_ptr->Data<T>(),
       num_roi_cols,
       Y.template MutableData<T>(),
       mode_,
       batch_indices_ptr->Data<int32_t>(),
-      static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
+      context->GetOperatorThreadPool());
 
   return Status::OK();
 }

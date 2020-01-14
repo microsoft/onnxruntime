@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/math/softmax_shared.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -15,8 +14,9 @@ static void RunTest(const std::vector<float>& x_vals,
                     int64_t axis = 1,
                     bool is_tensorrt_supported = true,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& error_msg = "") {
-  OpTester test("Softmax");
+                    const std::string& error_msg = "",
+                    int opset = 7) {
+  OpTester test("Softmax", opset);
 
   if (axis != 1) {
     test.AddAttribute("axis", axis);
@@ -97,7 +97,7 @@ TEST(SoftmaxOperator, ThreeDimsAxis0) {
       0.017545262f, 0.0135920765f, 0.027506188f, 0.010684152f, 0.0049549243f,
       0.01401341f, 0.011721271f, 0.027815264f, 0.021463264f, 0.014014485f};
 
-  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);// Axis=0 is not supported by TensorRT
+  RunTest(x_vals_3dims, expected_vals, three_dimensions, /*axis*/ 0, false);  // Axis=0 is not supported by TensorRT
 }
 
 TEST(SoftmaxOperator, ThreeDimsAxis1) {
@@ -189,49 +189,20 @@ TEST(SoftmaxOperator, InvalidAxis) {
           dimensions,
           /* invalid axis */ -10, false,
           OpTester::ExpectResult::kExpectFailure,
-          "-10 is not in valid range [-2,1]");
+          // bug in ONNX error message currently. Message should be
+          // "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -10"
+          ", 1]. Its actual value is: -10",
+          // latest opset so we get shape inferencing errors
+          -1);
 }
 
-TEST(SoftmaxOperator, TestInputTooLarge) {
-  float* ignored = nullptr;
-  concurrency::ThreadPool tp("", 1);
-  // N > INT32_MAX
-  int64_t N = int64_t(INT32_MAX) + 1;
-  int64_t D = 1;
-  auto status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored, &tp);
-  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+TEST(SoftmaxOperator, DimWithZero) {
+  std::vector<float> x_vals = {};
+  std::vector<float> expected_vals = {};
+  std::vector<int64_t> dimensions = {1, 0};  // dim with value of 0 should be handled
 
-  // D > INT32_MAX
-  N = 1;
-  D = int64_t(INT32_MAX) + 1;
-  status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored, &tp);
-  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
-
-  // N * D > INT32_MAX
-  N = int64_t(INT32_MAX) / 2;
-  D = 3;
-  status = SoftmaxCPU(N, D, ignored, ignored, ignored, ignored, true, ignored, &tp);
-  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
-
-  /*
-    common::Status SoftmaxCPU(const int64_t N,
-                              const int64_t D,
-                              const float* Xdata,
-                              float* Ydata,
-                              float* scale,
-                              const float* sum_multiplier,
-                              bool logarithmic,
-                              float* rowmax)
-    {
-        // the Math functions SoftmaxCPU uses only support int32_t as input, so enforce that
-        if (N * D > INT32_MAX || N > INT32_MAX || D > INT32_MAX)
-        {
-            std::ostringstream ss;
-            ss << "SoftmaxCPU inputs N, D and N * D must be < " << INT32_MAX << ". N=" << N << ", D=" << D;
-            std::string msg = ss.str();
-
-            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, msg);
-        }*/
+  RunTest(x_vals, expected_vals, dimensions, 0, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
+
 }  // namespace test
 }  // namespace onnxruntime

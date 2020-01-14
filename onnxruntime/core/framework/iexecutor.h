@@ -20,7 +20,7 @@ class Logger;
 
 class IExecutor {
  public:
-  using CustomAllocator = std::function<Status(const TensorShape&, OrtValue&)>;
+  using CustomAllocator = std::function<Status(const TensorShape&, const OrtMemoryInfo&, OrtValue&, bool& allocated)>;
 
   virtual ~IExecutor() = default;
 

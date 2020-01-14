@@ -33,7 +33,12 @@
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
+#include "core/common/make_unique.h"
 #include "core/common/status.h"
+
+#ifdef USE_MIMALLOC
+#include <mimalloc.h>
+#endif
 
 namespace onnxruntime {
 
@@ -73,6 +78,9 @@ using common::Status;
   static_cast<void>(fn)
 
 std::vector<std::string> GetStackTrace();
+// these is a helper function that gets defined by platform/Telemetry
+void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
+                     const char* function, uint32_t line);
 
 // __PRETTY_FUNCTION__ isn't a macro on gcc, so use a check for _MSC_VER
 // so we only define it as one for MSVC
@@ -143,10 +151,25 @@ std::vector<std::string> GetStackTrace();
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(TypeName);           \
   ORT_DISALLOW_MOVE(TypeName)
 
-#define ORT_RETURN_IF_ERROR(expr)          \
-  do {                                     \
-    auto _status = (expr);                 \
-    if ((!_status.IsOK())) return _status; \
+#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)  \
+  do {                                       \
+    auto _status = (expr);                   \
+    if ((!_status.IsOK())) {                 \
+      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
+      return _status;                        \
+    }                                        \
+  } while (0)
+
+#define ORT_RETURN_IF_ERROR_SESSIONID_(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id_)
+#define ORT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, 0)
+
+#define ORT_THROW_IF_ERROR(expr)               \
+  do {                                         \
+    auto _status = (expr);                     \
+    if ((!_status.IsOK())) {                   \
+      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
+      ORT_THROW(_status);                      \
+    }                                          \
   } while (0)
 
 #define ORT_THROW_IF_ERROR(expr)                           \

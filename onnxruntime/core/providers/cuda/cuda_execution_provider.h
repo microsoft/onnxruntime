@@ -16,6 +16,8 @@
 #endif
 namespace onnxruntime {
 
+const int CPU_ALLOCATOR_DEVICE_ID = 0;
+
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
@@ -27,7 +29,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler = false, size_t cuda_mem_limit = std::numeric_limits<size_t>::max());
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type = OrtMemTypeDefault) const override;
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -63,10 +65,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
@@ -157,7 +160,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static thread_local std::unique_ptr<PerThreadContextMap> per_thread_context_map_;
 
   // reuse thread local context
-  mutable std::deque<std::shared_ptr<PerThreadContext>> context_pool_;
+  mutable std::deque<std::shared_ptr<PerThreadContext>> retired_context_pool_;
   mutable OrtMutex context_pool_mutex_;
 
   PerThreadContext& GetPerThreadContext() const;

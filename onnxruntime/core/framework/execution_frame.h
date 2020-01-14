@@ -54,7 +54,7 @@ class IExecutionFrame {
    */
   Status GetOutputs(std::vector<OrtValue>& fetches);
 
-  AllocatorPtr GetAllocator(const OrtAllocatorInfo& info) const;
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const;
 
   Status ReleaseMLValue(int ort_value_idx);
 
@@ -81,7 +81,7 @@ class IExecutionFrame {
     return all_values_[ort_value_index];
   }
 
-  virtual AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const = 0;
+  virtual AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const = 0;
 
   virtual Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) = 0;
 
@@ -111,11 +111,11 @@ class ExecutionFrame final : public IExecutionFrame {
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
   Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                            const OrtAllocatorInfo& location, const TensorShape& shape,
+                                            const OrtMemoryInfo& location, const TensorShape& shape,
                                             bool create_fence = false);
 
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
-                                                const OrtAllocatorInfo& location, const TensorShape& shape,
+                                                const OrtMemoryInfo& location, const TensorShape& shape,
                                                 bool create_fence = false);
 
   // thread-safe
@@ -128,7 +128,7 @@ class ExecutionFrame final : public IExecutionFrame {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 
-  AllocatorPtr GetAllocatorImpl(const OrtAllocatorInfo& info) const override;
+  AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
   Status ReleaseMLValueImpl(int ort_value_idx) override;
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
 
@@ -136,11 +136,11 @@ class ExecutionFrame final : public IExecutionFrame {
                                              size_t nnz);
 
   Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                                  const OrtAllocatorInfo& location, const TensorShape& shape,
+                                                  const OrtMemoryInfo& location, const TensorShape& shape,
                                                   bool create_fence);
 
   Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
-                                                   const OrtAllocatorInfo& location, const TensorShape& shape);
+                                                   const OrtMemoryInfo& location, const TensorShape& shape);
 
   void TraceAllocate(int ort_value_idx, size_t size);
   void TraceFree(int ort_value_idx);
@@ -162,6 +162,6 @@ class ExecutionFrame final : public IExecutionFrame {
   std::unique_ptr<OrtValuePatternPlanner> planner_;
 
   // Big chunks on different locations that will be used by mem_pattern.
-  std::map<OrtAllocatorInfo, BufferUniquePtr> buffers_;
+  std::map<OrtMemoryInfo, BufferUniquePtr> buffers_;
 };
 }  // namespace onnxruntime

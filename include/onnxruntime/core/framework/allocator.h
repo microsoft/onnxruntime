@@ -76,7 +76,13 @@ inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
   return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type();
 }
 
-struct OrtAllocatorInfo {
+inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
+  return !(left == other);
+}
+
+struct OrtMemoryInfo {
+  OrtMemoryInfo() = default;  // to allow default construction of Tensor
+
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
   int id;
@@ -84,7 +90,7 @@ struct OrtAllocatorInfo {
   OrtAllocatorType type;
   OrtDevice device;
 
-  constexpr OrtAllocatorInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
@@ -95,8 +101,8 @@ struct OrtAllocatorInfo {
         device(device_) {
   }
 
-  // To make OrtAllocatorInfo become a valid key in std map
-  inline bool operator<(const OrtAllocatorInfo& other) const {
+  // To make OrtMemoryInfo become a valid key in std map
+  inline bool operator<(const OrtMemoryInfo& other) const {
     if (type != other.type)
       return type < other.type;
     if (mem_type != other.mem_type)
@@ -109,7 +115,7 @@ struct OrtAllocatorInfo {
 
   inline std::string ToString() const {
     std::ostringstream ostr;
-    ostr << "OrtAllocatorInfo: ["
+    ostr << "OrtMemoryInfo: ["
          << " name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
@@ -119,14 +125,14 @@ struct OrtAllocatorInfo {
   }
 };
 
-inline bool operator==(const OrtAllocatorInfo& left, const OrtAllocatorInfo& other) {
+inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
   return left.mem_type == other.mem_type && left.type == other.type && left.id == other.id &&
          strcmp(left.name, other.name) == 0;
 }
 
-inline bool operator!=(const OrtAllocatorInfo& lhs, const OrtAllocatorInfo& rhs) { return !(lhs == rhs); }
+inline bool operator!=(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) { return !(lhs == rhs); }
 
-std::ostream& operator<<(std::ostream& out, const OrtAllocatorInfo& info);
+std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info);
 
 namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
@@ -146,7 +152,7 @@ class IAllocator {
   virtual ~IAllocator() = default;
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
-  virtual const OrtAllocatorInfo& Info() const = 0;
+  virtual const OrtMemoryInfo& Info() const = 0;
 
   /**
      optional CreateFence interface, as provider like DML has its own fence
@@ -246,28 +252,57 @@ class IDeviceAllocator : public IAllocator {
   ~IDeviceAllocator() override = default;
   void* Alloc(size_t size) override = 0;
   void Free(void* p) override = 0;
-  const OrtAllocatorInfo& Info() const override = 0;
+  const OrtMemoryInfo& Info() const override = 0;
   virtual bool AllowsArena() const { return true; }
 };
 
 class CPUAllocator : public IDeviceAllocator {
  public:
-  explicit CPUAllocator(std::unique_ptr<OrtAllocatorInfo> allocator_info) {
-    ORT_ENFORCE(nullptr != allocator_info);
-    allocator_info_ = std::move(allocator_info);
+  explicit CPUAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
+    ORT_ENFORCE(nullptr != memory_info);
+    memory_info_ = std::move(memory_info);
   }
 
   CPUAllocator() {
-    allocator_info_ = std::make_unique<OrtAllocatorInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+    memory_info_ = onnxruntime::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
   }
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  const OrtAllocatorInfo& Info() const override;
+  const OrtMemoryInfo& Info() const override;
 
  private:
-  std::unique_ptr<OrtAllocatorInfo> allocator_info_;
+  std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
+
+#ifdef USE_MIMALLOC
+class MiMallocAllocator : public IDeviceAllocator {
+ public:
+  explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
+    ORT_ENFORCE(nullptr != memory_info);
+    memory_info_ = std::move(memory_info);
+  }
+
+  MiMallocAllocator() {
+    memory_info_ = std::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
+  }
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+  const OrtMemoryInfo& Info() const override;
+
+ private:
+  std::unique_ptr<OrtMemoryInfo> memory_info_;
+};
+
+#endif
+
+
+#ifdef USE_MIMALLOC
+  using TAllocator = MiMallocAllocator;
+#else
+  using TAllocator = CPUAllocator;
+#endif
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;
 

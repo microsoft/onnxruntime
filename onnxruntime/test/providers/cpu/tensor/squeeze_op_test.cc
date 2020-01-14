@@ -94,5 +94,18 @@ TEST(SqueezeOpTest, BadAxes) {
   // Expect failure.
   test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3", {kTensorrtExecutionProvider});
 }
+
+TEST(SqueezeOpTest, SqueezeNegAxis_2) {
+  OpTester test("Squeeze", 11);
+  test.AddAttribute("axes", std::vector<int64_t>{0, -3, -2});
+  test.AddInput<float>("data", {1, 4, 1, 1, 2},
+                       std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddOutput<float>("squeezed", {4, 2},
+                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  
+  // nGraph does not support neg axis.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kNGraphExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

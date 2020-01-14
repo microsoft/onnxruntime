@@ -3,6 +3,13 @@
 #pragma once
 #include "core/util/gemmlowp_common_wrapper.h"
 #include "core/platform/threadpool.h"
+#include "onnxruntime_config.h"
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#ifdef HAS_DEPRECATED_COPY
+#pragma GCC diagnostic ignored "-Wdeprecated-copy"
+#endif
+#endif
 
 namespace onnxruntime {
 
@@ -63,3 +70,7 @@ void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, 
                              const int lhs_offset, const int rhs_offset, int m, int n, int k, concurrency::ThreadPool*);
 
 }  // namespace onnxruntime
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif

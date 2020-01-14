@@ -4,48 +4,99 @@
 #include <deque>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/initializer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace {
-void HandleActivationNodeEdges(Graph& g, const Node& act, Node& fused_conv) {
-  Node::EdgeSet output_edges;
-  for (auto it = act.OutputEdgesBegin(); it != act.OutputEdgesEnd(); ++it) {
-    output_edges.insert(*it);
+// get min/max values from Clip if they are constant. Returns false if mutable and cannot be used
+static bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
+  min = std::numeric_limits<float>::lowest();
+  max = std::numeric_limits<float>::max();
+
+  // Clip opset 6 has min and max as attributes. they're inputs from opset 11 on.
+  bool min_max_are_attributes = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {6});
+  bool min_max_are_constant_values = true;
+
+  if (min_max_are_attributes) {
+    min = graph_utils::GetNodeAttribute(node, "min")->f();
+    max = graph_utils::GetNodeAttribute(node, "max")->f();
+  } else {
+    // update min/max if provided via a constant initializer
+    // return true if value is default or coming from a constant initializer and update 'value'
+    // return false if value is mutable
+    auto update_if_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
+      const auto& input_defs = node.InputDefs();
+      const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
+
+      if (input == nullptr || !input->Exists()) {
+        // optional input not specified so using default value
+        return true;
+      }
+
+      bool is_constant = true;
+      const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
+      if (initializer) {
+        Initializer i(*initializer);
+        switch (initializer->data_type()) {
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+            value = *i.data<float>();
+            break;
+          // double isn't currently supported
+          //case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+          //  value = static_cast<float>(*i.data<double>());
+          //  break;
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+            value = math::halfToFloat(i.data<BFloat16>()->val);
+            break;
+          default:
+            ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
+        }
+      } else {
+        is_constant = false;
+      }
+
+      return is_constant;
+    };
+
+    // 'min' is input 1, 'max' is input 2. both are optional.
+    // if the input is constant, 'min' or 'max' is updated by the call to get_if_constant_value
+    min_max_are_constant_values = update_if_constant_value(node, 1, min) &&
+                                  update_if_constant_value(node, 2, max);
   }
 
-  //remove output edge of activation
-  //connect fused_conv node and nodes after activation nodes
-  for (auto& output_edge : output_edges) {
-    NodeIndex dst_node_index = output_edge.GetNode().Index();
-    int src_arg_index = output_edge.GetSrcArgIndex();
-    int dst_arg_index = output_edge.GetDstArgIndex();
-    g.RemoveEdge(act.Index(), dst_node_index, src_arg_index, dst_arg_index);
-    g.AddEdge(fused_conv.Index(), dst_node_index, 0, dst_arg_index);
-  }
+  return min_max_are_constant_values;
 }
 
 }  // namespace
 
-Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto* node = graph.GetNode(index);
-    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level));
+    // check that node hasn't already been removed
+    if (!node)
+      continue;
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1}) ||
+    ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
+
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Conv", {1, 11}) ||
         !graph_utils::IsSupportedProvider(*node, GetCompatibleExecutionProviders()) ||
         node->GetOutputEdgesCount() != 1) {
       continue;
     }
 
     const auto& next_node = *(node->OutputNodesBegin());
+
     if (next_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
+      continue;
+    }
+
+    if (!graph.GetNodeOutputsInGraphOutputs(*node).empty()) {
       continue;
     }
 
@@ -57,25 +108,31 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6})) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {
         activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "alpha")->f());
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6})) {
-        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "min")->f());
-        activation_params.push_back(graph_utils::GetNodeAttribute(next_node, "max")->f());
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Clip", {6, 11})) {
+        float min, max;
+        if (GetClipConstantMinMax(graph, next_node, min, max)) {
+          activation_params.push_back(min);
+          activation_params.push_back(max);
+        } else {
+          continue;
+        }
       } else {
         continue;
       }
     }
 
-    Node& fused_conv = graph.AddNode(graph.GenerateNodeName("fused " + node->Name()), "FusedConv",
-                                     "fused Conv " + node->Name() + "with activation " + next_node.OpType(),
-                                     node->MutableInputDefs(),
-                                     graph.IsNodeOutputsInGraphOutputs(next_node)
-                                         ? const_cast<Node&>(next_node).MutableOutputDefs()
-                                         : node->MutableOutputDefs(),
-                                     &node->GetAttributes(),
+    Node& conv_node = *node;
+    Node& act_node = *graph.GetNode(next_node.Index());
+
+    Node& fused_conv = graph.AddNode(graph.GenerateNodeName("fused " + conv_node.Name()), "FusedConv",
+                                     "fused Conv " + conv_node.Name() + "with activation " + act_node.OpType(),
+                                     conv_node.MutableInputDefs(),
+                                     {},
+                                     &conv_node.GetAttributes(),
                                      "com.microsoft");
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
-    fused_conv.SetExecutionProviderType(node->GetExecutionProviderType());
+    fused_conv.SetExecutionProviderType(conv_node.GetExecutionProviderType());
 
     // Add attributes to specify the activation type and parameters.
     fused_conv.AddAttribute("activation", next_node.OpType());
@@ -83,37 +140,9 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       fused_conv.AddAttribute("activation_params", activation_params);
     }
 
-    if (!graph.IsNodeOutputsInGraphOutputs(next_node)) {
+    // move output definitions and edges from act_node to fused_conv. delete conv_node and act_node.
+    graph_utils::FinalizeNodeFusion(graph, {conv_node, act_node}, fused_conv);
 
-      HandleActivationNodeEdges(graph, next_node, fused_conv);
-
-      // Replace the input of the node following activation node
-      const NodeArg* act_output_def = next_node.OutputDefs()[0];
-      NodeArg* fused_conv_output_def = fused_conv.MutableOutputDefs()[0];
-      for (auto it = next_node.OutputNodesBegin(); it != next_node.OutputNodesEnd(); ++it) {
-        auto output_node = graph.GetNode((*it).Index());
-        if (!output_node) {
-          return Status(ONNXRUNTIME, INVALID_ARGUMENT);
-        }
-
-        auto& input_defs = output_node->MutableInputDefs();
-        for (auto& def : input_defs) {
-          if (def == act_output_def) {
-            def = fused_conv_output_def;
-          }
-        }
-      }
-    }
-
-    removed_nodes.push_front(node->Index());
-    removed_nodes.push_front(next_node.Index());
-  }
-
-  for (auto node : removed_nodes) {
-    graph.RemoveNode(node);
-  }
-
-  if (!removed_nodes.empty()) {
     modified = true;
   }
 

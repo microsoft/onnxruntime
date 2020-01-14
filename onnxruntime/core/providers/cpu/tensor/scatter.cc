@@ -10,10 +10,11 @@ namespace onnxruntime {
 
 class Scatter final : public OpKernel {
  public:
-  Scatter(const OpKernelInfo& info) : OpKernel(info) {
+  explicit Scatter(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
   }
+
   ~Scatter() = default;
   Status Compute(OpKernelContext* context) const override;
 
@@ -21,9 +22,18 @@ class Scatter final : public OpKernel {
   int64_t axis_;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Scatter,
-    9,
+    9, 10,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}),
+    Scatter);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements,
+    11,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
@@ -34,14 +44,25 @@ template <class Tin, class Tdata>
 Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, const Tensor* updates_input,
                        const int64_t axis, Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
-  const Tin* indices_data = indices_input->template Data<Tin>();
+  const Tin* indices_data_raw = indices_input->template Data<Tin>();
   const auto num_indices = indices_input->Shape().Size();
+
+  std::vector<Tin> indices_data;
+  indices_data.reserve(num_indices);
+
+  auto axis_dim_limit = input_data_shape[axis];
+
   for (int64_t i = 0; i < num_indices; ++i) {
-    Tin idx = indices_data[i];
-    if (idx < 0 || idx >= input_data_shape[axis]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
-                             " data_dim=", input_data_shape[axis]);
+    Tin idx = indices_data_raw[i];
+
+    if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "indices element out of data bounds, idx=", idx,
+                             " must be within the inclusive range [", -axis_dim_limit,
+                             ",", axis_dim_limit - 1, "]");
     }
+
+    indices_data.push_back(idx < 0 ? idx + static_cast<Tin>(axis_dim_limit) : idx);
   }
 
   const auto input_elements = input_data_shape.Size();
@@ -49,7 +70,7 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());
-  bool is_string_type = data_input->DataType() == DataTypeImpl::GetType<std::string>();
+  const bool is_string_type = data_input->IsDataTypeString();
 
   // We allow runtime to re-use input for output. If input/output Tensor* are the same
   // we do not copy
@@ -148,37 +169,15 @@ Status CopyScatterData(const Tensor* data_input, const Tensor* indices_input, co
   return Status::OK();
 }
 
-#define DispatchOnIndexTypeAndTensorType(index_type, tensor_type, retval, function, ...) \
-  if (tensor_type == DataTypeImpl::GetType<float>())                                     \
-    retval = function<index_type, float>(__VA_ARGS__);                                   \
-  else if (tensor_type == DataTypeImpl::GetType<double>())                               \
-    retval = function<index_type, double>(__VA_ARGS__);                                  \
-  else if (tensor_type == DataTypeImpl::GetType<int8_t>())                               \
-    retval = function<index_type, int8_t>(__VA_ARGS__);                                  \
-  else if (tensor_type == DataTypeImpl::GetType<int16_t>())                              \
-    retval = function<index_type, int16_t>(__VA_ARGS__);                                 \
-  else if (tensor_type == DataTypeImpl::GetType<int32_t>())                              \
-    retval = function<index_type, int32_t>(__VA_ARGS__);                                 \
-  else if (tensor_type == DataTypeImpl::GetType<int64_t>())                              \
-    retval = function<index_type, int64_t>(__VA_ARGS__);                                 \
-  else if (tensor_type == DataTypeImpl::GetType<uint8_t>())                              \
-    retval = function<index_type, uint8_t>(__VA_ARGS__);                                 \
-  else if (tensor_type == DataTypeImpl::GetType<uint16_t>())                             \
-    retval = function<index_type, uint16_t>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<uint32_t>())                             \
-    retval = function<index_type, uint32_t>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<uint64_t>())                             \
-    retval = function<index_type, uint64_t>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<bool>())                                 \
-    retval = function<index_type, bool>(__VA_ARGS__);                                    \
-  else if (tensor_type == DataTypeImpl::GetType<MLFloat16>())                            \
-    retval = function<index_type, MLFloat16>(__VA_ARGS__);                               \
-  else if (tensor_type == DataTypeImpl::GetType<BFloat16>())                             \
-    retval = function<index_type, BFloat16>(__VA_ARGS__);                                \
-  else if (tensor_type == DataTypeImpl::GetType<std::string>())                          \
-    retval = function<index_type, std::string>(__VA_ARGS__);                             \
-  else                                                                                   \
-    ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type)
+template <class T, class... Args>
+inline Status CopyInt32Index(Args&&... args) {
+  return CopyScatterData<int32_t, T>(std::forward<Args>(args)...);
+}
+
+template <class T, class... Args>
+inline Status CopyInt64Index(Args&&... args) {
+  return CopyScatterData<int64_t, T>(std::forward<Args>(args)...);
+}
 
 Status Scatter::Compute(OpKernelContext* context) const {
   const auto* data_input = context->Input<Tensor>(0);
@@ -224,13 +223,12 @@ Status Scatter::Compute(OpKernelContext* context) const {
 
   auto* data_output = context->Output(0, input_data_shape);
 
-  MLDataType Tind_type = indices_input->DataType();
   MLDataType Tdata_type = data_input->DataType();
   Status status;
-  if (Tind_type == DataTypeImpl::GetType<int32_t>()) {
-    DispatchOnIndexTypeAndTensorType(int32_t, Tdata_type, status, CopyScatterData, data_input, indices_input, updates_input, axis, data_output);
-  } else if (Tind_type == DataTypeImpl::GetType<int64_t>()) {
-    DispatchOnIndexTypeAndTensorType(int64_t, Tdata_type, status, CopyScatterData, data_input, indices_input, updates_input, axis, data_output);
+  if (indices_input->IsDataType<int32_t>()) {
+    DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt32Index, data_input, indices_input, updates_input, axis, data_output);
+  } else if (indices_input->IsDataType<int64_t>()) {
+    DispatchOnTensorTypeWithReturn(Tdata_type, status, CopyInt64Index, data_input, indices_input, updates_input, axis, data_output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expecting indices to be either int32_t or int64_t");
   }

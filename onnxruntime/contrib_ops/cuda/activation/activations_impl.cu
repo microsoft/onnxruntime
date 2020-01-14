@@ -36,6 +36,13 @@ struct OP_ScaledTanh : public CtxScaledTanh {
   }
 };
 
+template <typename T>
+struct OP_Gelu : public CtxGelu {
+  __device__ __inline__ T operator()(const T& a) const {
+    return _Gelu(a);
+  }
+};
+
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
     UnaryElementWiseImpl(input_data,                                       \

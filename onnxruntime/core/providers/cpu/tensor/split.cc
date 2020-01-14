@@ -6,13 +6,25 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
+    10,
+    KernelDefBuilder().TypeConstraint("T",
+                                      std::vector<MLDataType>{
+                                          DataTypeImpl::GetTensorType<float>(),
+                                          DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<std::string>()}),
+    Split);
+
+// Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_KERNEL(
+    Split,
+    11,
     KernelDefBuilder().TypeConstraint("T",
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
@@ -62,16 +74,15 @@ Status Split::Compute(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
 
   Status status;
-  auto data_type = input.DataType();
 
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<int32_t>())
+  else if (input.IsDataType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
-    ORT_THROW("Split operator does not support ", data_type, " yet");
+    ORT_THROW("Split operator does not support ", input.DataType(), " yet");
 
   return status;
 }

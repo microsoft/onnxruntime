@@ -36,15 +36,24 @@ TestEnvironment::TestEnvironment(int argc, char** argv, bool create_default_logg
 
   if (create_default_logging_manager) {
     static std::string default_logger_id{"Default"};
+<<<<<<< HEAD
     s_default_logging_manager = std::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
                                                                  Severity::kWARNING,  // TODO make this configurable through
                                                                                       // cmd line arguments or some other way
                                                                  false,
                                                                  LoggingManager::InstanceType::Default,
                                                                  &default_logger_id);
+=======
+    s_default_logging_manager = onnxruntime::make_unique<LoggingManager>(std::unique_ptr<ISink>{new CLogSink{}},
+                                                        Severity::kWARNING,  // TODO make this configurable through
+                                                                             // cmd line arguments or some other way
+                                                        false,
+                                                        LoggingManager::InstanceType::Default,
+                                                        &default_logger_id);
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
     // make sure default logging manager exists and is working
-    auto logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+    auto logger = DefaultLoggingManager().DefaultLogger();
     LOGS(logger, VERBOSE) << "Logging manager initialized.";
   }
 

@@ -18,7 +18,7 @@ namespace onnxruntime {
 
 const GraphViewer* SessionState::GetGraphViewer() const { return graph_viewer_.get(); }
 Status SessionState::SetGraph(const Graph& graph) {
-  graph_viewer_ = std::make_unique<onnxruntime::GraphViewer>(graph);
+  graph_viewer_ = onnxruntime::make_unique<onnxruntime::GraphViewer>(graph);
   auto& logger = Logger();
   // use graph_viewer_ to initialize ort_value_name_idx_map_
   LOGS(logger, INFO) << "SaveMLValueNameIndexMapping";
@@ -85,7 +85,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       onnxruntime::ProviderType exec_provider_name = node.GetExecutionProviderType();
 
       const IExecutionProvider* exec_provider = nullptr;
-      if (exec_provider_name.empty() || (exec_provider = execution_providers_.Get(exec_provider_name)) == nullptr) {
+      if (exec_provider_name.empty() || (exec_provider = execution_providers_.get().Get(exec_provider_name)) == nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not create kernel for node: ", node.Name(),
                                " as there's no execution provider allocated.");
       }
@@ -101,7 +101,7 @@ Status SessionState::CreateKernels(const KernelRegistryManager& custom_registry_
       session_kernels_[node.Index()] = op_kernel.release();
     }
   }
-  node_index_info_ = std::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
+  node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(*graph_viewer_, ort_value_name_idx_map_);
   return Status::OK();
 }
 
@@ -334,11 +334,8 @@ Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::refere
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
-  // in the future we could support multiple nodes on difference devices using an input, however right now
-  // the logic in utils::CopyOneInputAcrossDevices only checks the first entry.
-  // Instead of failing silently and adding extra entries that will be ignored, check if the required provider
-  // is the same for any duplicate entries. If it differs we can't run the model.
-
+  // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
+  // to handle a scenario where an input is required on different devices by different nodes. Validate that.
   auto& entries = input_names_to_nodeinfo_mapping_[input_name];
 
   if (entries.empty()) {
@@ -355,20 +352,20 @@ common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& in
       // replace existing entry that is for an implicit input with new entry for explicit usage in this graph
       entries[0] = node_info;
     } else {
-      // if the providers match we can add the new entry for completeness (it will be ignored in
+      // if the devices match we can add the new entry for completeness (it will be ignored in
       // utils::CopyOneInputAcrossDevices though).
       // if they don't, we are broken.
-      const auto& current_provider = utils::GetNodeInputProviderType(entries[0]);
-      const auto& new_provider = utils::GetNodeInputProviderType(node_info);
+      const auto& current_device = entries[0].device;
+      const auto& new_device = node_info.device;
 
-      if (current_provider == new_provider) {
+      if (current_device == new_device) {
         entries.push_back(node_info);
       } else {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, NOT_IMPLEMENTED,
             "Using an input in multiple nodes on different devices is not supported currently. Input:", input_name,
-            " is used by node ", existing_entry.p_node->Name(), " (", current_provider, ") and node ",
-            node_info.p_node->Name(), " (", new_provider, ").");
+            " is used by node ", existing_entry.p_node->Name(), " (", current_device->ToString(), ") and node ",
+            node_info.p_node->Name(), " (", new_device->ToString(), ").");
       }
     }
   }
@@ -392,7 +389,22 @@ const SessionState::NameNodeInfoMapType& SessionState::GetInputNodeInfoMap() con
 }
 
 void SessionState::AddOutputNameToNodeInfoMapping(const std::string& output_name, const NodeInfo& node_info) {
-  output_names_to_nodeinfo_mapping_[output_name].push_back(node_info);
+  auto& output_names_to_nodeinfo = output_names_to_nodeinfo_mapping_[output_name];
+  ORT_ENFORCE(output_names_to_nodeinfo.empty(), "Only one node should produce an output. Existing entry for ",
+              output_name);
+
+  output_names_to_nodeinfo.push_back(node_info);
+}
+
+common::Status SessionState::GetOutputNodeInfo(const std::string& output_name,
+                                               std::vector<NodeInfo>& node_info_vec) const {
+  auto entry = output_names_to_nodeinfo_mapping_.find(output_name);
+  if (entry == output_names_to_nodeinfo_mapping_.cend()) {
+    return Status(ONNXRUNTIME, FAIL, "Failed to find output name in the mapping: " + output_name);
+  }
+
+  node_info_vec = entry->second;
+  return Status::OK();
 }
 
 const SessionState::NameNodeInfoMapType& SessionState::GetOutputNodeInfoMap() const {
@@ -409,7 +421,10 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const s
     ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
                 " for attribute ", attribute_name);
   }
-
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  session_state->parent_ = this;
+  GenerateGraphId();
+#endif
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
 }
 
@@ -419,7 +434,7 @@ SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeInde
 
   auto node_entry = subgraph_session_states_.find(index);
   if (node_entry != subgraph_session_states_.cend()) {
-    const auto& attribute_state_map{node_entry->second};
+    const auto& attribute_state_map = node_entry->second;
 
     const auto& subgraph_entry = attribute_state_map.find(attribute_name);
     if (subgraph_entry != attribute_state_map.cend()) {
@@ -433,6 +448,10 @@ SessionState* SessionState::GetMutableSubgraphSessionState(onnxruntime::NodeInde
 const SessionState* SessionState::GetSubgraphSessionState(onnxruntime::NodeIndex index,
                                                           const std::string& attribute_name) const {
   return const_cast<SessionState*>(this)->GetMutableSubgraphSessionState(index, attribute_name);
+}
+
+void SessionState::RemoveSubgraphSessionState(onnxruntime::NodeIndex index) {
+  subgraph_session_states_.erase(index);
 }
 
 const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {

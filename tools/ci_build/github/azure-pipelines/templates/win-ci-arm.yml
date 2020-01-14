@@ -15,6 +15,8 @@ parameters:
 
 jobs:
 - job: ${{ parameters.JobName }}
+  workspace:
+    clean: all
   timeoutInMinutes: 120
   pool: ${{ parameters.AgentPool }}
   variables:
@@ -74,7 +76,7 @@ jobs:
         displayName: 'Setup VS2017 env vars'
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: 'x64 -vcvars_ver=14.11'
+          arguments: 'x64'
           modifyEnvironment: true
 
       # Esrp signing

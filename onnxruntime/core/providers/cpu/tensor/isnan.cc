@@ -5,7 +5,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-#include "Eigen/src/Core/arch/GPU/Half.h"
+#include "Eigen/src/Core/arch/Default/Half.h"
 
 namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN

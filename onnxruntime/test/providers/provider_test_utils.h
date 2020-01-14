@@ -16,16 +16,47 @@
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
+#include "core/framework/TensorSeq.h"
+#include "core/framework/session_options.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <gsl/gsl_byte>
+#include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
+
+// helpers to run a function and check the status, outputting any error if it fails.
+// note: wrapped in do{} while(false) so the _tmp_status variable has limited scope
+#define ASSERT_STATUS_OK(function)                  \
+  do {                                              \
+    auto _tmp_status = function;                    \
+    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
+  } while (false)
+
+#define EXPECT_STATUS_OK(function)                  \
+  do {                                              \
+    auto _tmp_status = function;                    \
+    EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
+  } while (false)
 
 namespace onnxruntime {
 class InferenceSession;
+struct SessionOptions;
 
 namespace test {
+template <typename T>
+struct SeqTensors {
+  void AddTensor(const std::vector<int64_t>& shape0, const std::vector<T>& data0) {
+    tensors.push_back(Tensor<T>{shape0, data0});
+  }
+
+  template <typename U>
+  struct Tensor {
+    std::vector<int64_t> shape;
+    std::vector<U> data;
+  };
+  std::vector<Tensor<T>> tensors;
+};
+
 // unfortunately std::optional is in C++17 so use a miniversion of it
 template <typename T>
 class optional {
@@ -48,46 +79,74 @@ template <typename T>
 constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType();
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<float>() { return ONNX_NAMESPACE::TensorProto_DataType_FLOAT; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<float>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<double>() { return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<double>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int32_t>() { return ONNX_NAMESPACE::TensorProto_DataType_INT32; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int32_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int64_t>() { return ONNX_NAMESPACE::TensorProto_DataType_INT64; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int64_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<bool>() { return ONNX_NAMESPACE::TensorProto_DataType_BOOL; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<bool>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int8_t>() { return ONNX_NAMESPACE::TensorProto_DataType_INT8; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int8_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int16_t>() { return ONNX_NAMESPACE::TensorProto_DataType_INT16; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int16_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint8_t>() { return ONNX_NAMESPACE::TensorProto_DataType_UINT8; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint8_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint16_t>() { return ONNX_NAMESPACE::TensorProto_DataType_UINT16; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint16_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint32_t>() { return ONNX_NAMESPACE::TensorProto_DataType_UINT32; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint32_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint64_t>() { return ONNX_NAMESPACE::TensorProto_DataType_UINT64; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint64_t>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<std::string>() { return ONNX_NAMESPACE::TensorProto_DataType_STRING; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<std::string>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<MLFloat16>() { return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<MLFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+}
 
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<BFloat16>() { return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16; }
+constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<BFloat16>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
 
 template <typename T>
 struct TTypeProto : ONNX_NAMESPACE::TypeProto {
@@ -109,9 +168,14 @@ struct TTypeProto : ONNX_NAMESPACE::TypeProto {
 
 // Variable template for ONNX_NAMESPACE::TensorProto_DataTypes, s_type_proto<float>, etc..
 template <typename T>
-const TTypeProto<T> s_type_proto;
+struct TTensorType {
+  static const TTypeProto<T> s_type_proto;
+};
 
-//TypeProto for map<TKey, TVal>
+template <typename T>
+const TTypeProto<T> TTensorType<T>::s_type_proto;
+
+// TypeProto for map<TKey, TVal>
 template <typename TKey, typename TVal>
 struct MTypeProto : ONNX_NAMESPACE::TypeProto {
   MTypeProto() {
@@ -122,9 +186,14 @@ struct MTypeProto : ONNX_NAMESPACE::TypeProto {
 };
 
 template <typename TKey, typename TVal>
-const MTypeProto<TKey, TVal> s_map_type_proto;
+struct MMapType {
+  static const MTypeProto<TKey, TVal> s_map_type_proto;
+};
 
-//TypeProto for vector<map<TKey, TVal>>
+template <typename TKey, typename TVal>
+const MTypeProto<TKey, TVal> MMapType<TKey, TVal>::s_map_type_proto;
+
+// TypeProto for vector<map<TKey, TVal>>
 template <typename TKey, typename TVal>
 struct VectorOfMapTypeProto : ONNX_NAMESPACE::TypeProto {
   VectorOfMapTypeProto() {
@@ -136,7 +205,31 @@ struct VectorOfMapTypeProto : ONNX_NAMESPACE::TypeProto {
 };
 
 template <typename TKey, typename TVal>
-const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
+struct VectorOfMapType {
+  static const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
+};
+
+template <typename TKey, typename TVal>
+const VectorOfMapTypeProto<TKey, TVal> VectorOfMapType<TKey, TVal>::s_vec_map_type_proto;
+
+template <typename ElemType>
+struct SequenceTensorTypeProto : ONNX_NAMESPACE::TypeProto {
+  SequenceTensorTypeProto() {
+    MLDataType dt = DataTypeImpl::GetTensorType<ElemType>();
+    const auto* elem_proto = dt->GetTypeProto();
+    mutable_sequence_type()->mutable_elem_type()->CopyFrom(*elem_proto);
+    auto* tensor_type = mutable_sequence_type()->mutable_elem_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(TypeToDataType<ElemType>());
+  }
+};
+
+template <typename ElemType>
+struct SequenceTensorType {
+  static const SequenceTensorTypeProto<ElemType> s_sequence_tensor_type_proto;
+};
+
+template <typename ElemType>
+const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -144,13 +237,36 @@ const VectorOfMapTypeProto<TKey, TVal> s_vec_map_type_proto;
 //  3. Call AddInput for all the inputs
 //  4. Call AddOutput with all expected outputs
 //  5. Call Run
-// Not all tensor types and output types are added, if a new input type is used, add it to the TypeToDataType list above
-// for new output types, add a new specialization for Check<>
-// See current usage for an example, should be self explanatory
+// Not all tensor types and output types are added, if a new input type is used, add it to the TypeToDataType list
+// above for new output types, add a new specialization for Check<> See current usage for an example, should be self
+// explanatory
 class OpTester {
  public:
+<<<<<<< HEAD
   explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
       : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {}
+=======
+  // Default to the first opset that ORT was available (7).
+  // When operators are updated they need to explicitly add tests for the new opset version.
+  // This is due to the kernel matching logic. See KernelRegistry::VerifyKernelDef.
+  // Additionally, -1 is supported and defaults to the latest known opset.
+  //
+  // Defaulting to the latest opset version would result in existing operator implementations for non-CPU EPs to
+  // lose their test coverage until an implementation for the new version is added.
+  //   e.g. there are CPU and GPU implementations for version 1 of an op. both are tested by a single OpTester test.
+  //        opset changes from 1 to 2 and CPU implementation gets added. If 'opset_version' is 2 the kernel matching
+  //        will find and run the CPU v2 implementation, but will not match the GPU v1 implementation.
+  //        OpTester will say it was successful as at least one EP ran, and the GPU implementation of v1 no longer has
+  //        test coverage.
+  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
+      : op_(op), domain_(domain), opset_version_(opset_version) {
+    if (opset_version_ < 0) {
+      static int latest_onnx_version =
+          ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
+      opset_version_ = latest_onnx_version;
+    }
+  }
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   virtual ~OpTester();
 
@@ -167,45 +283,86 @@ class OpTester {
   // We have an initializer_list and vector version of the Add functions because std::vector is specialized for
   // bool and we can't get the raw data out. So those cases must use an initializer_list
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values, bool is_initializer = false) {
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values,
+                bool is_initializer = false) {
     AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer);
   }
 
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values, bool is_initializer = false) {
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values,
+                bool is_initializer = false) {
     AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
   }
 
   template <typename T>
+<<<<<<< HEAD
   void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false) {
     AddData(input_data_, name, dims, p_values, size, is_initializer);
   }
 
+=======
+  void AddInput(const char* name, const T& val) {
+    auto mltype = DataTypeImpl::GetType<T>();
+    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
+    auto ptr = onnxruntime::make_unique<T>(val);
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
+                               optional<float>()));
+  }
+
+  template <typename T>
+  void AddInput(const char* name, T&& val) {
+    auto mltype = DataTypeImpl::GetType<T>();
+    ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
+    auto ptr = onnxruntime::make_unique<T>(std::move(val));
+    OrtValue value;
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    input_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
+                               optional<float>()));
+  }
+
+  template <typename T>
+  void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
+    AddSeqData<T>(input_data_, name, seq_tensors);
+  }
+
+  template <typename T>
+  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
+    AddSeqData<T>(output_data_, name, seq_tensors);
+  }
+
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
-    std::unique_ptr<std::map<TKey, TVal>> ptr = std::make_unique<std::map<TKey, TVal>>(val);
+    std::unique_ptr<std::map<TKey, TVal>> ptr = onnxruntime::make_unique<std::map<TKey, TVal>>(val);
     OrtValue value;
-    value.Init(ptr.release(),
-               DataTypeImpl::GetType<std::map<TKey, TVal>>(),
+    value.Init(ptr.release(), DataTypeImpl::GetType<std::map<TKey, TVal>>(),
                DataTypeImpl::GetType<std::map<TKey, TVal>>()->GetDeleteFunc());
-    input_data_.push_back({{name, &s_map_type_proto<TKey, TVal>}, value, optional<float>(), optional<float>()});
+    input_data_.push_back(Data(NodeArg(name, &MMapType<TKey, TVal>::s_map_type_proto), std::move(value),
+                               optional<float>(), optional<float>()));
   }
 
   template <typename T>
   void AddMissingOptionalInput() {
     std::string name;  // empty == input doesn't exist
-    input_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
+    input_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto), OrtValue(), optional<float>(),
+                               optional<float>()));
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values) {
-    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size());
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values,
+                 bool sort_output = false) {
+    AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, sort_output);
   }
 
   // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values) {
-    AddData(output_data_, name, dims, expected_values.data(), expected_values.size());
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values,
+                 bool sort_output = false) {
+    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, sort_output);
   }
 
   template <typename T>
@@ -216,7 +373,8 @@ class OpTester {
   template <typename T>
   void AddMissingOptionalOutput() {
     std::string name;  // empty == input doesn't exist
-    output_data_.push_back({{name, &s_type_proto<T>}, {}, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto), OrtValue(), optional<float>(),
+                                optional<float>()));
   }
 
   // Add other registered types, possibly experimental
@@ -224,33 +382,35 @@ class OpTester {
   void AddOutput(const char* name, const T& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(val);
+    auto ptr = onnxruntime::make_unique<T>(val);
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
+                                optional<float>()));
   }
 
   template <typename T>
   void AddOutput(const char* name, T&& val) {
     auto mltype = DataTypeImpl::GetType<T>();
     ORT_ENFORCE(mltype != nullptr, "T must be a registered cpp type");
-    auto ptr = std::make_unique<T>(std::move(val));
+    auto ptr = onnxruntime::make_unique<T>(std::move(val));
     OrtValue value;
     value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
     ptr.release();
-    output_data_.push_back({{name, mltype->GetTypeProto()}, value, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, mltype->GetTypeProto()), std::move(value), optional<float>(),
+                                optional<float>()));
   }
 
   // Add non tensor output
   template <typename TKey, typename TVal>
   void AddOutput(const char* name, const std::vector<std::map<TKey, TVal>>& val) {
-    auto ptr = std::make_unique<std::vector<std::map<TKey, TVal>>>(val);
+    auto ptr = onnxruntime::make_unique<std::vector<std::map<TKey, TVal>>>(val);
     OrtValue ml_value;
-    ml_value.Init(ptr.release(),
-                  DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
+    ml_value.Init(ptr.release(), DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>(),
                   DataTypeImpl::GetType<std::vector<std::map<TKey, TVal>>>()->GetDeleteFunc());
-    output_data_.push_back({{name, &s_vec_map_type_proto<TKey, TVal>}, ml_value, optional<float>(), optional<float>()});
+    output_data_.push_back(Data(NodeArg(name, &VectorOfMapType<TKey, TVal>::s_vec_map_type_proto), std::move(ml_value),
+                                optional<float>(), optional<float>()));
   }
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
@@ -271,14 +431,13 @@ class OpTester {
   template <typename T>
   void AddAttribute(std::string name, T value) {
     // Generate a the proper AddAttribute call for later
-    add_attribute_funcs_.emplace_back(
-        [name = std::move(name), value = std::move(value)](onnxruntime::Node& node) { node.AddAttribute(name, value); });
+    add_attribute_funcs_.emplace_back([name = std::move(name), value = std::move(value)](onnxruntime::Node& node) {
+      node.AddAttribute(name, value);
+    });
   }
 
-  enum class ExpectResult {
-    kExpectSuccess,
-    kExpectFailure
-  };
+  enum class ExpectResult { kExpectSuccess,
+                            kExpectFailure };
 
   using CustomOutputVerifierFn =
       std::function<void(const std::vector<OrtValue>& /*fetches*/, const std::string& /*provider_type*/)>;
@@ -287,21 +446,41 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+<<<<<<< HEAD
            bool sequential_execution = true,
            const CustomOutputVerifierFn& custom_output_verifier = {});
 
   std::vector<MLValue> GetFetches() { return fetches_; }
+=======
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
+
+  void Run(SessionOptions session_options,
+           ExpectResult expect_result = ExpectResult::kExpectSuccess,
+           const std::string& expected_failure_string = "",
+           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   struct Data {
     onnxruntime::NodeArg def_;
     OrtValue data_;
     optional<float> relative_error_;
     optional<float> absolute_error_;
+    bool sort_output_;
+    Data(onnxruntime::NodeArg&& def, OrtValue&& data, optional<float>&& rel, optional<float>&& abs,
+         bool sort_output = false)
+        : def_(std::move(def)),
+          data_(std::move(data)),
+          relative_error_(std::move(rel)),
+          absolute_error_(abs),
+          sort_output_(sort_output) {}
+    Data(Data&&) = default;
+    Data& operator=(Data&&) = default;
   };
 
  protected:
-  virtual void AddNodes(onnxruntime::Graph& graph,
-                        std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+  virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                         std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs);
 
@@ -334,18 +513,15 @@ class OpTester {
 
  protected:
   template <typename T>
-  void AddData(std::vector<Data>& data, const char* name,
-               const std::vector<int64_t>& dims, const T* values,
-               int64_t values_count, bool is_initializer = false) {
+  void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
+               int64_t values_count, bool is_initializer = false, bool sort_output = false) {
     try {
       TensorShape shape{dims};
-      ORT_ENFORCE(shape.Size() == values_count, values_count,
-                  " input values doesn't match tensor size of ", shape.Size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
+                  shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                               shape,
-                                               allocator);
+      auto p_tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
 
       auto* data_ptr = p_tensor->template MutableData<T>();
       for (int64_t i = 0; i < values_count; i++) {
@@ -360,17 +536,60 @@ class OpTester {
 
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OrtValue value;
-      value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      data.push_back({{name, &type_proto}, value, optional<float>(), optional<float>()});
-      if (is_initializer)
-        initializer_index_.push_back(data.size() - 1);
+      value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+      data.push_back(Data(NodeArg(name, &type_proto), std::move(value), optional<float>(), optional<float>(), sort_output));
+      if (is_initializer) initializer_index_.push_back(data.size() - 1);
     } catch (const std::exception& ex) {
       std::cerr << "AddData for '" << name << "' threw: " << ex.what();
       throw;
     }
   }
 
+<<<<<<< HEAD
  private:
+=======
+  template <typename T>
+  void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
+    auto num_tensors = seq_tensors.tensors.size();
+    std::vector<Tensor> tensors;
+    tensors.resize(num_tensors);
+    auto elem_type = DataTypeImpl::GetType<T>();
+    for (size_t i = 0; i < num_tensors; ++i) {
+      TensorShape shape{seq_tensors.tensors[i].shape};
+      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
+      ORT_ENFORCE(shape.Size() == values_count, values_count,
+                  " input values doesn't match tensor size of ", shape.Size());
+
+      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+      auto& tensor = tensors[i];
+
+      tensor = Tensor(elem_type,
+                      shape,
+                      allocator);
+
+      auto* data_ptr = tensor.template MutableData<T>();
+      for (int64_t x = 0; x < values_count; ++x) {
+        data_ptr[x] = seq_tensors.tensors[i].data[x];
+      }
+    }
+
+    OrtValue value;
+    auto mltype = DataTypeImpl::GetType<TensorSeq>();
+    auto ptr = onnxruntime::make_unique<TensorSeq>(elem_type);
+    ptr->SetElements(std::move(tensors));
+    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
+    ptr.release();
+    data.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto), std::move(value),
+                        optional<float>(), optional<float>()));
+  }
+
+  void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
+                    const std::string& expected_failure_string, const RunOptions* run_options,
+                    std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
+                    const std::string& provider_type);
+
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
@@ -407,7 +626,8 @@ inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int
 }
 
 inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int input_size) {
-  auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);
+  auto in_vector =
+      ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);
   auto output_vector = EigenVectorMap<float>(f_data, input_size);
   output_vector = in_vector.template cast<float>();
 }

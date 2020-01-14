@@ -7,15 +7,36 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
+<<<<<<< HEAD
 size_t profiling::Profiler::max_num_events_ = DEFAULT_MAX_PROFILER_EVENTS;
+=======
+#ifdef ENABLE_STATIC_PROFILER_INSTANCE
+Profiler* Profiler::instance_ = nullptr;
+
+profiling::Profiler::~Profiler() {
+  instance_ = nullptr;
+}
+#else
+profiling::Profiler::~Profiler() {}
+#endif
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
+  ORT_ENFORCE(enabled_);
   return std::chrono::high_resolution_clock::now();
 }
 
 void Profiler::Initialize(const logging::Logger* session_logger) {
   ORT_ENFORCE(session_logger != nullptr);
   session_logger_ = session_logger;
+#ifdef ENABLE_STATIC_PROFILER_INSTANCE
+  // In current design, profiler instance goes with inference session. Since it's possible to have
+  // multiple inference sessions, profiler by definition is not singleton. However, in performance
+  // debugging, it would be helpful to access profiler in code that have no access to inference session,
+  // which is why we have this pseudo-singleton implementation here for debugging in single inference session.
+  ORT_ENFORCE(instance_ == nullptr, "Static profiler instance only works with single session");
+  instance_ = this;
+#endif
 }
 
 void Profiler::StartProfiling(const logging::Logger* custom_logger) {
@@ -29,7 +50,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
 template <typename T>
 void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
-  profile_stream_ = std::ofstream(file_name, std::ios::out | std::ios::trunc);
+  profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
   profile_stream_file_ = ToMBString(file_name);
   profiling_start_time_ = StartTime();
 }

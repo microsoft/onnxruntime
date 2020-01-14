@@ -3,28 +3,43 @@
 
 #pragma once
 #include <functional>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 namespace onnxruntime {
-class Loop final : public OpKernel {
+
+class Loop : public OpKernel, public controlflow::IControlFlowKernel {
  public:
-  Loop(const OpKernelInfo& info) : OpKernel(info) {
-    // make sure the attribute was present even though we don't need it here.
-    // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
-    // and a SessionState instance for executing the subgraph is created by InferenceSession.
-    // This is available via Info().GetSubgraphSessionState("attribute_name") when Compute is called.
-    ONNX_NAMESPACE::GraphProto proto;
-    ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
-    ORT_IGNORE_RETURN_VALUE(proto);
-  }
+  Loop(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
 
+  common::Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                            const std::string& attribute_name,
+                                            const SessionState& subgraph_session_state) override;
+
+  // hide internal implementation details via forward declaration.
+  struct Info;
+  ~Loop();
+
+  // function to concatenate the OrtValue instances from each Loop iteration into a single output buffer.
+  // @param per_iteration_output OrtValue instances from each iteration. Never empty. All should have the same shape.
+  // @param output Pre-allocated output buffer. On device specific to the ExecutionProvider running the Loop node.
+  using ConcatOutput = std::function<Status(std::vector<OrtValue>& per_iteration_output,
+                                            void* output, size_t output_size_in_bytes)>;
+
+ protected:
+  // derived class can provide implementation for handling concatenation of Loop output on a different device
+  void SetConcatOutputFunc(const ConcatOutput& concat_output_func) { concat_output_func_ = concat_output_func; }
+
  private:
-  mutable std::unique_ptr<FeedsFetchesManager> cached_feeds_fetches_manager_;
+  // Info and FeedsFetchesManager re-used for each subgraph execution.
+  std::unique_ptr<Info> info_;
+  std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
+  ConcatOutput concat_output_func_;
 };
 }  // namespace onnxruntime

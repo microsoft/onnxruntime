@@ -28,25 +28,40 @@ class CPUExecutionProvider : public IExecutionProvider {
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kCpuExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) { return std::make_unique<CPUAllocator>(); },
+                                                [](int) { return onnxruntime::make_unique<TAllocator>(); },
                                                 std::numeric_limits<size_t>::max()};
+
 #ifdef USE_JEMALLOC
+#if defined(USE_MIMALLOC)
+#error jemalloc and mimalloc should not both be enabled
+#endif
+
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
     InsertAllocator(
         std::shared_ptr<IArenaAllocator>(
-            std::make_unique<DummyArena>(device_info.factory(0))));
+            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
 #else
+//Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+#if defined(__amd64__) || defined(_M_AMD64)
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
+#else
+    ORT_UNUSED_PARAMETER(info);
+#endif
       InsertAllocator(
           std::shared_ptr<IArenaAllocator>(
-              std::make_unique<DummyArena>(device_info.factory(0))));
+              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+
 #endif
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+<<<<<<< HEAD
+=======
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+>>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
  private:
   std::vector<FuseRuleFn> fuse_rules_;

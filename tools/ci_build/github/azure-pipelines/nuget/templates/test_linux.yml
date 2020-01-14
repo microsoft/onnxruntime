@@ -4,14 +4,19 @@ parameters:
 
 jobs:
 - job: NuGet_Test_Linux
+  workspace:
+    clean: all
   pool: ${{ parameters.AgentPool }}
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+  - group: ORT_TEST_DATA_SAS
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
   steps:
-  - template: ../../templates/linux-set-variables-and-download.yml
+  - template: set-test-data-variables-step.yml
+  - template: linux-set-variables-and-download.yml
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Signed NuGet'
@@ -19,18 +24,36 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Linux CustomOp TestData'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/testdata'
+
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
+
   - ${{ if eq(parameters['TestGPU'], 'false') }}:
     - script: |
        set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
-      displayName: 'Run Package Test (x64)'
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber) true
+      displayName: 'Run Package Test (x64) on CentOS7'
+      env:
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+
+  - ${{ if eq(parameters['TestGPU'], 'false') }}:
+    - script: |
+       set -e -x
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber)
+      displayName: 'Run Package Test (x64) on Ubuntu'
       env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
 
   - ${{ if eq(parameters['TestGPU'], 'true') }}:
     - script: |
        set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker-gpu.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact
+       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker-gpu.sh $(Build.SourcesDirectory) $(Build.BinariesDirectory) nuget-artifact $(NuGetPackageVersionNumber)
       displayName: 'Run Package Test GPU (x64)'
       env:
         OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)

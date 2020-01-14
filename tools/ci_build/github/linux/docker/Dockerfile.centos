@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/dotnet-buildtools/prereqs:centos-7-50f0d02-20190918214028
+
+ARG PYTHON_VERSION
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
+
+ARG BUILD_UID=1000
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER 
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

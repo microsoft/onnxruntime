@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -29,6 +30,11 @@ TEST(GemmOpTest, GemmNoTrans) {
 // Only CUDA kernel has float 16 support
 #ifdef USE_CUDA
 TEST(GemmOpTest, GemmNoTrans_f16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
   OpTester test("Gemm");
 
   test.AddAttribute("transA", (int64_t)0);
@@ -56,7 +62,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddInput<MLFloat16>("C", {2, 3}, f_C);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: fp16 is not supported
 }
 #endif
 
@@ -116,7 +122,7 @@ TEST(GemmOpTest, GemmAlphaBeta) {
   test.AddOutput<float>("Y", {2, 3},
                         {7.0f, 7.0f, 7.0f,
                          -3.0f, -3.0f, -3.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Seg fault in parser
 }
 
 TEST(GemmOpTest, GemmNaN) {
@@ -135,7 +141,7 @@ TEST(GemmOpTest, GemmNaN) {
   test.AddOutput<float>("Y", {2, 3},
                         {10.0f, 10.0f, 10.0f,
                          -10.0f, -10.0f, -10.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Seg fault in parser
 }
 
 TEST(GemmOpTest, GemmScalarBroadcast) {
@@ -229,7 +235,26 @@ TEST(GemmOpTest, GemmEmptyTensor) {
   test.AddInput<float>("C", {3}, std::vector<float>(3, 1.0f));
   test.AddOutput<float>("Y", {0, 3},
                         {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider}); //TensorRT: doesn't support dynamic shape yet
+}
+
+TEST(GemmOpTest, GemmNoBiasOpset11) {
+  OpTester test("Gemm", 11);
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<float>("A", {2, 4},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<float>("B", {4, 3}, std::vector<float>(12, 1.0f));
+  test.AddOutput<float>("Y", {2, 3},
+                        {10.0f, 10.0f, 10.0f,
+                         -10.0f, -10.0f, -10.0f});
+  // NGraph and tensorRT don't seem to support missing bias
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test

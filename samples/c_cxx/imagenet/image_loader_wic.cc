@@ -15,11 +15,10 @@ bool CreateImageLoader(void** out) {
   return true;
 }
 
-void ReleaseImageLoader(void* p){
+void ReleaseImageLoader(void* p) {
   auto piFactory = reinterpret_cast<IWICImagingFactory*>(p);
   piFactory->Release();
 }
-
 
 template <typename T>
 static void PrintErrorDescription(HRESULT hr, std::basic_ostringstream<T>& oss) {
@@ -48,9 +47,9 @@ OrtStatus* LoadImageFromFileAndCrop(void* loader, const ORTCHAR_T* filename, dou
 
     UINT count = 0;
     ATLENSURE_SUCCEEDED(piDecoder->GetFrameCount(&count));
-    if(count != 1){
-	   return OrtCreateStatus(ORT_FAIL, "The image has multiple frames, I don't know which to choose");
-	}
+    if (count != 1) {
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "The image has multiple frames, I don't know which to choose");
+    }
 
     CComPtr<IWICBitmapFrameDecode> piFrameDecode;
     ATLENSURE_SUCCEEDED(piDecoder->GetFrame(0, &piFrameDecode));
@@ -93,14 +92,14 @@ OrtStatus* LoadImageFromFileAndCrop(void* loader, const ORTCHAR_T* filename, dou
     *out_width = bbox_w_size;
     *out_height = bbox_h_size;
     return nullptr;
-  } catch (std::exception& ex) {
+  } catch (const std::exception& ex) {
     std::ostringstream oss;
     oss << "Load " << filename << " failed:" << ex.what();
-    return OrtCreateStatus(ORT_FAIL, oss.str().c_str());
+    return Ort::GetApi().CreateStatus(ORT_FAIL, oss.str().c_str());
   } catch (const CAtlException& ex) {
     std::ostringstream oss;
     oss << "Load " << filename << " failed:";
     PrintErrorDescription(ex.m_hr, oss);
-    return OrtCreateStatus(ORT_FAIL, oss.str().c_str());
+    return Ort::GetApi().CreateStatus(ORT_FAIL, oss.str().c_str());
   }
 }

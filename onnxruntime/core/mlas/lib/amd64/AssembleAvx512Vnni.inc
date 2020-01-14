@@ -139,7 +139,7 @@ VpdpwssdsZmmZmmZmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 ;   This macro builds a VNNI instruction of the form:
 ;
-;        instr zmm1,zmm2,DWORD BCST [BaseReg+IndexReg*Scale]
+;        instr zmm1,zmm2,DWORD BCST [BaseReg+IndexReg*Scale+ByteOffset]
 ;
 ; Arguments:
 ;
@@ -151,14 +151,19 @@ VpdpwssdsZmmZmmZmm MACRO DestReg, Src1Reg, Src2Reg
 ;
 ;   BaseReg - Specifies the base register of the broadcast operand.
 ;
+;   ByteOffset - Specifies the DWORD aligned byte offset for the broadcast
+;       operand.
+;
 ;   IndexReg - Specifies the optional index register of the broadcast operand.
 ;
 ;   Scale - Specifies the scaling factor of the optional index register.
 ;
 
-VnniZmmZmmBroadcast MACRO Opcode, DestReg, Src1Reg, BaseReg, IndexReg, Scale
+VnniZmmZmmBroadcast MACRO Opcode, DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
         LOCAL   Payload0, Payload1, Payload2, ModRMByte, SibByte
+
+.errnz (ByteOffset AND 3)
 
         Payload0 = 002h                     ; "0F 38" prefix
         Payload0 = Payload0 + ((((ZmmIndex_&DestReg& SHR 3) AND 1) XOR 1) SHL 7)
@@ -183,6 +188,9 @@ IFNB <IndexReg>
 ELSE
         ModRMByte = ModRMByte + (GprIndex_&BaseReg& AND 7)
 ENDIF
+IF ByteOffset NE 0
+        ModRMByte = ModRMByte + 040h        ; indicate disp8 byte offset
+ENDIF
 
 IFNB <IndexReg>
         SibByte = 0
@@ -199,34 +207,36 @@ ENDIF
         SibByte = SibByte + (GprIndex_&BaseReg& AND 7)
 ENDIF
 
-IFNB <IndexReg>
-        db      062h, Payload0, Payload1, Payload2, Opcode, ModRMByte, SibByte
-ELSE
         db      062h, Payload0, Payload1, Payload2, Opcode, ModRMByte
+IFNB <IndexReg>
+        db      SibByte
+ENDIF
+IF ByteOffset NE 0
+        db      ByteOffset SHR 2
 ENDIF
 
         ENDM
 
-VpdpbusdZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, IndexReg, Scale
+VpdpbusdZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
-        VnniZmmZmmBroadcast 050h, DestReg, Src1Reg, BaseReg, IndexReg, Scale
-
-        ENDM
-
-VpdpbusdsZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, IndexReg, Scale
-
-        VnniZmmZmmBroadcast 051h, DestReg, Src1Reg, BaseReg, IndexReg, Scale
+        VnniZmmZmmBroadcast 050h, DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
         ENDM
 
-VpdpwssdZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, IndexReg, Scale
+VpdpbusdsZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
-        VnniZmmZmmBroadcast 052h, DestReg, Src1Reg, BaseReg, IndexReg, Scale
+        VnniZmmZmmBroadcast 051h, DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
         ENDM
 
-VpdpwssdsZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, IndexReg, Scale
+VpdpwssdZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
-        VnniZmmZmmBroadcast 053h, DestReg, Src1Reg, BaseReg, IndexReg, Scale
+        VnniZmmZmmBroadcast 052h, DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
+
+        ENDM
+
+VpdpwssdsZmmZmmBroadcast MACRO DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
+
+        VnniZmmZmmBroadcast 053h, DestReg, Src1Reg, BaseReg, ByteOffset, IndexReg, Scale
 
         ENDM
