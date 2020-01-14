@@ -13,16 +13,6 @@ namespace cuda {
 
 Status ExpandImpl(
     const size_t element_size,
-<<<<<<< HEAD
-    const int32_t rank,
-    const size_t N,
-    const size_t N_input,
-    const void* input_data,
-    void* output_data,
-    const TArray<fast_divmod>* fdm_input_dims,
-    const TArray<fast_divmod>* fdm_output_dims,
-    const TArray<fast_divmod>* fdm_output_subdim_size);
-=======
     const int N_output,
     const int N_input,
     const void* input_data,
@@ -30,7 +20,6 @@ Status ExpandImpl(
     CudaKernel::CudaAsyncBuffer<fast_divmod>& fdm_output_strides, 
     CudaKernel::CudaAsyncBuffer<int64_t>& input_view_strides);
 
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
 }  // namespace cuda
 }  // namespace onnxruntime

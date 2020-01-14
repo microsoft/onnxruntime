@@ -92,19 +92,23 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
 
   auto rank = input_dims.size();
-  CudaAsyncBuffer<int64_t> input_strides(&kernel, rank);
   CudaAsyncBuffer<size_t> perm(&kernel, permutations);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(&kernel, rank);
-  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
-  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
-
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
+  TensorPitches original_input_strides(input_dims);
+  TensorPitches original_output_strides(output_dims);
+  
+  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
+  TArray<int64_t> input_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    input_strides.data_[i] = original_input_strides[(*p_perm)[i]];
+  }
+  TArray<fast_divmod> output_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  }
   ORT_RETURN_IF_ERROR(perm.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
-
   size_t element_size = input.DataType()->Size();
-  auto status = TransposeImpl(element_size, rank, input_strides.GpuPtr(), perm.GpuPtr(), input.DataRaw(),
-                              fdm_output_strides.GpuPtr(), output.MutableDataRaw(), output.Shape().Size());
+  auto status = TransposeImpl(element_size, rank, input_strides, perm.GpuPtr(), input.DataRaw(),
+                              fdm_output_strides, output.MutableDataRaw(), output.Shape().Size());
 
   return status;
 }
@@ -127,59 +131,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-<<<<<<< HEAD
-  auto mn = TryTransposeWithCublas(*p_perm, input_shape);
-  int M = std::get<0>(mn);
-  int N = std::get<1>(mn);
-  if (M != 0 && N != 0) {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-    CudaT one = ToCudaType<T>::FromFloat(1.0f);
-    CudaT zero = ToCudaType<T>::FromFloat(0.0f);
-    const CudaT* input_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* output_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-    CUBLAS_RETURN_IF_ERROR(
-        cublasTransposeHelper(
-            CublasHandle(),
-            CUBLAS_OP_T,
-            CUBLAS_OP_T,
-            M,
-            N,
-            &one,
-            input_data,
-            N,
-            &zero,
-            input_data,
-            N,
-            output_data,
-            M));
-    return Status::OK();
-  }
-
-  TensorPitches original_input_strides(input_dims);
-  TensorPitches original_output_strides(output_dims);
-
-  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
-  TArray<int64_t> input_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    input_strides.data_[i] = original_input_strides[(*p_perm)[i]];
-  }
-  TArray<fast_divmod> output_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
-  }
-
-  TransposeImpl(
-      rank,
-      output_shape.Size(),
-      input_strides,
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X.template Data<T>()),
-      output_strides,
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y->template MutableData<T>()));
-
-  return Status::OK();
-=======
   return DoTranspose(*this, *p_perm, X, *Y);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }
 
 }  // namespace cuda

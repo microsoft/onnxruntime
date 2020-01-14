@@ -24,11 +24,7 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   CUDAExecutionProviderInfo info;
   info.device_id = device_id_;
-<<<<<<< HEAD
-  return std::make_unique<CUDAExecutionProvider>(info, false, cuda_mem_limit_);
-=======
-  return onnxruntime::make_unique<CUDAExecutionProvider>(info);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+  return onnxruntime::make_unique<CUDAExecutionProvider>(info, false, cuda_mem_limit_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id, size_t cuda_mem_limit) {

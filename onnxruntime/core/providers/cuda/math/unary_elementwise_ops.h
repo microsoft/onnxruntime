@@ -90,9 +90,5 @@ class Not final : public UnaryElementwise {
   Not(const OpKernelInfo& info) : UnaryElementwise(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
-<<<<<<< HEAD
-=======
-
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -8,9 +8,8 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__global__ void _TransposeKernel(int32_t rank, CUDA_LONG N,
-                                 const TArray<int64_t> input_strides, const T* input_data,
-                                 const TArray<fast_divmod> output_strides, T* output_data) {
+__global__ void _TransposeKernel(int32_t shape_rank, const TArray<int64_t> input_strides, const size_t* perm,
+                                 const T* input_data, const TArray<fast_divmod> output_strides, T* output_data, CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
@@ -28,23 +27,8 @@ __global__ void _TransposeKernel(int32_t rank, CUDA_LONG N,
   output_data[id] = input_data[input_index];
 }
 
-<<<<<<< HEAD
-template <typename T>
-void TransposeImpl(int32_t rank, int64_t N,
-                   const TArray<int64_t>& input_strides, const T* input_data,
-                   const TArray<fast_divmod>& output_strides, T* output_data) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _TransposeKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      rank, (CUDA_LONG)N, input_strides, input_data, output_strides, output_data);
-}
-
-#define SPECIALIZED_IMPL(T)                                                           \
-  template void TransposeImpl<T>(int32_t rank, int64_t N,                             \
-                      const TArray<int64_t>& input_strides, const T* input_data,      \
-                      const TArray<fast_divmod>& output_strides, T* output_data);
-=======
-Status TransposeImpl(size_t element_size, size_t shape_rank, const int64_t* input_strides, const size_t* perm,
-                     const void* input_data, const fast_divmod* fdm_output_strides, void* output_data, size_t N) {
+Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides, const size_t* perm,
+                     const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int64_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (element_size) {
     case sizeof(int8_t):
@@ -83,7 +67,6 @@ Status TransposeImpl(size_t element_size, size_t shape_rank, const int64_t* inpu
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
                              element_size);
   }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 
   return Status::OK();
 }

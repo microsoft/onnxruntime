@@ -175,41 +175,5 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
   }
 };
 
-// CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
-// it's safter to wrap it with automatically memory deleter as CudnnReduceDescriptor.
-// An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t
-// is implemented below, so CUDA can seamlessly work.
-class CudnnReduceDescriptor final {
- public:
-  CudnnReduceDescriptor() : desc_(nullptr) {
-  }
-
-  ~CudnnReduceDescriptor() {
-    if (desc_ != nullptr) {
-      cudnnDestroyReduceTensorDescriptor(desc_);
-      desc_ = nullptr;
-    }
-  }
-
-  Status Set(cudnnReduceTensorOp_t op, cudnnDataType_t type, cudnnReduceTensorIndices_t indices) {
-    if (!desc_)
-      CUDNN_RETURN_IF_ERROR(cudnnCreateReduceTensorDescriptor(&desc_));
-
-    CUDNN_RETURN_IF_ERROR(cudnnSetReduceTensorDescriptor(
-        desc_,
-        op,
-        type,
-        CUDNN_PROPAGATE_NAN,
-        indices,
-        CUDNN_32BIT_INDICES));  // currently only the 32-bit (unsigned int) type is supported.
-    return Status::OK();
-  }
-
-  operator cudnnReduceTensorDescriptor_t() const { return desc_; }
-
- private:
-  cudnnReduceTensorDescriptor_t desc_;
-};
-
 }  // namespace cuda
 }  // namespace onnxruntime

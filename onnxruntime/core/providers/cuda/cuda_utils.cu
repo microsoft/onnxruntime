@@ -10,51 +10,32 @@
 namespace onnxruntime {
 namespace cuda {
 
-<<<<<<< HEAD
+
 std::vector<cudaDeviceProp> GridDim::s_cachedDeviceProps;
 std::once_flag GridDim::s_cachedDevicePropsInitFlag;
 
-template <typename T, CUDA_LONG NumElementsPerThread>
-=======
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 __global__ void _Fill(
     T* output_data,
     T val,
     CUDA_LONG N) {
-<<<<<<< HEAD
-  CUDA_LONG id = blockIdx.x * blockDim.x * NumElementsPerThread + threadIdx.x;
-
-#pragma unroll
-  for (int i = 0; i < NumElementsPerThread; ++i) {
-    if (id < N) {
-      output_data[id] = val;
-      id += blockDim.x;
-=======
   CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = val;
-      id += NumThreadsPerBlock;
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
+      id += blockDim.x;
     }
   }
 }
 
 template <typename T>
 void Fill(T* output, T value, int64_t count) {
-<<<<<<< HEAD
-  const auto blocks_per_grid = CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread);
-  CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _Fill<T, GridDim::maxElementsPerThread><<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
-=======
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _Fill<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }
 template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
