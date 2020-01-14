@@ -521,10 +521,10 @@ class TestInferenceSession(unittest.TestCase):
 
     def testGraphOptimizationLevel(self):
         opt = onnxrt.SessionOptions()
+        self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_BASIC)
+            # default should be basic optimization
+        opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_ALL)
-            # default should be all optimization
-        opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED)
         sess = onnxrt.InferenceSession(self.get_name("logicaland.onnx"), sess_options=opt)
         a = np.array([[True, True], [False, False]], dtype=np.bool)
         b = np.array([[True, False], [True, False]], dtype=np.bool)

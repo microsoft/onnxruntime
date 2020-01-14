@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
         public bool ParallelExecution { get; set; } = false;
 
         [Option('o', "optimization_level", Required = false, HelpText = "Optimization Level. Default is 1, partial optimization.")]
-        public GraphOptimizationLevel OptimizationLevel { get; set; } = GraphOptimizationLevel.ORT_ENABLE_ALL;
+        public GraphOptimizationLevel OptimizationLevel { get; set; } = GraphOptimizationLevel.ORT_ENABLE_BASIC;
     }
 
     class Program

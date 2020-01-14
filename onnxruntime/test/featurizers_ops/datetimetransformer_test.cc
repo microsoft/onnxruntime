@@ -13,7 +13,7 @@ using SysClock = std::chrono::system_clock;
 namespace onnxruntime {
 namespace test {
 
-TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_04) {
+TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_04) {
   const time_t date = 217081624;
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
@@ -74,7 +74,7 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_04) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05) {
+TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_05) {
   const time_t date = 217081625;
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -135,7 +135,7 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05_and_Past_1976_Nov_17__12_27_04) {
+TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17__12_27_05_and_past_1976_nov_17_12_27_04) {
   const time_t date1 = 217081625;
   const time_t date2 = 217081624;
 
@@ -223,7 +223,7 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05_and_Past_1976_Nov_17__12_27
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(DateTimeTransformer, Future_2025_June_30) {
+TEST(FeaturizersTests, DateTimeTransformer_future_2025_june_30) {
   const time_t date = 1751241600;
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);

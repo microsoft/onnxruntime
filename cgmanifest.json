@@ -446,11 +446,11 @@
             },
             "type": "git"
          }
-      }
+      },
       {
          "component": {
             "git": {
-               "commitHash": "3f0f9802553944b75015aad098d856b2d17220df",
+               "commitHash": "573070aeeb77e267da2579ac1d75d92c688bbe97",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"
