@@ -39,6 +39,12 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
 
+  
+    //winml_adapter_api->sessionoptionsappendexecutionprovider_dml
+  //#ifndef _WIN64
+  //  xpInfo.create_arena = false;
+  //#endif
+
   return S_OK;
 }
 //
@@ -97,24 +103,26 @@ HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
   RETURN_HR_IF_NULL(E_POINTER, provider);
   RETURN_HR_IF(E_POINTER, *provider != nullptr);
 
-  //auto p_d3d_device = device_.get();
-  //auto p_queue = queue_.get();
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
-  //Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice = CreateDmlDevice(p_d3d_device);
+  OrtEnv* ort_env;
+  RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
+
+  OrtSession* ort_session_raw;
+  winml_adapter_api->CreateSessionWihtoutModel(ort_env, options, &ort_session_raw);
+  auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
+
+  auto d3d_device = device_.get();
+  auto queue = queue_.get();
 
   //std::unique_ptr<onnxruntime::IExecutionProvider> gpu_provider = Dml::CreateExecutionProvider(dmlDevice.Get(), p_queue);
-  //auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
 
   //const onnxruntime::Env& env = onnxruntime::Env::Default();
-  //env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid());
-  //// Cache the provider's raw pointer
-  //*pp_provider = gpu_provider.get();
+  //env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid()); // what to do here???
 
-  //ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(gpu_provider)));
-
-  //// assign the session to the out parameter
-  //auto sessionptr = wil::MakeOrThrow<winmla::InferenceSession>(session.release());
-  //RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(winmla::IInferenceSession), (void**)p_session));
+  //winml_adapter_api->SessionGetExecutionProvidersCount()
+  //winml_adapter_api->SessionGetExecutionProvider(i)
 
   return S_OK;
 }

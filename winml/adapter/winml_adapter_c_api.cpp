@@ -5,6 +5,9 @@
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
 
+#include <core/providers/cpu/cpu_provider_factory.h>
+#include <core/providers/dml/dml_provider_factory.h>
+
 #ifdef USE_DML
 //#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 //#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -14,6 +17,7 @@
 const OrtApi* GetVersion1Api();
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
+
 
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::EnvConfigureCustomLoggerAndProfiler,
@@ -52,7 +56,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ModelEnsureNoFloat16,
 
   // OrtSession methods
-  nullptr, // OrtStatus*(ORT_API_CALL* CreateSessionWihtoutModel)(_In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
+  &winmla::CreateSessionWihtoutModel,
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterExecutionProvider)(_In_ OrtSession* session, onnxruntime::IExecutionProvider* provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session, onnxruntime::IExecutionProvider* provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
@@ -66,6 +70,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext(onnxruntime::IExecutionProvider * dml_provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
+  &OrtSessionOptionsAppendExecutionProvider_CPU,
+  nullptr, //OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
   &winmla::ReleaseSequenceTypeInfo,

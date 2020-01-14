@@ -13,12 +13,11 @@ ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 ORT_API(void, ReleaseOperatorRegistry, OrtOperatorRegistry*);
 
+// OrtEnv methods
 ORT_API_STATUS_IMPL(EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
-
+// OrtTypeInfo methods
 ORT_API_STATUS_IMPL(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
-
-// OrtTypeInfo Casting methods
 ORT_API_STATUS_IMPL(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out);
 ORT_API_STATUS_IMPL(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out);
 
@@ -32,8 +31,6 @@ ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequ
 // OrtModel methods
 ORT_API_STATUS_IMPL(CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out);
 ORT_API_STATUS_IMPL(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
-
-
 ORT_API_STATUS_IMPL(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
 ORT_API_STATUS_IMPL(ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len);
 ORT_API_STATUS_IMPL(ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len);
@@ -50,14 +47,12 @@ ORT_API_STATUS_IMPL(ModelGetInputTypeInfo, _In_ const OrtModel* model, _In_ size
 ORT_API_STATUS_IMPL(ModelGetOutputTypeInfo, _In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info);
 ORT_API_STATUS_IMPL(ModelGetMetadataCount, _In_ const OrtModel* model, _Out_ size_t* count);
 ORT_API_STATUS_IMPL(ModelGetMetadata, _In_ const OrtModel* model, _Out_ size_t count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
-
-
 ORT_API_STATUS_IMPL(ModelEnsureNoFloat16, _In_ const OrtModel* model);
 
+// OrtSession methods
+ORT_API_STATUS_IMPL(CreateSessionWihtoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
 
 /*
-// OrtSession methods
-ORT_API_STATUS_IMPL(CreateSessionWihtoutModel, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
 ORT_API_STATUS_IMPL(SessionRegisterExecutionProvider, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider);
 ORT_API_STATUS_IMPL(SessionInitialize, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider);
 ORT_API_STATUS_IMPL(SessionRegisterGraphTransformers, _In_ OrtSession* session);

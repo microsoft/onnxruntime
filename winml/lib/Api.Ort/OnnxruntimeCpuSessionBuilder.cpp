@@ -56,12 +56,15 @@ OnnxruntimeCpuSessionBuilder::CreateSession(
   RETURN_HR_IF(E_POINTER, *provider != nullptr);
 
   auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   OrtEnv* ort_env;
   RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
 
-  OrtSession* ort_session;
-  //winml_adapter_api->CreateUninitializedSession(ort_env, options, ort_session);
+  OrtSession* ort_session_raw;
+  winml_adapter_api->CreateSessionWihtoutModel(ort_env, options, &ort_session_raw);
+  auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
+
   //winml_adapter_api->SessionGetExecutionProvidersCount()
   //winml_adapter_api->SessionGetExecutionProvider(i)
 

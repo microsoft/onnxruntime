@@ -14,6 +14,9 @@ ORT_RUNTIME_CLASS(OperatorRegistry);
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
 
+struct ID3D12Device;
+struct ID3D12CommandQueue;
+
 ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api) NO_EXCEPTION;
 
 // TODO: Must match onnxruntime::profiling::EventRecord
@@ -75,7 +78,7 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
 
   // OrtSession methods
-  OrtStatus*(ORT_API_CALL* CreateSessionWihtoutModel)(_In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateSessionWihtoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterExecutionProvider)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session, _In_ OrtExecutionProvider* provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
@@ -89,6 +92,8 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(_In_ OrtSessionOptions* options, int use_arena)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
   ORT_CLASS_RELEASE(Model);
   ORT_CLASS_RELEASE(MapTypeInfo);
   ORT_CLASS_RELEASE(SequenceTypeInfo);

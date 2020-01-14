@@ -178,6 +178,7 @@ add_dependencies(winml_lib_ort winml_api_native)
 add_dependencies(winml_lib_ort winml_api_native_internal)
 
 # Link libraries
+target_link_libraries(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
 target_link_libraries(winml_lib_ort PRIVATE wil)
 
 
@@ -212,6 +213,7 @@ list(APPEND winml_adapter_files
 	${winml_adapter_dir}/winml_adapter_operator_registry.h
 	${winml_adapter_dir}/winml_adapter_sequence_type_info.cpp
 	${winml_adapter_dir}/winml_adapter_sequence_type_info.h
+	${winml_adapter_dir}/winml_adapter_session.cpp
     )
 
 if (onnxruntime_USE_DML)
