@@ -4,6 +4,8 @@ import argparse
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
+from BertOnnxModel import BertOnnxModel
+from BertOnnxModelTF import BertOnnxModelTF
 
 def main():
     parser = argparse.ArgumentParser()
@@ -25,6 +27,12 @@ def main():
     parser.add_argument('--float16', required=False, action='store_true')
     parser.set_defaults(float16=False)
 
+    parser.add_argument('--gpu_only', required=False, action='store_true')
+    parser.set_defaults(gpu_only=False)
+
+    parser.add_argument('--tensor_flow', required=False, action='store_true')
+    parser.set_defaults(tensor_flow=False)
+
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -34,36 +42,12 @@ def main():
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.verbose)
+    if args.tensor_flow:
+        bert_model = BertOnnxModelTF(model, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16, args.gpu_only, args.verbose)
+    else:
+        bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16, args.gpu_only, args.verbose)
 
-    bert_model.fuse_layer_norm()
-
-    # FastGelu uses approximation for Gelu.  It is faster.
-    use_approximation = True
-    gelu_op_name = 'Gelu' if not use_approximation else 'FastGelu'
-    bert_model.fuse_gelu(gelu_op_name)
-
-    bert_model.fuse_reshape()
-
-    bert_model.fuse_attention()
-
-    bert_model.fuse_embed_layer(args.input_int32)
-
-    # Fuse Gelu and Add Bias before it.
-    bert_model.fuse_add_bias_gelu()
-
-    # Fuse SkipLayerNormalization and Add Bias before it.
-    bert_model.fuse_add_bias_skip_layer_norm()
-
-    if args.float16:
-        bert_model.convert_model_float32_to_float16()
-
-    bert_model.remove_unused_constant()
-
-    # Use symbolic batch dimension in input and output.
-    bert_model.update_dynamic_batch_io()
-
-    print("opset verion", bert_model.model.opset_import[0].version)
+    bert_model.optimize()
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())

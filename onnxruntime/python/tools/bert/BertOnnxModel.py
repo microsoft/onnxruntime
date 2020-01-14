@@ -27,7 +27,7 @@ from onnx import ModelProto, TensorProto, numpy_helper
 from OnnxModel import OnnxModel
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size, sequence_length, verbose):
+    def __init__(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only, verbose):
         assert num_heads > 0
         assert hidden_size % num_heads == 0
         assert sequence_length > 0
@@ -36,6 +36,10 @@ class BertOnnxModel(OnnxModel):
         self.num_heads = num_heads
         self.sequence_length = sequence_length
         self.hidden_size = hidden_size
+
+        self.input_int32 = input_int32
+        self.gpu_only = gpu_only
+        self.float16 = float16
 
         # A lookup table with mask input as key, and mask index output as value
         self.mask_indice = {}
@@ -193,7 +197,9 @@ class BertOnnxModel(OnnxModel):
 
             qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, 0])
             if qk_nodes is None:
-                continue
+                qk_nodes = self.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, 0])
+                if qk_nodes is None:
+                     continue
             (softmax_qk, add_qk, div_qk, matmul_qk) = qk_nodes
 
             q_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
@@ -203,8 +209,12 @@ class BertOnnxModel(OnnxModel):
 
             k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
             if k_nodes is None:
-                continue
-            (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
+                k_nodes = self.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0, 0])
+                if k_nodes is None:
+                    continue
+                (transpose_k, transpose_k_2, reshape_k, add_k, matmul_k) = k_nodes
+            else:
+                (transpose_k, reshape_k, add_k, matmul_k) = k_nodes
 
             mask_nodes = self.match_parent_path(add_qk, ['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0])
             if mask_nodes is None:
@@ -231,7 +241,7 @@ class BertOnnxModel(OnnxModel):
         self.fuse_gelu_with_tanh(gelu_op_name)
 
     """
-     Fuse Gelu with tanh into one node:
+     Fuse Gelu with Erf into one node:
                    +-------Mul(B=0.5)-------------------+
                    |                                    |
                    |                                    v
@@ -604,8 +614,16 @@ class BertOnnxModel(OnnxModel):
         +---(optional graph)               SkipLayerNormalization
 
       Optional graph is used to generate position list (0, 1, ...) per batch. It can be a constant in some model.
+
+      (input_ids) --> Gather -----+           Slice
+                                  |            |
+                                  v            v
+     (segment_ids)--> Gather --->Add        Reshape
+                                  |            |
+                                  v            v
+                              SkipLayerNormalization
     """
-    def fuse_embed_layer(self, input_int32):
+    def fuse_embed_layer(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -640,40 +658,56 @@ class BertOnnxModel(OnnxModel):
             print("Failed to find word embedding")
             return
         add_node, word_embedding_gather = word_embedding_path
+        input_ids = word_embedding_gather.input[1]
 
-        position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'], [1, 1, 1])
+        position_embedding_path = self.match_parent_path(normalize_node, ['Reshape', 'Slice'], [1, 0])
+
+        position_embedding_expand = None
         if position_embedding_path is None:
-            position_embedding_path2 = self.match_parent_path(add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
-            if position_embedding_path2 is None:
-                print("Failed to find position embedding")
+            position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Shape'], [1, 1, 1])
+            if position_embedding_path is None:
+                position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
+                if position_embedding_path is None:
+                    print("Failed to find position embedding")
+                    return
+                position_embedding_weight_node, position_embedding_expand, _, _, _, position_embedding_shape = position_embedding_path
+            else:
+                position_embedding_weight_node, position_embedding_expand, position_embedding_shape = position_embedding_path
+
+            if not position_embedding_shape is None and position_embedding_shape.input[0] != input_ids:
+                print("position and word embedding is expected to be applied on same input")
                 return
-            position_embedding_gather, position_embedding_expand, _, _, _, position_embedding_shape = position_embedding_path2
         else:
-            position_embedding_gather, position_embedding_expand, position_embedding_shape = position_embedding_path
+            _, position_embedding_weight_node = position_embedding_path
 
         segment_embedding_path = self.match_parent_path(normalize_node, ['Gather'], [1])
         if segment_embedding_path is None:
-            print("Failed to find segment embedding")
-            return
-        segment_embedding_gather = segment_embedding_path[0]
+            segment_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 1])
+            if segment_embedding_path is None:
+                print("Failed to find segment embedding")
+                return
+            _, segment_embedding_gather = segment_embedding_path
+        else:
+            segment_embedding_gather = segment_embedding_path[0]
 
-        input_ids = word_embedding_gather.input[1]
         segment_ids = segment_embedding_gather.input[1]
 
-        if position_embedding_shape.input[0] != input_ids:
-            print("position and word embedding is expected to be applied on same input")
-            return
 
-        subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [input_ids], output_name_to_node)
+        if position_embedding_expand:
+            subgraph_nodes = self.get_parent_subgraph_nodes(position_embedding_expand, [], output_name_to_node)
+            nodes_to_remove.extend(subgraph_nodes)
+        
+        nodes_to_remove.extend(word_embedding_path)
+        nodes_to_remove.extend(position_embedding_path)
+        nodes_to_remove.extend(segment_embedding_path)
 
-        nodes_to_remove.extend(subgraph_nodes)
-        nodes_to_remove.extend([normalize_node, add_node, segment_embedding_gather, word_embedding_gather, position_embedding_gather, position_embedding_expand])
+        nodes_to_remove.extend([normalize_node])
         nodes_to_remove.extend([mask_node])
 
         # store inputs for further processing
         self.bert_inputs = [input_ids, segment_ids, mask_input_name]
 
-        if not input_int32:
+        if not self.input_int32:
             # When mask has been casted to int32, use that casted one as input of embed layer norm.
             if mask_input_name in self.mask_casted:
                 mask_input_name = self.mask_casted[mask_input_name]
@@ -688,8 +722,11 @@ class BertOnnxModel(OnnxModel):
         embed_node = onnx.helper.make_node('EmbedLayerNormalization',
                         inputs=[input_ids,
                                 segment_ids, 
-                                word_embedding_gather.input[0], position_embedding_gather.input[0], segment_embedding_gather.input[0],
-                                normalize_node.input[2], normalize_node.input[3], # gamma and beta
+                                word_embedding_gather.input[0],
+                                position_embedding_weight_node.input[0],
+                                segment_embedding_gather.input[0],
+                                normalize_node.input[2],
+                                normalize_node.input[3], # gamma and beta
                                 mask_input_name],
                         outputs=["embed_output", mask_output_name],
                         name="EmbedLayer")
@@ -704,7 +741,7 @@ class BertOnnxModel(OnnxModel):
         print("Fused EmbedLayerNormalization count: 1")
 
         # Change graph input data type int32 if needed.
-        if input_int32:
+        if self.input_int32:
             self.change_input_to_int32()
 
     def get_bert_inputs(self, include_mask=True):
@@ -891,3 +928,32 @@ class BertOnnxModel(OnnxModel):
         self.add_nodes(layernorm_nodes)
         print("Fused SkipLayerNormalization count:", len(skip_layernorm_nodes))
         print("Fused LayerNormalization count:", len(layernorm_nodes))
+
+    def preprocess(self):
+        return
+
+    def optimize(self):
+        self. preprocess()
+        self.fuse_layer_norm()
+
+        # FastGelu uses approximation for Gelu.  It is faster.
+        use_approximation = True
+        gelu_op_name = 'FastGelu' if use_approximation and self.gpu_only else 'Gelu'
+        self.fuse_gelu(gelu_op_name)
+
+        self.fuse_reshape()
+
+        self.fuse_attention()
+        self.fuse_embed_layer()
+
+        # Fuse Gelu and Add Bias before it.
+        self.fuse_add_bias_gelu()
+        # Fuse SkipLayerNormalization and Add Bias before it.
+        self.fuse_add_bias_skip_layer_norm()
+
+        self.remove_unused_constant()
+
+        # Use symbolic batch dimension in input and output.
+        self.update_dynamic_batch_io()
+
+        print("opset verion", self.model.opset_import[0].version)

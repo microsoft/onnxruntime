@@ -3,21 +3,6 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# Convert Bert ONNX model exported from PyTorch to use Attention, Gelu,
-# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
-# performance on NVidia GPU.
-
-# Note: This script is not required for Bert model optimization. 
-# OnnxRuntime has bert model optimization support internally. The recommended way is
-# to set optimization level to ORT_ENABLE_EXTENDED during Bert model inference.
-# See the following document for more information:
-# https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
-
-# This script is retained for experiment purpose. Useful senarios like the following:
-#  (1) Change model from fp32 to fp16.
-#  (2) Change input data type from int64 to int32.
-#  (3) Model cannot be handled to OnnxRuntime graph optimization, and you can modify this script to get optimized model.
-
 import onnx
 import sys
 import argparse
@@ -308,6 +293,12 @@ class OnnxModel:
         for input in self.model.graph.input:
             if input.name == input_name:
                 return input
+        return None
+
+    def find_graph_output(self, output_name):
+        for output in self.model.graph.output:
+            if output.name == output_name:
+                return output
         return None
 
     def get_parent_subgraph_nodes(self, node, stop_nodes, output_name_to_node=None):
