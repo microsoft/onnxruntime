@@ -3,6 +3,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/DateTimeFeaturizer.h"
@@ -29,7 +30,7 @@ class DateTimeTransformer final : public OpKernel {
 
     // Get the input
     const auto* input_tensor(ctx->Input<Tensor>(1));
-    const std::int64_t* input_data(input_tensor->Data<std::int64_t>());
+    const int64_t* input_data(input_tensor->Data<int64_t>());
 
     // Prepare the output
     Tensor* year_tensor(ctx->Output(0, input_tensor->Shape()));
@@ -80,7 +81,7 @@ class DateTimeTransformer final : public OpKernel {
     const int64_t length(input_tensor->Shape().Size());
 
     for (int64_t i = 0; i < length; ++i) {
-      auto result(transformer.execute(input_data[i]));
+      auto result(transformer.execute(std::chrono::system_clock::from_time_t(input_data[i])));
 
       year_data[i] = std::move(result.year);
       month_data[i] = std::move(result.month);
@@ -116,7 +117,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint64_t>()),
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     DateTimeTransformer);
 
 }  // namespace featurizers

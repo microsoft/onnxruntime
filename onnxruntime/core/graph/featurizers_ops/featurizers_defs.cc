@@ -34,11 +34,13 @@ using ONNX_NAMESPACE::OPTIONAL;
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
+static void RegisterHashOneHotVectorizerFeaturizerVer1();
 static void RegisterImputationMarkerFeaturizerVer1();
 static void RegisterLabelEncoderFeaturizerVer1();
 static void RegisterMaxAbsScalarFeaturizerVer1();
 static void RegisterMinMaxScalarFeaturizerVer1();
 static void RegisterMissingDummiesFeaturizerVer1();
+static void RegisterOneHotEncoderFeaturizerVer1();
 static void RegisterRobustScalarFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
 static void RegisterTimeSeriesImputerFeaturizerVer1();
@@ -49,11 +51,13 @@ static void RegisterTimeSeriesImputerFeaturizerVer1();
 void RegisterMSFeaturizersSchemas() {
   RegisterCatImputerFeaturizerVer1();
   RegisterDateTimeFeaturizerVer1();
+  RegisterHashOneHotVectorizerFeaturizerVer1();
   RegisterImputationMarkerFeaturizerVer1();
   RegisterLabelEncoderFeaturizerVer1();
   RegisterMaxAbsScalarFeaturizerVer1();
   RegisterMinMaxScalarFeaturizerVer1();
   RegisterMissingDummiesFeaturizerVer1();
+  RegisterOneHotEncoderFeaturizerVer1();
   RegisterRobustScalarFeaturizerVer1();
   RegisterStringFeaturizerVer1();
   RegisterTimeSeriesImputerFeaturizerVer1();
@@ -70,15 +74,15 @@ void RegisterCatImputerFeaturizerVer1() {
         within the host frameworks and programming languages.
 
         C++-style pseudo signature:
-          std::float_t execute(std::float_t const &value);
-          std::double_t execute(std::double_t const &value);
+          float execute(float const &value);
+          double execute(double const &value);
           template <typename T> T execute(std::optional<T> const &value);
 
         Examples (where 55.5 is the mode value):
           execute(1.0) -> 1.0
           execute(NaN) -> 55.5
           execute(2.0) -> 2.0
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(CatImputerTransformer)
       .SinceVersion(1)
@@ -121,7 +125,7 @@ void RegisterDateTimeFeaturizerVer1() {
         Extracts various datetime-related values from a UTC time_point.
 
         C++-style pseudo signature:
-          TimePoint execute(std::chron::system_clock::time_point const &value);
+          TimePoint execute(std::chrono::system_clock::time_point const &value);
 
         Examples:
           Given a time_point 'value' representing "November 17, 1976 12:27:04PM":
@@ -149,7 +153,7 @@ void RegisterDateTimeFeaturizerVer1() {
             "holidayName": "",
             "isPaidTimeOff": 0
           }
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(DateTimeTransformer)
       .SinceVersion(1)
@@ -209,52 +213,191 @@ void RegisterDateTimeFeaturizerVer1() {
       .TypeAndShapeInferenceFunction(
           [](ONNX_NAMESPACE::InferenceContext& ctx) {
             const bool has_shape = hasInputShape(ctx, 1);
-            for (int output = 0; output < 21; ++output) {
-              switch (output) {
-                case 0:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT32, output);
-                  break;
-                case 1:  // fall through
-                case 2:
-                case 3:
-                case 4:
-                case 5:
-                case 6:
-                case 7:
-                case 8:
-                case 9:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
-                  break;
-                case 10:  // fall through
-                case 11:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT16, output);
-                  break;
-                case 12:  // fall through
-                case 13:
-                case 14:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
-                  break;
-                case 15:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT32, output);
-                  break;
-                case 16:
-                case 17:
-                case 18:
-                case 19:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, output);
-                  break;
-                case 20:
-                  propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, output);
-                  break;
-                default:
-                  assert(false);
-                  break;
-              }
-              if (has_shape) {
-                propagateShapeFromInputToOutput(ctx, 1, output);
-              }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT32, 0);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
             }
-          });
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 1);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 1);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 2);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 2);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 3);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 3);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 4);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 4);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 5);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 5);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 6);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 6);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 7);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 7);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 8);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 8);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 9);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 9);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT16, 10);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 10);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT16, 11);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 11);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 12);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 12);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 13);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 13);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 14);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 14);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_INT32, 15);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 15);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 16);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 16);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 17);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 17);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 18);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 18);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_STRING, 19);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 19);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 20);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 20);
+            }
+
+          }
+      );
+}
+
+void RegisterHashOneHotVectorizerFeaturizerVer1() {
+  static const char* doc = R"DOC(
+        Hashes the input to a categorical value, then produces a one hot encoded vector
+        based on that value.
+
+        C++-style pseudo signature:
+            template <typename T> HashOneHotVectorizerStruct execute(T const &value);
+
+        Examples:
+          Assuming the hashing algorithm...
+            "A" -> 1
+            "B" -> 2
+            "C" -> 5
+
+          and 'numCols' set to 8:
+
+            execute("A") -> [1, 0, 0, 0, 0, 0, 0, 0]
+            execute("B") -> [0, 1, 0, 0, 0, 0, 0, 0]
+            execute("C") -> [0, 0, 0, 0, 1, 0, 0, 0]
+  )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(HashOneHotVectorizerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(0, "NumElements", "No information available", "OutputT0")
+      .Output(1, "Value", "No information available", "OutputT1")
+      .Output(2, "Index", "No information available", "OutputT0")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT0",
+          {"tensor(uint64)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT1",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            const bool has_shape = hasInputShape(ctx, 1);
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT64, 0);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 1);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 1);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT64, 2);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 2);
+            }
+
+          }
+      );
 }
 
 void RegisterImputationMarkerFeaturizerVer1() {
@@ -262,17 +405,17 @@ void RegisterImputationMarkerFeaturizerVer1() {
         Returns true if the input is null, false if it is not.
 
         C++-style pseudo signature:
-          bool execute(std::float_t const &value);
-          bool execute(std::double_t const &value);
+          bool execute(float const &value);
+          bool execute(double const &value);
           template <typename T> bool execute(std::optional<T> const &value);
 
         Examples:
           3.0 -> false
           NaN -> true
           "foo" -> false
-          std::optional<std::string>() -> true
-          std::optional<std::string>("bar") -> false
-    )DOC";
+          std::optional<string>() -> true
+          std::optional<string>("bar") -> false
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(ImputationMarkerTransformer)
       .SinceVersion(1)
@@ -315,7 +458,7 @@ void RegisterLabelEncoderFeaturizerVer1() {
         Returns a unique id for the input based on all values encountered during training.
 
         C++-style pseudo signature:
-          template <typename T> std::uint32_t execute(T const &value);
+          template <typename T> uint32 execute(T const &value);
 
         Examples:
           Assuming the training data of ["A", "B", "C"]...
@@ -324,7 +467,7 @@ void RegisterLabelEncoderFeaturizerVer1() {
           execute("B") -> 2
           execute("C") -> 3
           execute("This value was not seen during training") -> 0
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(LabelEncoderTransformer)
       .SinceVersion(1)
@@ -367,8 +510,8 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
         Scales input based on the maximum absolute value of all data encountered during training.
 
         C++-style pseudo signature:
-          std::float_t execute(std::uint16_t value);
-          std::double_t execute(std::uint32_t value);
+          float execute(uint16 value);
+          double execute(uint32 value);
 
         Examples:
           Given a training set of [1.0, -2.0, 3.0, -4.0], where 4.0 is the absolute value of the
@@ -377,7 +520,7 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
           execute(1.0) -> 1.0 / 4.0
           execute(-4.0) -> -4.0 / 4.0
           execute(100.0) -> 100 / 4.0
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
       .SinceVersion(1)
@@ -426,11 +569,13 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
             } else {
-              fail_type_inference("input 1 is expected to have a accepted type");
+              fail_type_inference("input 1 is expected to have an accepted type");
             }
+
             if (hasInputShape(ctx, 1)) {
               propagateShapeFromInputToOutput(ctx, 1, 0);
             }
+
           });
 }
 
@@ -440,7 +585,7 @@ void RegisterMinMaxScalarFeaturizerVer1() {
         during training.
 
         C++-style pseudo signature:
-            template <typeanem T> std::double_t(T const &value);
+            template <typeanem T> double(T const &value);
 
         Examples:
           Given the training data [1, 2, 3, 4, 5];
@@ -450,7 +595,7 @@ void RegisterMinMaxScalarFeaturizerVer1() {
 
           execute(2) = 2 / 4
           execute(20) = 20 / 4
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MinMaxScalarTransformer)
       .SinceVersion(1)
@@ -493,17 +638,17 @@ void RegisterMissingDummiesFeaturizerVer1() {
         Returns 1 if the input is null, 0 if it is not.
 
         C++-style pseudo signature:
-            std::int8_t execute(std::float_t const &value);
-            std::int8_t execute(std::double_t const &value);
-            template <typename T> std::int8_t execute(T const &value);
+            int8 execute(float const &value);
+            int8 execute(double const &value);
+            template <typename T> int8 execute(T const &value);
 
         Examples:
           1.0 -> 0
           NaN -> 1
           "foo" -> 0
-          std::optional<std::string>() -> 1
-          std::optional<std::string>("bar") -> 0
-    )DOC";
+          std::optional<string>() -> 1
+          std::optional<string>("bar") -> 0
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MissingDummiesTransformer)
       .SinceVersion(1)
@@ -541,6 +686,80 @@ void RegisterMissingDummiesFeaturizerVer1() {
           });
 }
 
+void RegisterOneHotEncoderFeaturizerVer1() {
+  static const char* doc = R"DOC(
+        Produces a one hot vector based on categories calculated during training.
+
+        C++-style pseudo signature:
+          template <typename T> OneHotVector execute(T const &value);
+
+        Examples:
+          Assuming the training data [10, 20, 30, 40]...
+
+          execute(10) -> [0, 1, 0, 0, 0]
+          execute(20) -> [0, 0, 1, 0, 0]
+          execute(30) -> [0, 0, 0, 1, 0]
+          execute(40) -> [0, 0, 0, 0, 1]
+          execute(200) -> [1, 0, 0, 0, 0]
+          execute(-1) -> [1, 0, 0, 0, 0]
+  )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(OneHotEncoderTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "InputT")
+      .Output(0, "NumElements", "No information available", "OutputT0")
+      .Output(1, "Value", "No information available", "OutputT1")
+      .Output(2, "Index", "No information available", "OutputT0")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "InputT",
+          {"tensor(int8)", "tensor(int16)", "tensor(int32)", "tensor(int64)", "tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(uint64)", "tensor(float)", "tensor(double)", "tensor(bool)", "tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT0",
+          {"tensor(uint64)"},
+          "No information is available")
+      .TypeConstraint(
+          "OutputT1",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            const bool has_shape = hasInputShape(ctx, 1);
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT64, 0);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 0);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT8, 1);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 1);
+            }
+
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT64, 2);
+            if(has_shape) {
+              propagateShapeFromInputToOutput(ctx, 1, 2);
+            }
+
+          }
+      );
+}
+
 void RegisterRobustScalarFeaturizerVer1() {
   static const char* doc = R"DOC(
         MinMaxScalarEstimator + centering?
@@ -550,7 +769,7 @@ void RegisterRobustScalarFeaturizerVer1() {
 
         Examples:
           TODO
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(RobustScalarTransformer)
       .SinceVersion(1)
@@ -599,11 +818,13 @@ void RegisterRobustScalarFeaturizerVer1() {
                        input_elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
               propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, 0);
             } else {
-              fail_type_inference("input 1 is expected to have a accepted type");
+              fail_type_inference("input 1 is expected to have an accepted type");
             }
+
             if (hasInputShape(ctx, 1)) {
               propagateShapeFromInputToOutput(ctx, 1, 0);
             }
+
           });
 }
 
@@ -612,12 +833,12 @@ void RegisterStringFeaturizerVer1() {
         Converts the input into a string representation based on the input's type.
 
         C++-style pseudo signature:
-          template <typename T> std::string execute(T const &value);
+          template <typename T> string execute(T const &value);
 
         Examples:
           execute(1) -> "1"
           execute(3.14) -> "3.14"
-    )DOC";
+  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(StringTransformer)
       .SinceVersion(1)
