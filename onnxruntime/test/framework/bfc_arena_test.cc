@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
+#include "core/framework/utils.h"
 #include "gtest/gtest.h"
+#include "test_utils.h"
+
 #include <cstdlib>
 
 namespace onnxruntime {
@@ -234,5 +237,35 @@ TEST(BFCArenaTest, TestReserve) {
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
 }
+
+TEST(BFCArenaTest, UtilsAllocateBlockTest) {
+  auto cpu_arena = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+
+  EXPECT_EQ(cpu_arena->Info().type, OrtAllocatorType::OrtArenaAllocator);
+
+  // AllocateBlock should use Reserve so the growth rate of the arena doesn't change
+  size_t block_size = 4 * 1024 * 1024;
+  void* block = utils::AllocateBlock(*cpu_arena, block_size);
+  EXPECT_TRUE(block);
+
+  // if Reserve was called the initial allocation via Alloc should allocate 1MB of memory
+  // if Reserve was not called it would grow by another 4MB
+  size_t initial_extend_size = 1024 * 1024;
+  size_t size = 1024;
+  auto bytes = cpu_arena->Alloc(size);
+  EXPECT_TRUE(bytes);
+
+  AllocatorStats stats;
+  BFCArena* arena = dynamic_cast<BFCArena*>(&*cpu_arena);
+  EXPECT_TRUE(arena);
+  arena->GetStats(&stats);
+
+  EXPECT_EQ(stats.total_allocated_bytes, block_size + initial_extend_size);
+
+  cpu_arena->Free(block);
+  cpu_arena->Free(bytes);
+  //todo: test the used / max api.
+}
+
 }  // namespace test
 }  // namespace onnxruntime

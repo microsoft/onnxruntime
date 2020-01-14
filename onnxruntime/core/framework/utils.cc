@@ -6,6 +6,7 @@
 #include <iomanip>
 
 #include "core/graph/graph_viewer.h"
+#include "core/framework/arena.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/execution_providers.h"
@@ -120,6 +121,19 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
                       ml_tensor->GetDeleteFunc());
 
   return Status::OK();
+}
+
+void* AllocateBlock(IAllocator& allocator, size_t size) {
+  // use the normal alloc for small allocations, or if there is no arena in use
+  if (size > 1024 * 1024) {
+    IArenaAllocator* arena_alloc = dynamic_cast<IArenaAllocator*>(&allocator);
+    if (arena_alloc) {
+      // note: Reserve allocates a block that is used directly by the caller
+      return arena_alloc->Reserve(size);
+    }
+  }
+
+  return allocator.Alloc(size);
 }
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) {
