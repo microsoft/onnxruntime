@@ -239,7 +239,12 @@ TEST(BFCArenaTest, TestReserve) {
 }
 
 TEST(BFCArenaTest, UtilsAllocateBlockTest) {
-  auto cpu_arena = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  // use a local CPUExecutionProvider so it has a clean arena.
+  CPUExecutionProviderInfo info;
+  info.create_arena = true;
+  CPUExecutionProvider cpu_provider(info);
+
+  auto cpu_arena = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 
   EXPECT_EQ(cpu_arena->Info().type, OrtAllocatorType::OrtArenaAllocator);
 
