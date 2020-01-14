@@ -10,6 +10,7 @@ using UniqueOrtModel = std::unique_ptr<OrtModel, void (*)(OrtModel*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
+class OnnxruntimeEnvironment;
 
 class ModelInfo : public Microsoft::WRL::RuntimeClass<
                       Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -78,10 +79,12 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateEngineBuilder)(IEngineBuilder** engine_builder);
   const OrtApi* UseOrtApi();
   const WinmlAdapterApi* UseWinmlAdapterApi();
+  HRESULT GetOrtEnvironment(_Out_ OrtEnv** ort_env);
 
  private:
   const OrtApi* ort_api_ = nullptr;
   const WinmlAdapterApi* winml_adapter_api_ = nullptr;
+  std::shared_ptr<OnnxruntimeEnvironment> environment_;
 };
 
 

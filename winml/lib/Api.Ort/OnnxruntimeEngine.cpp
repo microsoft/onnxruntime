@@ -222,11 +222,13 @@ STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
   return S_OK;
 }
 
-
 HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
   engine_factory_ = engine_factory;
   return S_OK;
 }
+
+// TODO supposedly this doesnt work if it is not static
+static std::shared_ptr<OnnxruntimeEnvironment> onnxruntime_environment_;
 
 HRESULT OnnxruntimeEngineFactory::RuntimeClassInitialize() {
   const uint32_t ort_version = 1;
@@ -234,8 +236,7 @@ HRESULT OnnxruntimeEngineFactory::RuntimeClassInitialize() {
   ort_api_ = ort_api_base->GetApi(ort_version);
   winml_adapter_api_ = GetWinmlAdapterApi(ort_api_);
 
-  // TODO supposedly this doesnt work if it is not static
-  static auto lotus_environment = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
+  environment_ = onnxruntime_environment_ = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
   return S_OK;
 }
 
@@ -274,6 +275,11 @@ const OrtApi* OnnxruntimeEngineFactory::UseOrtApi() {
 
 const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
   return winml_adapter_api_;
+}
+
+HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
+  RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
+  return S_OK;
 }
 
 STDAPI CreateOnnxruntimeEngineFactory(_Out_ Windows::AI::MachineLearning::IEngineFactory** engine_factory) {

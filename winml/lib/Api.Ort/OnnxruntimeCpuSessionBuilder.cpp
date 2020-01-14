@@ -37,6 +37,11 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
 
+    //winml_adapter_api->sessionoptionsappendexecutionprovider_cpu
+  //#ifndef _WIN64
+  //  xpInfo.create_arena = false;
+  //#endif
+
   return S_OK;
 }
 
@@ -49,27 +54,17 @@ OnnxruntimeCpuSessionBuilder::CreateSession(
   RETURN_HR_IF_NULL(E_POINTER, session);
   RETURN_HR_IF_NULL(E_POINTER, provider);
   RETURN_HR_IF(E_POINTER, *provider != nullptr);
-//
-//  // Create the inference session
-//  auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
-//
-//  // Create the cpu execution provider
-//  onnxruntime::CPUExecutionProviderInfo xpInfo;
-//#ifndef _WIN64
-//  xpInfo.create_arena = false;
-//#endif
-//  auto cpu_provider = std::make_unique<onnxruntime::CPUExecutionProvider>(xpInfo);
-//
-//  // Cache the provider's raw pointer
-//  *pp_provider = cpu_provider.get();
-//
-//  // Register the cpu xp
-//  ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(cpu_provider)));
-//
-//  // assign the session to the out parameter
-//  auto sessionptr = wil::MakeOrThrow<winmla::InferenceSession>(session.release());
-//  RETURN_IF_FAILED(sessionptr.CopyTo(_uuidof(winmla::IInferenceSession), (void**)p_session));
-//
+
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  OrtEnv* ort_env;
+  RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
+
+  OrtSession* ort_session;
+  //winml_adapter_api->CreateUninitializedSession(ort_env, options, ort_session);
+  //winml_adapter_api->SessionGetExecutionProvidersCount()
+  //winml_adapter_api->SessionGetExecutionProvider(i)
+
   return S_OK;
 }
 
@@ -78,6 +73,7 @@ OnnxruntimeCpuSessionBuilder::Initialize(
     OrtSession* session,
     OrtExecutionProvider* /*p_provider*/
     ) {
+  //winml_adapter_api->SessionInitialize(i)
 //    ORT_THROW_IF_ERROR(session->get()->Initialize());
   return S_OK;
 }

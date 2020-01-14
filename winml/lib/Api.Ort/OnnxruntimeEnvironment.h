@@ -16,6 +16,8 @@ class OnnxruntimeEnvironment {
  public:
   OnnxruntimeEnvironment(const OrtApi* ort_api);
 
+  HRESULT GetOrtEnvironment(_Out_ OrtEnv** ert_env);
+
  private:
   UniqueOrtEnv ort_env_;
 };

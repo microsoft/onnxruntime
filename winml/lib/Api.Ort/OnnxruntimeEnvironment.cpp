@@ -11,7 +11,7 @@ using namespace Windows::AI ::MachineLearning;
 static bool debug_output_ = false;
 
 static void WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
-  const char* logger_id, const char* code_location, const char* message) {
+                                    const char* logger_id, const char* code_location, const char* message) {
   UNREFERENCED_PARAMETER(param);
   UNREFERENCED_PARAMETER(logger_id);
   // ORT Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
@@ -138,11 +138,16 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
   // Configure the environment with the winml logger
   auto winml_adapter_api = GetWinmlAdapterApi(ort_api);
   auto status = winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
-	  &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
-	  OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+                                                                       &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
+                                                                       OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
   if (status) {
     throw;
   }
 
   OverrideSchemaInferenceFunctions(ort_api);
+}
+
+HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {
+  *ort_env = ort_env_.get();
+  return S_OK;
 }
