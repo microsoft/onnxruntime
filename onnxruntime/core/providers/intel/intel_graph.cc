@@ -14,7 +14,7 @@
 // are fully integrated into onnx importer
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/opset1_upgrade.hpp>
-#include <transform/transformations/convert_fp32_to_fp16.hpp>
+#include <ngraph/pass/convert_fp32_to_fp16.hpp>
 
 // FIXME: Remove before production
 #include <ngraph/serializer.hpp>

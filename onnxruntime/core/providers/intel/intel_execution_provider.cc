@@ -54,7 +54,7 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
   return count;
 }
 
-bool IsDimensionSupported(const Node* node) {
+bool IsDimensionSupported(const Node* node, std::string device) {
   auto node_inputs = node->InputDefs();
   size_t input_dims = 0;
   if (node_inputs[0]->Shape() != nullptr) {
@@ -78,6 +78,12 @@ bool IsDimensionSupported(const Node* node) {
     auto axis = attributes["axis"].i();
     if (input_dims - axis != 1)
       return false;
+
+    //3D input not supported on GPU, MYRIAD and HDDL
+    if (device == "GPU" || device == "MYRIAD" || device == "HDDL") {
+      if (input_dims == 3)
+        return false;
+    }
   }
   return true;
 }
@@ -167,7 +173,7 @@ bool IsUnsupportedOp(std::string name, std::string device) {
 }
 
 // Returns true only if op is in a mode that is not currently supported
-static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer) {
+static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer& graph_viewer, const std::string& device_id) {
   const auto& optype = node->OpType();
 
   const auto& initializers = graph_viewer.GetAllInitializedTensors();
@@ -196,7 +202,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (attributes.find("dilations") != attributes.end()) {
       return true;
     }
-    if (!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node,device_id))
       return true;
   } else if (optype == "Add" || optype == "Sub" || optype == "Mul") {
     for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -249,10 +255,10 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     return (A_is_float && B_is_float) ? false : true;
 
   } else if (optype == "Softmax") {
-    if (!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node,device_id))
       return true;
   } else if (optype == "Unsqueeze") {
-    if (!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node, device_id))
       return true;
   } else if (optype == "Pad") {
     // Pad is only supported only up to opset 10 (in opset 11 more inputs were added)
@@ -352,7 +358,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (ceil_attr != attributes.end() && ceil_attr->second.i() != 0) {
       return true;
     }
-    if (!IsDimensionSupported(node))
+    if (!IsDimensionSupported(node, device_id))
       return true;
   } else if (optype == "QLinearMatMul") {
     const auto& a_zero_point = node->InputDefs()[2];
@@ -534,7 +540,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   }
 
   //Check 3a
-  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer)) {
+  if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer, device_id)) {
     if (intel_ep::IsDebugEnabled())
       std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
