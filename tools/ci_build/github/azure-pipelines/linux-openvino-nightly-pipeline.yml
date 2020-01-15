@@ -1,0 +1,31 @@
+jobs:
+- job: Linux_OpenVINO_CI_Dev
+  timeoutInMinutes: 240
+  pool: OpenVINO
+  steps:
+    - task: CmdLine@2
+      displayName: 'Clean untagged docker images'
+      inputs:
+        script: |
+          docker rm $(docker ps -a | grep Exited | awk '{print $1;}') || true
+          docker images -q --filter "dangling=true" | xargs -n1 -r docker rmi
+        workingDirectory: $(Build.BinariesDirectory)
+      continueOnError: true
+      condition: always()
+
+    - task: PythonScript@0
+      displayName: 'Unzip test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/github/download_test_data.py'
+        arguments: --build_dir $(Build.BinariesDirectory) --edge_device
+        pythonInterpreter: '/usr/bin/python3'
+        workingDirectory: $(Build.BinariesDirectory)
+        
+    - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d openvino -r $(Build.BinariesDirectory) -x "--use_openvino GPU_FP32 --build_wheel"'
+      displayName: 'Command Line Script'
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+
+    - template: templates/clean-agent-build-directory-step.yml

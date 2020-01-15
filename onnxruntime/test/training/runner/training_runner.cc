@@ -24,8 +24,9 @@ using namespace std;
 namespace onnxruntime {
 namespace training {
 
+static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
-    true,                              //enable_sequential_execution
+    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
@@ -36,7 +37,9 @@ static SessionOptions SESSION_OPTION = {
     0,                                 //session_log_verbosity_level
     5,                                 //max_num_graph_transformation_steps
     TransformerLevel::Level1,          //graph_optimization_level
-    0,                                 //session_thread_pool_size
+    0,                                 //intra_op_num_threads
+    0,                                 //inter_op_num_threads
+    overrides                          //free_dimension_overrides
 };
 
 TrainingRunner::TrainingRunner(Parameters params)
@@ -67,10 +70,10 @@ Status TrainingRunner::Initialize() {
 
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
-      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
+      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
     } else {
       // use static loss_scale
-      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
+      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
     }
   }
 
@@ -148,12 +151,12 @@ Status TrainingRunner::Initialize() {
 #ifdef USE_CUDA
   if (params_.use_cuda) {
     CUDAExecutionProviderInfo xp_info{params_.mpi_context.local_rank};
-    auto cuda_xp = std::make_unique<CUDAExecutionProvider>(xp_info);
+    auto cuda_xp = onnxruntime::make_unique<CUDAExecutionProvider>(xp_info);
     pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
     if (params_.cuda_mem_limit_in_gb > 0)
-      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info, false, (size_t)(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024))));
+      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info, false, (size_t)(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024))));
     else
-      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
   ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
@@ -162,7 +165,7 @@ Status TrainingRunner::Initialize() {
   if (!params_.checkpoints_dir.empty()) {
     ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.checkpoints_dir));
 
-    checkpoint_registry_ = std::make_unique<CheckpointRegistry>(
+    checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
         params_.checkpoints_dir, params_.max_num_checkpoints);
 
     // Load checkpoint, if any
@@ -530,7 +533,7 @@ Status TrainingRunner::LoadAndEvaluate(const PathString& model_path, IDataLoader
   InferenceSession s{SessionOptions()};
 #ifdef USE_CUDA
   CUDAExecutionProviderInfo xp_info{params_.mpi_context.world_rank};
-  ORT_RETURN_IF_ERROR(s.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+  ORT_RETURN_IF_ERROR(s.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
 #endif
   ORT_RETURN_IF_ERROR(s.Load(model_path));
   ORT_RETURN_IF_ERROR(s.Initialize());

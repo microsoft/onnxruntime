@@ -26,7 +26,7 @@ namespace test {
 static const std::string MODEL_FOLDER = "testdata/transform/";
 
 TEST(OptimizerTest, Basic) {
-  Model model("OptimizerBasic");
+  Model model("OptimizerBasic", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   const int tensor_dim = 10;
@@ -42,7 +42,7 @@ TEST(OptimizerTest, Basic) {
 
   for (int i = 0; i < input_num; i++) {
     string name("input_" + std::to_string(i));
-    inputs[i] = std::make_unique<NodeArg>(name, &tensor_int32);
+    inputs[i] = onnxruntime::make_unique<NodeArg>(name, &tensor_int32);
 
     initializer_tensor[i].set_name(inputs[i]->Name());
     initializer_tensor[i].add_dims(tensor_dim);
@@ -52,7 +52,7 @@ TEST(OptimizerTest, Basic) {
     }
     initialized_tensor_set[name] = &initializer_tensor[i];
   }
-  outputs[0] = std::make_unique<NodeArg>("out", &tensor_int32);
+  outputs[0] = onnxruntime::make_unique<NodeArg>("out", &tensor_int32);
 
   std::vector<NodeArg*> tmp_inputs{inputs[0].get(), inputs[1].get()};
   std::vector<NodeArg*> tmp_outputs{outputs[0].get()};
@@ -67,12 +67,12 @@ TEST(OptimizerTest, Basic) {
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set);
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-  const logging::Logger& logger = ::onnxruntime::test::DefaultLoggingManager().DefaultLogger();
+  const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
 
   for (auto& node : graph.Nodes()) {
     auto* kernel = info.GetKernel(node.Index());
 
-    OpKernelContext op_kernel_context(&frame, kernel, logger);
+    OpKernelContext op_kernel_context(&frame, kernel, nullptr, logger);
 
     auto st = kernel->Compute(&op_kernel_context);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();

@@ -3,7 +3,7 @@
 #include "core/providers/trt_in_cuda/tensor_rt_compiler.h"
 #include "core/framework/execution_provider.h"
 #include "cuda_runtime_api.h"
-#include "gsl/pointers"
+#include "gsl/gsl"
 #include "core/graph/model.h"
 #include "cuda_runtime_api.h"
 
@@ -17,7 +17,7 @@ std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& 
   for (const auto& index : graph_nodes_index.first) {
     node_set.insert(node_index[index]);
   }
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
 
   // Find inputs and outputs of the subgraph
   std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -87,7 +87,7 @@ std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index, int& 
   }
 
   // Assign inputs and outputs to subgraph's meta_def
-  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->name = "TRTKernel_" + std::to_string(kernels_index++);
   meta_def->domain = kMSDomain;
 
@@ -237,7 +237,7 @@ std::vector<std::unique_ptr<ComputeCapability>> CheckTensorRtCapability(const on
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
@@ -401,7 +401,7 @@ common::Status TRTCompiler::Compile(const onnxruntime::Node* fused_node, cudaStr
   // Create function state
   // TODO: remove default capture
   node_compute_func.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-    std::unique_ptr<TRTFuncState> p = std::make_unique<TRTFuncState>();
+    std::unique_ptr<TRTFuncState> p = onnxruntime::make_unique<TRTFuncState>();
     *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(), engines_[context->node_name].get(), contexts_[context->node_name].get(),
           input_info_[context->node_name], output_info_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, stream};
     *state = p.release();

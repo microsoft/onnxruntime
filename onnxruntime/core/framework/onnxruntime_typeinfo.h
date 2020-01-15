@@ -29,9 +29,10 @@ struct OrtTypeInfo {
   OrtTypeInfo(const OrtTypeInfo& other) = delete;
   OrtTypeInfo& operator=(const OrtTypeInfo& other) = delete;
 
-  static OrtStatus* FromDataTypeImpl(const onnxruntime::DataTypeImpl* input, const onnxruntime::TensorShape* shape,
-                                     const onnxruntime::DataTypeImpl* tensor_data_type, OrtTypeInfo** out);
-  static OrtStatus* FromDataTypeImpl(const ONNX_NAMESPACE::TypeProto*, OrtTypeInfo** out);
+  static OrtStatus* FromOrtValue(const OrtValue& value, OrtTypeInfo** out);
+  static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtTypeInfo** out);
+
+  static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
  private:
   OrtTypeInfo(ONNXType type, OrtTensorTypeAndShapeInfo* data) noexcept;

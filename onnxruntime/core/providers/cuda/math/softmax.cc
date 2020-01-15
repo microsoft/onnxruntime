@@ -53,10 +53,18 @@ Status SoftMaxComputeHelper(
 }
 
 #define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
       Softmax,                                                                  \
       kOnnxDomain,                                                              \
-      1,                                                                        \
+      11,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -65,10 +73,12 @@ Status SoftMaxComputeHelper(
 template <typename T>
 Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
-  const TensorShape input_shape{X->Shape()};
+  const TensorShape& input_shape{X->Shape()};
   const T* X_data = X->template Data<T>();
-
   T* Y_data = ctx->Output(0, input_shape)->template MutableData<T>();
+  // special case when there is a dim value of 0 in the shape.
+  if (input_shape.Size() == 0)
+    return Status::OK();
 
   return SoftMaxComputeHelper<T>(X_data, input_shape, Y_data, CudnnHandle(), axis_);
 }

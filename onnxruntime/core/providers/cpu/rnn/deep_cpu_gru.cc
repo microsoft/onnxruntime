@@ -1,5 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
+
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_context_internal.h"
 
@@ -253,23 +261,21 @@ Status DeepCpuGruOp::Compute(OpKernelContext* context) const {
 
   Status status;
 
-  auto data_type = X.DataType();
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (X.IsDataType<float>())
     status = ComputeImpl<float>(*context);
-  else if (data_type == DataTypeImpl::GetType<double>()) {
+  else if (X.IsDataType<double>()) {
     /* Need to update all the helpers to support double...
     status = ComputeImpl<double>(*context); */
     ORT_NOT_IMPLEMENTED("GRU operator does not support double yet");
   } else
-    ORT_THROW("Invalid data type for GRU operator of ", data_type);
+    ORT_THROW("Invalid data type for GRU operator of ", X.DataType());
 
   return status;
 }
 
 template <typename T>
 Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
-  auto ctx_internal = static_cast<OpKernelContextInternal*>(&context);
-  concurrency::ThreadPool* thread_pool = ctx_internal->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context.GetOperatorThreadPool();
 
   const Tensor& X = *context.Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
   const Tensor& W = *context.Input<Tensor>(1);  // weights. [num_directions, 3*hidden_size, input_size]
@@ -580,11 +586,11 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   span_T_iter cur_h_local = cur_h_.begin();
   span_T_iter cur_h_local_end = cur_h_.end();
 
-  span_T_const_iter batched_bias_WRz_local;
-  span_T_const_iter batched_bias_WRr_local;
-  span_T_const_iter batched_bias_WRh_local;
-  span_T_const_iter batched_bias_Wh_local;
-  span_T_const_iter batched_bias_Rh_local;
+  span_T_const_iter batched_bias_WRz_local{};
+  span_T_const_iter batched_bias_WRr_local{};
+  span_T_const_iter batched_bias_WRh_local{};
+  span_T_const_iter batched_bias_Wh_local{};
+  span_T_const_iter batched_bias_Rh_local{};
 
   if (use_bias_) {
     batched_bias_WRz_local = batched_bias_WRz_.cbegin();

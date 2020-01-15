@@ -37,7 +37,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-
 #include "gtest/gtest.h"
 
 using namespace std;
@@ -85,10 +84,10 @@ class FuseExecutionProvider : public IExecutionProvider {
  public:
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
-                                                 [](int) { return std::make_unique<CPUAllocator>(); },
+                                                 [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
     InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        std::make_unique<DummyArena>(device_info.factory(0))));
+        onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -96,11 +95,11 @@ class FuseExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
-    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
     }
-    auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+    auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
     meta_def->name = "FuseAdd";
     meta_def->domain = "FuseTest";
     meta_def->inputs = {"X", "Y", "Z"};
@@ -108,7 +107,7 @@ class FuseExecutionProvider : public IExecutionProvider {
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
     sub_graph->SetMetaDef(meta_def);
-    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
   }
 
@@ -122,7 +121,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 class InferenceSessionGetGraphWrapper : public InferenceSession {
  public:
   explicit InferenceSessionGetGraphWrapper(const SessionOptions& session_options,
-                                          logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
+                                           logging::LoggingManager* logging_manager) : InferenceSession(session_options, logging_manager) {
   }
 
   const Graph& GetGraph() {
@@ -133,16 +132,17 @@ class InferenceSessionGetGraphWrapper : public InferenceSession {
 namespace test {
 static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                           const std::vector<float>& expected_values);
-static const std::string MODEL_URI = "testdata/mul_1.onnx";
-static const std::string MODEL_URI_NO_OPSET = "testdata/mul_1.noopset.onnx";
+static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
+static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
 //static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
-  p_model = std::make_unique<onnxruntime::Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                                                 domain_to_version);
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  p_model = onnxruntime::make_unique<Model>("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
+                                            domain_to_version, model_specific_functions, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -172,15 +172,21 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
+template <typename T = float>
+void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
+                   const std::vector<T>& expected_values) {
+  TensorShape expected_shape(expected_dims);
+  ASSERT_EQ(expected_shape, tensor.Shape());
+  const std::vector<T> found(tensor.template Data<T>(),
+                             tensor.template Data<T>() + expected_values.size());
+  ASSERT_EQ(expected_values, found);
+}
+
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
-  TensorShape expected_shape(expected_dims);
-  ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<float> found(rtensor.template Data<float>(),
-                                 rtensor.template Data<float>() + expected_values.size());
-  ASSERT_EQ(expected_values, found);
+  VerifyOutputs(rtensor, expected_dims, expected_values);
 }
 
 void RunModel(InferenceSession& session_object,
@@ -224,15 +230,24 @@ void RunModel(InferenceSession& session_object,
 void RunModelWithBindingMatMul(InferenceSession& session_object,
                                const RunOptions& run_options,
                                ProviderType bind_provider_type,
-                               bool is_preallocate_output_vec = false,
-                               ProviderType allocation_provider = kCpuExecutionProvider) {
+                               bool is_preallocate_output_vec,
+                               ProviderType allocation_provider) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
   auto input_allocator = io_binding->GetCPUAllocator(0, bind_provider_type);
 
+  // bind a value to A with input that will produce invalid output in order to test replacement of a feed
+  std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
+  std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
+  OrtValue input_tmp;
+  CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
+  io_binding->BindInput("A", input_tmp);
+  const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
+
   // prepare inputs
   std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+
   /*
       0 1 2 3     0 1 2
       4 5 6 7     3 4 5
@@ -253,6 +268,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   io_binding->BindInput("A", input_ml_value_A);
   io_binding->BindInput("B", input_ml_value_B);
 
+  // check location of 'A' post-binding has changed to validate that the previous value was replaced
+  ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
+
   // prepare outputs
   std::vector<int64_t> expected_output_dims = {3, 3};
   OrtValue output_ml_value;
@@ -269,6 +287,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
       ORT_THROW("Unsupported provider");
     }
   }
+
   io_binding->BindOutput("Y", output_ml_value);
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
 
@@ -291,9 +310,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                  shape,
-                                                                  cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
+                                                                          shape,
+                                                                          cpu_allocator);
     st = GPUDataTransfer().CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -380,7 +399,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSessionGetGraphWrapper session_object{so, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
- 
+
   // Assert that model has been transformed and identity Node is removed.
   const auto& graph = session_object.GetGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -399,7 +418,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_opt{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
   ASSERT_TRUE(session_object_opt.Initialize().IsOK());
-  
+
   // Assert that re-feed of optimized model with default transform level results
   // in same runtime model as abs-id-max.onnx with TransformLevel-1.
   std::ifstream model_fs_session1(so.optimized_model_filepath, ios::in | ios::binary);
@@ -418,15 +437,6 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   InferenceSession session_object_emptyValidation{so_opt, &DefaultLoggingManager()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
-
-  // Assert that level 3 optimization doesn't result in serialized model.
-  so_opt.optimized_model_filepath = ToWideString("ShouldNotSerialize");
-  so_opt.graph_optimization_level = TransformerLevel::Level3;
-  InferenceSession session_object_Level3Test{so_opt, &DefaultLoggingManager()};
-  ASSERT_TRUE(session_object_Level3Test.Load(test_model).IsOK());
-  ASSERT_TRUE(session_object_Level3Test.Initialize().IsOK());
-  std::ifstream model_fs_Level3(so_opt.optimized_model_filepath, ios::in | ios::binary);
-  ASSERT_TRUE(model_fs_Level3.fail());
 }
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
@@ -461,11 +471,11 @@ TEST(InferenceSessionTests, ModelMetadata) {
 
   so.session_logid = "InferenceSessionTests.ModelMetadata";
   InferenceSession session_object{so, &DefaultLoggingManager()};
-  string model_uri = "../models/opset8/test_squeezenet/model.onnx";
+  auto model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
   std::shared_ptr<onnxruntime::Model> p_model;
-  Status st = onnxruntime::Model::Load(model_uri, p_model);
+  Status st = onnxruntime::Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(st.IsOK());
   const onnxruntime::Graph& graph = p_model->MainGraph();
 
@@ -526,7 +536,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -683,7 +693,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = std::make_unique<logging::LoggingManager>(
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink),
       logging::Severity::kVERBOSE,
       false,
@@ -743,7 +753,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
 
   InferenceSession session_object{so};
   CPUExecutionProviderInfo epi;
-  ASSERT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ASSERT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
 
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
@@ -771,7 +781,7 @@ static void TestBindHelper(const std::string& log_str,
 #ifdef USE_CUDA
     CUDAExecutionProviderInfo epi;
     epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -1035,7 +1045,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -1080,7 +1090,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1111,7 +1121,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 
   InferenceSession session_object_2{so};
   session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider));
-  session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>());
+  session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>());
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
@@ -1122,7 +1132,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 }
 
 TEST(ExecutionProviderTest, FunctionInlineTest) {
-  onnxruntime::Model model("graph_1");
+  onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
 
   ONNX_NAMESPACE::FunctionProto fc_proto;
   fc_proto.set_name("FC");
@@ -1381,7 +1391,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
   ASSERT_TRUE(session_object.Load(MODEL_URI).IsOK());
   ASSERT_TRUE(session_object.Initialize().IsOK());
 
-  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
+  auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   session_object.RegisterExecutionProvider(std::move(dummy_provider));
 
@@ -1434,14 +1444,14 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 TEST(InferenceSessionTests, TestRegisterTransformers) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
-  for (int i = static_cast<int>(TransformerLevel::Default); i < static_cast<int>(TransformerLevel::MaxTransformerLevel); i++) {
+  for (int i = static_cast<int>(TransformerLevel::Default); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     SessionOptions so;
     so.session_logid = "InferenceSessionTests.TestL1AndL2Transformers";
     so.graph_optimization_level = static_cast<TransformerLevel>(i);
     InferenceSession session_object{so, &DefaultLoggingManager()};
 
     // Create and register dummy graph transformer
-    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
+    auto dummy_transformer_unique_ptr = onnxruntime::make_unique<DummyGraphTransformer>("DummyTransformer");
     const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
     session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr));
 
@@ -1459,7 +1469,7 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   // Models which cover all transformers.
   std::vector<std::string> test_model_uris = {"testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx",
                                               "testdata/transform/abs-id-max.onnx",
-                                              "testdata/transform/slice-elim.onnx",
+                                              "testdata/transform/slice-v11-elim.onnx",
                                               "testdata/transform/matmul_add_fusion/2Input/model.onnx",
                                               "testdata/transform/matmul_add_fusion/3Input/gemm_relu.onnx",
                                               "testdata/transform/fusion/fuse-conv-bn-add-mul-float16.onnx"};
@@ -1474,19 +1484,70 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
+// fallback to lenient merging of shape info if model opset is not the latest
+TEST(InferenceSessionTests, TestLenientShapeInferencing) {
+  // latest opset should fail
+  std::vector<int64_t> input_shape{2, 2};
+  std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
+  std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
+  std::vector<int64_t> output_data{2, 2};
+
+  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
+  latest_opset.AddInput("data", input_shape, input_data);
+  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
+                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
+
+  // older opset should allow the mismatch with a warning.
+  // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
+  // This should result in a warning log message but successful run.
+  class OpTesterWithReshape : public OpTester {
+   public:
+    OpTesterWithReshape() : OpTester("Shape", 7) {
+    }
+
+   protected:
+    void AddNodes(onnxruntime::Graph& graph,
+                  std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                  std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                  std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) override {
+      // we need to create an intermediate output with a different name
+      auto tmp_output_defs = graph_output_defs;
+      auto type_info = *tmp_output_defs[0]->TypeAsProto();  // copy
+      auto& shape_output = graph.GetOrCreateNodeArg("shape_output", &type_info);
+      tmp_output_defs[0] = &shape_output;
+
+      // call base implementation to add the Shape node with invalid output shape
+      OpTester::AddNodes(graph, graph_input_defs, tmp_output_defs, add_attribute_funcs);
+
+      // add Unsqueeze node to fix the output shape
+
+      auto& unsqueeze = graph.AddNode("unsqueeze", "Unsqueeze", "Fix output shape", tmp_output_defs, graph_output_defs);
+      unsqueeze.AddAttribute("axes", std::vector<int64_t>{0});
+    }
+  };
+
+  OpTesterWithReshape old_opset;
+
+  old_opset.AddInput("data", input_shape, input_data);
+  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  // TensorRT doesn't handle Unsqueeze
+  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 #ifdef USE_CUDA
 
 TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
-  so.enable_sequential_execution = false;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so};
 
   CUDAExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 
   ASSERT_TRUE(session_object.Load(model_uri).IsOK());
 
@@ -1496,6 +1557,256 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 }
 
 #endif
+
+// The model being tested here triggers a case where the allocation planner (AP) tries to reuse a tensor of type
+// double for a string tensor. The reuse logic of AP works correctly on Windows and Ubuntu 16.x
+// since there the sizeof(double) != sizeof(std::string). However, on CentOS (gcc 4.8.x), the 2 sizes are equal.
+TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTensorForStringTensor) {
+  SessionOptions so;
+
+  so.session_logid = "InferenceSessionTests.ModelThatTriggersAllocationPlannerBug";
+
+  InferenceSession session_object{so, &DefaultLoggingManager()};
+  Status st;
+  ASSERT_TRUE((st = session_object.Load("testdata/test_cast_back_to_back_non_const_mixed_types_origin.onnx")).IsOK())
+      << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st.ErrorMessage();
+
+  RunOptions run_options;
+  run_options.run_tag = "one session/one tag";
+
+  // prepare inputs
+  std::vector<int64_t> dims_x = {1, 2, 3};
+  std::vector<float> values_x = {1.6f, -0.6f, -0.5f, -1.0f, 0.8f, -2.3f};
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+                       &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("u", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("res");
+  output_names.push_back("res2");
+  output_names.push_back("res3");
+  std::vector<OrtValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_res = {1, 2, 3};
+  std::vector<int64_t> expected_values_res = {1, 0, 0, -1, 0, -2};
+
+  std::vector<int64_t> expected_dims_res2 = {1, 2, 3};
+  std::vector<int64_t> expected_values_res2 = {1, 0, 0, -1, 0, -2};
+
+  std::vector<int64_t> expected_dims_res3 = {1, 2, 3};
+  std::vector<int8_t> expected_values_res3 = {1, 0, 0, 1, 0, 1};
+
+  // Now run
+  st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  ASSERT_EQ(3, fetches.size());
+  VerifyOutputs(fetches[0].Get<Tensor>(), expected_dims_res, expected_values_res);
+  VerifyOutputs(fetches[1].Get<Tensor>(), expected_dims_res2, expected_values_res2);
+  VerifyOutputs(fetches[2].Get<Tensor>(), expected_dims_res3, expected_values_res3);
+}
+
+// The following test is to cover the feature of InferenceSession that allows some session options
+// to flow in from a model file, and use defaults for missing session options/session options not supported for parsing
+// from the model
+static char ort_load_config_from_model_env_var_enabled[] = "ORT_LOAD_CONFIG_FROM_MODEL=1";
+static char ort_load_config_from_model_env_var_disabled[] = "ORT_LOAD_CONFIG_FROM_MODEL=0";
+
+TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
+  // Part 1 - Load config from model feature enabled
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_enabled);
+#else
+  putenv(ort_load_config_from_model_env_var_enabled);
+#endif
+
+  SessionOptions so;
+  std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
+
+  // Create session
+  InferenceSession session_object_1{so, model_path, &DefaultLoggingManager()};
+
+  // Load() and Initialize() the session
+  Status st;
+  ASSERT_TRUE((st = session_object_1.Load()).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object_1.Initialize()).IsOK()) << st.ErrorMessage();
+
+  // The default value for inter_op_num_threads is 0
+  // The model requests for inter_op_num_threads to be 5
+  ASSERT_TRUE(session_object_1.GetSessionOptions().inter_op_num_threads == 5);
+
+  // The default value for intra_op_num_threads is 0
+  // The model requests for intra_op_num_threads to be 2
+  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_num_threads == 2);
+
+  // The default value for execution_mode is ORT_SEQUENTIAL
+  // The model's config doesn't explicitly request a mode in the ORT config Json - hence the default should be used
+  ASSERT_TRUE(session_object_1.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+
+  // The default value for graph_optimization_level is Level1
+  // The model requests Level3 - hence that should be used
+  ASSERT_TRUE(session_object_1.GetSessionOptions().graph_optimization_level == TransformerLevel::Level3);
+
+  // The default value for enable_profiling is false
+  // The model requests true - hence that should be used
+  ASSERT_TRUE(session_object_1.GetSessionOptions().enable_profiling);
+
+  // Part 2 - Load config from model feature disabled
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_disabled);
+#else
+  putenv(ort_load_config_from_model_env_var_disabled);
+#endif
+
+  // Change from default value for one option
+  so.intra_op_num_threads = 2;
+
+  // Create session
+  InferenceSession session_object_2{so, model_path, &DefaultLoggingManager()};
+
+  // Load() and Initialize() the session
+  ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object_2.Initialize()).IsOK()) << st.ErrorMessage();
+
+  // The default value for enable_profiling is false
+  // Even though the model requests enable_profiling to be true in the ORT config Json,
+  // the default value should be used as the feature is disabled
+  ASSERT_FALSE(session_object_2.GetSessionOptions().enable_profiling);
+
+  // In the session options object fed in at session creation,
+  // the request was for intra_op_num_threads to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
+}
+
+TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
+  // Part 1 - Load config from model feature enabled
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_enabled);
+#else
+  putenv(ort_load_config_from_model_env_var_enabled);
+#endif
+
+  SessionOptions so;
+  std::string model_path = "testdata/model_with_invalid_ort_config_json.onnx";
+
+  // Create session (should throw as the json within the model is invalid/improperly formed)
+  try {
+    InferenceSession session_object_1{so, model_path, &DefaultLoggingManager()};
+  } catch (const std::exception& e) {
+    std::string e_message(std::string(e.what()));
+    ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
+    ASSERT_TRUE(e_message.find("Json stored in the `ort_config` key cannot be parsed.") != std::string::npos);
+  }
+
+  // Part 2 - Load config from model feature disabled
+  // The invalid/improperly formed config json in the model should not come into the picture here
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_disabled);
+#else
+  putenv(ort_load_config_from_model_env_var_disabled);
+#endif
+
+  // Change from default value for one option
+  so.intra_op_num_threads = 2;
+
+  // Create session
+  InferenceSession session_object_2{so, model_path, &DefaultLoggingManager()};
+
+  // Load() and Initialize() the session
+  Status st;
+  ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object_2.Initialize()).IsOK()) << st.ErrorMessage();
+
+  // Default value for execution_mode
+  ASSERT_TRUE(session_object_2.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+
+  // In the session options object fed in at session creation,
+  // the request was for intra_op_num_threads to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
+}
+
+TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
+  // Part 1 - Load config from model feature enabled
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_enabled);
+#else
+  putenv(ort_load_config_from_model_env_var_enabled);
+#endif
+
+  SessionOptions so;
+  // Change from default value for one option
+  so.intra_op_num_threads = 2;
+
+  std::string model_path = "testdata/transform/abs-id-max.onnx";
+
+  // Create session
+  InferenceSession session_object_1{so, model_path, &DefaultLoggingManager()};
+
+  // Load() and Initialize() the session
+  Status st;
+  ASSERT_TRUE((st = session_object_1.Load()).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object_1.Initialize()).IsOK()) << st.ErrorMessage();
+
+  // The custom session options instance requested intra_op_num_threads == 2,
+  // but since the session tried to look into the model for the config, and didn't find any
+  // the defaults would be used for session creation
+  ASSERT_TRUE(session_object_1.GetSessionOptions().intra_op_num_threads == 0);
+
+  // Part 2 - Load config from model feature disabled
+  // The missing config json should not come into the picture
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_disabled);
+#else
+  putenv(ort_load_config_from_model_env_var_disabled);
+#endif
+
+  // Create session
+  InferenceSession session_object_2{so, model_path, &DefaultLoggingManager()};  // so has inter_op_num_threads set to 2
+
+  // Load() and Initialize() the session
+  ASSERT_TRUE((st = session_object_2.Load()).IsOK()) << st.ErrorMessage();
+  ASSERT_TRUE((st = session_object_2.Initialize()).IsOK()) << st.ErrorMessage();
+
+  // In the session options object fed in at session creation,
+  // the request was for intra_op_num_threads to be 2 - that should be honored
+  ASSERT_TRUE(session_object_2.GetSessionOptions().intra_op_num_threads == 2);
+}
+
+TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
+  // "10" is unsupported for ORT_LOAD_CONFIG_FROM_MODEL
+  char env_var_value_set_to_unsupported_val[] = "ORT_LOAD_CONFIG_FROM_MODEL=10";
+#ifdef _WIN32
+  _putenv(env_var_value_set_to_unsupported_val);
+#else
+  putenv(env_var_value_set_to_unsupported_val);
+#endif
+  SessionOptions so;
+  std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
+
+  // Create session (should throw because of the unsupported value for the env var - ORT_LOAD_CONFIG_FROM_MODEL)
+  try {
+    InferenceSession session_object_1{so, model_path, &DefaultLoggingManager()};
+  } catch (const std::exception& e) {
+    std::string e_message(std::string(e.what()));
+    ASSERT_TRUE(e_message.find("Could not finalize session options while constructing the inference session. Error Message:") != std::string::npos);
+    ASSERT_TRUE(e_message.find("The only supported values for the environment variable ") != std::string::npos);
+    ASSERT_TRUE(e_message.find("The environment variable contained the value: 10") != std::string::npos);
+  }
+
+  // Disable the feature before exiting the test as this process is likely to be used for running other tests
+#ifdef _WIN32
+  _putenv(ort_load_config_from_model_env_var_disabled);
+#else
+  putenv(ort_load_config_from_model_env_var_disabled);
+#endif
+}
 
 }  // namespace test
 }  // namespace onnxruntime

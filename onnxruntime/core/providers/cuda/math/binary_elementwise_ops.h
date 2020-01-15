@@ -40,8 +40,10 @@ struct BinaryElementwisePreparation {
     }
 
     // early return if one operand is scalar
-    if (lhs_shape.Size() <= 1 || rhs_shape.Size() <= 1) {
-      output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() <= 1 ? SimpleBroadcast::LeftScalar : SimpleBroadcast::RightScalar);
+    if (lhs_shape.Size() == 1 || rhs_shape.Size() == 1) {
+      output_rank_or_simple_broadcast = static_cast<int32_t>(lhs_shape.Size() == 1
+                                                                ? SimpleBroadcast::LeftScalar
+                                                                : SimpleBroadcast::RightScalar);
       return Status::OK();
     }
 
@@ -51,7 +53,8 @@ struct BinaryElementwisePreparation {
     if (lhs_shape == output_shape) {
       const auto& rhs_dims = rhs_shape.GetDims();
       int64_t C = 0;
-      if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(), [&C](int64_t dim) { if (dim > 1) C = dim; return (dim > 1); })) {
+      if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(),
+                             [&C](int64_t dim) { if (dim != 1) C = dim; return (dim != 1); })) {
         int32_t dim_C = gsl::narrow_cast<int32_t>(std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin() + output_shape.NumDimensions() - rhs_shape.NumDimensions());
         int64_t N = output_shape.SizeToDimension(dim_C);
         int64_t H = (dim_C < out_rank - 1 ? output_shape.SizeFromDimension(dim_C + 1) : 1);
@@ -198,47 +201,93 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T, typename CudaT>
+class VariadicInputBase : public CudaKernel {
+ public:
+  VariadicInputBase(const OpKernelInfo& info) : CudaKernel(info) {}
+
+  Status ComputeInternal(OpKernelContext*) const override {
+    return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
+  }
+
+  typedef void (*ImplCompute)(int32_t output_rank_or_simple_broadcast,
+                              const TArray<int64_t>* lhs_padded_strides,
+                              const CudaT* lhs_data,
+                              const TArray<int64_t>* rhs_padded_strides,
+                              const CudaT* rhs_data,
+                              const TArray<fast_divmod>* fdm_output_strides,
+                              const fast_divmod& fdm_H,
+                              const fast_divmod& fdm_C,
+                              CudaT* output_data,
+                              size_t count);
+
+  Status ComputeMethod(OpKernelContext* context, ImplCompute Impl_Compute) const;
+};
+
 // Sum allows varadic inputs, and it uses binary elementwise Add in implementation
 template <typename T>
-class Sum final : public CudaKernel {
+class Sum final : public VariadicInputBase<T, typename ToCudaType<T>::MappedType> {
  public:
-  Sum(const OpKernelInfo& info) : CudaKernel(info) {
-  }
+  Sum(const OpKernelInfo& info) : VariadicInputBase<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class Greater final : public CudaKernel {
+class Max final : public VariadicInputBase<T, typename ToCudaType<T>::MappedType> {
  public:
-  Greater(const OpKernelInfo& info) : CudaKernel(info) {}
+  Max(const OpKernelInfo& info) : VariadicInputBase<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class Equal final : public CudaKernel {
+class Min final : public VariadicInputBase<T, typename ToCudaType<T>::MappedType> {
  public:
-  Equal(const OpKernelInfo& info) : CudaKernel(info) {}
+  Min(const OpKernelInfo& info) : VariadicInputBase<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T, typename CudaT>
+class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
+
+  typedef void (*ImplCompare)(int32_t output_rank_or_simple_broadcast,
+                              const TArray<int64_t>* lhs_padded_strides,
+                              const CudaT* lhs_data,
+                              const TArray<int64_t>* rhs_padded_strides,
+                              const CudaT* rhs_data,
+                              const TArray<fast_divmod>* fdm_output_strides,
+                              const fast_divmod& fdm_H,
+                              const fast_divmod& fdm_C,
+                              CudaT* output_data,
+                              size_t count);
+
+  Status CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const;
+};
 
 template <typename T>
-class Max final : public CudaKernel {
+class Greater final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
  public:
-  Max(const OpKernelInfo& info) : CudaKernel(info) {
-  }
+  Greater(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
-class Min final : public CudaKernel {
+class Equal final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
  public:
-  Min(const OpKernelInfo& info) : CudaKernel(info) {
-  }
+  Equal(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class Less final : public CompareFunction<T, typename ToCudaType<T>::MappedType> {
+ public:
+  Less(const OpKernelInfo& info) : CompareFunction<T, typename ToCudaType<T>::MappedType>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

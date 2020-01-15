@@ -50,7 +50,7 @@ common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& featu
     size_t cpu_tensor_length;
     ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
     OrtValue ort_value;
-    OrtAllocatorInfo info("Cpu", OrtDeviceAllocator, OrtDevice{}, 0, OrtMemTypeDefault);
+    OrtMemoryInfo info("Cpu", OrtDeviceAllocator, OrtDevice{}, 0, OrtMemTypeDefault);
     std::unique_ptr<char[]> buffer(new char[cpu_tensor_length]);
     OrtCallback deleter;
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
@@ -89,7 +89,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     }
 
     AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
+    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     void* buffer = p_tensor->MutableDataRaw();
     size_t memory_size_per_sample = first_tensor.SizeInBytes();
 
@@ -121,14 +121,14 @@ std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /
     TensorShape shape = tensor_shapes_[input_index];
 
     if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT64) {
-      element_type = NonOnnxType<int64_t>::Type();
+      element_type = DataTypeImpl::GetType<int64_t>();
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT32) {
-      element_type = NonOnnxType<int32_t>::Type();
+      element_type = DataTypeImpl::GetType<int32_t>();
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_FLOAT) {
-      element_type = NonOnnxType<float>::Type();
+      element_type = DataTypeImpl::GetType<float>();
     }
     AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
+    auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
     memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
 
     result.emplace_back(p_tensor.release(),
@@ -195,15 +195,15 @@ Status LossScaler::LoadFromString(const std::string& input) {
 
 std::unique_ptr<LearningRateScheduler> LearningRateScheduler::Create(LearningRateParameters& lr_params, size_t training_step_count) {
   if (lr_params.warmup_mode == LRSchedule_NoWarmup) {
-    return std::make_unique<NoWarmpScheduler>(lr_params, training_step_count);
+    return onnxruntime::make_unique<NoWarmpScheduler>(lr_params, training_step_count);
   } else if (lr_params.warmup_mode == LRSchedule_Cosine) {
-    return std::make_unique<CosineScheduler>(lr_params, training_step_count);
+    return onnxruntime::make_unique<CosineScheduler>(lr_params, training_step_count);
   } else if (lr_params.warmup_mode == LRSchedule_Constant) {
-    return std::make_unique<ConstantScheduler>(lr_params, training_step_count);
+    return onnxruntime::make_unique<ConstantScheduler>(lr_params, training_step_count);
   } else if (lr_params.warmup_mode == LRSchedule_Linear) {
-    return std::make_unique<LinearScheduler>(lr_params, training_step_count);
+    return onnxruntime::make_unique<LinearScheduler>(lr_params, training_step_count);
   } else if (lr_params.warmup_mode == LRSchedule_Poly) {
-    return std::make_unique<PolyScheduler>(lr_params, training_step_count);
+    return onnxruntime::make_unique<PolyScheduler>(lr_params, training_step_count);
   } else {
     ORT_THROW("Unsupported learning rate warmup schedule");
   }

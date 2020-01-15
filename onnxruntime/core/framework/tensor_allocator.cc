@@ -6,8 +6,8 @@
 
 namespace onnxruntime {
 
-AllocatorPtr ITensorAllocator::GetAllocator(const OrtAllocatorInfo& allocator_info) {
-  return exec_providers_.GetAllocator(allocator_info);
+AllocatorPtr ITensorAllocator::GetAllocator(const OrtMemoryInfo& memory_info) {
+  return exec_providers_.GetAllocator(memory_info);
 }
 
 std::unique_ptr<ITensorAllocator> ITensorAllocator::Create(bool enable_mem_pattern,
@@ -15,9 +15,9 @@ std::unique_ptr<ITensorAllocator> ITensorAllocator::Create(bool enable_mem_patte
                                                            const ExecutionProviders& exec_providers,
                                                            std::vector<BufferUniquePtr>& weights_buffers) {
   if (enable_mem_pattern) {
-    return std::make_unique<TensorAllocatorWithMemPattern>(execution_plan, exec_providers, weights_buffers);
+    return onnxruntime::make_unique<TensorAllocatorWithMemPattern>(execution_plan, exec_providers, weights_buffers);
   }
-  return std::make_unique<SimpleTensorAllocator>(execution_plan, exec_providers, weights_buffers);
+  return onnxruntime::make_unique<SimpleTensorAllocator>(execution_plan, exec_providers, weights_buffers);
 }
 
 }  // namespace onnxruntime

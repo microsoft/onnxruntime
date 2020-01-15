@@ -66,12 +66,12 @@ void GenerateRandomDataWithOneHot(
   }
 }
 
-void UnaryOpGradientTest(const std::string& op_type) {
+void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain, const int opset_version = 9) {
   TensorShape shape({2, 3, 4});
   float max_error;
   float error_tolerance = 1e-3f;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{op_type};
+  OpDef op_def{op_type, domain, opset_version};
 
   gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error);
 
@@ -1130,7 +1130,7 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
 }
 
 TEST(GradientCheckerTest, GeluGrad) {
-  UnaryOpGradientTest("Gelu");
+  UnaryOpGradientTest("Gelu", kMSDomain, 1);
 }
 
 struct AdamOptimizerInputOutput {
@@ -1816,18 +1816,18 @@ void run_multi_tensor_lamb_test_with_baseline(
 // baseline via an internal function and then invoke
 // run_lamb_test_with_baseline(...) to check the result.
 void run_multi_tensor_lamb_test(
-  const std::vector<std::vector<int64_t>> shapes,
-  const float eta,
-  const float loss_scale,
-  const float g_norm,
-  const std::vector<std::vector<float>> ws,
-  const std::vector<std::vector<float>> gs,
-  const std::vector<std::vector<float>> ms,
-  const std::vector<std::vector<float>> vs,
-  const std::vector<float> lambdas,
-  const std::vector<float> alphas,
-  const std::vector<float> betas,
-  const std::vector<float> epsilons) {
+    const std::vector<std::vector<int64_t>> shapes,
+    const float eta,
+    const float loss_scale,
+    const float g_norm,
+    const std::vector<std::vector<float>> ws,
+    const std::vector<std::vector<float>> gs,
+    const std::vector<std::vector<float>> ms,
+    const std::vector<std::vector<float>> vs,
+    const std::vector<float> lambdas,
+    const std::vector<float> alphas,
+    const std::vector<float> betas,
+    const std::vector<float> epsilons) {
   // Check if parallel vectors have the same length.
   ORT_ENFORCE(shapes.size() == ws.size());
   ORT_ENFORCE(shapes.size() == gs.size());
@@ -1854,27 +1854,27 @@ void run_multi_tensor_lamb_test(
 
     // Invoke LAMB's reference implementation to compute baseline output.
     compute_lamb(
-      shapes[i], ws[i], gs[i], ms[i], vs[i],
-      eta, loss_scale, g_norm,
-      lambdas[i], alphas[i], betas[i], epsilons[i],
-      w_news[i], g_news[i], m_news[i], v_news[i]);
+        shapes[i], ws[i], gs[i], ms[i], vs[i],
+        eta, loss_scale, g_norm,
+        lambdas[i], alphas[i], betas[i], epsilons[i],
+        w_news[i], g_news[i], m_news[i], v_news[i]);
   }
 
   // Create tests to make sure the output is correct.
 
   // Output new weights.
   run_multi_tensor_lamb_test_with_baseline(
-    shapes, eta, loss_scale, g_norm,
-    ws, gs, ms, vs,
-    alphas, betas, lambdas, epsilons,
-    w_news, {}, m_news, v_news);
+      shapes, eta, loss_scale, g_norm,
+      ws, gs, ms, vs,
+      alphas, betas, lambdas, epsilons,
+      w_news, {}, m_news, v_news);
 
   // Output new gradients.
   run_multi_tensor_lamb_test_with_baseline(
-    shapes, eta, loss_scale, g_norm,
-    ws, gs, ms, vs,
-    alphas, betas, lambdas, epsilons,
-    {}, g_news, m_news, v_news);
+      shapes, eta, loss_scale, g_norm,
+      ws, gs, ms, vs,
+      alphas, betas, lambdas, epsilons,
+      {}, g_news, m_news, v_news);
 }
 
 void run_lamb_mix_precision_test(
@@ -1979,18 +1979,18 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
   const float epsilon = 1e-6f;
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    1.f,
-    1.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon});
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon});
 }
 
 // A optimizer test with an 2-by-1-by-1-by-1 tensor.
@@ -2008,18 +2008,18 @@ TEST(OptimizerTest, LambOptimizerTest4DTensor) {
   const float epsilon = 1e-6f;
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    1.f,
-    1.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon});
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon});
 }
 
 // A optimizer test with an 2-by-3 tensor.
@@ -2037,18 +2037,18 @@ TEST(OptimizerTest, LambOptimizerTest2by3Tensor) {
   const float epsilon = 1e-6f;
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    1.f,
-    1.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon});
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon});
 }
 
 // A optimizer test with an 1-element tensor.
@@ -2071,18 +2071,18 @@ TEST(OptimizerTest, LambOptimizerTestScalar) {
   std::vector<float> w_new = {0.0f};
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    1.f,
-    1.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon});
+      {shape},
+      eta,
+      1.f,
+      1.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon});
 }
 
 TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
@@ -2104,18 +2104,18 @@ TEST(OptimizerTest, LambOptimizerTestScalarScaling) {
   std::vector<float> w_new = {0.0f};
 
   run_multi_tensor_lamb_test(
-    {shape},
-    eta,
-    8.f,
-    4.f,
-    {w},
-    {g},
-    {m},
-    {v},
-    {lambda},
-    {alpha},
-    {beta},
-    {epsilon});
+      {shape},
+      eta,
+      8.f,
+      4.f,
+      {w},
+      {g},
+      {m},
+      {v},
+      {lambda},
+      {alpha},
+      {beta},
+      {epsilon});
 }
 
 TEST(OptimizerTest, LambOptimizerTestExternalBaseline) {
@@ -2280,7 +2280,7 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
 
 TEST(OptimizerTest, LambOptimizerTestLarge) {
   // Input tensors and attributes.
-  for (const auto & size: {55667, 1944006, 3907584}) {
+  for (const auto& size : {55667, 1944006, 3907584}) {
     const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
     const float eta = 0.5f;
     std::vector<float> w(size);
@@ -2364,9 +2364,9 @@ TEST(OptimizerTest, LambOptimizerMultiTensor6) {
   }
 
   run_multi_tensor_lamb_test(
-    shapes, eta, 1.f, 1.f,
-    ws, gs, ms, vs,
-    lambdas, alphas, betas, epsilons);
+      shapes, eta, 1.f, 1.f,
+      ws, gs, ms, vs,
+      lambdas, alphas, betas, epsilons);
 }
 
 TEST(GradientCheckerTest, LayerNormGrad) {
@@ -2382,7 +2382,7 @@ TEST(GradientCheckerTest, LayerNormGrad) {
     float max_error;
     float error_tolerance = 1e-2f;
 
-    OpDef op_def{"LayerNormalization"};
+    OpDef op_def{"LayerNormalization", kMSDomain, 1};
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, B_info}, {shape, mean_info, var_info}, &max_error);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }

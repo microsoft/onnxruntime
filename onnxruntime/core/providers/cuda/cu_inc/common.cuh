@@ -7,6 +7,8 @@
 #include <mutex>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
@@ -153,6 +155,14 @@ __device__ __inline__ double _Tanh(double a) { return tanh(a); }
 template <>
 __device__ __inline__ half _Tanh(half a) { return half(tanhf((float)a)); }
 
+template <>
+__device__ __inline__ half2 _Tanh(half2 a) {
+  float2 tmp = (__half22float2(a));
+  tmp.x = tanhf(tmp.x);
+  tmp.y = tanhf(tmp.y);
+  return __float22half2_rn(tmp);
+}
+
 template <typename T>
 __device__ __inline__ T _Pow(T a, T b);
 
@@ -186,6 +196,11 @@ __device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
 template <>
 __device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
 
+template <typename T>
+__device__ __inline__ T _Gelu(T a) {
+  return a * _Normcdf(a);
+}
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 
@@ -207,9 +222,9 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 
 struct GridDim {
   enum : CUDA_LONG {
-    maxThreadsPerBlock = 256,  // use this many threads per block
-    maxWarpsPerBlock = 32,      // use this many warps per block. This means 1024 threads for warpSize=32
-    maxElementsPerThread = 4
+    maxThreadsPerBlock = 256,  // max threads per block
+    maxWarpsPerBlock = 32,     // max warps per block
+    maxElementsPerThread = 4,  // max element processed per thread
   };
 
   // use these for launching
@@ -225,7 +240,7 @@ struct GridDim {
       N = 1;
 
     // get device information
-    const auto& props = GetDeviceProps();
+    const auto& props = DeviceProp::GetDeviceProps();
     CUDA_LONG numProcs = props.multiProcessorCount;
     CUDA_LONG warpSize = props.warpSize;
 
@@ -247,40 +262,10 @@ struct GridDim {
     assert(blocks_per_grid_ * threads_per_block_ >= N);
   }
 
-  static const std::vector<cudaDeviceProp>& GetCachedDeviceProps() {
-    std::call_once(s_cachedDevicePropsInitFlag, [=] {
-      int numDevices;
-      // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
-      CUDA_CALL_THROW(cudaDeviceSynchronize());
-      CUDA_CALL_THROW(cudaGetDeviceCount(&numDevices));
-      s_cachedDeviceProps.resize(numDevices);
-      for (int i = 0; i < numDevices; i++)
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&s_cachedDeviceProps[i], i));
-    });
-
-    return s_cachedDeviceProps;
-  }
-
-  static size_t GetCurrentDeviceId() {
-    int deviceId;
-    cudaGetDevice(&deviceId);
-    return (size_t)deviceId;
-  }
-
-  // get device properties of current device
-  static const cudaDeviceProp& GetDeviceProps() {
-    const auto& cachedDevicesProps = GetCachedDeviceProps();
-    return cachedDevicesProps[GetCurrentDeviceId()];
-  }
-
   // compute our location on the grid
   static __device__ CUDA_LONG GetLinearThreadId() {
     return blockDim.x * blockIdx.x + threadIdx.x;
   }
-
- private:
-  static std::vector<cudaDeviceProp> s_cachedDeviceProps;
-  static std::once_flag s_cachedDevicePropsInitFlag;
 };
 
 #define CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N) \

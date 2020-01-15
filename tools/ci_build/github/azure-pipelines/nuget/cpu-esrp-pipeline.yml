@@ -15,6 +15,6 @@ schedules:
 jobs: 
 - template: templates/cpu.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
     DoEsrp: 'true'
     DoCompliance: 'true'

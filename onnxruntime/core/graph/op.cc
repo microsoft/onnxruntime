@@ -51,6 +51,8 @@ Status TypeUtils::GetType(const AttributeProto& attr, AttrType& type) {
       type = AttrType::AttributeProto_AttributeType_TENSOR;
     } else if (attr.has_g()) {
       type = AttrType::AttributeProto_AttributeType_GRAPH;
+    } else if (attr.has_sparse_tensor()) {
+      type = AttrType::AttributeProto_AttributeType_SPARSE_TENSOR;
     } else if (attr.floats_size()) {
       type = AttrType::AttributeProto_AttributeType_FLOATS;
     } else if (attr.ints_size()) {
@@ -61,6 +63,8 @@ Status TypeUtils::GetType(const AttributeProto& attr, AttrType& type) {
       type = AttrType::AttributeProto_AttributeType_TENSORS;
     } else if (attr.graphs_size()) {
       type = AttrType::AttributeProto_AttributeType_GRAPHS;
+    } else if (attr.sparse_tensors_size()) {
+      type = AttrType::AttributeProto_AttributeType_SPARSE_TENSORS;
     } else {
       return Status(ONNXRUNTIME, FAIL, "Invalid AttributeProto.");
     }

@@ -24,7 +24,9 @@ void GradientOpTester::Run(
     run_called_ = true;
 #endif
     fetches_.clear();
-    auto p_model = BuildGraph();
+
+    std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
+    auto p_model = BuildGraph(extra_domain_to_version);
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
@@ -101,7 +103,7 @@ void GradientOpTester::Run(
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
-        kMklDnnExecutionProvider,
+        kDnnlExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
@@ -114,8 +116,8 @@ void GradientOpTester::Run(
         execution_provider = DefaultCpuExecutionProvider();
       else if (provider_type == onnxruntime::kCudaExecutionProvider)
         execution_provider = DefaultCudaExecutionProvider();
-      else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
-        execution_provider = DefaultMkldnnExecutionProvider();
+      else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+        execution_provider = DefaultDnnlExecutionProvider();
       else if (provider_type == onnxruntime::kNupharExecutionProvider)
         execution_provider = DefaultNupharExecutionProvider();
       else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)

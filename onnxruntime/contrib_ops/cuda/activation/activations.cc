@@ -10,10 +10,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_ACTIVATION_KERNEL(x, ver, T)                    \
+#define REGISTER_ACTIVATION_KERNEL(x, ver, domain, T)            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
       x,                                                         \
-      kOnnxDomain,                                               \
+      domain,                                                    \
       ver,                                                       \
       T,                                                         \
       kCudaExecutionProvider,                                    \
@@ -27,7 +27,7 @@ namespace cuda {
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
     UnaryElementwisePreparation p;                                                                         \
     UnaryElementwise::Prepare(context, &p);                                                                \
-    CudaAsyncBuffer<Ctx##x> func_ctx(this, 0, MakeFuncCtx(), 1);                                           \
+    CudaAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                           \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                  \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
@@ -37,23 +37,63 @@ namespace cuda {
     return Status::OK();                                                                                   \
   }
 
-#define UNARY_ACTIVATION_OP_TYPED(name, ver, T) \
-  REGISTER_ACTIVATION_KERNEL(name, ver, T)      \
+#define UNARY_ACTIVATION_OP_TYPED(name, ver, domain, T) \
+  REGISTER_ACTIVATION_KERNEL(name, ver, domain, T)      \
   UNARY_ACTIVATION_COMPUTE(name, T)
 
-#define UNARY_ACTIVATION_OP_HFD(name, ver)        \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, MLFloat16) \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, float)     \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, double)
+#define UNARY_ACTIVATION_OP_HFD(name, ver, domain)        \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, MLFloat16) \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, float)     \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, double)
 
-UNARY_ACTIVATION_OP_HFD(Affine, 1);
-UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1);
-UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1);
+UNARY_ACTIVATION_OP_HFD(Affine, 1, kOnnxDomain);
+UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1, kOnnxDomain);
+UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1, kOnnxDomain);
+UNARY_ACTIVATION_OP_HFD(Gelu, 1, kMSDomain);
 
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
 
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, MLFloat16)
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, float)
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, double)
+// Put Gradients Related Below
+
+#define REGISTER_ACTIVATION_GRAD_KERNEL(x, ver, domain, T)       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      x,                                                         \
+      domain,                                                    \
+      ver,                                                       \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      KernelDefBuilder()                                         \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .MayInplace(0, 0),                                     \
+      x<T>);
+
+#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
+  template <>                                                                                                    \
+  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
+    BinaryElementwisePreparation prepare;                                                                        \
+    Prepare(context, &prepare);                                                                                  \
+    CudaAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                            \
+    if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
+    Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
+        func_ctx.GpuPtr(), prepare.output_tensor->Shape().Size());                                               \
+    return Status::OK();                                                                                         \
+  }
+
+#define ACTIVATION_GRAD_OP_TYPED(name, ver, domain, T)  \
+  REGISTER_ACTIVATION_GRAD_KERNEL(name, ver, domain, T) \
+  BINARY_ELEMENTWISE_COMPUTE(name, T)
+
+#define ACTIVATION_GRAD_OP_HFD(name, ver, domain)        \
+  ACTIVATION_GRAD_OP_TYPED(name, ver, domain, MLFloat16) \
+  ACTIVATION_GRAD_OP_TYPED(name, ver, domain, float)     \
+  ACTIVATION_GRAD_OP_TYPED(name, ver, domain, double)
+
+ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 
 }  //namespace cuda
 }  // namespace contrib

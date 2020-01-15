@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
+
 #include "core/providers/cpu/nn/shrink.h"
 
 #include "core/util/math.h"
@@ -12,8 +19,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Shrink,
     9,
     KernelDefBuilder()
-    .MayInplace(0, 0)
-    .TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
+        .MayInplace(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllNumericTensorTypes()),
     Shrink);
 
 namespace shrink_internal {
@@ -59,21 +66,12 @@ Status ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, flo
   return Status::OK();
 }
 
-template <>
-Status ShrinkImpl<bool>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_STATUS(
-      ONNXRUNTIME, INVALID_ARGUMENT,
-      "Input types for the Shrink operator are constrained "
-      "to all numeric types only. Got bool type here.");
-}
-
-template <>
-Status ShrinkImpl<std::string>(const Tensor* /*input*/, Tensor* /*output*/, float /*bias*/, float /*lambd*/) {
-  return ORT_MAKE_STATUS(
-      ONNXRUNTIME, INVALID_ARGUMENT,
-      "Input types for the Shrink operator are constrained "
-      "to all numeric types only. Got std::string type here.");
-}
+template <class T>
+struct CallShrinkImpl {
+  Status operator()(const Tensor* input, Tensor* output, float bias, float lambd) const {
+    return ShrinkImpl<T>(input, output, bias, lambd);
+  }
+};
 
 }  // namespace shrink_internal
 
@@ -82,9 +80,10 @@ Status Shrink::Compute(OpKernelContext* p_op_kernel_context) const {
 
   const auto* input = p_op_kernel_context->Input<Tensor>(0);
   auto* output = p_op_kernel_context->Output(0, input->Shape());
-  const auto& dtype = input->DataType();
-  Status status;
-  DispatchOnTensorTypeWithReturn(dtype, status, ShrinkImpl, input, output, bias_, lambd_);
-  return status;
+  // bool, std::string are not supported.
+  utils::MLTypeCallDispatcherRet<Status, shrink_internal::CallShrinkImpl, float, double, MLFloat16, BFloat16, int8_t, uint8_t,
+                                 int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
+      t_disp(input->GetElementType());
+  return t_disp.Invoke(input, output, bias_, lambd_);
 }
 }  // namespace onnxruntime

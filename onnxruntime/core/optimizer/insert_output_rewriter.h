@@ -19,9 +19,9 @@ class InsertMaxPoolOutput : public RewriteRule {
   }
 
  private:
-  bool SatisfyCondition(const Graph& graph, const Node& node) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
 
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
 // Rewrite rule that adjust Batch Normalization nodes to have 5 outputs for training mode
@@ -37,8 +37,8 @@ class AdjustBatchNormOutputs : public RewriteRule {
   }
 
  private:
-  bool SatisfyCondition(const Graph& graph, const Node& node) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
 
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const override;
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 }  // namespace onnxruntime

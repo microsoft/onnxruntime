@@ -1,8 +1,25 @@
-<h1><span style="color:red">Note: ONNX Runtime Server is still in beta state. It's currently not ready for production environments.</span></h1>
+<h1><span style="color:red">Note: ONNX Runtime Server is still in beta state and may not be ready for production environments.</span></h1>
 
+# How to Use build ONNX Runtime Server for Prediction
+ONNX Runtime Server provides an easy way to start an inferencing server for prediction with both HTTP and GRPC endpoints.
+
+The CLI command to build the server is
+
+Default CPU:
+```
+python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER
+```
+
+Openvino EP:
+
+```
+python3 /onnxruntime/tools/ci_build/build.py --build_dir /onnxruntime/build --config Release --use_openvino $DEVICE --build_server --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+```
+
+where $DEVICE can be CPU_FP32,GPU_FP32,VAD-M_FP16 or MYRIAD_FP16 as per the execution provider
 # How to Use ONNX Runtime Server for Prediction
 
-ONNX Runtime Server provides an easy way to start an inferencing server for prediction with both HTTP and GRPC endpoints. The CLI command to start the server is shown below:
+ The CLI command to start the server is shown below:
 
 ```
 $ ./onnxruntime_server
@@ -43,7 +60,7 @@ http://<your_ip_address>:<port>/v1/models/<your-model-name>/versions/<your-versi
 
 ### Request and Response Payload
 
-The request and response need to be a protobuf message. The Protobuf definition can be found [here](https://github.com/Microsoft/onnxruntime/blob/master/onnxruntime/server/protobuf/predict.proto).
+The request and response need to be a protobuf message. The Protobuf definition can be found [here](../onnxruntime/server/protobuf/predict.proto).
 
 A protobuf message could have two formats: binary and JSON. Usually the binary payload has better latency, in the meanwhile the JSON format is easy for human readability. 
 
@@ -74,7 +91,7 @@ A simple Jupyter notebook demonstrating the usage of ONNX Runtime server to host
 
 ## GRPC Endpoint
 
-If you prefer using the GRPC endpoint, the protobuf could be found [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/server/protobuf/prediction_service.proto). You could generate your client and make a GRPC call to it. To learn more about how to generate the client code and call to the server, please refer to [the tutorials of GRPC](https://grpc.io/docs/tutorials/).
+If you prefer using the GRPC endpoint, the protobuf could be found [here](../onnxruntime/server/protobuf/prediction_service.proto). You could generate your client and make a GRPC call to it. To learn more about how to generate the client code and call to the server, please refer to [the tutorials of GRPC](https://grpc.io/docs/tutorials/).
 
 ## Advanced Topics
 
@@ -91,7 +108,7 @@ For easy tracking of requests, we provide the following header fields:
 
 ### rsyslog Support
 
-If you prefer using an ONNX Runtime Server with [rsyslog](https://www.rsyslog.com/) support([build instruction](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#build-onnx-runtime-server-on-linux)), you should be able to see the log in `/var/log/syslog` after the ONNX Runtime Server runs. For detail about how to use rsyslog, please reference [here](https://www.rsyslog.com/category/guides-for-rsyslog/).
+If you prefer using an ONNX Runtime Server with [rsyslog](https://www.rsyslog.com/) support([build instruction](../BUILD.md#build-onnx-runtime-server-on-linux)), you should be able to see the log in `/var/log/syslog` after the ONNX Runtime Server runs. For detail about how to use rsyslog, please reference [here](https://www.rsyslog.com/category/guides-for-rsyslog/).
 
 ## Report Issues
 

@@ -15,7 +15,7 @@ class AllocatorWrapper : public IAllocator {
   void Free(void* p) override {
     return impl_->Free(impl_, p);
   }
-  const OrtAllocatorInfo& Info() const override {
+  const OrtMemoryInfo& Info() const override {
     return *impl_->Info(impl_);
   }
 

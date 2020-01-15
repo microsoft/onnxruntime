@@ -17,13 +17,16 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/span"
+#include "gsl/gsl"
 #include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 class IExecutionFrame;
 class OpKernelContext;
 class OpKernelWrapper;
+namespace concurrency {
+class ThreadPool;
+}
 
 class OpKernel {
  public:
@@ -46,8 +49,8 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Allocator(int id, OrtMemType mem_type) const {
-    return op_kernel_info_.GetAllocatorInfo(id, mem_type);
+  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const {
+    return op_kernel_info_.GetMemoryInfo(id, mem_type);
   }
 
   const OpKernelInfo& Info() const { return op_kernel_info_; }
@@ -63,6 +66,7 @@ class OpKernelContext {
 
   explicit OpKernelContext(IExecutionFrame* frame,
                            const OpKernel* kernel,
+                           concurrency::ThreadPool* threadpool,
                            const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
@@ -165,9 +169,19 @@ class OpKernelContext {
     return kernel_->Info().GetExecutionProvider()->GetDeviceId();
   }
 
+  /**
+  Returns the opset domain of the underlying kernel
+  **/
+  const std::string& GetOpDomain() const;
+
+  /**
+  Returns the intra-op threadpool, if available.
+  */
+  _Ret_maybenull_ onnxruntime::concurrency::ThreadPool* GetOperatorThreadPool() const { return threadpool_; }
+
  protected:
   onnxruntime::NodeIndex GetNodeIndex() const;
-  OrtValue* GetMutableInputMLValue(int index);
+
   const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
@@ -188,6 +202,7 @@ class OpKernelContext {
 
   IExecutionFrame* execution_frame_{nullptr};
   const OpKernel* kernel_{nullptr};
+  concurrency::ThreadPool* threadpool_{nullptr};
   const logging::Logger* logger_{nullptr};
 
   // The argument starting index in ExecutionFrame.

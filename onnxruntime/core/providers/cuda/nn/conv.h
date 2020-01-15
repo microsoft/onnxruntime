@@ -7,7 +7,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/providers/cpu/nn/conv_base.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
 #include <list>
 
 namespace onnxruntime {
@@ -142,20 +142,22 @@ enum : size_t {
 };
 
 template <typename T>
-class Conv : public CudaKernel, public ConvBase {
+class Conv : public CudaKernel {
  public:
-  Conv(const OpKernelInfo& info) : CudaKernel(info), ConvBase(info) {
-    auto pads_size = pads_.size();
+  Conv(const OpKernelInfo& info) : CudaKernel(info), conv_attrs_(info) {
+    auto pads_size = conv_attrs_.pads.size();
     ORT_ENFORCE(pads_size % 2 == 0);
     auto rank = pads_size / 2;
     for (size_t i = 0; i < rank; i++) {
-      ORT_ENFORCE(pads_[i] == pads_[i + rank], "cudnn only supports symmetric padding");
+      ORT_ENFORCE(conv_attrs_.pads[i] == conv_attrs_.pads[i + rank], "cudnn only supports symmetric padding");
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
+  ConvAttributes conv_attrs_;
+
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
 };
 

@@ -19,7 +19,7 @@ TestServerEnvironment::TestServerEnvironment() {
   auto console = spdlog::stdout_logger_mt("console");
   spdlog::set_default_logger(console);
   spdlog::sink_ptr ptr = std::make_shared<spdlog::sinks::stdout_sink_st>();
-  s_env = std::make_unique<onnxruntime::server::ServerEnvironment>(ORT_LOGGING_LEVEL_WARNING, spdlog::sinks_init_list{ptr});
+  s_env = onnxruntime::make_unique<onnxruntime::server::ServerEnvironment>(ORT_LOGGING_LEVEL_WARNING, spdlog::sinks_init_list{ptr});
 }
 TestServerEnvironment::~TestServerEnvironment() {
   //destruct env to make sure the default logger is destoryed before the logger mutex.

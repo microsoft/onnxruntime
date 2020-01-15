@@ -36,13 +36,13 @@ BrainSliceLSTM<float>::BrainSliceLSTM(const OpKernelInfo& info) : BrainSliceRNN(
     char* w_buffer = static_cast<char*>(const_cast<void*>((W->DataRaw()))) + index * 4 * w_shape.Size() * W->DataType()->Size();
 
     BrainSliceParameterInitPlan wi_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wi_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer, W->Location());
+    wi_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer, W->Location());
     BrainSliceParameterInitPlan wo_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wo_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + w_shape.Size() * W->DataType()->Size(), W->Location());
+    wo_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + w_shape.Size() * W->DataType()->Size(), W->Location());
     BrainSliceParameterInitPlan wf_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wf_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + 2 * (w_shape.Size() * W->DataType()->Size()), W->Location());
+    wf_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + 2 * (w_shape.Size() * W->DataType()->Size()), W->Location());
     BrainSliceParameterInitPlan wc_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    wc_plan.tensor = std::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + 3 * (w_shape.Size() * W->DataType()->Size()), W->Location());
+    wc_plan.tensor = onnxruntime::make_unique<Tensor>(W->DataType(), w_shape, w_buffer + 3 * (w_shape.Size() * W->DataType()->Size()), W->Location());
 
     //b. R - I, O, F, C
     const Tensor* R;
@@ -53,13 +53,13 @@ BrainSliceLSTM<float>::BrainSliceLSTM(const OpKernelInfo& info) : BrainSliceRNN(
     TensorShape r_shape({1, r_dims[1] / 4, r_dims[2]});
     char* r_buffer = static_cast<char*>(const_cast<void*>((R->DataRaw()))) + index * 4 * r_shape.Size() * R->DataType()->Size();
     BrainSliceParameterInitPlan ri_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    ri_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer, R->Location());
+    ri_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer, R->Location());
     BrainSliceParameterInitPlan ro_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    ro_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + r_shape.Size() * R->DataType()->Size(), R->Location());
+    ro_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + r_shape.Size() * R->DataType()->Size(), R->Location());
     BrainSliceParameterInitPlan rf_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    rf_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + 2 * (r_shape.Size() * R->DataType()->Size()), R->Location());
+    rf_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + 2 * (r_shape.Size() * R->DataType()->Size()), R->Location());
     BrainSliceParameterInitPlan rc_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 2, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
-    rc_plan.tensor = std::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + 3 * (r_shape.Size() * R->DataType()->Size()), R->Location());
+    rc_plan.tensor = onnxruntime::make_unique<Tensor>(R->DataType(), r_shape, r_buffer + 3 * (r_shape.Size() * R->DataType()->Size()), R->Location());
 
     //2. upload the weights
     //The built-in LSTM firmware is trick that it assume the matrix are load in the order: Wi, Ri, Wf, Rf, Wc, Rc, Wo, Ro
@@ -82,7 +82,7 @@ BrainSliceLSTM<float>::BrainSliceLSTM(const OpKernelInfo& info) : BrainSliceRNN(
     BrainSliceParameterInitPlan identity_plan = {nullptr, ParameterUsage::USE_AS_MATRIX, 1, false, matrix_mem_type, 0, ISA_Mem_MatrixRf};
     TensorShape identity_shape({hidden_size_, hidden_size_});
     // R is on cpu, reuse the location.
-    identity_plan.tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), identity_shape, &identity_matrix[0], R->Location());
+    identity_plan.tensor = onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<float>(), identity_shape, &identity_matrix[0], R->Location());
     UploadParameter<float>(&rnn_params_[index][static_cast<uint32_t>(LSTMParaIndex::MRF_IDENTITY)], identity_plan);
 
     //4. call LSTM init function
@@ -135,13 +135,13 @@ BrainSliceLSTM<float>::BrainSliceLSTM(const OpKernelInfo& info) : BrainSliceRNN(
     auto bias_mem_type = use_dram_ ? ISA_Mem_Dram : ISA_Mem_AddSubVrf_0;
 
     BrainSliceParameterInitPlan bi_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    bi_plan.tensor = std::make_unique<Tensor>(B->DataType(), bias_shape, &bias[0][0], W->Location());
+    bi_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), bias_shape, &bias[0][0], W->Location());
     BrainSliceParameterInitPlan bf_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    bf_plan.tensor = std::make_unique<Tensor>(B->DataType(), bias_shape, &bias[1][0], W->Location());
+    bf_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), bias_shape, &bias[1][0], W->Location());
     BrainSliceParameterInitPlan bc_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    bc_plan.tensor = std::make_unique<Tensor>(B->DataType(), bias_shape, &bias[2][0], W->Location());
+    bc_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), bias_shape, &bias[2][0], W->Location());
     BrainSliceParameterInitPlan bo_plan = {nullptr, ParameterUsage::USE_AS_VECTOR, 0, false, bias_mem_type, 0, ISA_Mem_AddSubVrf_0};
-    bo_plan.tensor = std::make_unique<Tensor>(B->DataType(), bias_shape, &bias[3][0], W->Location());
+    bo_plan.tensor = onnxruntime::make_unique<Tensor>(B->DataType(), bias_shape, &bias[3][0], W->Location());
     UploadParameter<float>(&rnn_params_[index][static_cast<uint32_t>(LSTMParaIndex::ANS_RF_B_I)], bi_plan);
     UploadParameter<float>(&rnn_params_[index][static_cast<uint32_t>(LSTMParaIndex::ANS_RF_B_F)], bf_plan);
     UploadParameter<float>(&rnn_params_[index][static_cast<uint32_t>(LSTMParaIndex::ANS_RF_B_C)], bc_plan);

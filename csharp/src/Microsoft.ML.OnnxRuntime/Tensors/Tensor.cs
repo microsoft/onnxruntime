@@ -313,9 +313,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             long size = 1;
             for (int i = 0; i < dimensions.Length; i++)
             {
-                if (dimensions[i] < 1)
+                if (dimensions[i] < 0)
                 {
-                    throw new ArgumentOutOfRangeException(nameof(dimensions), "Dimensions must be positive and non-zero");
+                    throw new ArgumentOutOfRangeException(nameof(dimensions), "Dimensions must be non-negative");
                 }
                 this.dimensions[i] = dimensions[i];
                 size *= dimensions[i];

@@ -66,6 +66,30 @@ class ScaledTanh final : public UnaryElementwise {
   float beta_;
 };
 
+template <typename T>
+class Gelu final : public UnaryElementwise {
+ public:
+  Gelu(const OpKernelInfo& info) : UnaryElementwise(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_NULL()
+};
+
+// Put Gradient Definitions Below
+
+template <typename T>
+class GeluGrad final : public BinaryElementwise<ShouldNotBroadcast> {
+ public:
+  GeluGrad(const OpKernelInfo& info) : BinaryElementwise(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_NULL()
+};
+
 }  // namespace cuda
-}  //namespace contrib
+}  // namespace contrib
 }  // namespace onnxruntime

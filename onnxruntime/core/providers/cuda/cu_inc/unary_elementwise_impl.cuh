@@ -15,7 +15,7 @@ __global__ void _UnaryElementWise(
     OutT* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
-  CUDA_LONG start = NumThreadsPerBlock * NumElementsPerThread * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   InT value[NumElementsPerThread];
 
   CUDA_LONG id = start;
@@ -43,14 +43,17 @@ void UnaryElementWiseImpl(
     OutT* output_data,
     const FuncT& func,
     size_t count) {
+  if (count == 0)  // special case where there's a dim value of 0 in the shape
+    return;
+
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _UnaryElementWise<InT, OutT, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>\
-    <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      input_data,
-      output_data,
-      func,
-      N);
+  _UnaryElementWise<InT, OutT, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+          input_data,
+          output_data,
+          func,
+          N);
 }
 
 }  // namespace cuda

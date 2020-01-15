@@ -119,6 +119,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         &zero,
         reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
         ldc));
+    return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
              transa, transb, stride_A, stride_B, stride_C, batch_count)) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
@@ -139,37 +140,37 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count)));
-  } else {
-    int device_id = GetDeviceId();
-    CudaAsyncBuffer<const CudaT*> left_arrays(this, device_id, helper.LeftOffsets().size());
-    CudaAsyncBuffer<const CudaT*> right_arrays(this, device_id, helper.RightOffsets().size());
-    CudaAsyncBuffer<CudaT*> output_arrays(this, device_id, helper.OutputOffsets().size());
-    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
-    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
-    MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-    ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
-    ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
-    ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
-
-    // note that onnxruntime OrtValue is row major, while cublas is column major,
-    // so swap left/right operands
-    CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
-        Base::CublasHandle(),
-        transB,
-        transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &one,
-        right_arrays.GpuPtr(),
-        ldb,
-        left_arrays.GpuPtr(),
-        lda,
-        &zero,
-        output_arrays.GpuPtr(),
-        ldc,
-        static_cast<int>(helper.OutputOffsets().size())));
+    return Status::OK();
   }
+
+  CudaAsyncBuffer<const CudaT*> left_arrays(this, helper.LeftOffsets().size());
+  CudaAsyncBuffer<const CudaT*> right_arrays(this, helper.RightOffsets().size());
+  CudaAsyncBuffer<CudaT*> output_arrays(this, helper.OutputOffsets().size());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());
+
+  // note that onnxruntime OrtValue is row major, while cublas is column major,
+  // so swap left/right operands
+  CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
+      Base::CublasHandle(),
+      transB,
+      transA,
+      static_cast<int>(helper.N()),
+      static_cast<int>(helper.M()),
+      static_cast<int>(helper.K()),
+      &one,
+      right_arrays.GpuPtr(),
+      ldb,
+      left_arrays.GpuPtr(),
+      lda,
+      &zero,
+      output_arrays.GpuPtr(),
+      ldc,
+      static_cast<int>(helper.OutputOffsets().size())));
 
   return Status::OK();
 }

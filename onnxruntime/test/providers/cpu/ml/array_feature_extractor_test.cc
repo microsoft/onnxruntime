@@ -45,7 +45,7 @@ TEST_F(ArrayFeatureExtractorTest, Basic) {
 TEST_F(ArrayFeatureExtractorTest, HigherDimensionalX) {
   const std::vector<int64_t> x_dims{2, 3, 4, 5};
   const int64_t x_size = std::accumulate(
-      x_dims.begin(), x_dims.end(), static_cast<int64_t>(1), std::multiplies<>{});
+      x_dims.begin(), x_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
   const std::vector<int32_t> X = [x_size]() {
     std::vector<int32_t> v(x_size);
     std::iota(v.begin(), v.end(), 0);

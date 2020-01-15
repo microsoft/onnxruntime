@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
+
 #include "contrib_ops/cpu/trainable_dropout_op.h"
 
 #include <chrono>
@@ -74,7 +81,7 @@ Status TrainableDropout::ComputeImpl(OpKernelContext* context) const {
   std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
   auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataAsSpan<bool>();
-    temp_mask_buffer = std::make_unique<bool[]>(X_shape.Size());
+    temp_mask_buffer = onnxruntime::make_unique<bool[]>(X_shape.Size());
     return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
   }();
 

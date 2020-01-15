@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4389)
+#endif
+
 #include "contrib_ops/cpu/trainable_dropout_op.h"
 
 #include <algorithm>
@@ -47,7 +51,7 @@ void RunTrainableDropoutTest(
 
   std::unique_ptr<bool[]> mask_buffer{};
   if (use_mask) {
-    mask_buffer = std::make_unique<bool[]>(input_size);
+    mask_buffer = onnxruntime::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
     t.AddMissingOptionalOutput<bool>();
@@ -61,9 +65,9 @@ void RunTrainableDropoutTest(
     const auto num_output_zeros = std::count(output_span.begin(), output_span.end(), 0.0f);
 
     if (ratio == 1.0f) {
-      ASSERT_EQ(num_output_zeros, output_span.size()) << "provider: " << provider_type;
+      ASSERT_EQ(num_output_zeros, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_output_zeros) / output_span.size(), ratio, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_output_zeros) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {
@@ -92,7 +96,7 @@ void RunTrainableDropoutTest(
     }
   };
 
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, true, output_verifier);
+  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, nullptr, ExecutionMode::ORT_SEQUENTIAL, output_verifier);
 }
 }  // namespace
 
@@ -122,7 +126,7 @@ void RunTrainableDropoutGradTest(float ratio, const std::vector<int64_t>& input_
   std::vector<float> dy_data(input_shape.Size(), input_constant);
   std::vector<float> ratio_data(1, ratio);
 
-  auto mask_buffer = std::make_unique<bool[]>(input_shape.Size());
+  auto mask_buffer = onnxruntime::make_unique<bool[]>(input_shape.Size());
   std::generate_n(
       mask_buffer.get(), input_shape.Size(),
       [ratio, rng = std::default_random_engine{42},

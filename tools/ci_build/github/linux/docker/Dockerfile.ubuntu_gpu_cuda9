@@ -8,7 +8,7 @@ ARG PYTHON_VERSION=3.5
 
 ADD scripts /tmp/scripts
 ENV PATH="/opt/cmake/bin:${PATH}"
-RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts
 
 WORKDIR /root
 

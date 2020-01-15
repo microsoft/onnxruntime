@@ -16,6 +16,9 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
 )
 
 if(WIN32)
@@ -25,6 +28,8 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    # wndows platform adapter code uses advapi32
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
 else()
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
@@ -47,17 +52,36 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 add_library(onnxruntime_common ${onnxruntime_common_src})
 
-onnxruntime_add_include_to_target(onnxruntime_common gsl date_interface)
+if (onnxruntime_USE_TELEMETRY)
+  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+endif()
+
+if (onnxruntime_USE_MIMALLOC)
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+        message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
+    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+        # Some of the non-windows targets see strange runtime failures
+        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
+    else()
+        include(external/mimalloc.cmake)
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
+        list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
+        target_link_libraries(onnxruntime_common mimalloc-static)
+    endif()
+endif()
+
+onnxruntime_add_include_to_target(onnxruntime_common date_interface)
 target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
         PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 if(onnxruntime_USE_NSYNC)
-    target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC)
+    target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC NSYNC_ATOMIC_CPP11)
 endif()
-if(onnxruntime_USE_EIGEN_THREADPOOL)
-    target_include_directories(onnxruntime_common PRIVATE ${eigen_INCLUDE_DIRS})
-    target_compile_definitions(onnxruntime_common PUBLIC USE_EIGEN_THREADPOOL)
-    add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+target_include_directories(onnxruntime_common PUBLIC ${eigen_INCLUDE_DIRS})
+if(NOT onnxruntime_USE_OPENMP)
+  target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
 endif()
+add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)

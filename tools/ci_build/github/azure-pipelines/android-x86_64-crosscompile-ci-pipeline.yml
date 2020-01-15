@@ -4,7 +4,7 @@ jobs:
     vmImage: 'macOS-10.14'
   steps:
     # cmake 3.15 breaks Android NDK https://gitlab.kitware.com/cmake/cmake/issues/19515. pip install cmake==3.13.2 installs 3.12.2
-    - script: pip install cmake==3.13.2.post1 && alias cmake=/usr/local/bin/cmake && cmake --version && brew install coreutils && alias time=gtimeout
+    - script: pip install cmake==3.13.2.post1 && alias cmake=/usr/local/bin/cmake && cmake --version && brew install coreutils
       displayName: Install cmake 3.14 and coreutils
     - script: 'git submodule update --init --recursive --progress'
       displayName: Clone submodules

@@ -20,6 +20,18 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Controls whether you want to execute operators in the graph sequentially or in parallel.
+    /// Usually when the model has many branches, setting this option to ExecutionMode.ORT_PARALLEL
+    /// will give you better performance.
+    /// See [ONNX_Runtime_Perf_Tuning.md] for more details.
+    /// </summary>
+    public enum ExecutionMode
+    {
+        ORT_SEQUENTIAL = 0,
+        ORT_PARALLEL = 1,
+    }
+
+    /// <summary>
     /// Holds the options for creating an InferenceSession
     /// </summary>
     public class SessionOptions : IDisposable
@@ -37,7 +49,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionOptions(out _nativePtr));
         }
 
-
+#if USE_CUDA
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
         /// </summary>
@@ -46,7 +58,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return MakeSessionOptionWithCudaProvider(0);
         }
-
 
         /// <summary>
         /// A helper method to constuct a SessionOptions object for CUDA execution
@@ -61,9 +72,84 @@ namespace Microsoft.ML.OnnxRuntime
             NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(options._nativePtr, 1);
             return options;
         }
-
+#endif
         #endregion
 
+        #region ExecutionProviderAppends
+        public void AppendExecutionProvider_CPU(int useArena)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
+        }
+
+#if USE_DNNL
+        public void AppendExecutionProvider_Dnnl(int useArena)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
+        }
+#endif
+
+#if USE_CUDA
+        public void AppendExecutionProvider_CUDA(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(_nativePtr, deviceId));
+        }
+#endif
+
+#if USE_NGRAPH
+        public void AppendExecutionProvider_NGraph(string nGraphBackendType)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_NGraph(_nativePtr, nGraphBackendType));
+        }
+#endif
+
+#if USE_OPENVINO
+        public void AppendExecutionProvider_OpenVINO(string deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_OpenVINO(_nativePtr, deviceId));
+        }
+#endif
+
+#if USE_TENSORRT
+        public void AppendExecutionProvider_Tensorrt(int deviceId)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tensorrt(_nativePtr, deviceId));
+        }
+#endif
+
+#if USE_NNAPI
+        public void AppendExecutionProvider_Nnapi()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nnapi(_nativePtr));
+        }
+#endif
+
+#if USE_NUPHAR
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for Nuphar execution
+        /// </summary>
+        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
+        /// <returns>A SessionsOptions() object configured for execution with Nuphar</returns>
+        public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
+        {
+            SessionOptions options = new SessionOptions();
+            NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(options._nativePtr, 1, settings);
+            return options;
+        }
+        public void AppendExecutionProvider_Nuphar(string settings = "")
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(_nativePtr, 1, settings));
+        }
+#endif
+        #endregion //ExecutionProviderAppends
+
+        #region Public Methods
+        public void RegisterCustomOpLibrary(string libraryPath)
+        {
+            IntPtr libraryHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(_nativePtr, libraryPath, out libraryHandle));
+        }
+
+        #endregion
         #region Public Properties
 
         internal IntPtr Handle
@@ -73,35 +159,6 @@ namespace Microsoft.ML.OnnxRuntime
                 return _nativePtr;
             }
         }
-
-
-        /// <summary>
-        /// Enable Sequential Execution. Default = true.
-        /// </summary>
-        /// </param>
-        /// 
-        public bool EnableSequentialExecution
-        {
-            get
-            {
-                return _enableSequentialExecution;
-            }
-            set
-            {
-                if (!_enableSequentialExecution && value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableSequentialExecution(_nativePtr));
-                    _enableSequentialExecution = true;
-                }
-                else if (_enableSequentialExecution && !value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableSequentialExecution(_nativePtr));
-                    _enableSequentialExecution = false;
-                }
-            }
-        }
-        private bool _enableSequentialExecution = true;
-
 
         /// <summary>
         /// Enables the use of the memory allocation patterns in the first Run() call for subsequent runs. Default = true.
@@ -152,7 +209,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableProfiling && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(_nativePtr, ProfileOutputPathPrefix));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(_nativePtr, NativeMethods.GetPlatformSerializedString(ProfileOutputPathPrefix)));
                     _enableProfiling = true;
                 }
                 else if (_enableProfiling && !value)
@@ -177,7 +234,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (value != _optimizedModelFilePath)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, value));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(_nativePtr, NativeMethods.GetPlatformSerializedString(value)));
                     _optimizedModelFilePath = value;
                 }
             }
@@ -251,23 +308,41 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Threadpool size for the session.Run() calls. 
-        /// Default = 0, meaning threadpool size is aumatically selected from number of available cores.
+        // Sets the number of threads used to parallelize the execution within nodes
+        // A value of 0 means ORT will pick a default
         /// </summary>
-        public int ThreadPoolSize
+        public int IntraOpNumThreads
         {
             get
             {
-                return _threadPoolSize;
+                return _intraOpNumThreads;
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionThreadPoolSize(_nativePtr, value));
-                _threadPoolSize = value;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetIntraOpNumThreads(_nativePtr, value));
+                _intraOpNumThreads = value;
             }
         }
-        private int _threadPoolSize = 0; // set to what is set in C++ SessionOptions by default;
+        private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
+        /// <summary>
+        // Sets the number of threads used to parallelize the execution of the graph (across nodes)
+        // If sequential execution is enabled this value is ignored
+        // A value of 0 means ORT will pick a default
+        /// </summary>
+        public int InterOpNumThreads
+        {
+            get
+            {
+                return _interOpNumThreads;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetInterOpNumThreads(_nativePtr, value));
+                _interOpNumThreads = value;
+            }
+        }
+        private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
         /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
@@ -286,6 +361,23 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
 
+        /// <summary>
+        /// Sets the execution mode for the session. Default is set to ORT_SEQUENTIAL.
+        /// See [ONNX_Runtime_Perf_Tuning.md] for more details.
+        /// </summary>
+        public ExecutionMode ExecutionMode
+        {
+            get
+            {
+                return _executionMode;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSessionExecutionMode(_nativePtr, value));
+                _executionMode = value;
+            }
+        }
+        private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
         #endregion
 
         #region Private Methods

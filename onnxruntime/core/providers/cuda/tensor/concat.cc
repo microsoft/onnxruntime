@@ -6,29 +6,43 @@
 
 namespace onnxruntime {
 namespace cuda {
-ONNX_OPERATOR_KERNEL_EX(
-    Concat,
-    kOnnxDomain,
-    4,
-    kCudaExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Concat);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
+                                  kOnnxDomain,
+                                  4, 10,
+                                  kCudaExecutionProvider,
+                                  KernelDefBuilder()
+                                      .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Concat);
+
+// opset 11 explicitly support negative axis
+ONNX_OPERATOR_KERNEL_EX(Concat,
+                        kOnnxDomain,
+                        11,
+                        kCudaExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        Concat);
 
 Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
+  // Hold pointers to the input tensors to be used in the PrepareForCompute() step
+  std::vector<const Tensor*> input_tensors;
+  input_tensors.reserve(input_count);
+  for (int i = 0; i < input_count; ++i) {
+    input_tensors.push_back(ctx->Input<Tensor>(i));
+  }
+
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_count, p));
+  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_tensors, p));
 
   // Return at this point if output tensor is going to be empty
   if (p.output_num_elements == 0)
     return Status::OK();
 
-  int device_id = GetDeviceId();
   std::vector<int64_t> concat_sizes(input_count);
 
-  CudaAsyncBuffer<const void*> input_ptr(this, device_id, input_count);
+  CudaAsyncBuffer<const void*> input_ptr(this, input_count);
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
   std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
   int index = 0;
@@ -41,13 +55,13 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
   std::vector<int64_t> concat_sizes_range(concat_sizes);
-  for (int i = 1; i < concat_sizes_range.size(); ++i) {
+  for (size_t i = 1; i < concat_sizes_range.size(); ++i) {
     concat_sizes_range[i] += concat_sizes_range[i - 1];
   }
 
-  CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, device_id, concat_sizes);
-  CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, device_id, axis_dimension_input_output_mapping);
-  CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, device_id, concat_sizes_range);
+  CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
+  CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
+  CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
   concat_sizes_gpu.CopyToGpu();
   axis_dimension_input_output_mapping_gpu.CopyToGpu();
   concat_sizes_range_gpu.CopyToGpu();
@@ -61,7 +75,6 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
                                  concat_sizes_gpu.GpuPtr(),
                                  concat_sizes_range_gpu.GpuPtr(),
                                  axis_dimension_input_output_mapping_gpu.GpuPtr(),
-                                 input_count,
                                  p.output_tensor->MutableDataRaw(),
                                  input_ptr.GpuPtr(),
                                  p.output_num_elements));

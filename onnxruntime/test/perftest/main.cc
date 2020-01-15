@@ -21,8 +21,9 @@ int real_main(int argc, char* argv[]) {
   }
   Ort::Env env{nullptr};
   try {
-    OrtLoggingLevel logging_level = test_config.run_config.f_verbose 
-      ? ORT_LOGGING_LEVEL_VERBOSE : ORT_LOGGING_LEVEL_WARNING;
+    OrtLoggingLevel logging_level = test_config.run_config.f_verbose
+                                        ? ORT_LOGGING_LEVEL_VERBOSE
+                                        : ORT_LOGGING_LEVEL_WARNING;
     env = Ort::Env(logging_level, "Default");
   } catch (const Ort::Exception& e) {
     fprintf(stderr, "Error creating environment: %s \n", e.what());

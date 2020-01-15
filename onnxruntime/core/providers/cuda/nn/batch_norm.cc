@@ -49,7 +49,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   const Tensor* mean = p_op_kernel_context->Input<Tensor>(3);
   const Tensor* var = p_op_kernel_context->Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var, spatial_ == 1));
 
   const TensorShape& x_shape = X->Shape();
   const TensorShape& channel_shape = mean->Shape();
@@ -77,7 +77,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
 
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
-  if (X->DataType() == DataTypeImpl::GetType<MLFloat16>()) {
+  if (X->IsDataType<MLFloat16>()) {
     CudnnTensor scale_desc;
     ORT_RETURN_IF_ERROR(scale_desc.Set(new_dims, CudnnTensor::GetDataType<float>()));
     CudnnTensor bn_tensor_desc;
@@ -193,7 +193,7 @@ Status BatchNormalizationGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape channel_shape = saved_mean->Shape();
 
   // no B here, but B has same size as Scale, so can validate inputs for gradient with this substitute
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_variance));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_variance, spatial_ == 1));
 
   auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());

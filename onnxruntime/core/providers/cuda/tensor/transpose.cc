@@ -9,19 +9,16 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Transpose,                                                  \
-      kOnnxDomain,                                                \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Transpose<T>);
+ONNX_OPERATOR_KERNEL_EX(Transpose,
+                        kOnnxDomain,
+                        1,
+                        kCudaExecutionProvider,
+                        KernelDefBuilder()
+                            .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                        Transpose);
 
 // special case acceleration using cublas matrix transpose
-std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
+static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -47,7 +44,76 @@ std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, con
 }
 
 template <typename T>
-Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
+Status TransposeWithCublas(cublasHandle_t cublas_handle, const Tensor& input, Tensor& output, int M, int N) {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  CudaT one = ToCudaType<T>::FromFloat(1.0f);
+  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  const CudaT* input_data = reinterpret_cast<const CudaT*>(input.Data<T>());
+  CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
+  CUBLAS_RETURN_IF_ERROR(
+      cublasTransposeHelper(cublas_handle,
+                            CUBLAS_OP_T, CUBLAS_OP_T, M, N,
+                            &one,
+                            input_data,
+                            N,
+                            &zero,
+                            input_data,
+                            N,
+                            output_data,
+                            M));
+  return Status::OK();
+}
+
+Status Transpose::DoTranspose(const Transpose& kernel,
+                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+  // special case when there is a dim value of 0 in the shape.
+  if (output.Shape().Size() == 0)
+    return Status::OK();
+
+  auto element_type = input.GetElementType();
+  if (element_type == utils::GetONNXTensorElementDataType<float>() ||
+      element_type == utils::GetONNXTensorElementDataType<double>() ||
+      element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
+    auto mn = TryTransposeWithCublas(permutations, input.Shape());
+    int M = std::get<0>(mn);
+    int N = std::get<1>(mn);
+    if (M != 0 && N != 0) {
+      if (element_type == utils::GetONNXTensorElementDataType<float>()) {
+        return TransposeWithCublas<float>(kernel.CublasHandle(), input, output, M, N);
+      } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
+        return TransposeWithCublas<double>(kernel.CublasHandle(), input, output, M, N);
+      } else {
+        return TransposeWithCublas<MLFloat16>(kernel.CublasHandle(), input, output, M, N);
+      }
+    }
+  }
+
+  const std::vector<int64_t>& input_dims = input.Shape().GetDims();
+  const std::vector<int64_t>& output_dims = output.Shape().GetDims();
+
+  auto rank = static_cast<int32_t>(input_dims.size());
+  CudaAsyncBuffer<size_t> perm(&kernel, permutations);
+  TensorPitches original_input_strides(input_dims);
+  TensorPitches original_output_strides(output_dims);
+  
+  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
+  TArray<int64_t> input_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    input_strides.data_[i] = original_input_strides[permutations[i]];
+  }
+  TArray<fast_divmod> output_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  }
+  ORT_RETURN_IF_ERROR(perm.CopyToGpu());
+  size_t element_size = input.DataType()->Size();
+  auto status = TransposeImpl(element_size, rank, input_strides, perm.GpuPtr(), input.DataRaw(),
+                              output_strides, output.MutableDataRaw(), output.Shape().Size());
+
+  return status;
+}
+
+Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X_ptr = ctx->Input<Tensor>(0);
   if (X_ptr == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *X_ptr;
@@ -65,64 +131,8 @@ Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  auto mn = TryTransposeWithCublas(*p_perm, input_shape);
-  int M = std::get<0>(mn);
-  int N = std::get<1>(mn);
-  if (M != 0 && N != 0) {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-    CudaT one = ToCudaType<T>::FromFloat(1.0f);
-    CudaT zero = ToCudaType<T>::FromFloat(0.0f);
-    const CudaT* input_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* output_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
-    CUBLAS_RETURN_IF_ERROR(
-        cublasTransposeHelper(
-            CublasHandle(),
-            CUBLAS_OP_T,
-            CUBLAS_OP_T,
-            M,
-            N,
-            &one,
-            input_data,
-            N,
-            &zero,
-            input_data,
-            N,
-            output_data,
-            M));
-    return Status::OK();
-  }
-
-  TensorPitches original_input_strides(input_dims);
-  TensorPitches original_output_strides(output_dims);
-
-  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
-  TArray<int64_t> input_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    input_strides.data_[i] = original_input_strides[(*p_perm)[i]];
-  }
-  TArray<fast_divmod> output_strides(rank);
-  for (auto i = 0; i < rank; i++) {
-    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
-  }
-
-  TransposeImpl(
-      rank,
-      output_shape.Size(),
-      input_strides,
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(X.template Data<T>()),
-      output_strides,
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y->template MutableData<T>()));
-
-  return Status::OK();
+  return DoTranspose(*this, *p_perm, X, *Y);
 }
-
-#define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
-  template Status Transpose<T>::ComputeInternal(OpKernelContext* ctx) const;
-
-SPECIALIZED_COMPUTE(float)
-SPECIALIZED_COMPUTE(double)
-SPECIALIZED_COMPUTE(MLFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

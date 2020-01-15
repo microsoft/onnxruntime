@@ -54,7 +54,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
   }
 }
 
-Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level) const {
+Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
@@ -63,7 +63,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
 
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level));
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9}) &&
          !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {9})) ||
@@ -116,7 +116,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-    removed_nodes.push_front(node.Index());
+    graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode

@@ -10,18 +10,15 @@
 namespace onnxruntime {
 namespace cuda {
 
-std::vector<cudaDeviceProp> GridDim::s_cachedDeviceProps;
-std::once_flag GridDim::s_cachedDevicePropsInitFlag;
-
-template <typename T, CUDA_LONG NumElementsPerThread>
+template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _Fill(
     T* output_data,
     T val,
     CUDA_LONG N) {
-  CUDA_LONG id = blockIdx.x * blockDim.x * NumElementsPerThread + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
 
 #pragma unroll
-  for (int i = 0; i < NumElementsPerThread; ++i) {
+  for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = val;
       id += blockDim.x;
@@ -31,11 +28,11 @@ __global__ void _Fill(
 
 template <typename T>
 void Fill(T* output, T value, int64_t count) {
-  const auto blocks_per_grid = CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread);
+  int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _Fill<T, GridDim::maxElementsPerThread><<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
+  _Fill<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
 }
-
 template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
  public:
@@ -68,7 +65,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
+  return onnxruntime::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();

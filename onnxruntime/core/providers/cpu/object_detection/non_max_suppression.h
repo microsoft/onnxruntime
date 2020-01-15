@@ -18,6 +18,10 @@ class NonMaxSuppressionBase {
   }
 
   static Status PrepareCompute(OpKernelContext* ctx, PrepareContext& pc);
+  static Status GetThresholdsFromInputs(const PrepareContext& pc,
+                                        int64_t& max_output_boxes_per_class,
+                                        float& iou_threshold,
+                                        float& score_threshold);
 
   int64_t GetCenterPointBox() const {
     return center_point_box_;

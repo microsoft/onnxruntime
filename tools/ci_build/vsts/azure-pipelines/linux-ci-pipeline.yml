@@ -21,8 +21,8 @@ jobs:
       -x "
       --azure_sas_key=$(AZURESASKEY)
       --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
-      --use_nuphar
-      --use_tvm
+      --use_mklml --use_dnnl --use_automl
+      --build_wheel
       "
     displayName: 'Command Line Script'
     env:

@@ -26,7 +26,7 @@ Abstract:
 // Bundles the floating point constants for use by kernels written in assembly.
 //
 
-extern "C" const struct {
+MLAS_INTERNAL_DATA const struct {
     float LowerRange;
     float UpperRange;
     float alpha_13;

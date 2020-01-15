@@ -8,11 +8,14 @@
 #include "test_server_environment.h"
 #include "external/server_context_test_spouse.h"
 #include <grpcpp/impl/grpc_library.h>
+#include "test_server_environment.h"
 
 namespace onnxruntime {
 namespace server {
 namespace grpc {
 namespace test {
+
+// This class's constructor calls the GRPC library's init method.
 static ::grpc::internal::GrpcLibraryInitializer g_initializer;
 
 PredictRequest GetRequest() {
@@ -28,11 +31,25 @@ PredictRequest GetRequest() {
   return req;
 }
 
-std::shared_ptr<onnxruntime::server::ServerEnvironment> GetEnvironment() {
-  return std::shared_ptr<onnxruntime::server::ServerEnvironment>(onnxruntime::server::test::ServerEnv(), [](onnxruntime::server::ServerEnvironment *){});
-}
+class PredictionServiceImplTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const static auto model_file = "testdata/mul_1.onnx";
 
-TEST(PredictionServiceImplTests, HappyPath) {
+    onnxruntime::server::ServerEnvironment* env = onnxruntime::server::test::ServerEnv();
+    // Implementation detail - currently predict is hardcoded to model "default" version 1.
+    env->InitializeModel(model_file, "default", "1");
+  }
+  void TearDown() override {
+    onnxruntime::server::ServerEnvironment* env = onnxruntime::server::test::ServerEnv();
+    env->UnloadModel("default", "1");
+  }
+  std::shared_ptr<onnxruntime::server::ServerEnvironment> GetEnvironment() {
+    return std::shared_ptr<onnxruntime::server::ServerEnvironment>(onnxruntime::server::test::ServerEnv(), [](onnxruntime::server::ServerEnvironment*) {});
+  }
+};
+
+TEST_F(PredictionServiceImplTest, HappyPath) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -42,7 +59,7 @@ TEST(PredictionServiceImplTests, HappyPath) {
   EXPECT_TRUE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, InvalidInput) {
+TEST_F(PredictionServiceImplTest, InvalidInput) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -53,7 +70,7 @@ TEST(PredictionServiceImplTests, InvalidInput) {
   EXPECT_EQ(status.error_code(), ::grpc::INVALID_ARGUMENT);
 }
 
-TEST(PredictionServiceImplTests, SuccessRequestID) {
+TEST_F(PredictionServiceImplTest, SuccessRequestID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -66,7 +83,7 @@ TEST(PredictionServiceImplTests, SuccessRequestID) {
   EXPECT_TRUE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, InvalidInputRequestID) {
+TEST_F(PredictionServiceImplTest, InvalidInputRequestID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -81,7 +98,7 @@ TEST(PredictionServiceImplTests, InvalidInputRequestID) {
   EXPECT_FALSE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, SuccessClientID) {
+TEST_F(PredictionServiceImplTest, SuccessClientID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();
@@ -96,7 +113,7 @@ TEST(PredictionServiceImplTests, SuccessClientID) {
   EXPECT_TRUE(status.ok());
 }
 
-TEST(PredictionServiceImplTests, InvalidInputClientID) {
+TEST_F(PredictionServiceImplTest, InvalidInputClientID) {
   auto env = GetEnvironment();
   PredictionServiceImpl test{env};
   auto request = GetRequest();

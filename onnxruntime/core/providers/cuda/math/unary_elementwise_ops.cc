@@ -23,6 +23,17 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
+#define UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      x,                                                                        \
+      kOnnxDomain,                                                              \
+      ver,                                                                      \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+      x<T>);
+
 #define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                    \
   template <>                                                                                              \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
@@ -38,6 +49,10 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
 
 #define UNARY_OP_TYPED(name, ver, T)              \
   UNARY_ELEMENTWISE_REGISTER_KERNEL(name, ver, T) \
+  UNARY_ELEMENTWISE_COMPUTE(name, T)
+
+#define UNARY_LOGICALOP_TYPED(name, ver, T)                    \
+  UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, T) \
   UNARY_ELEMENTWISE_COMPUTE(name, T)
 
 // the postfix of means the types supported by the op:
@@ -82,7 +97,7 @@ UNARY_OP_HFD(Sqrt, 6)
 UNARY_OP_HFD(Log, 6)
 UNARY_OP_HFD(Exp, 6)
 UNARY_OP_HFD(Erf, 9)
-UNARY_OP_TYPED(Not, 6, bool)
+UNARY_LOGICALOP_TYPED(Not, 1, bool)
 
 }  // namespace cuda
 }  // namespace onnxruntime

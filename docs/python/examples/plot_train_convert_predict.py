@@ -54,7 +54,7 @@ print(confusion_matrix(y_test, pred))
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
-initial_type = [('float_input', FloatTensorType([1, 4]))]
+initial_type = [('float_input', FloatTensorType([None, 4]))]
 onx = convert_sklearn(clr, initial_types=initial_type)
 with open("logreg_iris.onnx", "wb") as f:
     f.write(onx.SerializeToString())
@@ -66,8 +66,10 @@ with open("logreg_iris.onnx", "wb") as f:
 import onnxruntime as rt
 sess = rt.InferenceSession("logreg_iris.onnx")
 
-print("input name='{}' and shape={}".format(sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
-print("output name='{}' and shape={}".format(sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
+print("input name='{}' and shape={}".format(
+    sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
+print("output name='{}' and shape={}".format(
+    sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
 
 ##################################
 # We compute the predictions.

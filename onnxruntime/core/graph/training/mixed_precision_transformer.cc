@@ -403,7 +403,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   // Add new FP16 initializers to the graph
   for (const auto& kv : fp16_initializers) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = kv.second;
-    Initializer initializer(tensor_proto);
+    Initializer initializer(*tensor_proto);
     ONNX_NAMESPACE::TensorProto weight_tensor_proto = initializer.ToFP16(kv.first);
     graph.AddInitializedTensor(weight_tensor_proto);
   }

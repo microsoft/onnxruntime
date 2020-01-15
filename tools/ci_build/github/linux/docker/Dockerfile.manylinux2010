@@ -2,13 +2,10 @@ FROM quay.io/pypa/manylinux2010_x86_64:latest
 
 ARG PYTHON_VERSION=3.5
 
-ADD scripts/install_manylinux2010.sh /tmp/scripts/install_manylinux2010.sh
-RUN /tmp/scripts/install_manylinux2010.sh -p ${PYTHON_VERSION}
-ADD scripts/install_protobuf.sh /tmp/scripts/install_protobuf.sh
-RUN (source /opt/onnxruntime-python/bin/activate; pip install cmake && /tmp/scripts/install_protobuf.sh && pip uninstall -y cmake)
 ADD scripts /tmp/scripts
-RUN (source /opt/onnxruntime-python/bin/activate; /tmp/scripts/install_deps.sh)
-RUN rm -rf /tmp/scripts  # not useful at all except not to see the scripts
+RUN /tmp/scripts/install_manylinux2010.sh -p $PYTHON_VERSION && \
+   (source /opt/onnxruntime-python/bin/activate; /tmp/scripts/install_deps.sh -p $PYTHON_VERSION) && \
+   rm -rf /tmp/scripts  # not useful at all except not to see the scripts
 
 RUN echo "#!/bin/bash" > /opt/entrypoint.sh && \
     echo "set -e" >> /opt/entrypoint.sh && \

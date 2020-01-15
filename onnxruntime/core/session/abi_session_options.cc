@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 #include <cstring>
 #include <cassert>
@@ -17,46 +18,52 @@ OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), provider_factories(other.provider_factories) {
 }
 
-ORT_API_STATUS_IMPL(OrtCreateSessionOptions, OrtSessionOptions** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtSessionOptions();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API(void, OrtReleaseSessionOptions, OrtSessionOptions* ptr) {
+ORT_API(void, OrtApis::ReleaseSessionOptions, OrtSessionOptions* ptr) {
   delete ptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
+ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
   API_IMPL_BEGIN
   *out = new OrtSessionOptions(*input);
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtEnableSequentialExecution, _In_ OrtSessionOptions* options) {
-  options->value.enable_sequential_execution = true;
-  return nullptr;
-}
-ORT_API_STATUS_IMPL(OrtDisableSequentialExecution, _In_ OrtSessionOptions* options) {
-  options->value.enable_sequential_execution = false;
+// Set execution_mode.
+ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* options,
+                    ExecutionMode execution_mode) {
+  switch (execution_mode) {
+    case ORT_SEQUENTIAL:
+    case ORT_PARALLEL:
+      options->value.execution_mode = execution_mode;
+      break;
+    default:
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "execution_mode is not valid");
+  }
+
   return nullptr;
 }
 
 // set filepath to save optimized onnx model.
-ORT_API_STATUS_IMPL(OrtSetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
+ORT_API_STATUS_IMPL(OrtApis::SetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
   options->value.optimized_model_filepath = optimized_model_filepath;
   return nullptr;
 }
 
 // enable profiling for this session.
-ORT_API_STATUS_IMPL(OrtEnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
+ORT_API_STATUS_IMPL(OrtApis::EnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;
   options->value.profile_file_prefix = profile_file_prefix;
   return nullptr;
 }
-ORT_API_STATUS_IMPL(OrtDisableProfiling, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::DisableProfiling, _In_ OrtSessionOptions* options) {
   options->value.enable_profiling = false;
   options->value.profile_file_prefix.clear();
   return nullptr;
@@ -66,11 +73,11 @@ ORT_API_STATUS_IMPL(OrtDisableProfiling, _In_ OrtSessionOptions* options) {
 // The idea is if the input shapes are the same, we could trace the internal memory allocation
 // and generate a memory pattern for future request. So next time we could just do one allocation
 // with a big chunk for all the internal memory allocation.
-ORT_API_STATUS_IMPL(OrtEnableMemPattern, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::EnableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = true;
   return nullptr;
 }
-ORT_API_STATUS_IMPL(OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::DisableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = false;
   return nullptr;
 }
@@ -78,38 +85,38 @@ ORT_API_STATUS_IMPL(OrtDisableMemPattern, _In_ OrtSessionOptions* options) {
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
 // set this option to false if you don't want it.
-ORT_API_STATUS_IMPL(OrtEnableCpuMemArena, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::EnableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = true;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtDisableCpuMemArena, _In_ OrtSessionOptions* options) {
+ORT_API_STATUS_IMPL(OrtApis::DisableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = false;
   return nullptr;
 }
 
 ///< logger id to use for session output
-ORT_API_STATUS_IMPL(OrtSetSessionLogId, _In_ OrtSessionOptions* options, const char* logid) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionLogId, _In_ OrtSessionOptions* options, const char* logid) {
   options->value.session_logid = logid;
   return nullptr;
 }
 
 ///< applies to session load, initialization, etc
-ORT_API_STATUS_IMPL(OrtSetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level) {
   options->value.session_log_verbosity_level = session_log_verbosity_level;
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtSetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level) {
+ORT_API_STATUS_IMPL(OrtApis::SetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level) {
   options->value.session_log_severity_level = session_log_severity_level;
   return nullptr;
 }
 
 // Set Graph optimization level.
-ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOptions* options,
                     GraphOptimizationLevel graph_optimization_level) {
   if (graph_optimization_level < 0) {
-    return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
   }
 
   switch (graph_optimization_level) {
@@ -123,17 +130,27 @@ ORT_API_STATUS_IMPL(OrtSetSessionGraphOptimizationLevel, _In_ OrtSessionOptions*
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
       break;
     case ORT_ENABLE_ALL:
-      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
       break;
     default:
-      return OrtCreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");
   }
 
   return nullptr;
 }
 
-///How many threads in the session thread pool.
-ORT_API_STATUS_IMPL(OrtSetSessionThreadPoolSize, _In_ OrtSessionOptions* options, int session_thread_pool_size) {
-  options->value.session_thread_pool_size = session_thread_pool_size;
+ORT_API_STATUS_IMPL(OrtApis::SetIntraOpNumThreads, _In_ OrtSessionOptions* options, int intra_op_num_threads) {
+  options->value.intra_op_num_threads = intra_op_num_threads;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetInterOpNumThreads, _In_ OrtSessionOptions* options, int inter_op_num_threads) {
+  options->value.inter_op_num_threads = inter_op_num_threads;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options,
+                    _In_ const char* symbolic_dim, _In_ int64_t dim_override) {
+  options->value.free_dimension_overrides.push_back(onnxruntime::FreeDimensionOverride{symbolic_dim, dim_override});
   return nullptr;
 }

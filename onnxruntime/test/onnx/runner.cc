@@ -321,14 +321,14 @@ SeqTestRunner::SeqTestRunner(OrtSession* session1,
                              TestCaseCallBack on_finished1) : DataRunner(session1, c->GetTestCaseName(), c, on_finished1), repeat_count_(repeat_count) {
 }
 
-DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(std::make_unique<MockedOrtAllocator>()) {
+DataRunner::DataRunner(OrtSession* session1, const std::string& test_case_name1, ITestCase* c, TestCaseCallBack on_finished1) : test_case_name_(test_case_name1), c_(c), session(session1), on_finished(on_finished1), default_allocator(onnxruntime::make_unique<MockedOrtAllocator>()) {
   std::string s = c->GetNodeName();
   result = std::make_shared<TestCaseResult>(c->GetDataCount(), EXECUTE_RESULT::UNKNOWN_ERROR, s);
   SetTimeSpecToZero(&spent_time_);
 }
 
 DataRunner::~DataRunner() {
-  OrtReleaseSession(session);
+  Ort::GetApi().ReleaseSession(session);
 }
 
 void DataRunner::RunTask(size_t task_id, ORT_CALLBACK_INSTANCE pci, bool store_result) {
@@ -352,11 +352,11 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
 
   // Create output feed
   size_t output_count = 0;
-  ORT_THROW_ON_ERROR(OrtSessionGetOutputCount(session, &output_count));
+  Ort::ThrowOnError(Ort::GetApi().SessionGetOutputCount(session, &output_count));
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
     char* output_name = nullptr;
-    ORT_THROW_ON_ERROR(OrtSessionGetOutputName(session, i, default_allocator.get(), &output_name));
+    Ort::ThrowOnError(Ort::GetApi().SessionGetOutputName(session, i, default_allocator.get(), &output_name));
     assert(output_name != nullptr);
     output_names[i] = output_name;
     default_allocator->Free(output_name);
@@ -382,9 +382,9 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
       output_names_raw_ptr[i] = output_names[i].c_str();
     }
     GetMonotonicTimeCounter(&start_time);
-    ORT_THROW_ON_ERROR(OrtRun(session, nullptr, input_names.data(), input_values.Data(),
-                              static_cast<size_t>(input_values.Length()), output_names_raw_ptr.data(), output_count,
-                              output_values.Data()));
+    Ort::ThrowOnError(Ort::GetApi().Run(session, nullptr, input_names.data(), input_values.Data(),
+                                        static_cast<size_t>(input_values.Length()), output_names_raw_ptr.data(), output_count,
+                                        output_values.Data()));
   }
   GetMonotonicTimeCounter(&end_time);
   AccumulateTimeSpec(&spent_time_, &start_time, &end_time);
@@ -483,7 +483,7 @@ EXECUTE_RESULT DataRunner::RunTaskImpl(size_t task_id) {
     }
   }
   for (auto& kvp : expected_output_values) {
-    OrtReleaseValue(kvp.second);
+    Ort::GetApi().ReleaseValue(kvp.second);
   }
   return res;
 }

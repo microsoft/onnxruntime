@@ -381,7 +381,7 @@ void HostApplyLayerNorm(
     const T* gamma,
     const T* beta) {
   const dim3 threads(32, 4, 1);
-  const cudaDeviceProp& prop = GridDim::GetDeviceProps();
+  const cudaDeviceProp& prop = DeviceProp::GetDeviceProps();
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   //  const uint64_t maxGridY = 32;
@@ -755,7 +755,7 @@ void HostLayerNormGradient(
       grad_beta);
 
   // compute grad_input
-  const cudaDeviceProp& prop = GridDim::GetDeviceProps();
+  const cudaDeviceProp& prop = DeviceProp::GetDeviceProps();
   const uint64_t maxGridY = prop.maxGridSize[1];
   const dim3 blocks1(1, std::min((uint64_t)n1, maxGridY), 1);
   const dim3 threads1(32, 4, 1);

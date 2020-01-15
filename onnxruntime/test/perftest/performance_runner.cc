@@ -51,6 +51,7 @@ Status PerformanceRunner::Run() {
 
   // TODO: start profiling
   // if (!performance_test_config_.run_config.profile_file.empty())
+  performance_result_.start_ = std::chrono::high_resolution_clock::now();
 
   std::unique_ptr<utils::ICPUUsage> p_ICPUUsage = utils::CreateICPUUsage();
   switch (performance_test_config_.run_config.test_mode) {
@@ -63,16 +64,20 @@ Status PerformanceRunner::Run() {
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "unknown test mode.");
   }
+  performance_result_.end_ = std::chrono::high_resolution_clock::now();
 
   performance_result_.average_CPU_usage = p_ICPUUsage->GetUsage();
   performance_result_.peak_workingset_size = utils::GetPeakWorkingSetSize();
 
   // TODO: end profiling
   // if (!performance_test_config_.run_config.profile_file.empty()) session_object->EndProfiling();
+  std::chrono::duration<double> duration = performance_result_.end_ - performance_result_.start_;
 
-  std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl
+  std::cout << "Total time cost:" << performance_result_.total_time_cost << std::endl  // sum of time taken by each request
             << "Total iterations:" << performance_result_.time_costs.size() << std::endl
-            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl;
+            << "Average time cost:" << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms" << std::endl
+            // Time between start and end of run. Less than Total time cost when running requests in parallel.
+            << "Total run time:" << duration.count() << " s" << std::endl;
   return Status::OK();
 }
 
@@ -129,32 +134,35 @@ Status PerformanceRunner::RunParallelDuration() {
 }
 
 Status PerformanceRunner::ForkJoinRepeat() {
-  // Adding trivially simple parallelization to the repeated times test will simply perform
-  // m instances of n parallel invocations with a synchronized join after each invocation.
-  // TODO: When the thread pool implementation is done, redo if it has join semantics.
-  auto tpool = GetDefaultThreadPool(Env::Default());
-  std::atomic<int> counter = {0};
+  const auto& run_config = performance_test_config_.run_config;
+
+  // create a threadpool with one thread per concurrent request
+  auto tpool = onnxruntime::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
+  std::atomic<int> counter{0}, requests{0};
   std::mutex m;
   std::condition_variable cv;
 
-  for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
-    // Fork
-    counter.load(std::memory_order_seq_cst);
-    for (size_t i = 0; i != performance_test_config_.run_config.concurrent_session_runs; ++i) {
-      counter++;
-      tpool->Schedule([this, &counter, &m, &cv]() {
-        session_->ThreadSafeRun();
-        // Simplified version of Eigen::Barrier
-        std::lock_guard<std::mutex> lg(m);
-        counter--;
-        cv.notify_all();
-      });
-    }
+  // Fork
+  for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
+    counter++;
+    tpool->Schedule([this, &counter, &requests, &m, &cv, &run_config]() {
+      while (requests++ < static_cast<int>(run_config.repeated_times)) {
+        auto status = RunOneIteration<false>();
+        if (!status.IsOK())
+          std::cerr << status.ErrorMessage();
+      }
 
-    //Join
-    std::unique_lock<std::mutex> lock(m);
-    cv.wait(lock, [&counter]() { return counter == 0; });
+      // Simplified version of Eigen::Barrier
+      std::lock_guard<std::mutex> lg(m);
+      counter--;
+      cv.notify_all();
+    });
   }
+
+  //Join
+  std::unique_lock<std::mutex> lock(m);
+  cv.wait(lock, [&counter]() { return counter == 0; });
+
   return Status::OK();
 }
 
@@ -205,7 +213,7 @@ bool PerformanceRunner::Initialize() {
 
   test_case_.reset(CreateOnnxTestCase(narrow_model_name, test_model_info_, 0.0, 0.0));
 
-  // TODO: Place input tensor on cpu memory if mkldnn provider type to avoid CopyTensor logic in CopyInputAcrossDevices
+  // TODO: Place input tensor on cpu memory if dnnl provider type to avoid CopyTensor logic in CopyInputAcrossDevices
   size_t test_data_count = test_case_->GetDataCount();
   if (test_data_count == 0) {
     std::cout << "there is no test data for model " << test_case_->GetTestCaseName() << std::endl;

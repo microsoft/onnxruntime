@@ -18,7 +18,7 @@ namespace cuda {
       KernelDefBuilder()                                                        \
           .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())          \
           .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())       \
-          .TypeConstraint("DstT", DataTypeImpl::AllFloatingPointTensorTypes()), \
+          .TypeConstraint("DstT", DataTypeImpl::AllIEEEFloatTensorTypes()), \
       MixedPrecisionScale<SrcT>);
 
 Status BytesPerElement(ONNX_NAMESPACE::TensorProto_DataType to, size_t& bytes_per_elem) {

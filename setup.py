@@ -38,14 +38,18 @@ elif '--use_ngraph' in sys.argv:
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
 
+elif '--use_nuphar' in sys.argv:
+    package_name = 'onnxruntime-nuphar'
+    sys.argv.remove('--use_nuphar')
+
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
     nightly_build = True
     sys.argv.remove('--nightly_build')
 
-is_manylinux2010 = False
-if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64':
-    is_manylinux2010 = True
+is_manylinux1 = False
+if environ.get('AUDITWHEEL_PLAT', None) == 'manylinux1_x86_64' or environ.get('AUDITWHEEL_PLAT', None) == 'manylinux2010_x86_64' :
+    is_manylinux1 = True
 
 
 class build_ext(_build_ext):
@@ -60,7 +64,7 @@ try:
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
-            if not is_manylinux2010:
+            if not is_manylinux1:
                 self.root_is_pure = False
 
         def _rewrite_ld_preload(self, to_preload):
@@ -78,9 +82,9 @@ try:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def run(self):
-            if is_manylinux2010:
+            if is_manylinux1:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
-                dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'
+                dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -97,35 +101,51 @@ try:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
                 self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
-            if is_manylinux2010:
+            if is_manylinux1:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
-                logger.info('repairing %s for manylinux2010', file)
+                logger.info('repairing %s for manylinux1', file)
                 try:
-                    subprocess.run(['auditwheel', 'repair', '--plat', 'manylinux2010_x86_64', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
+                    subprocess.run(['auditwheel', 'repair', '-w', self.dist_dir, file], check=True, stdout=subprocess.PIPE)
                 finally:
                     logger.info('removing %s', file)
                     remove(file)
 
-except ImportError:
+except ImportError as error:
+    print("Error importing dependencies:")
+    print(error)
     bdist_wheel = None
 
 # Additional binaries
 if platform.system() == 'Linux':
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.so.0', 'libmklml_intel.so', 'libiomp5.so']
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libdnnl.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  # Nuphar Libs
+  libs.extend(['libtvm.so.0.5.1'])
+  # Openvino Libs
+  libs.extend(['libcpu_extension.so'])
+  if nightly_build:
+    libs.extend(['libonnxruntime_pywrapper.so'])
 elif platform.system() == "Darwin":
-  libs = ['onnxruntime_pybind11_state.so', 'libmkldnn.0.dylib'] # TODO add libmklml and libiomp5 later.
+  libs = ['onnxruntime_pybind11_state.so', 'libdnnl.1.dylib', 'mimalloc.so'] # TODO add libmklml and libiomp5 later.
+  if nightly_build:
+    libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
-  libs = ['onnxruntime_pybind11_state.pyd', 'mkldnn.dll', 'mklml.dll', 'libiomp5md.dll']
-  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll'])
+  libs = ['onnxruntime_pybind11_state.pyd', 'dnnl.dll', 'mklml.dll', 'libiomp5md.dll']
+  libs.extend(['ngraph.dll', 'cpu_backend.dll', 'tbb.dll', 'mimalloc-override.dll', 'mimalloc-redirect.dll', 'mimalloc-redirect32.dll'])
+  # Nuphar Libs
+  libs.extend(['tvm.dll'])
+  # Openvino Libs
+  libs.extend(['cpu_extension.dll'])
+  if nightly_build:
+    libs.extend(['onnxruntime_pywrapper.dll'])
 
-if is_manylinux2010:
-    data = []
+if is_manylinux1:
+    data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
-            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux2010.so'],
+            ['onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'],
         ),
     ]
 else:
@@ -144,7 +164,9 @@ examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt"]
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
+if package_name == 'onnxruntime-nuphar':
+  extra.extend([path.join('nuphar', 'NUPHAR_CACHE_VERSION')])
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")
@@ -164,6 +186,11 @@ if nightly_build:
     date_suffix = str(datetime.datetime.now().date().strftime("%m%d"))
     version_number = version_number + ".dev" + date_suffix
 
+cmd_classes = {}
+if bdist_wheel is not None :
+    cmd_classes['bdist_wheel'] = bdist_wheel
+cmd_classes['build_ext'] = build_ext
+
 # Setup
 setup(
     name=package_name,
@@ -172,14 +199,14 @@ setup(
     long_description=long_description,
     author='Microsoft Corporation',
     author_email='onnx@microsoft.com',
-    cmdclass={'bdist_wheel': bdist_wheel, 'build_ext': build_ext},
+    cmdclass=cmd_classes,
     license="MIT License",
     packages=['onnxruntime',
               'onnxruntime.backend',
               'onnxruntime.capi',
               'onnxruntime.datasets',
               'onnxruntime.tools',
-              ],
+              ] + (['onnxruntime.nuphar'] if package_name == 'onnxruntime-nuphar' else []),
     ext_modules=ext_modules,
     package_data={
         'onnxruntime': data + examples + extra,

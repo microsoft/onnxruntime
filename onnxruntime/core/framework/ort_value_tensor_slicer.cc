@@ -8,13 +8,13 @@ namespace onnxruntime {
 
 template <typename T>
 OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) {
-  static_assert(std::is_same<std::remove_const_t<T>, OrtValue>::value,
+  static_assert(std::is_same<typename std::remove_const<T>::type, OrtValue>::value,
                 "OrtValueTensorSlicer can only be used with 'OrtValue' or 'const OrtValue'");
 
   ORT_ENFORCE(ort_value.IsTensor(), "Can't slice a non-tensor OrtValue. Type was ", ort_value.Type());
   ORT_ENFORCE(ort_value.IsAllocated(), "OrtValue has not been allocated so can't be sliced.");
 
-  auto& tensor_shape{ort_value.template Get<Tensor>().Shape()};
+  auto& tensor_shape = ort_value.template Get<Tensor>().Shape();
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
               "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 
@@ -27,10 +27,10 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
 template <typename T>
 OrtValueTensorSlicer<T>::Iterator::Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
                                             Direction direction)
-    : ort_value_{&ort_value},
-      position_{position},
-      increment_by_{direction == Direction::kForward ? 1 : -1},
-      position_materialized_{-1} {
+    : ort_value_(&ort_value),
+      position_(position),
+      increment_by_(direction == Direction::kForward ? 1 : -1),
+      position_materialized_(-1) {
   const auto& tensor = ort_value.template Get<Tensor>();
   tensor_data_type_ = tensor.DataType();
   tensor_location_ = &tensor.Location();
@@ -76,15 +76,12 @@ void OrtValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
   // However we will only return a non-const OrtValue from operator* if OrtValueTensorSlicer was created with
   // a non-const OrtValue, so externally we maintain constness as expected.
   //
-  // TODO: Ideally we could avoid the overhead of creating a new Tensor but that would require
-  // a lot more complexity (re-consider how ExecutionFrame and OpKernelContext work and whether
-  // they need to be OrtValue based, or whether they could be Tensor based).
-  // Potential future performance enhancement.
-  auto sub_tensor = std::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
-                                             const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
-
-  current_ =
-      OrtValue{sub_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  // TODO: Ideally we could avoid the overhead of creating a new Tensor (mainly cost of copying type and shape info)
+  // and would simply update Tensor::p_data_ given all other info remains constant for each slice.
+  auto sub_tensor = onnxruntime::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
+                                                     const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  current_ = OrtValue{sub_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()};
 }
 
 template class OrtValueTensorSlicer<OrtValue>;

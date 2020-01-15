@@ -14,8 +14,9 @@ void TestActivationContribOp(const char* szOp, std::vector<float>& input_vals,
                              std::function<float(float)> expected_func,
                              const std::unordered_map<std::string, float> attribs = {},
                              bool is_tensorrt_supported = true,
-                             int opset_version = 7) {
-  OpTester test(szOp, opset_version);
+                             int opset_version = 7,
+                             const char* domain = kOnnxDomain) {
+  OpTester test(szOp, opset_version, domain);
 
   for (auto attr : attribs)
     test.AddAttribute(attr.first, attr.second);
@@ -45,10 +46,11 @@ std::vector<float> input_values = {
 
 TEST(ActivationContribOpTest, ThresholdedRelu_version_1_to_9) {
   float alpha = 0.1f;
-  TestActivationContribOp("ThresholdedRelu",
-                          input_values,
-                          [alpha](float x) { return (x >= alpha) ? x : 0; },
-                          {{"alpha", alpha}}, true, 1);
+  TestActivationContribOp(
+      "ThresholdedRelu",
+      input_values,
+      [alpha](float x) { return (x >= alpha) ? x : 0; },
+      {{"alpha", alpha}}, true, 1);
 }
 
 TEST(ActivationContribOpTest, ScaledTanh) {
@@ -75,6 +77,54 @@ TEST(ActivationContribOpTest, ParametricSoftplus) {
                               return alpha * logf(expf(bx) + 1);
                           },
                           {{"alpha", alpha}, {"beta", beta}});
+}
+
+TEST(ActivationContribOpTest, Gelu) {
+  TestActivationContribOp(
+      "Gelu",
+      input_values,
+      [](float x) { return x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))); },
+      {}, false, 1, kMSDomain);
+}
+
+void TestGradientOpWithTwoInputs(const char* szOp,
+                                 std::vector<float>& dY,
+                                 std::vector<float>& X,
+                                 std::function<float(float, float)> expected_func,
+                                 const std::unordered_map<std::string, float> attrs = {},
+                                 int opset_version = 7, const char* domain = kOnnxDomain) {
+  OpTester test(szOp, opset_version, domain);
+  ORT_ENFORCE(dY.size() == X.size());
+  for (auto attr : attrs)
+    test.AddAttribute(attr.first, attr.second);
+
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<float> expected_vals;
+  for (int i = 0; i < X.size(); i++) {
+    expected_vals.push_back(expected_func(dY[i], X[i]));
+  }
+
+  test.AddInput<float>("dY", dims, dY);
+  test.AddInput<float>("X", dims, X);
+  test.AddOutput<float>("dX", dims, expected_vals);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+}
+
+TEST(ActivationContribOpTest, GeluGrad) {
+  std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+
+  std::vector<float> dY(7, 1.0f);
+  TestGradientOpWithTwoInputs(
+      "GeluGrad",
+      dY,
+      x_vals,
+      [](float dy, float x) {
+        return dy * (0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))) +
+                     x * std::exp(-0.5f * x * x) * static_cast<float>(M_2_SQRTPI) * static_cast<float>(M_SQRT1_2) * 0.5f);
+      },
+      {}, 9, kMSDomain);
 }
 
 }  // namespace test

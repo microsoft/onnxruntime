@@ -10,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/path_lib.h"
 #include "core/framework/tensor_external_data_info.h"
@@ -57,7 +58,7 @@ Status SaveRuntimeTensor(
     saved_tensor_proto.add_dims(dim);
   }
 
-  saved_tensor_proto.set_data_type(utils::GetTensorProtoType(tensor));
+  saved_tensor_proto.set_data_type(tensor.GetElementType());
 
   saved_tensor_proto.set_name(tensor_name);
 
@@ -79,7 +80,7 @@ Status SaveRuntimeTensor(
   // TODO need to ensure the data is written in little-endian format...
   // e.g., with endian_utils.h:WriteLittleEndian()
   // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/endian_utils.h
-  if (!ort_endian::is_little()) {
+  if (endian::native != endian::little) {
     ORT_NOT_IMPLEMENTED("checkpointing currently requires little-endian host byte order");
   }
 
@@ -134,7 +135,7 @@ Status SaveRuntimeTensors(
 
   const std::vector<std::string> ordered_tensor_names = GetOrderedOrtValueNames(ort_values);
   std::vector<char> tensor_data_buffer{};
-  static const OrtAllocatorInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
   std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos{};
   saved_tensor_protos.reserve(ordered_tensor_names.size());
   std::ofstream tensors_data_file{tensors_data_path};

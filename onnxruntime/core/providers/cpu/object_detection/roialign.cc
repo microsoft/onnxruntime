@@ -155,25 +155,24 @@ void pre_calc_for_bilinear_interpolate(
 }
 
 template <typename T>
-void RoiAlignForward(
-    int64_t nthreads,
-    const T* bottom_data,
-    float spatial_scale,
-    int64_t channels,
-    int64_t height,
-    int64_t width,
-    int64_t pooled_height,
-    int64_t pooled_width,
-    int64_t sampling_ratio,
-    const T* bottom_rois,
-    int64_t num_roi_cols,
-    T* top_data,
-    const std::string& mode,
-    const int64_t* batch_indices_ptr,
-    const ThreadPool* ttp) {
-  int64_t n_rois = nthreads / channels / pooled_width / pooled_height;
+void RoiAlignForward(const TensorShape& output_shape,
+                     const T* bottom_data,
+                     float spatial_scale,
+                     int64_t height,
+                     int64_t width,
+                     int64_t sampling_ratio,
+                     const T* bottom_rois,
+                     int64_t num_roi_cols,
+                     T* top_data,
+                     RoiAlignMode mode,
+                     const int64_t* batch_indices_ptr,
+                     ThreadPool* ttp) {
+  int64_t n_rois = output_shape[0];
+  int64_t channels = output_shape[1];
+  int64_t pooled_height = output_shape[2];
+  int64_t pooled_width = output_shape[3];
 
-  std::function<void(int32_t)> work_object = [&](int32_t n) {
+  ThreadPool::TryBatchParallelFor(ttp, static_cast<int32_t>(n_rois), [&](int32_t n) {
     int64_t index_n = n * channels * pooled_width * pooled_height;
 
     const T* offset_bottom_rois = bottom_rois + n * num_roi_cols;
@@ -231,7 +230,7 @@ void RoiAlignForward(
           int64_t index = index_n_c + ph * pooled_width + pw;
 
           T output_val = 0.;
-          if (mode == "avg") {  // avg pooling
+          if (mode == RoiAlignMode::avg) {  // avg pooling
             for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
               for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
                 PreCalc<T> pc = pre_calc[pre_calc_index];
@@ -249,13 +248,15 @@ void RoiAlignForward(
             for (int64_t iy = 0; iy < roi_bin_grid_h; iy++) {
               for (int64_t ix = 0; ix < roi_bin_grid_w; ix++) {
                 PreCalc<T> pc = pre_calc[pre_calc_index];
+                T val = std::max(std::max(std::max(pc.w1 * offset_bottom_data[pc.pos1],
+                                                   pc.w2 * offset_bottom_data[pc.pos2]),
+                                          pc.w3 * offset_bottom_data[pc.pos3]),
+                                 pc.w4 * offset_bottom_data[pc.pos4]);
                 if (!max_flag) {
-                  output_val = pc.w1 * offset_bottom_data[pc.pos1];
+                  output_val = val;
                   max_flag = true;
                 } else {
-                  output_val = std::max(std::max(std::max(output_val, pc.w2 * offset_bottom_data[pc.pos2]),
-                                                 pc.w3 * offset_bottom_data[pc.pos3]),
-                                        pc.w4 * offset_bottom_data[pc.pos4]);
+                  output_val = std::max(output_val, val);
                 }
 
                 pre_calc_index += 1;
@@ -267,8 +268,7 @@ void RoiAlignForward(
         }  // for pw
       }    // for ph
     }      // for c
-  };       // for n
-  if (ttp != nullptr) const_cast<ThreadPool*>(ttp)->ParallelFor(static_cast<int32_t>(n_rois), work_object);
+  });      // for n
 }
 }  // namespace
 
@@ -324,6 +324,7 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
   const auto& rois_dims = rois_ptr->Shape();
   const auto& batch_indices_dims = batch_indices_ptr->Shape();
 
+  auto num_channels = x_dims[1];
   auto num_rois = batch_indices_dims[0];
   auto num_roi_cols = rois_dims[1];
 
@@ -332,24 +333,21 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
     return status;
   }
 
-  auto& Y = *context->Output(0, {num_rois, x_dims[1], output_height_, output_width_});
-  int64_t output_size = Y.Shape().Size();
-  RoiAlignForward<T>(
-      output_size,  // num threads
-      X_ptr->Data<T>(),
-      spatial_scale_,
-      x_dims[1],  // num channels
-      x_dims[2],  // height
-      x_dims[3],  // width
-      output_height_,
-      output_width_,
-      sampling_ratio_,
-      rois_ptr->Data<T>(),
-      num_roi_cols,
-      Y.template MutableData<T>(),
-      mode_,
-      batch_indices_ptr->Data<int64_t>(),
-      static_cast<OpKernelContextInternal*>(context)->GetOperatorThreadPool());
+  TensorShape Y_shape = {num_rois, num_channels, this->output_height_, this->output_width_};
+  auto& Y = *context->Output(0, Y_shape);
+
+  RoiAlignForward<T>(Y_shape,
+                     X_ptr->Data<T>(),
+                     this->spatial_scale_,
+                     x_dims[2],  // height
+                     x_dims[3],  // width
+                     this->sampling_ratio_,
+                     rois_ptr->Data<T>(),
+                     num_roi_cols,
+                     Y.template MutableData<T>(),
+                     this->mode_,
+                     batch_indices_ptr->Data<int64_t>(),
+                     context->GetOperatorThreadPool());
 
   return Status::OK();
 }

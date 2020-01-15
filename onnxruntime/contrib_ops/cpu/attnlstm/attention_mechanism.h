@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <gsl/span>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {

@@ -15,9 +15,19 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
 endif()
 
 if(NOT onnxruntime_USE_AUTOML)
-  list(REMOVE_ITEM onnxruntime_graph_src
+  file(GLOB_RECURSE automl_to_remove_graph_src
     "${ONNXRUNTIME_ROOT}/core/graph/automl_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/automl_ops/*.cc"
+    )
+  foreach(I in ${automl_to_remove_graph_src})
+    list(REMOVE_ITEM onnxruntime_graph_src ${I})
+  endforeach()
+endif()
+
+if(NOT onnxruntime_USE_DML)
+  list(REMOVE_ITEM onnxruntime_graph_src
+    "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.cc"
     )
 endif()
 
@@ -33,8 +43,8 @@ list(REMOVE_ITEM onnxruntime_graph_src
 endif()
 
 add_library(onnxruntime_graph ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
-add_dependencies(onnxruntime_graph onnx_proto gsl)
-onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common gsl onnx onnx_proto protobuf::libprotobuf)
+add_dependencies(onnxruntime_graph onnx_proto)
+onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
 
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 

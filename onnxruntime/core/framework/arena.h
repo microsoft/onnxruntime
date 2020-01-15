@@ -26,7 +26,7 @@ class IArenaAllocator : public IAllocator {
   void Free(void* p) override = 0;
   virtual size_t Used() const = 0;
   virtual size_t Max() const = 0;
-  const OrtAllocatorInfo& Info() const override = 0;
+  const OrtMemoryInfo& Info() const override = 0;
   // allocate host pinned memory?
 };
 
@@ -64,7 +64,7 @@ class DummyArena : public IArenaAllocator {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
-  const OrtAllocatorInfo& Info() const override {
+  const OrtMemoryInfo& Info() const override {
     return info_;
   }
 
@@ -72,6 +72,41 @@ class DummyArena : public IArenaAllocator {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(DummyArena);
 
   std::unique_ptr<IDeviceAllocator> allocator_;
-  OrtAllocatorInfo info_;
+  OrtMemoryInfo info_;
+};
+
+// Runtime statistics collected by an allocator.
+struct AllocatorStats {
+  int64_t num_allocs;             // Number of allocations.
+  int64_t bytes_in_use;           // Number of bytes in use.
+  int64_t total_allocated_bytes;  // The total number of allocated bytes by the allocator.
+  int64_t max_bytes_in_use;       // The maximum bytes in use.
+  int64_t max_alloc_size;         // The max single allocation seen.
+                                  // The upper limit what the allocator can allocate, if such a limit
+                                  // is known. Certain allocator may return 0 to indicate the limit is
+                                  // unknown.
+  int64_t bytes_limit;
+
+  AllocatorStats() { Clear(); }
+
+  void Clear() {
+    this->num_allocs = 0;
+    this->bytes_in_use = 0;
+    this->max_bytes_in_use = 0;
+    this->max_alloc_size = 0;
+    this->bytes_limit = 0;
+    this->total_allocated_bytes = 0;
+  }
+
+  std::string DebugString() const {
+    std::ostringstream ss;
+    ss << "Limit:           " << this->bytes_limit << "\n"
+       << "InUse:          " << this->bytes_in_use << "\n"
+       << "TotalAllocated: " << this->total_allocated_bytes << "\n"
+       << "MaxInUse:       " << this->max_bytes_in_use << "\n"
+       << "NumAllocs:      " << this->num_allocs << "\n"
+       << "MaxAllocSize:   " << this->max_alloc_size << "\n";
+    return ss.str();
+  }
 };
 }  // namespace onnxruntime

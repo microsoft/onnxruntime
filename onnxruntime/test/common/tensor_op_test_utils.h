@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <random>
+
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -68,6 +70,15 @@ inline void Normalize(std::vector<float>& v,
     std::transform(v.begin(), v.end(), v.begin(),
                    std::bind(std::divides<float>(), std::placeholders::_1, stdev));
   }
+}
+
+inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
+  std::vector<MLFloat16> result;
+  result.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    result.push_back(MLFloat16(math::floatToHalf(data[i])));
+  }
+  return result;
 }
 
 }  // namespace test

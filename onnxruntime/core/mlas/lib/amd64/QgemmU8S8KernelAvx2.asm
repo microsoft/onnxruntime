@@ -1,0 +1,1053 @@
+;++
+;
+; Copyright (c) Microsoft Corporation. All rights reserved.
+;
+; Licensed under the MIT License.
+;
+; Module Name:
+;
+;   QgemmU8S8KernelAvx2.asm
+;
+; Abstract:
+;
+;   This module implements the kernels for the quantized integer matrix/matrix
+;   multiply operation (QGEMM).
+;
+;   This implementation uses AVX2 instructions.
+;
+;--
+
+        .xlist
+INCLUDE mlasi.inc
+INCLUDE QgemmU8X8KernelAvx2Common.inc
+        .list
+
+;
+; Stack frame layout for the U8S8 CopyPackA routine.
+;
+
+GemmU8S8CopyPackAFrame STRUCT
+
+        PaddedMatrixAData OWORD 4 DUP (?)
+        SavedXmm6 OWORD ?
+        SavedXmm7 OWORD ?
+        SavedXmm8 OWORD ?
+        SavedXmm9 OWORD ?
+        SavedXmm10 OWORD ?
+        Padding QWORD ?
+        SavedR13 QWORD ?
+        SavedR12 QWORD ?
+        SavedRdi QWORD ?
+        SavedRsi QWORD ?
+        SavedRbx QWORD ?
+        SavedRbp QWORD ?
+        ReturnAddress QWORD ?
+        PreviousP1Home QWORD ?
+        PreviousP2Home QWORD ?
+        PreviousP3Home QWORD ?
+        PreviousP4Home QWORD ?
+        CountK QWORD ?
+        RowSumVector QWORD ?
+        offb QWORD ?
+
+GemmU8S8CopyPackAFrame ENDS
+
+;
+; Stack frame layout for the U8S8 CopyPackB routine.
+;
+
+GemmU8S8CopyPackBFrame STRUCT
+
+        PaddedMatrixBData OWORD 4 DUP (?)
+        SavedXmm6 OWORD ?
+        SavedXmm7 OWORD ?
+        SavedXmm8 OWORD ?
+        Padding QWORD ?
+        SavedRdi QWORD ?
+        SavedRsi QWORD ?
+        SavedRbx QWORD ?
+        SavedRbp QWORD ?
+        ReturnAddress QWORD ?
+        PreviousP1Home QWORD ?
+        PreviousP2Home QWORD ?
+        PreviousP3Home QWORD ?
+        PreviousP4Home QWORD ?
+        CountK QWORD ?
+        ColumnSumVector QWORD ?
+        offa QWORD ?
+
+GemmU8S8CopyPackBFrame ENDS
+
+;++
+;
+; Routine Description:
+;
+;   This routine copies elements from the source matrix to the destination
+;   packed buffer.
+;
+; Arguments:
+;
+;   D (rcx) - Supplies the address of the destination packed buffer.
+;
+;   A (rdx) - Supplies the address of the source matrix.
+;
+;   lda (r8) - Supplies the number of elements per row of the source matrix.
+;
+;   CountM (r9) - Supplies the number of rows of the source matrix to copy.
+;
+;   CountK - Supplies the number of columns of the source matrix to copy.
+;
+;   RowSumVector - Supplies the address of the buffer to receive the sums of
+;       the elements from each of the rows.
+;
+;   offb - Supplies the zero point offset for the other source matrix of the
+;       matrix multiplication.
+;
+; Return Value:
+;
+;   None.
+;
+;--
+
+        NESTED_ENTRY MlasGemmU8S8CopyPackAAvx2, _TEXT
+
+        rex_push_reg rbp
+        push_reg rbx
+        push_reg rsi
+        push_reg rdi
+        push_reg r12
+        push_reg r13
+        alloc_stack (GemmU8S8CopyPackAFrame.SavedR13)
+        save_xmm128 xmm6,GemmU8S8CopyPackAFrame.SavedXmm6
+        save_xmm128 xmm7,GemmU8S8CopyPackAFrame.SavedXmm7
+        save_xmm128 xmm8,GemmU8S8CopyPackAFrame.SavedXmm8
+        save_xmm128 xmm9,GemmU8S8CopyPackAFrame.SavedXmm9
+        save_xmm128 xmm10,GemmU8S8CopyPackAFrame.SavedXmm10
+
+        END_PROLOGUE
+
+        mov     rdi,rcx
+        mov     rsi,rdx
+        mov     r10,GemmU8S8CopyPackAFrame.CountK[rsp]
+        lea     r11,[r10+3]
+        and     r11,NOT 3                   ; align CountK up to quad count
+        mov     r12,GemmU8S8CopyPackAFrame.RowSumVector[rsp]
+        vpbroadcastw xmm8,WORD PTR GemmU8S8CopyPackAFrame.offb[rsp]
+        vpcmpeqw ymm9,ymm9,ymm9             ; generate word vector [0xFFFF]
+        vpsrlw  ymm9,ymm9,15                ; generate word vector [0x0001]
+        vpsllw  ymm0,ymm9,8                 ; generate word vector [0x0100]
+        vpor    ymm9,ymm9,ymm0              ; generate word vector [0x0101]
+
+;
+; Compute the conditional load/store mask for an unaligned CountK.
+;
+
+        mov     eax,r10d
+        and     eax,15                      ; isolate unaligned count
+        add     eax,3
+        shr     eax,2                       ; align unaligned count to quad count
+        mov     DWORD PTR GemmU8S8CopyPackAFrame.CountK[rsp],eax
+        vpbroadcastd xmm10,DWORD PTR GemmU8S8CopyPackAFrame.CountK[rsp]
+        vpcmpgtd xmm10,xmm10,XMMWORD PTR [MlasMaskMoveAvx]
+
+;
+; Zero initialize the padded stack buffers.
+;
+
+        vpxor   xmm0,xmm0,xmm0
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp],ymm0
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+32],ymm0
+
+;
+; Process 4 rows of matrix A in a loop.
+;
+
+        sub     r9,4
+        jb      ProcessRemainingRows
+
+ProcessNextRowM4:
+        vpxor   xmm0,xmm0,xmm0              ; clear row accumulators
+        vpxor   xmm1,xmm1,xmm1
+        vpxor   xmm2,xmm2,xmm2
+        vpxor   xmm3,xmm3,xmm3
+        mov     rdx,rsi
+        mov     rcx,rdi
+        lea     rsi,[rsi+r8*4]              ; advance next matrix A by 4 rows
+        lea     rdi,[rdi+r11*4]             ; advance next matrix D by 4 rows
+        mov     rbx,r10                     ; reload columns remaining
+        sub     rbx,32
+        jb      ProcessRemainingColumnsM4
+
+ProcessNextColumnLoopM4:
+        lea     rax,[rdx+r8*2]              ; compute matrix A plus 2 rows
+        vmovdqu ymm4,YMMWORD PTR [rdx]
+        vmovdqu ymm5,YMMWORD PTR [rdx+r8]
+        vmovdqu ymm6,YMMWORD PTR [rax]
+        vmovdqu ymm7,YMMWORD PTR [rax+r8]
+        lea     rax,[rcx+r11*2]             ; compute matrix D plus 2 rows
+        vmovdqu YMMWORD PTR [rcx],ymm4
+        vmovdqu YMMWORD PTR [rcx+r11],ymm5
+        vmovdqu YMMWORD PTR [rax],ymm6
+        vmovdqu YMMWORD PTR [rax+r11],ymm7
+        vpmaddubsw ymm4,ymm4,ymm9           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        vpmaddubsw ymm5,ymm5,ymm9
+        vpaddw  ymm1,ymm1,ymm5
+        vpmaddubsw ymm6,ymm6,ymm9
+        vpaddw  ymm2,ymm2,ymm6
+        vpmaddubsw ymm7,ymm7,ymm9
+        vpaddw  ymm3,ymm3,ymm7
+        add     rdx,32                      ; advance matrix A by 32 bytes
+        add     rcx,32                      ; advance matrix D by 32 bytes
+        sub     rbx,32                      ; subtract columns remaining
+        jae     ProcessNextColumnLoopM4
+
+ProcessRemainingColumnsM4:
+        add     rbx,32                      ; correct for over-subtract above
+        jz      ReduceRowSumVectorM4
+        test    bl,16                       ; (CountK & 16) != 0?
+        jz      CopyRemainingCountKLessThan16M4
+        lea     rax,[rdx+r8*2]              ; compute matrix A plus 2 rows
+        vmovdqu xmm4,XMMWORD PTR [rdx]
+        vmovdqu xmm5,XMMWORD PTR [rdx+r8]
+        vmovdqu xmm6,XMMWORD PTR [rax]
+        vmovdqu xmm7,XMMWORD PTR [rax+r8]
+        lea     rax,[rcx+r11*2]             ; compute matrix D plus 2 rows
+        vmovdqu XMMWORD PTR [rcx],xmm4
+        vmovdqu XMMWORD PTR [rcx+r11],xmm5
+        vmovdqu XMMWORD PTR [rax],xmm6
+        vmovdqu XMMWORD PTR [rax+r11],xmm7
+        vpmaddubsw xmm4,xmm4,xmm9           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        vpmaddubsw xmm5,xmm5,xmm9
+        vpaddw  ymm1,ymm1,ymm5
+        vpmaddubsw xmm6,xmm6,xmm9
+        vpaddw  ymm2,ymm2,ymm6
+        vpmaddubsw xmm7,xmm7,xmm9
+        vpaddw  ymm3,ymm3,ymm7
+        add     rdx,16                      ; advance matrix A by 16 bytes
+        add     rcx,16                      ; advance matrix D by 16 bytes
+        test    bl,15                       ; test for unaligned columns
+        jz      ReduceRowSumVectorM4
+
+;
+; Copy the unaligned CountK columns to a zero padded stack buffer.
+;
+
+CopyRemainingCountKLessThan16M4:
+.errnz  GemmU8S8CopyPackAFrame.PaddedMatrixAData
+        mov     rbp,rsp                     ; GemmU8S8CopyPackAFrame.PaddedMatrixAData
+        test    bl,8                        ; (CountK & 8) != 0?
+        jz      CopyRemainingCountKLessThan8M4
+        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
+        mov     rax,QWORD PTR [rdx]
+        mov     QWORD PTR [rbp],rax
+        mov     rax,QWORD PTR [rdx+r8]
+        mov     QWORD PTR [rbp+16],rax
+        mov     rax,QWORD PTR [r13]
+        mov     QWORD PTR [rbp+32],rax
+        mov     rax,QWORD PTR [r13+r8]
+        mov     QWORD PTR [rbp+48],rax
+        add     rdx,8
+        add     rbp,8                       ; advance padded buffer destination
+
+CopyRemainingCountKLessThan8M4:
+        test    bl,4                        ; (CountK & 4) != 0?
+        jz      CopyRemainingCountKLessThan4M4
+        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
+        mov     eax,DWORD PTR [rdx]
+        mov     DWORD PTR [rbp],eax
+        mov     eax,DWORD PTR [rdx+r8]
+        mov     DWORD PTR [rbp+16],eax
+        mov     eax,DWORD PTR [r13]
+        mov     DWORD PTR [rbp+32],eax
+        mov     eax,DWORD PTR [r13+r8]
+        mov     DWORD PTR [rbp+48],eax
+        add     rdx,4
+        add     rbp,4                       ; advance padded buffer destination
+
+CopyRemainingCountKLessThan4M4:
+        test    bl,2                        ; (CountK & 2) != 0?
+        jz      CopyRemainingCountKLessThan2M4
+        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
+        movzx   eax,WORD PTR [rdx]
+        mov     WORD PTR [rbp],ax
+        movzx   eax,WORD PTR [rdx+r8]
+        mov     WORD PTR [rbp+16],ax
+        movzx   eax,WORD PTR [r13]
+        mov     WORD PTR [rbp+32],ax
+        movzx   eax,WORD PTR [r13+r8]
+        mov     WORD PTR [rbp+48],ax
+        add     rdx,2
+        add     rbp,2                       ; advance padded buffer destination
+
+CopyRemainingCountKLessThan2M4:
+        test    bl,1                        ; (CountK & 1) != 0?
+        jz      ProcessPaddedMatrixADataM4
+        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
+        movzx   eax,BYTE PTR [rdx]
+        mov     BYTE PTR [rbp],al
+        movzx   eax,BYTE PTR [rdx+r8]
+        mov     BYTE PTR [rbp+16],al
+        movzx   eax,BYTE PTR [r13]
+        mov     BYTE PTR [rbp+32],al
+        movzx   eax,BYTE PTR [r13+r8]
+        mov     BYTE PTR [rbp+48],al
+
+;
+; Process the remaining CountK columns using the zero padded stack buffer.
+;
+
+ProcessPaddedMatrixADataM4:
+        vmovdqu xmm4,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp]
+        vmovdqu xmm5,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+16]
+        vmovdqu xmm6,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+32]
+        vmovdqu xmm7,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp+48]
+        lea     rax,[rcx+r11*2]             ; compute matrix D plus 2 rows
+        vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
+        vpmaskmovd XMMWORD PTR [rcx+r11],xmm10,xmm5
+        vpmaskmovd XMMWORD PTR [rax],xmm10,xmm6
+        vpmaskmovd XMMWORD PTR [rax+r11],xmm10,xmm7
+        vpmaddubsw xmm4,xmm4,xmm9           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        vpmaddubsw xmm5,xmm5,xmm9
+        vpaddw  ymm1,ymm1,ymm5
+        vpmaddubsw xmm6,xmm6,xmm9
+        vpaddw  ymm2,ymm2,ymm6
+        vpmaddubsw xmm7,xmm7,xmm9
+        vpaddw  ymm3,ymm3,ymm7
+
+;
+; Reduce the sums for the four rows of output.
+;
+
+ReduceRowSumVectorM4:
+        vphaddw ymm0,ymm0,ymm1              ; reduce and interleave Sum1/Sum0
+        vphaddw ymm1,ymm2,ymm3              ; reduce and interleave Sum3/Sum2
+        vphaddw ymm0,ymm0,ymm1              ; reduce and interleave Sum3/Sum2/Sum1/Sum0
+        vextracti128 xmm1,ymm0,1            ; extract high pairs
+        vpaddw  xmm0,xmm0,xmm1              ; reduce low/high pairs
+        vpmaddwd xmm0,xmm0,xmm8             ; multiply by offset and reduce 32-bit sum
+        vmovdqu XMMWORD PTR [r12],xmm0
+        add     r12,4*4                     ; advance row sum vector by 4 DWORDs
+        sub     r9,4                        ; subtract rows remaining
+        jae     ProcessNextRowM4
+
+ProcessRemainingRows:
+        add     r9,4                        ; correct for over-subtract above
+        jz      ExitRoutine
+
+;
+; Process a single row of matrix A in a loop.
+;
+
+ProcessNextRowM1:
+        vpxor   xmm0,xmm0,xmm0              ; clear row accumulator
+        mov     rdx,rsi
+        mov     rcx,rdi
+        add     rsi,r8
+        add     rdi,r11
+        mov     rbx,r10                     ; reload columns remaining
+        sub     rbx,32
+        jb      ProcessRemainingColumnsM1
+
+ProcessNextColumnLoopM1:
+        vmovdqu ymm4,YMMWORD PTR [rdx]
+        vmovdqu YMMWORD PTR [rcx],ymm4
+        vpmaddubsw ymm4,ymm4,ymm9           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        add     rdx,32                      ; advance matrix A by 32 bytes
+        add     rcx,32                      ; advance matrix D by 32 bytes
+        sub     rbx,32                      ; subtract columns remaining
+        jae     ProcessNextColumnLoopM1
+
+ProcessRemainingColumnsM1:
+        add     rbx,32                      ; correct for over-subtract above
+        jz      ReduceRowSumVectorM1
+        test    bl,16                       ; (CountK & 16) != 0?
+        jz      CopyRemainingCountKLessThan16M1
+        vmovdqu xmm4,XMMWORD PTR [rdx]
+        vmovdqu XMMWORD PTR [rcx],xmm4
+        vpmaddubsw xmm4,xmm4,xmm9           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        add     rdx,16                      ; advance matrix A by 16 bytes
+        add     rcx,16                      ; advance matrix D by 16 bytes
+        test    bl,15                       ; test for unaligned columns
+        jz      ReduceRowSumVectorM1
+
+;
+; Copy the unaligned CountK columns to a zero padded stack buffer.
+;
+
+CopyRemainingCountKLessThan16M1:
+.errnz  GemmU8S8CopyPackAFrame.PaddedMatrixAData
+        mov     rbp,rsp                     ; GemmU8S8CopyPackAFrame.PaddedMatrixAData
+        test    bl,8                        ; (CountK & 8) != 0?
+        jz      CopyRemainingCountKLessThan8M1
+        mov     rax,QWORD PTR [rdx]
+        mov     QWORD PTR [rbp],rax
+        add     rdx,8
+        add     rbp,8                       ; advance padded buffer destination
+
+CopyRemainingCountKLessThan8M1:
+        test    bl,4                        ; (CountK & 4) != 0?
+        jz      CopyRemainingCountKLessThan4M1
+        mov     eax,DWORD PTR [rdx]
+        mov     DWORD PTR [rbp],eax
+        add     rdx,4
+        add     rbp,4                       ; advance padded buffer destination
+
+CopyRemainingCountKLessThan4M1:
+        test    bl,2                        ; (CountK & 2) != 0?
+        jz      CopyRemainingCountKLessThan2M1
+        movzx   eax,WORD PTR [rdx]
+        mov     WORD PTR [rbp],ax
+        add     rdx,2
+        add     rbp,2                       ; advance padded buffer destination
+
+CopyRemainingCountKLessThan2M1:
+        test    bl,1                        ; (CountK & 1) != 0?
+        jz      ProcessPaddedMatrixADataM1
+        movzx   eax,BYTE PTR [rdx]
+        mov     BYTE PTR [rbp],al
+
+;
+; Process the remaining CountK columns using the zero padded stack buffer.
+;
+
+ProcessPaddedMatrixADataM1:
+        vmovdqu xmm4,XMMWORD PTR GemmU8S8CopyPackAFrame.PaddedMatrixAData[rsp]
+        vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
+        vpmaddubsw ymm4,ymm4,ymm9           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; accumulate per row along columns
+
+;
+; Reduce the sum for the single row of output.
+;
+
+ReduceRowSumVectorM1:
+        vextracti128 xmm1,ymm0,1            ; extract high pairs
+        vpaddw  xmm0,xmm0,xmm1              ; reduction
+        vphaddw xmm0,xmm0,xmm0
+        vphaddw xmm0,xmm0,xmm0
+        vpmaddwd xmm0,xmm0,xmm8             ; multiply by offset and reduce
+        vmovd   DWORD PTR [r12],xmm0
+        add     r12,4                       ; advance row sum vector by 1 DWORD
+        dec     r9                          ; decrement rows remaining
+        jnz     ProcessNextRowM1
+
+;
+; Restore non-volatile registers and return.
+;
+
+ExitRoutine:
+        vzeroupper
+        movaps  xmm6,GemmU8S8CopyPackAFrame.SavedXmm6[rsp]
+        movaps  xmm7,GemmU8S8CopyPackAFrame.SavedXmm7[rsp]
+        movaps  xmm8,GemmU8S8CopyPackAFrame.SavedXmm8[rsp]
+        movaps  xmm9,GemmU8S8CopyPackAFrame.SavedXmm9[rsp]
+        movaps  xmm10,GemmU8S8CopyPackAFrame.SavedXmm10[rsp]
+        add     rsp,(GemmU8S8CopyPackAFrame.SavedR13)
+
+        BEGIN_EPILOGUE
+
+        pop     r13
+        pop     r12
+        pop     rdi
+        pop     rsi
+        pop     rbx
+        pop     rbp
+        ret
+
+        NESTED_END MlasGemmU8S8CopyPackAAvx2, _TEXT
+
+;++
+;
+; Routine Description:
+;
+;   This routine copies elements from the source matrix to the destination
+;   packed buffer.
+;
+; Arguments:
+;
+;   D (rcx) - Supplies the address of the destination packed buffer.
+;
+;   B (rdx) - Supplies the address of the source matrix.
+;
+;   ldb (r8) - Supplies the number of elements per row of the source matrix.
+;
+;   CountN (r9) - Supplies the number of columns of the source matrix to copy.
+;
+;   CountK - Supplies the number of rows of the source matrix to copy.
+;
+;   ColumnSumVector - Supplies the address of the buffer to receive the sums of
+;       the elements from each of the columns. Each sum has also been multiplied
+;       by the zero point offset.
+;
+;   offa - Supplies the zero point offset for the other source matrix of the
+;       matrix multiplication.
+;
+; Return Value:
+;
+;   None.
+;
+;--
+
+        NESTED_ENTRY MlasGemmU8S8CopyPackBAvx2, _TEXT
+
+        rex_push_reg rbp
+        push_reg rbx
+        push_reg rsi
+        push_reg rdi
+        alloc_stack (GemmU8S8CopyPackBFrame.SavedRdi)
+        save_xmm128 xmm6,GemmU8S8CopyPackBFrame.SavedXmm6
+        save_xmm128 xmm7,GemmU8S8CopyPackBFrame.SavedXmm7
+        save_xmm128 xmm8,GemmU8S8CopyPackBFrame.SavedXmm8
+
+        END_PROLOGUE
+
+        mov     rsi,rdx
+        mov     r10,GemmU8S8CopyPackBFrame.CountK[rsp]
+        mov     r11,GemmU8S8CopyPackBFrame.ColumnSumVector[rsp]
+        vpbroadcastw ymm7,WORD PTR GemmU8S8CopyPackBFrame.offa[rsp]
+        vpcmpeqw ymm8,ymm8,ymm8             ; generate word vector [0xFFFF]
+        vpsrlw  ymm8,ymm8,15                ; generate word vector [0x0001]
+        vpsllw  ymm0,ymm8,8                 ; generate word vector [0x0100]
+        vpor    ymm8,ymm8,ymm0              ; generate word vector [0x0101]
+
+;
+; Process 16 columns of matrix B in a loop.
+;
+
+        sub     r9,16
+        jb      ProcessRemainingColumns
+
+ProcessNextColumnN16:
+        vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
+        vpxor   xmm1,xmm1,xmm1
+        mov     rdx,rsi
+        add     rsi,16                      ; advance next matrix B by 16 columns
+        mov     rbx,r10                     ; reload rows remaining
+        sub     rbx,4
+        jb      ProcessRemainingRowsN16
+
+ProcessNextRowLoopN16:
+        lea     rax,[rdx+r8*2]              ; compute matrix B plus 2 rows
+        vmovdqu xmm2,XMMWORD PTR [rdx]      ; load 4 rows
+        vmovdqu xmm3,XMMWORD PTR [rdx+r8]
+        vmovdqu xmm4,XMMWORD PTR [rax]
+        vmovdqu xmm5,XMMWORD PTR [rax+r8]
+        lea     rdx,[rdx+r8*4]              ; advance matrix B by 4 rows
+
+InterleaveRowDataN16:
+        vpunpcklbw xmm6,xmm2,xmm3           ; interleave row data
+        vpunpckhbw xmm3,xmm2,xmm3
+        vpunpcklbw xmm2,xmm4,xmm5
+        vpunpckhbw xmm5,xmm4,xmm5
+        vpunpcklwd xmm4,xmm6,xmm2
+        vpunpckhwd xmm6,xmm6,xmm2
+        vpunpcklwd xmm2,xmm3,xmm5
+        vpunpckhwd xmm3,xmm3,xmm5
+        vinserti128 ymm4,ymm4,xmm6,1
+        vinserti128 ymm2,ymm2,xmm3,1
+        vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
+        vmovdqu YMMWORD PTR [rcx+32],ymm2
+        vpmaddubsw ymm4,ymm8,ymm4           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        vpmaddubsw ymm2,ymm8,ymm2
+        vpaddw  ymm1,ymm1,ymm2
+        add     rcx,64                      ; advance matrix D by 64 bytes
+        sub     rbx,4                       ; subtract rows remaining
+        jae     ProcessNextRowLoopN16
+
+;
+; Process the less than 4 remaining rows where the row has 16 columns.
+;
+
+ProcessRemainingRowsN16:
+        add     rbx,4                       ; correct for over-subtract above
+        jz      ReduceColumnSumVectorN16
+        vmovdqu xmm2,XMMWORD PTR [rdx]
+        vpxor   xmm3,xmm3,xmm3
+        vpxor   xmm4,xmm4,xmm4
+        vpxor   xmm5,xmm5,xmm5
+        xor     ebx,ebx                     ; no more rows remaining
+        test    r10b,2                      ; (CountK & 2) != 0?
+        jz      InterleaveRowDataN16
+        vmovdqu xmm3,XMMWORD PTR [rdx+r8]
+        test    r10b,1                      ; (CountK & 1) != 0?
+        jz      InterleaveRowDataN16
+        vmovdqu xmm4,XMMWORD PTR [rdx+r8*2]
+        jmp     InterleaveRowDataN16
+
+ReduceColumnSumVectorN16:
+        vpmaddwd ymm0,ymm0,ymm7             ; multiply by offset and reduce
+        vpmaddwd ymm1,ymm1,ymm7             ; multiply by offset and reduce
+        vmovdqu YMMWORD PTR [r11],ymm0
+        vmovdqu YMMWORD PTR [r11+32],ymm1
+        add     r11,16*4                    ; advance column sum vector by 16 DWORDs
+        sub     r9,16                       ; subtract columns remaining
+        jae     ProcessNextColumnN16
+
+ProcessRemainingColumns:
+        add     r9,16                       ; correct for over-subtract above
+        jnz     ProcessColumnNUnaligned
+
+;
+; Restore non-volatile registers and return.
+;
+
+ExitRoutine:
+        vzeroupper
+        movaps  xmm6,GemmU8S8CopyPackBFrame.SavedXmm6[rsp]
+        movaps  xmm7,GemmU8S8CopyPackBFrame.SavedXmm7[rsp]
+        movaps  xmm8,GemmU8S8CopyPackBFrame.SavedXmm8[rsp]
+        add     rsp,(GemmU8S8CopyPackBFrame.SavedRdi)
+
+        BEGIN_EPILOGUE
+
+        pop     rdi
+        pop     rsi
+        pop     rbx
+        pop     rbp
+        ret
+
+;
+; Process the remaining columns of matrix B.
+;
+
+ProcessColumnNUnaligned:
+        vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
+        vpxor   xmm1,xmm1,xmm1
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp],ymm0
+        vmovdqu YMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp+32],ymm0
+        sub     r10,4
+        jb      ProcessRemainingRowsNUnaligned
+
+ProcessNextRowLoopNUnaligned:
+        mov     rdx,rsi
+.errnz  GemmU8S8CopyPackBFrame.PaddedMatrixBData
+        mov     rbp,rsp                     ; GemmU8S8CopyPackBFrame.PaddedMatrixBData
+        test    r9b,8                       ; (CountN & 8) != 0?
+        jz      CopyRemainingCountNLessThan8K4
+        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
+        mov     rax,QWORD PTR [rdx]
+        mov     QWORD PTR [rbp],rax
+        mov     rax,QWORD PTR [rdx+r8]
+        mov     QWORD PTR [rbp+16],rax
+        mov     rax,QWORD PTR [rdi]
+        mov     QWORD PTR [rbp+32],rax
+        mov     rax,QWORD PTR [rdi+r8]
+        mov     QWORD PTR [rbp+48],rax
+        add     rdx,8                       ; advance matrix B
+        add     rbp,8                       ; advance padded buffer destination
+
+CopyRemainingCountNLessThan8K4:
+        test    r9b,4                       ; (CountN & 4) != 0?
+        jz      CopyRemainingCountNLessThan4K4
+        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
+        mov     eax,DWORD PTR [rdx]
+        mov     DWORD PTR [rbp],eax
+        mov     eax,DWORD PTR [rdx+r8]
+        mov     DWORD PTR [rbp+16],eax
+        mov     eax,DWORD PTR [rdi]
+        mov     DWORD PTR [rbp+32],eax
+        mov     eax,DWORD PTR [rdi+r8]
+        mov     DWORD PTR [rbp+48],eax
+        add     rdx,4                       ; advance matrix B
+        add     rbp,4                       ; advance padded buffer destination
+
+CopyRemainingCountNLessThan4K4:
+        test    r9b,2                       ; (CountN & 2) != 0?
+        jz      CopyRemainingCountNLessThan2K4
+        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
+        movzx   eax,WORD PTR [rdx]
+        mov     WORD PTR [rbp],ax
+        movzx   eax,WORD PTR [rdx+r8]
+        mov     WORD PTR [rbp+16],ax
+        movzx   eax,WORD PTR [rdi]
+        mov     WORD PTR [rbp+32],ax
+        movzx   eax,WORD PTR [rdi+r8]
+        mov     WORD PTR [rbp+48],ax
+        add     rdx,2                       ; advance matrix B
+        add     rbp,2                       ; advance padded buffer destination
+
+CopyRemainingCountNLessThan2K4:
+        test    r9b,1                       ; (CountN & 1) != 0?
+        jz      ProcessPaddedMatrixBData
+        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
+        movzx   eax,BYTE PTR [rdx]
+        mov     BYTE PTR [rbp],al
+        movzx   eax,BYTE PTR [rdx+r8]
+        mov     BYTE PTR [rbp+16],al
+        movzx   eax,BYTE PTR [rdi]
+        mov     BYTE PTR [rbp+32],al
+        movzx   eax,BYTE PTR [rdi+r8]
+        mov     BYTE PTR [rbp+48],al
+
+ProcessPaddedMatrixBData:
+        vmovdqu xmm2,XMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp]
+        vmovdqu xmm3,XMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp+16]
+        vmovdqu xmm4,XMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp+32]
+        vmovdqu xmm5,XMMWORD PTR GemmU8S8CopyPackBFrame.PaddedMatrixBData[rsp+48]
+        vpunpcklbw xmm6,xmm2,xmm3           ; interleave row data
+        vpunpckhbw xmm3,xmm2,xmm3
+        vpunpcklbw xmm2,xmm4,xmm5
+        vpunpckhbw xmm5,xmm4,xmm5
+        vpunpcklwd xmm4,xmm6,xmm2
+        vpunpckhwd xmm6,xmm6,xmm2
+        vpunpcklwd xmm2,xmm3,xmm5
+        vpunpckhwd xmm3,xmm3,xmm5
+        vinserti128 ymm4,ymm4,xmm6,1
+        vinserti128 ymm2,ymm2,xmm3,1
+        vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
+        vmovdqu YMMWORD PTR [rcx+32],ymm2
+        vpmaddubsw ymm4,ymm8,ymm4           ; horizontal byte+byte=word per row
+        vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
+        vpmaddubsw ymm2,ymm8,ymm2
+        vpaddw  ymm1,ymm1,ymm2
+        lea     rsi,[rsi+r8*4]              ; advance next matrix B by 4 rows
+        add     rcx,64                      ; advance matrix D by 64 bytes
+        sub     r10,4                       ; subtract rows remaining
+        jae     ProcessNextRowLoopNUnaligned
+
+ProcessRemainingRowsNUnaligned:
+        add     r10,4
+        jz      ReduceColumnSumVectorNUnaligned
+
+;
+; Process the less than 4 remaining rows where the row has less than 16 columns.
+;
+
+.errnz  GemmU8S8CopyPackBFrame.PaddedMatrixBData
+        mov     rbp,rsp                     ; GemmU8S8CopyPackBFrame.PaddedMatrixBData
+        vpxor   xmm6,xmm6,xmm6
+        vmovdqu YMMWORD PTR [rbp],ymm6
+        vmovdqu YMMWORD PTR [rbp+32],ymm6
+
+CopyUnalignedRowLoop:
+        lea     rdi,[rbp+16]                ; advance next padded buffer by 16 bytes
+        mov     rdx,rsi
+        test    r9b,8                       ; (CountN & 8) != 0?
+        jz      CopyRemainingCountNLessThan8KSmall
+        mov     rax,QWORD PTR [rdx]
+        mov     QWORD PTR [rbp],rax
+        add     rdx,8                       ; advance matrix B
+        add     rbp,8                       ; advance padded buffer destination
+
+CopyRemainingCountNLessThan8KSmall:
+        test    r9b,4                       ; (CountN & 4) != 0?
+        jz      CopyRemainingCountNLessThan4KSmall
+        mov     eax,DWORD PTR [rdx]
+        mov     DWORD PTR [rbp],eax
+        add     rdx,4                       ; advance matrix B
+        add     rbp,4                       ; advance padded buffer destination
+
+CopyRemainingCountNLessThan4KSmall:
+        test    r9b,2                       ; (CountN & 2) != 0?
+        jz      CopyRemainingCountNLessThan2KSmall
+        movzx   eax,WORD PTR [rdx]
+        mov     WORD PTR [rbp],ax
+        add     rdx,2                       ; advance matrix B
+        add     rbp,2                       ; advance padded buffer destination
+
+CopyRemainingCountNLessThan2KSmall:
+        test    r9b,1                       ; (CountN & 1) != 0?
+        jz      DoneCopyRemainingCountNKSmall
+        movzx   eax,BYTE PTR [rdx]
+        mov     BYTE PTR [rbp],al
+
+DoneCopyRemainingCountNKSmall:
+        dec     r10
+        jz      ProcessPaddedMatrixBData
+        add     rsi,r8                      ; advance next matrix B by 1 row
+        mov     rbp,rdi
+        jmp     CopyUnalignedRowLoop
+
+ReduceColumnSumVectorNUnaligned:
+        vpmaddwd ymm0,ymm0,ymm7             ; multiply by offset and reduce
+        vpmaddwd ymm1,ymm1,ymm7             ; multiply by offset and reduce
+        vmovdqu YMMWORD PTR [r11],ymm0
+        vmovdqu YMMWORD PTR [r11+32],ymm1
+        jmp     ExitRoutine
+
+        NESTED_END MlasGemmU8S8CopyPackBAvx2, _TEXT
+
+;
+; Macro Description:
+;
+;   This macro generates code to multiply and accumulator a single row of the
+;   output block.
+;
+; Arguments:
+;
+;   ColumnCount - Supplies the number of columns to produce.
+;
+;   Vec1Reg - Supplies the high block accumulator register (when ColumnCount
+;       is 16).
+;
+;   Vec2Reg - Supplies the low block accumulator register.
+;
+; Implicit Arguments:
+;
+;   ymm0 - Supplies the first vector loaded from matrix B.
+;
+;   ymm1 - Supplies the second vector loaded from matrix B (when ColumnCount
+;       is 16).
+;
+;   ymm2 - Supplies the broadcast value loaded from matrix A.
+;
+;   ymm12 - Supplies a 256-bit with the broadcasted word value 0x0001.
+;
+
+MultiplyAccumulateRow MACRO ColumnCount, Vec1Reg, Vec2Reg
+
+        vpmaddubsw ymm3,ymm2,ymm0
+        vpmaddwd ymm3,ymm3,ymm12
+IF ColumnCount EQ 16
+        vpaddd  Vec1Reg,Vec1Reg,ymm3
+        vpmaddubsw ymm2,ymm2,ymm1
+        vpmaddwd ymm2,ymm2,ymm12
+        vpaddd  Vec2Reg,Vec2Reg,ymm2
+ELSE
+        vpaddd  Vec2Reg,Vec2Reg,ymm3
+ENDIF
+
+        ENDM
+
+;
+; Macro Description:
+;
+;   This macro generates code to multiply and accumulate each row of the output
+;   block.
+;
+; Arguments:
+;
+;   ColumnCount - Supplies the number of columns to produce.
+;
+;   RowCount - Supplies the number of rows to produce.
+;
+;   VectorOffset - Supplies the byte offset from matrix B to fetch elements.
+;
+;   BroadcastOffset - Supplies the byte offset from matrix A to fetch elements.
+;
+; Implicit Arguments:
+;
+;   rbx - Supplies the address into the matrix A data plus 3 rows.
+;
+;   rcx - Supplies the address into the matrix A data.
+;
+;   rdx - Supplies the address into the matrix B data.
+;
+;   r9 - Supplies the length in bytes of a row from matrix A.
+;
+;   ymm4-ymm11 - Supplies the block accumulators.
+;
+;   ymm12 - Supplies a 256-bit with the broadcasted word value 0x0001.
+;
+
+ComputeBlock MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
+
+IF RowCount EQ 1
+        vpbroadcastd ymm2,DWORD PTR [rcx+BroadcastOffset]
+        vpmaddubsw ymm3,ymm2,YMMWORD PTR [rdx+VectorOffset]
+        vpmaddwd ymm3,ymm3,ymm12
+IF ColumnCount EQ 16
+        vpaddd  ymm4,ymm4,ymm3
+        vpmaddubsw ymm2,ymm2,YMMWORD PTR [rdx+VectorOffset+32]
+        vpmaddwd ymm2,ymm2,ymm12
+        vpaddd  ymm5,ymm5,ymm2
+ELSE
+        vpaddd  ymm5,ymm5,ymm3
+ENDIF
+ELSE
+        vmovdqu ymm0,YMMWORD PTR [rdx+VectorOffset]
+        EmitIfCountGE ColumnCount, 16, <vmovdqu ymm1,YMMWORD PTR [rdx+VectorOffset+32]>
+        EmitIfCountGE RowCount, 1, <vpbroadcastd ymm2,DWORD PTR [rcx+BroadcastOffset]>
+        EmitIfCountGE RowCount, 1, <MultiplyAccumulateRow ColumnCount, ymm4, ymm5>
+        EmitIfCountGE RowCount, 2, <vpbroadcastd ymm2,DWORD PTR [rcx+r9+BroadcastOffset]>
+        EmitIfCountGE RowCount, 2, <MultiplyAccumulateRow ColumnCount, ymm6, ymm7>
+        EmitIfCountGE RowCount, 3, <vpbroadcastd ymm2,DWORD PTR [rcx+r9*2+BroadcastOffset]>
+        EmitIfCountGE RowCount, 3, <MultiplyAccumulateRow ColumnCount, ymm8, ymm9>
+        EmitIfCountGE RowCount, 4, <vpbroadcastd ymm2,DWORD PTR [rbx+BroadcastOffset]>
+        EmitIfCountGE RowCount, 4, <MultiplyAccumulateRow ColumnCount, ymm10, ymm11>
+ENDIF
+
+        ENDM
+
+;
+; Macro Description:
+;
+;   This macro generates code to execute the block compute macro multiple
+;   times and advancing the matrix A and matrix B data pointers.
+;
+; Arguments:
+;
+;   ColumnCount - Supplies the number of columns to produce.
+;
+;   RowCount - Supplies the number of rows to produce.
+;
+; Implicit Arguments:
+;
+;   rbx - Supplies the address into the matrix A data plus 3 rows.
+;
+;   rcx - Supplies the address into the matrix A data.
+;
+;   rdx - Supplies the address into the matrix B data.
+;
+;   r9 - Supplies the length in bytes of a row from matrix A.
+;
+;   ymm4-ymm11 - Supplies the block accumulators.
+;
+
+ComputeBlockLoop MACRO ColumnCount, RowCount
+
+        LOCAL   ComputeBlockBy1Loop
+
+        mov     rsi,r9                      ; reload row length remaining
+
+ComputeBlockBy1Loop:
+        ComputeBlock ColumnCount, RowCount, 0, 0
+        add     rcx,4                       ; advance matrix A by 1 quad
+IF RowCount GT 3
+        add     rbx,4                       ; advance matrix A plus 3 rows by 1 quad
+ENDIF
+        add     rdx,64                      ; advance matrix B
+        sub     rsi,4
+        jnz     ComputeBlockBy1Loop
+
+        ENDM
+
+;++
+;
+; Routine Description:
+;
+;   This routine is an inner kernel to compute matrix multiplication for a
+;   set of rows.
+;
+; Arguments:
+;
+;   A (rcx) - Supplies the address of matrix A. The matrix data has been packed
+;       using MlasGemmU8S8CopyPackAAvx2.
+;
+;   B (rdx) - Supplies the address of matrix B. The matrix data has been packed
+;       using MlasGemmU8S8CopyPackBAvx2.
+;
+;   C (r8) - Supplies the address of matrix C.
+;
+;   QuadCountK (r9) - Supplies the number of quad columns from matrix A and the
+;       number of quad rows from matrix B to iterate over.
+;
+;   CountM - Supplies the maximum number of rows that can be processed for
+;       matrix A and matrix C. The actual number of rows handled for this
+;       invocation depends on the kernel implementation.
+;
+;   CountN - Supplies the number of columns from matrix B and matrix C to iterate
+;       over.
+;
+;   ldc - Supplies the first dimension of matrix C.
+;
+;   RowSumVector - Supplies the sum of each row from matrix A multiplied by the
+;       zero point offset of matrix B. These values are accumulated into every
+;       row of matrix C.
+;
+;   ColumnSumVector - Supplies the sum of each column from matrix B multiplied
+;       by the zero point offset of matrix A. These values are accumulated into
+;       every column of matrix C.
+;
+;   DepthValue - Supplies the value CountK multiplied by the zero point offset
+;       of matrix A multplied by the zero point offset of matrix B. This value is
+;       accumulated into every element of matrix C.
+;
+;   ZeroMode - Supplies true if the output matrix must be zero initialized,
+;       else false if the output matrix is accumulated into.
+;
+; Return Value:
+;
+;   Returns the number of rows handled.
+;
+;--
+
+        NESTED_ENTRY MlasGemmU8S8KernelAvx2, _TEXT
+
+        rex_push_reg rbp
+        push_reg rbx
+        push_reg rsi
+        push_reg rdi
+        push_reg r12
+        push_reg r13
+        alloc_stack (GemmU8X8KernelFrame.SavedR13)
+        save_xmm128 xmm6,GemmU8X8KernelFrame.SavedXmm6
+        save_xmm128 xmm7,GemmU8X8KernelFrame.SavedXmm7
+        save_xmm128 xmm8,GemmU8X8KernelFrame.SavedXmm8
+        save_xmm128 xmm9,GemmU8X8KernelFrame.SavedXmm9
+        save_xmm128 xmm10,GemmU8X8KernelFrame.SavedXmm10
+        save_xmm128 xmm11,GemmU8X8KernelFrame.SavedXmm11
+        save_xmm128 xmm12,GemmU8X8KernelFrame.SavedXmm12
+
+        END_PROLOGUE
+
+        mov     rdi,rcx
+        mov     rbp,GemmU8X8KernelFrame.CountN[rsp]
+        mov     rax,GemmU8X8KernelFrame.ldc[rsp]
+        shl     rax,2                       ; convert ldc to bytes
+        shl     r9,2                        ; convert to row length
+        movzx   r10,BYTE PTR GemmU8X8KernelFrame.ZeroMode[rsp]
+        mov     r11,GemmU8X8KernelFrame.CountM[rsp]
+        mov     r12,GemmU8X8KernelFrame.RowSumVector[rsp]
+        mov     r13,GemmU8X8KernelFrame.ColumnSumVector[rsp]
+        vpcmpeqw ymm12,ymm12,ymm12          ; generate 256-bit word vector [0xFFFF]
+        vpsrlw  ymm12,ymm12,15              ; generate 256-bit word vector [0x0001]
+
+;
+; Process CountM rows of the matrices.
+;
+
+        cmp     r11,3
+        ja      ProcessCountM4
+        je      ProcessCountM3
+        cmp     r11,1
+        je      ProcessCountM1
+
+ProcessCountM2:
+        ProcessCountM 2
+
+ProcessCountM4:
+        mov     r11d,4                      ; return 4 rows handled
+        ProcessCountM 4, Fallthrough
+
+;
+; Restore non-volatile registers and return.
+;
+
+ExitKernel:
+        mov     eax,r11d
+        vzeroupper
+        movaps  xmm6,GemmU8X8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,GemmU8X8KernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,GemmU8X8KernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,GemmU8X8KernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,GemmU8X8KernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,GemmU8X8KernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,GemmU8X8KernelFrame.SavedXmm12[rsp]
+        add     rsp,(GemmU8X8KernelFrame.SavedR13)
+
+        BEGIN_EPILOGUE
+
+        pop     r13
+        pop     r12
+        pop     rdi
+        pop     rsi
+        pop     rbx
+        pop     rbp
+        ret
+
+ProcessCountM1:
+        ProcessCountM 1
+
+ProcessCountM3:
+        ProcessCountM 3
+
+        NESTED_END MlasGemmU8S8KernelAvx2, _TEXT
+
+        END

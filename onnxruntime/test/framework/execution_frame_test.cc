@@ -21,7 +21,7 @@ namespace test {
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 std::shared_ptr<onnxruntime::Model> DummyGraphWithClip() {
-  auto model = std::make_shared<onnxruntime::Model>("test");
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -33,7 +33,7 @@ std::shared_ptr<onnxruntime::Model> DummyGraphWithClip() {
 
 std::unique_ptr<IExecutionProvider> CreateCPUExecutionProvider() {
   CPUExecutionProviderInfo info;
-  return std::make_unique<CPUExecutionProvider>(info);
+  return onnxruntime::make_unique<CPUExecutionProvider>(info);
 }
 
 class ExecutionFrameTest : public ::testing::Test {
@@ -42,7 +42,7 @@ class ExecutionFrameTest : public ::testing::Test {
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
-  onnxruntime::Model model("test");
+  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -61,7 +61,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   status = kernel_registry_manager.RegisterKernels(execution_providers);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  SessionState state{execution_providers, true, &tp_};
+  SessionState state{execution_providers, true, &tp_, nullptr};
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -69,7 +69,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan;
   // TODO below line is for testing only. In production use SequentialPlanner::CreatePlan()
-  SequentialPlannerContext context(false);
+  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
                                          state.GetOrtValueNameIdxMap(), context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -112,7 +112,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
   onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                           std::unordered_map<std::string, int>{{"", 10}});
+                           std::unordered_map<std::string, int>{{"", 10}}, {},
+                           DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -125,8 +126,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   TensorShape shape({3, 2});
   std::vector<float> fdata(static_cast<size_t>(shape.Size()));
   //create fake ml value with owned buffer.
-  OrtAllocatorInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
+  OrtMemoryInfo cpuinfo(kCpuExecutionProvider, OrtDeviceAllocator);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, fdata.data(), cpuinfo);
   OrtValue value;
   value.Init(p_tensor.release(),
              DataTypeImpl::GetType<Tensor>(),
@@ -139,7 +140,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   ExecutionProviders execution_providers;
   execution_providers.Add(xp_typ, std::move(cpu_xp));
   EXPECT_TRUE(kernel_registry_manager.RegisterKernels(execution_providers).IsOK());
-  SessionState state{execution_providers, true, &tp_};
+  SessionState state{execution_providers, true, &tp_, nullptr};
   auto status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
@@ -164,7 +165,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -191,11 +192,11 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   execution_providers.Add(xp_type, std::move(cpu_xp));
   kernel_registry_manager.RegisterKernels(execution_providers);
   //1. prepare input
-  SessionState state{execution_providers, true, &tp_};
+  SessionState state{execution_providers, true, &tp_, nullptr};
   status = state.SetGraphAndCreateKernels(graph, kernel_registry_manager);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  const OrtValueNameIdxMap& mlvalue_name_idx_map{state.GetOrtValueNameIdxMap()};
+  const OrtValueNameIdxMap& mlvalue_name_idx_map(state.GetOrtValueNameIdxMap());
 
   int x1_idx, x2_idx, x3_idx;
   int t1_idx, t2_idx, t3_idx;
@@ -220,8 +221,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<int64_t>{2, 3},
                        std::vector<float>(6, 1.0f), &v3);
 
-  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = std::make_unique<SequentialExecutionPlan>();
-  SequentialPlannerContext context(false);
+  std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan = onnxruntime::make_unique<SequentialExecutionPlan>();
+  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL);
   status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph), {}, execution_providers, kernel_registry_manager,
                                          mlvalue_name_idx_map, context, p_seq_exec_plan);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();

@@ -520,7 +520,7 @@ Status AddFiniteGradientCheck(
 using GraphInitFn = std::function<Status(Graph&)>;
 
 Status MakeGraphProto(GraphInitFn graph_init_fn, GraphProto& graph_proto) {
-  Model model{"model"};
+  Model model{"model", false, logging::LoggingManager::DefaultLogger()};
   Graph& graph = model.MainGraph();
   ORT_RETURN_IF_ERROR(graph_init_fn(graph));
   if (graph.GraphResolveNeeded()) {

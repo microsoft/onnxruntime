@@ -42,9 +42,10 @@ class OrtValueTensorSlicer {
     using difference_type = ptrdiff_t;
     using pointer = T*;
     using reference = T&;
-    using const_reference = std::add_const_t<reference>;
+    using const_reference = const T&;
 
-    enum class Direction { kForward, kReverse };
+    enum class Direction { kForward,
+                           kReverse };
 
     explicit Iterator(T& ort_value, size_t slice_dimension, size_t dim0_offset, int64_t position,
                       Direction direction = Direction::kForward);
@@ -83,7 +84,7 @@ class OrtValueTensorSlicer {
     }
 
     // non-const is only enabled if T is not const (i.e. is 'OrtValue' not 'const OrtValue')
-    std::enable_if_t<!std::is_const<reference>::value, reference> operator*() {
+    typename std::enable_if<!std::is_const<reference>::value, reference>::type operator*() {
       ORT_ENFORCE(position_ >= 0 && position_ < sequence_length_);
       if (position_ != position_materialized_) {
         MaterializeMLValue();
@@ -92,8 +93,12 @@ class OrtValueTensorSlicer {
       return current_;
     }
 
+    virtual ~Iterator() = default;
+
    private:
-    void MaterializeMLValue() const;
+    // virtual so scenarios where the void* in OrtValue::data_ isn't just a raw pointer to data (e.g. it's a handle)
+    // can implement the correct handling
+    virtual void MaterializeMLValue() const;
 
     T* ort_value_;
     int64_t position_;
@@ -106,7 +111,7 @@ class OrtValueTensorSlicer {
 
     const void* tensor_data_raw_;
     MLDataType tensor_data_type_;
-    const OrtAllocatorInfo* tensor_location_;
+    const OrtMemoryInfo* tensor_location_;
 
     int64_t sequence_length_;
     TensorShape per_iteration_shape_;
@@ -132,7 +137,7 @@ class OrtValueTensorSlicer {
 
  private:
   OrtValueTensorSlicer(T& ort_value, int64_t slice_dimension, int64_t dim0_offset) noexcept
-      : ort_value_{&ort_value}, slice_dimension_{slice_dimension}, dim0_offset_{dim0_offset} {}
+      : ort_value_(&ort_value), slice_dimension_(slice_dimension), dim0_offset_(dim0_offset) {}
 
   T* ort_value_;
   int64_t slice_dimension_;

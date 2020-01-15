@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// there's no way to use a raw pointer as the copy destination with std::copy_n
+// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
+// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
+
 #include "bahdanau_attention.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
@@ -141,7 +148,7 @@ void BahdanauAttention<T>::Compute(
       }
     }
 
-    SoftmaxInplace(gsl::span<T>{alignments, mem_steps});
+    SoftmaxInplace(gsl::span<T>{alignments, gsl::narrow_cast<gsl::index>(mem_steps)});
 
     // Calculate the context
     auto outspan = output.subspan(b * memory_depth_);

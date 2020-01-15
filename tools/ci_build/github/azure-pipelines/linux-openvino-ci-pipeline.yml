@@ -1,5 +1,6 @@
 jobs:
 - job: Linux_OpenVINO_CI_Dev
+  timeoutInMinutes: 240
   pool: Linux-CPU
   steps:
     - template: templates/set-test-data-variables-step.yml

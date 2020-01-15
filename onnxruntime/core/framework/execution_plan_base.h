@@ -15,10 +15,10 @@ class ExecutionPlanBase {
    * @param ort_value_index The index of the mlvalue
    * @return memory location
    */
-  virtual const struct OrtAllocatorInfo& GetLocation(size_t ort_value_index) const = 0;
-  virtual void SetLocation(size_t ort_value_index, const struct OrtAllocatorInfo&) = 0;
+  virtual const struct OrtMemoryInfo& GetLocation(size_t ort_value_index) const = 0;
+  virtual void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo&) = 0;
   // return all memory locations for all the MLValues
-  virtual std::set<struct OrtAllocatorInfo> GetAllLocations() const = 0;
+  virtual std::set<struct OrtMemoryInfo> GetAllLocations() const = 0;
   virtual ~ExecutionPlanBase() = default;
 };
 

@@ -5,6 +5,7 @@
 #include "core/framework/op_kernel.h"
 #include "test/providers/provider_test_utils.h"
 #include "test_utils.h"
+#include "core/session/inference_session.h"
 
 #include "gtest/gtest.h"
 
@@ -92,7 +93,8 @@ TEST(ParallelExecutor, TestStatusPropagation) {
     tester.AddInput<int64_t>("action", {1}, {/*success*/ 0});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
     // TensorRT doesn't handle a custom op. Possibly it should, but that would be a separate PR
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr, false);
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr,
+               ExecutionMode::ORT_PARALLEL);
   }
 
   {  // test failure
@@ -101,7 +103,8 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*failure*/ 1});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider}, nullptr, nullptr, false);
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider}, nullptr, nullptr,
+               ExecutionMode::ORT_PARALLEL);
   }
 
   {  // test exception
@@ -110,8 +113,31 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*exception*/ 2});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {kTensorrtExecutionProvider}, nullptr, nullptr, false);
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {kTensorrtExecutionProvider}, nullptr, nullptr, ExecutionMode::ORT_PARALLEL);
   }
+}
+
+TEST(ParallelExecutor, TestNullInterOpThreadPool) {
+  auto registry = std::make_shared<CustomRegistry>();
+  std::vector<OpSchema> schemas{TestOp::OpSchema()};
+  Status status;
+  ASSERT_TRUE((status = registry->RegisterOpSet(schemas, TestOp::OpDomain, 10, 11)).IsOK()) << status;
+  KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename TestOp::OpKernelImpl(info); };
+  auto kernel_def = TestOp::KernelDef();
+  ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
+
+  OpTester tester{"TestOp", 10, TestOp::OpDomain};
+  tester.AddCustomOpRegistry(registry);
+
+  tester.AddInput<int64_t>("action", {1}, {/*success*/ 0});
+  tester.AddOutput<int64_t>("action_out", {1}, {0});
+  // TensorRT doesn't handle a custom op. Possibly it should, but that would be a separate PR
+  onnxruntime::SessionOptions so;
+  so.session_logid = "TestOp";
+  so.session_log_verbosity_level = 1;
+  so.execution_mode = ExecutionMode::ORT_PARALLEL;
+  so.inter_op_num_threads = 1;
+  tester.Run(so, OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr);
 }
 }  // namespace test
 }  // namespace onnxruntime

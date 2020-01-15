@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// todo: Not sure why we don't have this on GitHub repo,
+// without this windows gpu build cannot pass, maybe there is some diff on compiler config.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
+
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
@@ -18,13 +24,14 @@ namespace onnxruntime {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
-      OP_TYPE,                                                                     \
-      VERSION,                                                                     \
-      TYPE,                                                                        \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())  \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS) \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                    \
+      OP_TYPE,                                                                       \
+      VERSION,                                                                       \
+      TYPE,                                                                          \
+      KernelDefBuilder()                                                             \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                  \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                \
       KERNEL_CLASS<TYPE>);
 
 #define REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
@@ -36,12 +43,13 @@ namespace onnxruntime {
       KERNEL_CLASS<TYPE>);
 
 #define REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, TYPE, KERNEL_CLASS) \
-  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                           \
-      OP_TYPE,                                                                                        \
-      VERSION_FROM, VERSION_TO,                                                                       \
-      TYPE,                                                                                           \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                    \
-                        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                    \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                                                     \
+      OP_TYPE,                                                                                                  \
+      VERSION_FROM, VERSION_TO,                                                                                 \
+      TYPE,                                                                                                     \
+      KernelDefBuilder()                                                                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>())                                             \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Add, 7, float, Add);
@@ -76,6 +84,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint32_t, Abs);
 REG_ELEMENTWISE_TYPED_KERNEL(Abs, 6, uint64_t, Abs);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, float, Neg);
+REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, double, Neg);
 REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int8_t, Neg);
 REG_ELEMENTWISE_TYPED_KERNEL(Neg, 6, int32_t, Neg);
 
@@ -107,6 +116,7 @@ REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, float, Max_8);
 REG_ELEMENTWISE_TYPED_KERNEL(Max, 8, double, Max_8);
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, float, Less);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 9, double, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, int32_t, Less);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Less, 9, int64_t, Less);
 
@@ -114,13 +124,21 @@ REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Greater, 7, 9, float, Greater)
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, int32_t, Greater);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Greater, 9, int64_t, Greater);
 
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 7, bool, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 7, int32_t, Equal);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 7, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Equal, 7, 10, int64_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, bool, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, int32_t, Equal);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, int64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 11, float, Equal);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
 REG_ELEMENTWISE_TYPED_KERNEL(Mean, 8, float, Mean_8);
+
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
+//REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
+REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
 
 REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
 
@@ -132,29 +150,33 @@ REG_ELEMENTWISE_TYPED_KERNEL(Erf, 9, float, Erf);
 ONNX_CPU_OPERATOR_KERNEL(
     Not,
     1,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Not);
 
 ONNX_CPU_OPERATOR_KERNEL(
     And,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     And);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Or,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Or);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Xor,
     7,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Xor);
 
 template <typename T>
@@ -500,6 +522,67 @@ Status Mean_8<float>::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
+BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
+  std::string direction;
+  auto status = info.GetAttr("direction", &direction);
+  ORT_ENFORCE(status.IsOK(), status);
+
+  if (direction == "LEFT")
+    shift_left_ = true;
+  else if (direction == "RIGHT")
+    shift_left_ = false;
+  else
+    ORT_THROW("Invalid direction value of '", direction, "'. Valid values are 'LEFT' or 'RIGHT'.");
+}
+
+template <typename T>
+Status BitShift<T>::Compute(OpKernelContext* context) const {
+  return BroadcastTwo<T, T>(
+      *context,
+      [this](EigenVectorMap<T> output, T input0, ConstEigenVectorMap<T> input1) {
+        int64_t i = 0;
+        if (shift_left_) {
+          for (const auto& input : input1.array()) {
+            output[i++] = input0 << input;
+          }
+        } else {
+          for (const auto& input : input1.array()) {
+            output[i++] = input0 >> input;
+          }
+        }
+      },
+      [this](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, T input1) {
+        int64_t i = 0;
+        if (shift_left_) {
+          for (const auto& input : input0.array()) {
+            output[i++] = input << input1;
+          }
+        } else {
+          for (const auto& input : input0.array()) {
+            output[i++] = input >> input1;
+          }
+        }
+      },
+      [this](EigenVectorMap<T> output, ConstEigenVectorMap<T> input0, ConstEigenVectorMap<T> input1) {
+        auto cur0 = input0.begin(), end0 = input0.end();
+        auto cur1 = input1.begin(), end1 = input1.end();
+        auto cur_out = output.begin(), end_out = output.end();
+        if (shift_left_) {
+          for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
+            *cur_out = *cur0 << *cur1;
+          }
+        } else {
+          for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
+            *cur_out = *cur0 >> *cur1;
+          }
+        }
+
+        ORT_ENFORCE(cur1 == end1);
+        ORT_ENFORCE(cur_out == end_out);
+      });
+}
+
+template <typename T>
 class Sin final : public OpKernel {
  public:
   Sin(const OpKernelInfo& info) : OpKernel(info) {
@@ -683,7 +766,7 @@ class Asinh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::asinh(in[index]);
     }
     return Status::OK();
@@ -715,7 +798,7 @@ class Acosh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::acosh(in[index]);
     }
     return Status::OK();
@@ -747,7 +830,7 @@ class Atanh final : public OpKernel {
     auto in = gsl::make_span(X_data, X.Shape().Size());
     auto out = gsl::make_span(Y_data, Y.Shape().Size());
 
-    for (int64_t index = 0; index < in.size(); ++index) {
+    for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::atanh(in[index]);
     }
     return Status::OK();
@@ -920,20 +1003,20 @@ void BroadCastFMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
       mod_broadcaster, mod_broadcast_output,
       [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                       [X](auto y) {
+                       [X](T y) {
                          return static_cast<T>(std::fmod(X, y));
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
         std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](auto x) {
+                       [Y](T x) {
                          return static_cast<T>(std::fmod(x, Y));
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
         std::transform(
             X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](auto x, auto y) {
+            [](T x, T y) {
               return static_cast<T>(std::fmod(x, y));
             });
       });
@@ -963,20 +1046,20 @@ void BroadCastMod(const Tensor& X, const Tensor& Y, OpKernelContext* context) {
       mod_broadcaster, mod_broadcast_output,
       [](gsl::span<T> output, const T& X, gsl::span<const T> Y) {
         std::transform(Y.cbegin(), Y.cend(), output.begin(),
-                       [X](auto y) {
+                       [X](T y) {
                          return Modulus(X, y);
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, const T& Y) {
         std::transform(X.cbegin(), X.cend(), output.begin(),
-                       [Y](auto x) {
+                       [Y](T x) {
                          return Modulus(x, Y);
                        });
       },
       [](gsl::span<T> output, gsl::span<const T> X, gsl::span<const T> Y) {
         std::transform(
             X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
-            [](auto x, auto y) {
+            [](T x, T y) {
               return Modulus(x, y);
             });
       });
@@ -1014,6 +1097,18 @@ void BroadCastMFloat16FMod(const Tensor& X, const Tensor& Y, OpKernelContext* co
       });
 }
 
+// Generic implementation of Mod kernel
+template <class T>
+struct CallModImpl {
+  void operator()(bool fmod, const Tensor& X, const Tensor& Y, OpKernelContext* ctx) const {
+    if (fmod) {
+      BroadCastFMod<T>(X, Y, ctx);
+    } else {
+      BroadCastMod<T>(X, Y, ctx);
+    }
+  }
+};
+
 }  // namespace mod_internal
 
 Status Mod::Compute(OpKernelContext* context) const {
@@ -1031,68 +1126,29 @@ Status Mod::Compute(OpKernelContext* context) const {
 
   using namespace mod_internal;
 
-  if (dtype == DataTypeImpl::GetType<float>()) {
-    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-    BroadCastFMod<float>(X, Y, context);
-  } else if (dtype == DataTypeImpl::GetType<double>()) {
-    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-    BroadCastFMod<double>(X, Y, context);
-  } else if (dtype == DataTypeImpl::GetType<MLFloat16>()) {
-    ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
-    BroadCastMFloat16FMod(X, Y, context);
-  } else if (dtype == DataTypeImpl::GetType<uint8_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint8_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint8_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int8_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int8_t>(X, Y, context);
-    } else {
-      BroadCastMod<int8_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<uint16_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint16_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint16_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int16_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int16_t>(X, Y, context);
-    } else {
-      BroadCastMod<int16_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<uint32_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint32_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint32_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int32_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int32_t>(X, Y, context);
-    } else {
-      BroadCastMod<int32_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<uint64_t>()) {
-    if (fmod_) {
-      BroadCastFMod<uint64_t>(X, Y, context);
-    } else {
-      BroadCastMod<uint64_t>(X, Y, context);
-    }
-  } else if (dtype == DataTypeImpl::GetType<int64_t>()) {
-    if (fmod_) {
-      BroadCastFMod<int64_t>(X, Y, context);
-    } else {
-      BroadCastMod<int64_t>(X, Y, context);
-    }
-  } else {
-    ORT_ENFORCE(false, "Unsupported data type", dtype);
+  namespace on = ONNX_NAMESPACE;
+  auto dt_type = X.GetElementType();
+  switch (dt_type) {
+    case on::TensorProto_DataType_FLOAT:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastFMod<float>(X, Y, context);
+      break;
+    case on::TensorProto_DataType_DOUBLE:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastFMod<double>(X, Y, context);
+      break;
+    case on::TensorProto_DataType_FLOAT16:
+      ORT_ENFORCE(fmod_, "fmod attribute must be true for float, float16 and double types");
+      BroadCastMFloat16FMod(X, Y, context);
+      break;
+    default:
+      utils::MLTypeCallDispatcher<mod_internal::CallModImpl, uint8_t, int8_t, uint16_t, int16_t,
+                                  uint32_t, int32_t, uint64_t, int64_t>
+          t_disp(dt_type);
+      t_disp.Invoke(fmod_, X, Y, context);
+      break;
   }
-
   return s;
-}  // namespace onnxruntime
+}
 
 }  // namespace onnxruntime

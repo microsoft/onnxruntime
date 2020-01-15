@@ -8,6 +8,8 @@
 #include "core/framework/allocator.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/graph/graph_viewer.h"
+#include "core/framework/session_options.h"
+
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;
 }
@@ -29,17 +31,18 @@ class ISequentialPlannerContext {
 
 class SequentialPlannerContext : public ISequentialPlannerContext {
  public:
-  SequentialPlannerContext(bool p_enable_parallel_execution)
-      : m_enable_parallel_execution(p_enable_parallel_execution) {}
+  SequentialPlannerContext(ExecutionMode execution_mode)
+      : m_execution_mode(execution_mode) {
+  }
 
   const ONNX_NAMESPACE::TensorShapeProto* GetShape(const onnxruntime::NodeArg& arg) const override {
     return arg.Shape();
   }
 
-  bool IsParallelExecutionEnabled() const override { return m_enable_parallel_execution; }
+  bool IsParallelExecutionEnabled() const override { return m_execution_mode == ExecutionMode::ORT_PARALLEL; }
 
  private:
-  bool m_enable_parallel_execution{false};
+  ExecutionMode m_execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 };
 
 class SequentialPlanner {

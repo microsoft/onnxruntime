@@ -61,7 +61,7 @@ class TestInferenceSessionKeras(unittest.TestCase):
         # runtime
         content = converted_model.SerializeToString()
         rt = onnxrt.InferenceSession(content)
-        input = {'conv2d_1_input_0': x}
+        input = {rt.get_inputs()[0].name: x}
         actual_rt = rt.run(None, input)
         self.assertEqual(len(actual_rt), 1)
         np.testing.assert_allclose(actual, actual_rt[0], rtol=1e-05, atol=1e-08)

@@ -46,21 +46,34 @@ TEST(TensorOpTest, Unsqueeze_3) {
 }
 
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
-  OpTester test("Unsqueeze");
+  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
 
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectFailure, "'axes' has a duplicate axis");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "[ShapeInferenceError] 'axes' attribute must not contain any duplicates",
+           {kTensorrtExecutionProvider});  //TensorRT failed
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
-  OpTester test("Unsqueeze");
+  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
 
   test.AddAttribute("axes", std::vector<int64_t>{4});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between number of source and target dimensions.");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape");
+}
+
+TEST(TensorOpTest, UnsqueezeNegAxis_3) {
+  OpTester test("Unsqueeze", -1);  // use latest opset for shape inference errors
+
+  test.AddAttribute("axes", std::vector<int64_t>{-4, 1, -6});
+  test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  // nGraph and TensorRT does not support negative axis.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 }
 
 }  // namespace test

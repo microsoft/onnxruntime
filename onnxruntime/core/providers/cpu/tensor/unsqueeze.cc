@@ -3,13 +3,24 @@
 
 #include "core/providers/cpu/tensor/unsqueeze.h"
 #include "utils.h"
+#include "core/providers/common.h"
+
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Unsqueeze,
     1,
+    10,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Unsqueeze);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Unsqueeze,
+    11,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
@@ -26,6 +37,8 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   // Set all axes_ indices to 1 in output_dims and check for duplicates
   for (int64_t axis : axes_) {
+    // Valid axis range is [0, output_rank - 1]
+    axis = HandleNegativeAxis(axis, output_dims.size());
     if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an out of range axis");
     if (output_dims[axis] != 0)

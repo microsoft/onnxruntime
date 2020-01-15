@@ -29,7 +29,7 @@ Abstract:
 // Bundles the constants for use by kernels written in assembly.
 //
 
-extern "C" const struct {
+MLAS_INTERNAL_DATA const struct {
     float ErfUpperAbsRange;
     float ErfSplitBoundary;
     float ErfSMALL_P0;
@@ -64,7 +64,7 @@ extern "C" const struct {
     float Exp_C;
     int32_t Exp_X7F;
 } MlasErfConstants = {
-    3.725f,
+    3.925f,
     0.921875f,
     -5.99104969e-4f,
     4.99339588e-3f,

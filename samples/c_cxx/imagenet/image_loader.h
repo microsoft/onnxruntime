@@ -17,7 +17,7 @@ void ResizeImageInMemory(const T* input_data, float* output_data, int in_height,
 template <typename InputType>
 class OutputCollector {
  public:
-  virtual void operator()(const std::vector<InputType>& task_id_list, const OrtValue* tensor) = 0;
+  virtual void operator()(const std::vector<InputType>& task_id_list, const Ort::Value& tensor) = 0;
   // Release the internal cache. It need be called whenever batchsize is changed
   virtual void ResetCache() = 0;
   virtual ~OutputCollector() = default;
@@ -36,6 +36,7 @@ class InceptionPreprocessing : public DataProcessing {
   const int channels_;
   const double central_fraction_ = 0.875;
   void* image_loader_;
+
  public:
   InceptionPreprocessing(int out_height, int out_width, int channels);
 

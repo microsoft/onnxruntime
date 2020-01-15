@@ -3,7 +3,7 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/generator/constant_of_shape.h"
-#include "gsl/span"
+#include "gsl/gsl"
 
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -39,11 +39,11 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 void onnxruntime::ConstantOfShapeBase::SetValueFromTensorProto(const ONNX_NAMESPACE::TensorProto& t_proto) {
   using namespace utils;
-  ORT_ENFORCE(t_proto.has_data_type());
+  ORT_ENFORCE(utils::HasDataType(t_proto));
   ORT_ENFORCE(TensorProto::DataType_IsValid(t_proto.data_type()));
   const auto tensor_type = static_cast<TensorProto_DataType>(t_proto.data_type());
-  const void* const raw_data = t_proto.has_raw_data() ? t_proto.raw_data().data() : nullptr;
-  const size_t raw_data_len = t_proto.has_raw_data() ? t_proto.raw_data().size() : 0;
+  const void* const raw_data = utils::HasRawData(t_proto) ? t_proto.raw_data().data() : nullptr;
+  const size_t raw_data_len = utils::HasRawData(t_proto) ? t_proto.raw_data().size() : 0;
   switch (tensor_type) {
     case TensorProto::BOOL:
       FETCH_VALUE_DATA(bool);

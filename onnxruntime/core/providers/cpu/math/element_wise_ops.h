@@ -269,6 +269,16 @@ class Mean_8 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitShift final : public OpKernel {
+ public:
+  explicit BitShift(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool shift_left_;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
@@ -298,9 +308,9 @@ class Erf final : public OpKernel {
 };
 
 template <typename T>
-auto MakeEigenArrayMap(Tensor& t) { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> { return EigenVectorArrayMap<T>(t.template MutableData<T>(), t.Shape().Size()); }
 template <typename T>
-auto MakeEigenArrayMap(const Tensor& t) { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
+auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> { return ConstEigenVectorArrayMap<T>(t.template Data<T>(), t.Shape().Size()); }
 
 struct BroadcastIterator {
   size_t AdvanceBy(size_t delta) {
@@ -321,8 +331,8 @@ struct BroadcastIterator {
   }
 
   void Reserve(int64_t max_dims) {
-    deltas_.reserve(max_dims);
-    counts_.reserve(max_dims);
+    deltas_.reserve(static_cast<size_t>(max_dims));
+    counts_.reserve(static_cast<size_t>(max_dims));
   }
 
   void Init(int64_t axis, int64_t largest) {
@@ -408,13 +418,22 @@ struct Broadcaster {
         auto axis2 = *--iter2;
 
         auto largest = std::max(axis1, axis2);
-        *--output_shape = largest;
+        auto smallest = std::min(axis1, axis2);
+        auto dim_to_use = largest;
 
-        if (largest == 1 && index + 1 < dimension_count_min)  // Nothing to do in this case
+        if (smallest == 0) {
+          ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
+          dim_to_use = smallest;
+        }
+
+        *--output_shape = dim_to_use;
+
+        // if both 1, or a 1 and 0, and there are more dims, we can let the next iteration do the Init
+        if (dim_to_use <= 1 && index + 1 < dimension_count_min)
           continue;
 
-        iterator1_.Init(axis1, largest);
-        iterator2_.Init(axis2, largest);
+        iterator1_.Init(axis1, dim_to_use);
+        iterator2_.Init(axis2, dim_to_use);
         index++;  // Manually increment since we processed one axis
         break;
       }
@@ -425,13 +444,21 @@ struct Broadcaster {
       auto axis2 = *--iter2;
 
       auto largest = std::max(axis1, axis2);
-      *--output_shape = largest;
+      auto smallest = std::min(axis1, axis2);
+      auto dim_to_use = largest;
+
+      if (smallest == 0) {
+        ORT_ENFORCE(largest <= 1, "Can broadcast 0 by 0 or 1. ", largest, " is invalid.");
+        dim_to_use = smallest;
+      }
+
+      *--output_shape = dim_to_use;
 
       if (largest == 1)  // Nothing to do in this case
         continue;
 
-      iterator1_.Append(axis1, largest);
-      iterator2_.Append(axis2, largest);
+      iterator1_.Append(axis1, dim_to_use);
+      iterator2_.Append(axis2, dim_to_use);
     }
 
     // If one shape is bigger than another we need to broadcast the smaller onto the bigger from this point on
@@ -535,9 +562,9 @@ struct TensorAllocator {
   }
 
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) {
-    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
-                                    shape,
-                                    allocator_);
+    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+                                            shape,
+                                            allocator_);
   }
 
  private:

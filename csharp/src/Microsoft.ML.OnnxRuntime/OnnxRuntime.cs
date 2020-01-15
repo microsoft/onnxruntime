@@ -51,9 +51,6 @@ namespace Microsoft.ML.OnnxRuntime
         private OnnxRuntime()  //Problem: it is not possible to pass any option for a Singleton
             :base(IntPtr.Zero, true)
         {
-            // Check LibC version on Linux, before doing any onnxruntime initialization
-            CheckLibcVersionGreaterThanMinimum();
-
             handle = IntPtr.Zero;
             try
             {
@@ -81,32 +78,5 @@ namespace Microsoft.ML.OnnxRuntime
             Delete(handle);
             return true;
         }
-
-        [DllImport("libc", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr gnu_get_libc_version();
-
-        private static void CheckLibcVersionGreaterThanMinimum()
-        {
-            // require libc version 2.23 or higher
-            var minVersion = new Version(2, 23);
-            var curVersion = new Version(0, 0);
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                try
-                {
-                    curVersion = Version.Parse(Marshal.PtrToStringAnsi(gnu_get_libc_version()));
-                    if (curVersion >= minVersion)
-                        return;
-                }
-                catch (Exception)
-                {
-                    // trap any obscure exception
-                }
-                throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                        $"libc.so version={curVersion} does not meet the minimun of 2.23 required by OnnxRuntime. " +
-                        "Linux distribution should be similar to Ubuntu 16.04 or higher");
-            }
-        }
-
     }
 }

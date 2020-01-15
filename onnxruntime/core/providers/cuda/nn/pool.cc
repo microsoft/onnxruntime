@@ -30,12 +30,17 @@ namespace cuda {
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
       Pool<data_type, pool_type>);
 
+
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 7, 9)
-POOLING_KERNEL(AveragePool, float, AveragePool, 10)
-POOLING_KERNEL(AveragePool, double, AveragePool, 10)
-POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 10)
+POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 10, 10)
+POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 10, 10)
+POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 10, 10)
+//AveragePool and MaxPool op set 11 only update spec document on default value for dilations and strides.
+POOLING_KERNEL(AveragePool, float, AveragePool, 11)
+POOLING_KERNEL(AveragePool, double, AveragePool, 11)
+POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11)
 POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1)
 POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1)
 POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1)
@@ -45,9 +50,12 @@ POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<1>, 1, 7)
 POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 8, 9)
 POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 8, 9)
 POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 8, 9)
-POOLING_KERNEL(MaxPool, float, MaxPool<8>, 10)
-POOLING_KERNEL(MaxPool, double, MaxPool<8>, 10)
-POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 10)
+POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<8>, 10, 10)
+POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<8>, 10, 10)
+POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<8>, 10, 10)
+POOLING_KERNEL(MaxPool, float, MaxPool<8>, 11)
+POOLING_KERNEL(MaxPool, double, MaxPool<8>, 11)
+POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 11)
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1)
@@ -113,18 +121,21 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
-  std::vector<int64_t> kernel_shape = kernel_shape_;
-  std::vector<int64_t> pads = pads_;
-  std::vector<int64_t> strides = strides_;
+  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+  std::vector<int64_t> pads = pool_attrs_.pads;
+  std::vector<int64_t> strides = pool_attrs_.strides;
 
-  if (global_pooling_) {
+  if (pool_attrs_.global_pooling) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
     pads.assign(kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, dilations_, ceil_mode_);
+  std::vector<int64_t> y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
+  // special case when there is a dim value of 0 in the shape.
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
@@ -150,7 +161,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
-    mode = count_include_pad_ ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
+    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING 
+    : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
@@ -171,24 +183,28 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
-  std::vector<int64_t> kernel_shape = this->kernel_shape_;
-  std::vector<int64_t> pads = this->pads_;
-  std::vector<int64_t> strides = this->strides_;
+  std::vector<int64_t> kernel_shape = this->pool_attrs_.kernel_shape;
+  std::vector<int64_t> pads = this->pool_attrs_.pads;
+  std::vector<int64_t> strides = this->pool_attrs_.strides;
 
-  if (this->global_pooling_) {
+  if (this->pool_attrs_.global_pooling) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
     pads.assign(kernel_shape.size(), 0);
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = PoolBase::SetOutputSize(x_shape, x_shape[1], &pads, this->dilations_, this->ceil_mode_);
+  std::vector<int64_t> y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
+
+  // special case when there is a dim value of 0 in the shape.
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
   Tensor* I = context->Output(1, TensorShape(y_dims));
-  if (nullptr != I || !this->default_dilations_) {
+  if (nullptr != I || !this->pool_attrs_.default_dilations) {
     auto i_data = nullptr == I ? nullptr : I->template MutableData<int64_t>();
     MaxPoolWithIndex<CudaT>(
         x_shape,
@@ -196,8 +212,8 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
         kernel_shape,
         strides,
         pads,
-        this->dilations_,
-        this->storage_order_,
+        this->pool_attrs_.dilations,
+        this->pool_attrs_.storage_order,
         x_data,
         y_data,
         i_data);

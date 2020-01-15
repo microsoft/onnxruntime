@@ -10,8 +10,11 @@ using namespace onnxruntime::common;
 Status GraphAugmenter::AugmentGraph(Graph& graph, const GraphDefs& graph_element_defs) {
   // Add new initializers to the graph. - no op if it already exists
   for (const auto& tensor_proto : graph_element_defs.Initializers()) {
-    graph.AddInitializedTensor(tensor_proto);
-    graph.GetOrCreateNodeArg(tensor_proto.name(), nullptr);
+    const ONNX_NAMESPACE::TensorProto* exist_initializer = nullptr;
+    if (!graph.GetInitializedTensor(tensor_proto.name(), exist_initializer)) {
+      graph.AddInitializedTensor(tensor_proto);
+      graph.GetOrCreateNodeArg(tensor_proto.name(), nullptr);
+    }
   }
 
   // Add new nodes to the graph.

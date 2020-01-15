@@ -24,7 +24,7 @@ class SessionState;
 struct AllocPlanPerValue {
   AllocKind alloc_kind{AllocKind::kAllocate};
   MLDataType value_type{nullptr};
-  OrtAllocatorInfo location;
+  OrtMemoryInfo location;
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
@@ -72,16 +72,16 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
   std::vector<OrtValueIndex> to_be_freed;
 
-  const OrtAllocatorInfo& GetLocation(size_t ort_value_index) const override {
+  const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
   }
 
-  void SetLocation(size_t ort_value_index, const struct OrtAllocatorInfo& info) override {
+  void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo& info) override {
     allocation_plan[ort_value_index].location = info;
   }
 
-  std::set<OrtAllocatorInfo> GetAllLocations() const override {
-    std::set<OrtAllocatorInfo> locations;
+  std::set<OrtMemoryInfo> GetAllLocations() const override {
+    std::set<OrtMemoryInfo> locations;
     for (auto& alloc_plan : allocation_plan) {
       if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
     }
@@ -92,7 +92,6 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   bool NodeHasFence(onnxruntime::NodeIndex node_index) const {
     return node_has_fence[node_index];
   }
-
 };
 
 // Output details of an execution plan:

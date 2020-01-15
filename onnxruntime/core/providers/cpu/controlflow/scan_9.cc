@@ -21,7 +21,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -97,24 +97,29 @@ ONNX_OPERATOR_SET_SCHEMA(
 }
 */
 
+template <>
+struct Scan<9>::Info : public scan::detail::Info {
+  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in)
+      : scan::detail::Info(node, subgraph_in, num_scan_inputs_in, /* is_v8 */ false) {}
+};
+
 class ScanImpl {
  public:
   ScanImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
-           int64_t num_scan_inputs,
+           const Scan<9>::Info& info,
            const std::vector<int64_t>& input_directions,
            const std::vector<int64_t>& output_directions,
            const std::vector<int64_t>& input_axes,
-           const std::vector<int64_t>& output_axes);
+           const std::vector<int64_t>& output_axes,
+           const scan::detail::DeviceHelpers& device_helpers);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
 
-  Status CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm);
-
   // Execute the batch, by iterating the sequence in each batch entry
   // and calling the subgraph with each item in the sequence.
-  Status Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm);
+  Status Execute(const FeedsFetchesManager& ffm);
 
  private:
   // validate inputs and setup batch size and max sequence length.
@@ -135,13 +140,7 @@ class ScanImpl {
 
   OpKernelContextInternal& context_;
   const SessionState& session_state_;
-  const GraphViewer& subgraph_;
-
-  int num_variadic_inputs_;
-  int num_variadic_outputs_;
-  int num_loop_state_variables_;
-  int num_scan_inputs_;
-  int num_scan_outputs_;
+  const Scan<9>::Info& info_;
 
   int64_t sequence_len_ = -1;
 
@@ -153,11 +152,10 @@ class ScanImpl {
 
   // inputs for graph. either original input value or transposed input if an axis other than 0 was specified
   std::vector<OrtValue> inputs_;
-
-  std::vector<std::string> subgraph_output_names_;
   std::vector<std::unique_ptr<OutputIterator>> output_iterators_;
+  const std::vector<const OrtValue*>& implicit_inputs_;
 
-  std::unordered_map<std::string, const OrtValue*> implicit_inputs_;
+  const scan::detail::DeviceHelpers& device_helpers_;
 };
 
 template <>
@@ -192,49 +190,74 @@ Scan<9>::Scan(const OpKernelInfo& info) : OpKernel(info) {
   } else {
     output_axes_ = std::vector<int64_t>(num_scan_outputs, 0);
   }
+
+  device_helpers_.transpose_func = TransposeBase::DoTranspose;
+  device_helpers_.set_data_to_zero_func = [](void* data, size_t size_in_bytes) -> Status {
+    memset(data, 0, size_in_bytes);
+    return Status::OK();
+  };
+}
+
+// we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
+template <>
+Scan<9>::~Scan() = default;
+
+template <>
+Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                           const std::string& attribute_name,
+                                           const SessionState& subgraph_session_state) {
+  ORT_ENFORCE(info_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+  ORT_UNUSED_PARAMETER(attribute_name);
+
+  const auto& node = Node();
+  info_ = onnxruntime::make_unique<Scan<9>::Info>(node, *subgraph_session_state.GetGraphViewer(),
+                                                  static_cast<int>(num_scan_inputs_));
+
+  auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
+                                                        /* is_v8 */ false, feeds_fetches_manager_);
+
+  return status;
 }
 
 template <>
 Status Scan<9>::Compute(OpKernelContext* ctx) const {
+  ORT_ENFORCE(feeds_fetches_manager_ && info_,
+              "CreateFeedsFetchesManager must be called prior to execution of graph.");
+
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
   auto* session_state = ctx_internal->SubgraphSessionState("body");
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
 
-  ScanImpl scan_impl{*ctx_internal, *session_state, num_scan_inputs_, input_directions_, output_directions_,
-                     input_axes_, output_axes_};
+  ScanImpl scan_impl{*ctx_internal, *session_state, *info_, input_directions_, output_directions_,
+                     input_axes_, output_axes_, device_helpers_};
 
   auto status = scan_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
 
-  // create FeedsFetchesManager if needed and call ScanImpl::Execute
-  status = controlflow::detail::SubgraphExecuteHelper(cached_feeds_fetches_manager_, scan_impl);
+  status = scan_impl.Execute(*feeds_fetches_manager_);
 
   return status;
 }
 
 ScanImpl::ScanImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
-                   int64_t num_scan_inputs,
+                   const Scan<9>::Info& info,
                    const std::vector<int64_t>& input_directions,
                    const std::vector<int64_t>& output_directions,
                    const std::vector<int64_t>& input_axes,
-                   const std::vector<int64_t>& output_axes)
-    : context_{context},
-      session_state_{session_state},
-      subgraph_{*session_state.GetGraphViewer()},
-      num_scan_inputs_{gsl::narrow_cast<int>(num_scan_inputs)},
-      input_directions_{input_directions},
-      output_directions_{output_directions},
-      input_axes_from_attribute_{input_axes},
-      output_axes_from_attribute_{output_axes},
-      implicit_inputs_{context_.GetImplicitInputs()} {
-  num_variadic_inputs_ = context_.NumVariadicInputs(0);
-  num_variadic_outputs_ = context_.OutputCount();
-  num_loop_state_variables_ = num_variadic_inputs_ - num_scan_inputs_;
-  num_scan_outputs_ = num_variadic_outputs_ - num_loop_state_variables_;
-
-  inputs_.reserve(num_scan_inputs_);
-  input_axes_.reserve(num_scan_inputs_);
+                   const std::vector<int64_t>& output_axes,
+                   const scan::detail::DeviceHelpers& device_helpers)
+    : context_(context),
+      session_state_(session_state),
+      info_(info),
+      input_directions_(input_directions),
+      output_directions_(output_directions),
+      input_axes_from_attribute_(input_axes),
+      output_axes_from_attribute_(output_axes),
+      implicit_inputs_(context_.GetImplicitInputs()),
+      device_helpers_(device_helpers) {
+  inputs_.reserve(info_.num_scan_inputs);
+  input_axes_.reserve(info_.num_scan_inputs);
 }
 
 Status ScanImpl::Initialize() {
@@ -243,15 +266,6 @@ Status ScanImpl::Initialize() {
 
   status = SetupInputs();
   ORT_RETURN_IF_ERROR(status);
-
-  auto& subgraph_outputs = subgraph_.GetOutputs();
-  subgraph_output_names_.reserve(subgraph_outputs.size());
-
-  // save list of subgraph output names in their provided order to use when fetching the results
-  // from each subgraph execution. the Scan outputs will match this order.
-  for (auto& output : subgraph_outputs) {
-    subgraph_output_names_.push_back(output->Name());
-  }
 
   status = AllocateOutputTensors();
   ORT_RETURN_IF_ERROR(status);
@@ -273,7 +287,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
-    auto seq_len_dim = input_axes_[i - num_loop_state_variables_];
+    auto seq_len_dim = input_axes_[i - info_.num_loop_state_variables];
     auto this_seq_len = input_shape[seq_len_dim];
 
     if (sequence_len_ < 0) {
@@ -292,22 +306,14 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
 }
 
 Status ScanImpl::ValidateInput() {
-  auto& graph_inputs = subgraph_.GetInputs();  // required inputs
-  auto num_graph_inputs = graph_inputs.size();
-
-  if (static_cast<size_t>(num_variadic_inputs_) < num_graph_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The subgraph in 'body' requires ", num_graph_inputs,
-                           " inputs but Scan was only given ", num_variadic_inputs_);
-  }
-
   // validate/calculate the input axes values and populate input_axes_.
-  // we already checked that input_axes_from_attribute_.size() == num_scan_inputs_
-  for (int i = 0; i < num_scan_inputs_; ++i) {
+  // we already checked that input_axes_from_attribute_.size() == info_.num_scan_inputs
+  for (int i = 0; i < info_.num_scan_inputs; ++i) {
     auto axis = input_axes_from_attribute_[i];
 
     // zero is always valid, so only do extra checks for non-zero values
     if (axis != 0) {
-      int64_t input_rank = context_.Input<Tensor>(i + num_loop_state_variables_)->Shape().NumDimensions();
+      int64_t input_rank = context_.Input<Tensor>(i + info_.num_loop_state_variables)->Shape().NumDimensions();
       // check axis is valid for input_rank and also handle any negative axis value
       if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
@@ -325,7 +331,7 @@ Status ScanImpl::ValidateInput() {
   // no validation for loop state variables.
 
   // validate the scan inputs
-  auto status = ValidateSubgraphInput(num_loop_state_variables_, num_variadic_inputs_, graph_inputs);
+  auto status = ValidateSubgraphInput(info_.num_loop_state_variables, info_.num_inputs, info_.subgraph.GetInputs());
   ORT_RETURN_IF_ERROR(status);
 
   return Status::OK();
@@ -335,14 +341,14 @@ Status ScanImpl::SetupInputs() {
   auto status = Status::OK();
   AllocatorPtr alloc;
 
-  for (int i = 0; i < num_scan_inputs_; ++i) {
+  for (int i = 0; i < info_.num_scan_inputs; ++i) {
     auto sequence_dim = input_axes_[i];
 
     if (sequence_dim == 0) {
       // no transpose required
-      inputs_.push_back(*context_.GetInputMLValue(i + num_loop_state_variables_));
+      inputs_.push_back(*context_.GetInputMLValue(i + info_.num_loop_state_variables));
     } else {
-      auto& input_tensor = *context_.Input<Tensor>(i + num_loop_state_variables_);
+      auto& input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables);
       const auto& input_shape = input_tensor.Shape();
 
       std::vector<size_t> permutations;
@@ -356,7 +362,7 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = TransposeBase::DoTranspose(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -368,24 +374,25 @@ Status ScanImpl::SetupInputs() {
 
 Status ScanImpl::AllocateOutputTensors() {
   Status status = Status::OK();
-  auto& graph_outputs = subgraph_.GetOutputs();
+  auto& graph_outputs = info_.subgraph.GetOutputs();
 
-  if (graph_outputs.size() != static_cast<size_t>(num_variadic_outputs_)) {
+  if (graph_outputs.size() != static_cast<size_t>(info_.num_outputs)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph in 'body' produces ", graph_outputs.size(),
-                           " outputs but Scan expects ", num_variadic_outputs_);
+                           " outputs but Scan expects ", info_.num_outputs);
   }
 
   std::unique_ptr<OutputIterator> output_iter;
 
-  for (int i = 0; i < num_loop_state_variables_; ++i) {
-    status = AllocateOutput(context_, subgraph_, i, true, -1, sequence_len_, output_iter);
+  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+    status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
     output_iterators_.push_back(std::move(output_iter));
   }
 
-  for (int i = num_loop_state_variables_, end = num_variadic_outputs_; i < end; ++i) {
+  for (int i = info_.num_loop_state_variables, end = info_.num_outputs; i < end; ++i) {
     ScanDirection direction = ScanDirection::kForward;
-    const int scan_output_index = i - num_loop_state_variables_;
+    const int scan_output_index = i - info_.num_loop_state_variables;
     if (static_cast<size_t>(scan_output_index) < output_directions_.size()) {
       direction = static_cast<ScanDirection>(output_directions_[scan_output_index]);
     }
@@ -393,7 +400,9 @@ Status ScanImpl::AllocateOutputTensors() {
     // if we need to transpose later, we need to use a temporary output buffer when executing the subgraph
     bool temporary = output_axes_from_attribute_[scan_output_index] != 0;
 
-    status = AllocateOutput(context_, subgraph_, i, false, -1, sequence_len_, output_iter, direction, temporary);
+    status = AllocateOutput(context_, info_.subgraph, i, false, -1, sequence_len_, output_iter,
+                            device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
+                            direction, temporary);
     ORT_RETURN_IF_ERROR(status);
 
     output_iterators_.push_back(std::move(output_iter));
@@ -407,25 +416,20 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
   auto status = context_.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
 
-  loop_state_variables.reserve(num_loop_state_variables_);
+  loop_state_variables.reserve(info_.num_loop_state_variables);
 
-  for (int i = 0; i < num_loop_state_variables_; ++i) {
+  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
     const OrtValue& input_mlvalue = *context_.GetInputMLValue(i);
     OrtValue* output_mlvalue = context_.GetOutputMLValue(i);
     ORT_ENFORCE(output_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_variables.emplace_back(input_mlvalue, *output_mlvalue, sequence_len_, alloc);
+    loop_state_variables.push_back(LoopStateVariable(input_mlvalue, *output_mlvalue, sequence_len_, alloc));
   }
 
   return status;
 }
 
-Status ScanImpl::CreateFeedsFetchesManager(std::unique_ptr<FeedsFetchesManager>& ffm) {
-  return scan::detail::CreateFeedsFetchesManager(subgraph_, num_variadic_inputs_, implicit_inputs_,
-                                                 subgraph_output_names_, session_state_.GetOrtValueNameIdxMap(), ffm);
-}
-
-Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* cached_ffm) {
+Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
   Status status = Status::OK();
 
   std::vector<LoopStateVariable> loop_state_variables;
@@ -434,24 +438,24 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
 
   // Setup input OrtValue streams
   std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-  scan_input_stream_iterators.reserve(num_variadic_inputs_ - num_loop_state_variables_);
+  scan_input_stream_iterators.reserve(info_.num_inputs - info_.num_loop_state_variables);
 
-  for (int i = 0, end = num_scan_inputs_; i < end; ++i) {
+  for (int i = 0, end = info_.num_scan_inputs; i < end; ++i) {
     const auto& ort_value = inputs_[i];
 
     // forward
     if (input_directions_[i] == static_cast<int64_t>(ScanDirection::kForward)) {
       // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
-      scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).begin());
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
     } else {  // reverse
-      scan_input_stream_iterators.push_back(OrtValueTensorSlicer<const OrtValue>::Create(ort_value).rbegin());
+      scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).rbegin());
     }
   }
 
   // Call the subgraph for each item in the sequence
   status = IterateSequence(context_, session_state_, loop_state_variables, scan_input_stream_iterators,
-                           sequence_len_, num_loop_state_variables_, num_variadic_inputs_, num_variadic_outputs_,
-                           implicit_inputs_, output_iterators_, ffm, cached_ffm);
+                           sequence_len_, info_.num_loop_state_variables, info_.num_inputs, info_.num_outputs,
+                           implicit_inputs_, output_iterators_, ffm);
 
   ORT_RETURN_IF_ERROR(status);
 
@@ -463,11 +467,11 @@ Status ScanImpl::Execute(FeedsFetchesManager* ffm, const FeedsFetchesManager* ca
 Status ScanImpl::TransposeOutput() {
   auto status = Status::OK();
 
-  for (int i = 0; i < num_scan_outputs_; ++i) {
+  for (int i = 0; i < info_.num_scan_outputs; ++i) {
     auto axis = output_axes_from_attribute_[i];
 
     if (axis != 0) {
-      auto output_index = i + num_loop_state_variables_;
+      auto output_index = i + info_.num_loop_state_variables;
       const OrtValue& temporary_output_mlvalue = output_iterators_[output_index]->GetOutput();
       const auto& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
 
@@ -487,7 +491,7 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = TransposeBase::DoTranspose(permutations, temporary_output_tensor, *output);
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output);
       ORT_RETURN_IF_ERROR(status);
     }
   }
@@ -495,11 +499,19 @@ Status ScanImpl::TransposeOutput() {
   return status;
 }
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                   9,
+                                   10,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Scan<9>);
+
+// Opset 11 starts to support Neg Axis.
 ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         9,
+                         11,
                          KernelDefBuilder()
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<9>);
-
 }  // namespace onnxruntime

@@ -219,7 +219,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
-        .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -229,7 +229,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
-        .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllGather);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -239,7 +239,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     KernelDefBuilder()
         .Alias(AliasRange(0, 1024))
-        .TypeConstraint("T", DataTypeImpl::AllFloatingPointTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclReduceScatter);
 
 }  // namespace cuda

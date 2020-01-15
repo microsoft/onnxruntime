@@ -71,7 +71,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
     // A fused kernel is not supported in this case.
     ORT_ENFORCE(1 == capability->nodes.size());
 
-    auto node = graph.GetNode(capability->nodes[0]);
+    auto* node = graph.GetNode(capability->nodes[0]);
     if (nullptr != node && node->GetExecutionProviderType().empty()) {
       // The node was not fused or assigned. Assign it to this <provider>.
       node->SetExecutionProviderType(provider_type);
@@ -117,6 +117,11 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   if (providers_.Empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
+
+  // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
+  // doing it here saves all providers checking for this in GetCapability
+  if (graph.NumberOfNodes() == 0)
+    return Status::OK();
 
   // recurse into nested graphs first so we partition bottom up.
   for (auto& node : graph.Nodes()) {

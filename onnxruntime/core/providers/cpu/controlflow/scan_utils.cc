@@ -11,13 +11,15 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "gsl/gsl_algorithm"
+#include "gsl/gsl"
 
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
+#include "core/framework/session_options.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -29,6 +31,34 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace scan {
 namespace detail {
+
+Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8)
+    : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in) {
+  num_inputs = static_cast<int>(node.InputDefs().size());
+  num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
+  num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
+
+  num_outputs = static_cast<int>(node.OutputDefs().size());
+  num_scan_outputs = num_outputs - num_loop_state_variables;
+
+  num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
+
+  auto& graph_inputs = subgraph.GetInputs();
+  auto num_subgraph_inputs = static_cast<int>(graph_inputs.size());
+  ORT_ENFORCE(num_variadic_inputs == num_subgraph_inputs,
+              "The subgraph in 'body' requires ", num_subgraph_inputs,
+              " inputs but Scan was only given ", num_variadic_inputs);
+
+  subgraph_input_names.reserve(num_inputs);
+  subgraph_output_names.reserve(num_outputs);
+  for (const auto& input : graph_inputs) {
+    subgraph_input_names.push_back(input->Name());
+  }
+
+  for (const auto& output : subgraph.GetOutputs()) {
+    subgraph_output_names.push_back(output->Name());
+  }
+}
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     std::vector<int64_t>& directions, int64_t num_entries) {
@@ -49,7 +79,10 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
 
 Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
                       int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::unique_ptr<OutputIterator>& output_iterator, ScanDirection direction,
+                      std::unique_ptr<OutputIterator>& output_iterator,
+                      const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
+                      const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
+                      ScanDirection direction,
                       bool temporary) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.
   auto& graph_outputs = subgraph.GetOutputs();
@@ -62,7 +95,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   }
 
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto& graph_output_dims{output_shape.GetDims()};
+  auto& graph_output_dims(output_shape.GetDims());
 
   std::vector<int64_t> scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
@@ -78,10 +111,11 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     scan_output_dims.push_back(sequence_len);
   }
 
-  scan_output_dims.insert(scan_output_dims.cend(), graph_output_dims.cbegin(), graph_output_dims.cend());
+  std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
     OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
+                           create_slicer_func, zero_data_func,
                            output_iterator, direction);
   } else {
     auto mltype = utils::GetMLDataType(*graph_output);
@@ -90,53 +124,71 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     auto ml_data_type = static_cast<const TensorTypeBase*>(mltype)->GetElementType();
 
     OutputIterator::Create(context, output_index, is_loop_state_var, is_v8, TensorShape(scan_output_dims),
+                           create_slicer_func, zero_data_func,
                            output_iterator, direction, temporary, ml_data_type);
   }
 
   return Status::OK();
 }
 
-Status CreateFeedsFetchesManager(const GraphViewer& subgraph, int num_variadic_inputs,
-                                 std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                                 std::vector<std::string>& subgraph_output_names,
-                                 const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                 std::unique_ptr<FeedsFetchesManager>& ffm) {
-  auto* graph_inputs = &subgraph.GetInputsIncludingInitializers();
-  if (static_cast<size_t>(num_variadic_inputs) < graph_inputs->size()) {
-    // fallback to just the required inputs.
-    graph_inputs = &subgraph.GetInputs();
-    ORT_ENFORCE(static_cast<size_t>(num_variadic_inputs) == graph_inputs->size(),
-                "Graph::InferAndVerifySubgraphTypes should have already validated that "
-                "num_variadic_inputs matched the subgraph inputs or required inputs.");
-  }
-
-  auto num_implicit_inputs = implicit_inputs.size();
-  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
-
+Status CreateFeedsFetchesManager(const Node& node,
+                                 const Info& info,
+                                 const SessionState& session_state,
+                                 const SessionState& subgraph_session_state,
+                                 bool is_v8,
+                                 std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager) {
+  // we need the names of the Scan inputs to determine what device they are available on,
+  // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(num_inputs);
+  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
 
-  // pass explicit graph inputs first. order doesn't actually matter though
-  for (int input = 0; input < num_variadic_inputs; ++input) {
-    feed_names.push_back((*graph_inputs)[input]->Name());
+  const auto& scan_inputs = node.InputDefs();
+  int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
+  for (int i = start; i < info.num_inputs; ++i) {
+    feed_names.push_back(scan_inputs[i]->Name());
   }
 
-  for (auto& entry : implicit_inputs) {
-    feed_names.push_back(entry.first);
+  for (auto& entry : node.ImplicitInputDefs()) {
+    feed_names.push_back(entry->Name());
   }
 
-  auto status = FeedsFetchesManager::Create(feed_names, subgraph_output_names, ort_value_name_idx_map, ffm);
+  // find locations. use session_state as they're coming from Scan inputs
+  std::vector<OrtDevice> feed_locations;
+  ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
-  return status;
+  // now update the feed names to use the subgraph input names so we know what devices they're needed on
+  for (int i = 0; i < info.num_variadic_inputs; ++i) {
+    feed_names[i] = info.subgraph_input_names[i];
+  }
+
+  std::unique_ptr<FeedsFetchesManager> ffm;
+  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, info.subgraph_output_names,
+                                                  subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
+  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
+
+  // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
+  std::vector<const OrtMemoryInfo*> fetch_locations;
+  fetch_locations.reserve(info.num_outputs);
+
+  for (const auto& output : node.OutputDefs()) {
+    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, output->Name());
+    fetch_locations.push_back(&alloc_info);
+  }
+
+  utils::FinalizeFeedFetchCopyInfo(subgraph_session_state, *ffm, feed_locations, fetch_locations);
+
+  feeds_fetches_manager = std::move(ffm);
+
+  return Status::OK();
 }
 
 Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
                        std::vector<LoopStateVariable>& loop_state_variables,
                        std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
                        int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, std::unordered_map<std::string, const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators, FeedsFetchesManager* ffm,
-                       const FeedsFetchesManager* cached_ffm) {
+                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
+                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
+                       const FeedsFetchesManager& ffm) {
   Status status = Status::OK();
 
   auto num_implicit_inputs = implicit_inputs.size();
@@ -151,11 +203,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
   // add implicit inputs and pass in implicit inputs as feeds. we're going to pass in the explicit inputs
   // first in each iteration though so offset by num_variadic_inputs
-  int i = 0;
-  for (auto& entry : implicit_inputs) {
-    ORT_ENFORCE(entry.second, "All implicit inputs should have OrtValue instances by now. ", entry.first, " did not.");
-    feeds[num_variadic_inputs + i] = *entry.second;
-    ++i;
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    feeds[num_variadic_inputs + i] = *implicit_inputs[i];
   }
 
   int64_t seq_no = 0;
@@ -187,30 +236,41 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
           auto& ort_value = *iterator;
           fetches.push_back(ort_value);
         } else {
+          // need a dummy empty entry in fetches so the order matches the output names
+          size_t i = fetches.size();
+          fetches.emplace_back();
+
           // use a custom allocator that will forward the allocation request to the Scan context
           // and add the sequence length dimension. this avoids using a temporary value for the first output
-          fetch_allocators[output] = [&iterator](const TensorShape& shape, OrtValue& ort_value) {
-            return iterator.AllocateSubgraphOutput(shape, ort_value);
-          };
+          fetch_allocators[output] = [i, &iterator, &fetches](const TensorShape& shape, const OrtMemoryInfo& location,
+                                                              OrtValue& ort_value, bool& allocated) {
+            auto status = iterator.AllocateFinalOutput(shape);
+            ORT_RETURN_IF_ERROR(status);
 
-          // also need a dummy empty entry in fetches so the order matches the output names
-          fetches.emplace_back();
+            const OrtValue& value = *iterator;
+
+            // for now we only allocate on CPU as currently all 'Scan' outputs are on CPU.
+            // if that does not match the required device we don't update the provided OrtValue and return false for
+            // 'allocated'. the execution frame will allocate a buffer on the required device, and the fetches copy
+            // logic in utils::ExecuteSubgraph will handle moving it to CPU (and into the tensor we allocated here)
+            if (value.Get<Tensor>().Location().device == location.device) {
+              // update OrtValue with a current slice from the iterator.
+              ort_value = value;
+              allocated = true;
+            } else {
+              // put the allocated value into fetches so the copy logic in utils::ExecuteGraphImpl can use it
+              fetches[i] = value;
+            }
+
+            return Status::OK();
+          };
         }
       }
     }
 
     // Create Executor and run graph.
-    if (cached_ffm) {
-      status = utils::ExecuteGraphWithCachedInfo(session_state, *cached_ffm, feeds, fetches, fetch_allocators,
-                                                 /*sequential_execution*/ true, context.GetTerminateFlag(),
-                                                 context.Logger());
-    } else {
-      status = utils::ExecuteGraph(session_state, *ffm, feeds, fetches, fetch_allocators,
-                                   /*sequential_execution*/ true, context.GetTerminateFlag(), context.Logger(),
-                                   /*cache_copy_info*/ true);
-      // we can now use the cached info
-      cached_ffm = ffm;
-    }
+    status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -232,12 +292,13 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 }
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
-  auto new_tensor = std::make_unique<Tensor>(data_type,
-                                             shape,
-                                             allocator);
+  auto new_tensor = onnxruntime::make_unique<Tensor>(data_type,
+                                                     shape,
+                                                     allocator);
 
-  return OrtValue{new_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()};
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  return OrtValue{new_tensor.release(), ml_tensor,
+                  ml_tensor->GetDeleteFunc()};
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
@@ -287,13 +348,13 @@ LoopStateVariable::LoopStateVariable(const OrtValue& original_value, OrtValue& f
   auto& tensor = original_value.Get<Tensor>();
   auto& shape = tensor.Shape();
 
-  // allocate a new Tensor in an OrtValue with the same shape and type as the tensor in original_value.
+  // Allocate a new Tensor in an OrtValue with the same shape and type as the tensor in original_value.
   // the Tensor will own the buffer, and the OrtValue will own the Tensor.
   // the OrtValue returned by Input()/Output() gets copied into the execution frame feeds/fetches
   // with the Tensor being used via a shared_ptr (so remains valid during execution and is cleaned up
   // automatically at the end).
-  // TODO: Could allocate one large chunk for all the loop state variable buffers in ScanImpl, although that
-  // may make it harder to parallelize processing of the batch in the future.
+  //
+  // Note: The allocator comes from the EP for the Scan node, so will allocate on the default device for that EP.
 
   // if length is > 1, we need a_ for the first output location. otherwise we use final_value for the output.
   if (sequence_len_ > 1) {
@@ -351,18 +412,22 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
                                bool is_loop_state_var,
                                bool is_v8,
                                TensorShape final_shape,
+                               const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
+                               const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
                                ScanDirection direction,
                                bool temporary,
                                MLDataType data_type)
-    : context_{context},
-      is_v8_{is_v8},
-      output_index_{output_index},
-      final_shape_{final_shape},
-      is_loop_state_var_{is_loop_state_var},
-      direction_{direction},
-      cur_iteration_{0},
-      temporary_{temporary},
-      data_type_{data_type} {
+    : context_(context),
+      is_v8_(is_v8),
+      output_index_(output_index),
+      final_shape_(final_shape),
+      is_loop_state_var_(is_loop_state_var),
+      direction_(direction),
+      cur_iteration_(0),
+      temporary_(temporary),
+      data_type_{data_type},
+      create_slicer_func_(create_slicer_func),
+      zero_data_func_(zero_data_func) {
   is_concrete_shape_ = final_shape_.Size() >= 0;
 
   if (is_v8) {
@@ -396,7 +461,7 @@ Status OutputIterator::Initialize() {
     status = AllocateFinalBuffer();
     ORT_RETURN_IF_ERROR(status);
   } else {
-    // delay until the first subgraph execution calls AllocateSubgraphOutput.
+    // delay until the first subgraph execution calls AllocateFinalOutput.
   }
 
   return Status::OK();
@@ -418,7 +483,7 @@ Status OutputIterator::AllocateFinalBuffer() {
   } else {
     // we need to do a transpose at the end so need to write to a temporary buffer when executing the subgraph.
     AllocatorPtr alloc;
-    auto status = context_.GetTempSpaceAllocator(&alloc);
+    auto status = context_.GetTempSpaceAllocator(&alloc);  // get allocator for the EP running this (CPU or CUDA)
     ORT_RETURN_IF_ERROR(status);
 
     temporary_final_output_mlvalue_ = AllocateTensorInMLValue(data_type_, final_shape_, alloc);
@@ -430,16 +495,16 @@ Status OutputIterator::AllocateFinalBuffer() {
     if (is_loop_state_var_) {
       // only one entry is required as we slice on a single dimension
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                      ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
-                                      : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
+                                      ? create_slicer_func_(*final_output_mlvalue_, 0, 0).begin()
+                                      : create_slicer_func_(*final_output_mlvalue_, 0, 0).rbegin());
     } else {
       auto batch_size = final_shape_[0];
       for (int i = 0; i < batch_size; ++i) {
         // the slicer handles the sequence dimension (dim 1) so create an entry for each batch
         slicer_iterators_.push_back(
             (direction_ == ScanDirection::kForward)
-                ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).begin()
-                : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_, 1, i).rbegin());
+                ? create_slicer_func_(*final_output_mlvalue_, 1, i).begin()
+                : create_slicer_func_(*final_output_mlvalue_, 1, i).rbegin());
       }
     }
 
@@ -448,8 +513,8 @@ Status OutputIterator::AllocateFinalBuffer() {
     // nothing to slice for a loop state var. slice on dimension 0 (sequence) for the scan outputs.
     if (!is_loop_state_var_) {
       slicer_iterators_.push_back((direction_ == ScanDirection::kForward)
-                                      ? OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).begin()
-                                      : OrtValueTensorSlicer<OrtValue>::Create(*final_output_mlvalue_).rbegin());
+                                      ? create_slicer_func_(*final_output_mlvalue_, 0, 0).begin()
+                                      : create_slicer_func_(*final_output_mlvalue_, 0, 0).rbegin());
       cur_slicer_iterator_ = slicer_iterators_.begin();
     }
   }
@@ -457,7 +522,7 @@ Status OutputIterator::AllocateFinalBuffer() {
   return Status::OK();
 }
 
-Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, OrtValue& ort_value) {
+Status OutputIterator::AllocateFinalOutput(const TensorShape& shape) {
   ORT_ENFORCE(!is_concrete_shape_, "If shape was concrete we shouldn't be using a custom allocator");
 
   // update the final shape now that we can fill in the symbolic dimension with an actual value
@@ -468,16 +533,13 @@ Status OutputIterator::AllocateSubgraphOutput(const TensorShape& shape, OrtValue
   status = AllocateFinalBuffer();
   ORT_RETURN_IF_ERROR(status);
 
-  // get OrtValue from operator*()
-  ort_value = **this;
-
   return Status::OK();
 }
 
 OrtValue& OutputIterator::operator*() {
   ORT_ENFORCE(cur_iteration_ < num_iterations_);
   ORT_ENFORCE(is_concrete_shape_,
-              "Expected AllocateSubgraphOutput to have been called to before we read the OrtValue from the iterator.");
+              "Expected AllocateFinalOutput to have been called to before we read the OrtValue from the iterator.");
 
   // for v8 both outputs and loop state vars use slicers. for v9 only outputs do
   if (is_v8_ || !is_loop_state_var_)
@@ -489,7 +551,7 @@ OrtValue& OutputIterator::operator*() {
 OutputIterator& OutputIterator::operator++() {
   if (cur_iteration_ < num_iterations_) {
     ORT_ENFORCE(is_concrete_shape_,
-                "Expected AllocateSubgraphOutput to have been called to before we increment the iterator");
+                "Expected AllocateFinalOutput to have been called to before we increment the iterator");
 
     ++cur_iteration_;
 

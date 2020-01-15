@@ -111,10 +111,10 @@ Status TrainingSession::ApplyTransformationsToMainGraph() {
     // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
     // If we give values here, the check in transformer will fail.
     std::unordered_set<std::string> compatible_eps = {};
-    auto gelu_transformer = std::make_unique<GeluFusion>(compatible_eps);
+    auto gelu_transformer = onnxruntime::make_unique<GeluFusion>(compatible_eps);
     graph_transformation_mgr.Register(std::move(gelu_transformer), TransformerLevel::Level2);
 
-    auto status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2);
+    auto status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_);
     return status;
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to apply default optimization passes: ", exp.what());
@@ -125,12 +125,12 @@ Status TrainingSession::AddGistEncoding() {
   try {
     Graph& graph = model_->MainGraph();
 
-    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
+    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+    rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
-    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1));
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
   } catch (const OnnxRuntimeException& exp) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to add Gist Encoding:", exp.what());
   }
@@ -255,11 +255,11 @@ Status TrainingSession::OverrideGraphOutputs(const std::vector<std::string>& out
 }
 
 NameMLValMap TrainingSession::GetWeights() const {
-  return session_state_.GetInitializedTensors(weights_to_train_);
+  return session_state_->GetInitializedTensors(weights_to_train_);
 }
 
 Status TrainingSession::UpdateWeightsInSessionState(const NameMLValMap& new_weights) {
-  session_state_.UpdateInitializedTensors(new_weights);
+  session_state_->UpdateInitializedTensors(new_weights);
   VLOGS(*session_logger_, 1) << "Done updating weights";
   return Status::OK();
 }
@@ -269,7 +269,7 @@ static Status UpdateWeightsBeforeSaving(
   // Store MLValue (either in CPU or CUDA) into TensorProto
   // TODO: support more types than float
 
-  static const OrtAllocatorInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
   for (const auto& name_and_ml_value : weights) {
     const auto& src_tensor = name_and_ml_value.second.Get<Tensor>();
 
@@ -308,9 +308,9 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
   // Have to load the original model again.
   // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
   shared_ptr<Model> new_model;
-  ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model));
+  ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model, nullptr, *session_logger_));
   ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(
-      new_model->MainGraph(), GetWeights(), session_state_.GetDataTransferMgr()));
+      new_model->MainGraph(), GetWeights(), session_state_->GetDataTransferMgr()));
 
   std::string actual_loss_name{};
   if (opt == TrainingSession::SaveOption::WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC /* with weights and loss func*/ ||
@@ -355,28 +355,28 @@ common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
   checkpointed_tensor_names.insert(
       fp16_weight_initializer_names_.begin(), fp16_weight_initializer_names_.end());
 
-  return session_state_.GetInitializedTensors(checkpointed_tensor_names, false, state_tensors);
+  return session_state_->GetInitializedTensors(checkpointed_tensor_names, false, state_tensors);
 }
 
 const DataTransferManager& TrainingSession::GetDataTransferManager() {
-  return session_state_.GetDataTransferMgr();
+  return session_state_->GetDataTransferMgr();
 }
 
 Status TrainingSession::SaveCheckpoint(
     const PathString& checkpoint_path,
     const std::unordered_map<std::string, std::string>& properties) {
-  const bool is_profiler_enabled = session_state_.Profiler().IsEnabled();
-  const TimePoint start_time = is_profiler_enabled ? session_state_.Profiler().StartTime() : TimePoint{};
+  const bool is_profiler_enabled = session_state_->Profiler().IsEnabled();
+  const TimePoint start_time = is_profiler_enabled ? session_state_->Profiler().StartTime() : TimePoint{};
 
   NameMLValMap checkpointed_initialized_tensors{};
   ORT_RETURN_IF_ERROR(GetStateTensors(checkpointed_initialized_tensors));
 
   ORT_RETURN_IF_ERROR(SaveModelCheckpoint(
-      checkpoint_path, session_state_.GetDataTransferMgr(),
+      checkpoint_path, session_state_->GetDataTransferMgr(),
       checkpointed_initialized_tensors, properties));
 
   if (is_profiler_enabled) {
-    session_state_.Profiler().EndTimeAndRecordEvent(
+    session_state_->Profiler().EndTimeAndRecordEvent(
         profiling::EventCategory::SESSION_EVENT, "checkpoint_save", start_time);
   }
 
@@ -386,8 +386,8 @@ Status TrainingSession::SaveCheckpoint(
 Status TrainingSession::LoadCheckpointAndUpdateInitializedTensors(
     const PathString& checkpoint_path,
     std::unordered_map<std::string, std::string>& properties) {
-  const bool is_profiler_enabled = session_state_.Profiler().IsEnabled();
-  const TimePoint start_time = is_profiler_enabled ? session_state_.Profiler().StartTime() : TimePoint{};
+  const bool is_profiler_enabled = session_state_->Profiler().IsEnabled();
+  const TimePoint start_time = is_profiler_enabled ? session_state_->Profiler().StartTime() : TimePoint{};
 
   std::vector<ONNX_NAMESPACE::TensorProto> loaded_tensor_protos{};
   ORT_RETURN_IF_ERROR(LoadModelCheckpoint(
@@ -400,7 +400,7 @@ Status TrainingSession::LoadCheckpointAndUpdateInitializedTensors(
   }
 
   if (is_profiler_enabled) {
-    session_state_.Profiler().EndTimeAndRecordEvent(
+    session_state_->Profiler().EndTimeAndRecordEvent(
         profiling::EventCategory::SESSION_EVENT, "checkpoint_load", start_time);
   }
 
@@ -415,7 +415,7 @@ common::Status TrainingSession::UpdateInitializedTensors(const NameMLValMap& sta
   std::transform(state_tensors.begin(), state_tensors.end(),
                  std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()),
                  [](auto pair) { return pair.first; });
-  ORT_RETURN_IF_ERROR(session_state_.GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
+  ORT_RETURN_IF_ERROR(session_state_->GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
   for (auto& state : state_tensors) {
     auto it = initializers.find(state.first);
     if (it != initializers.end()) {
@@ -423,7 +423,7 @@ common::Status TrainingSession::UpdateInitializedTensors(const NameMLValMap& sta
         return Status(ONNXRUNTIME, FAIL, "Non-tensor type as initializer is not expected.");
       auto* initializer_tensor = it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();
-      ORT_RETURN_IF_ERROR(session_state_.GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+      ORT_RETURN_IF_ERROR(session_state_->GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
     } else if (strict) {
       return Status(ONNXRUNTIME, FAIL, "Checkpoint tensor: " + state.first + " is not found in training session");
     }

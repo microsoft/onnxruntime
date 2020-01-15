@@ -37,22 +37,22 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
 
   // TODO: validataion might not be needed, since it's already done once in the fw pass
-  ORT_RETURN_IF_ERROR(ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   // Copied from conv_impl.h, maybe refactor
   std::vector<int64_t> kernel_shape;
-  ORT_RETURN_IF_ERROR(ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
   bool Is2DKernel = kernel_shape.size() == 2;
-  std::vector<int64_t> pads(pads_);
+  std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(dilations_);
+  std::vector<int64_t> dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(strides_);
+  std::vector<int64_t> strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
@@ -66,10 +66,10 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
-  const int64_t X_offset = C / group_ * input_image_size;
-  const int64_t Y_offset = dY->Shape().Size() / dY->Shape()[0] / group_;
-  const int64_t W_offset = W->Shape().Size() / group_;
-  const int64_t kernel_dim = C / group_ * kernel_size;
+  const int64_t X_offset = C / conv_attrs_.group * input_image_size;
+  const int64_t Y_offset = dY->Shape().Size() / dY->Shape()[0] / conv_attrs_.group;
+  const int64_t W_offset = W->Shape().Size() / conv_attrs_.group;
+  const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
   AllocatorPtr alloc;
@@ -106,11 +106,11 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                           output_shape.GetDims().end());
 
   for (int image_id = 0; image_id < N; ++image_id) {
-    for (int group_id = 0; group_id < group_; ++group_id) {
+    for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       if (Is2DKernel) {
-        math::Im2col<T, CPUMathUtil, StorageOrder::NCHW>(
+        math::Im2col<T, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
-            C / group_,
+            C / conv_attrs_.group,
             input_shape[0],
             input_shape[1],
             kernel_shape[0],
@@ -123,10 +123,9 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             pads[3],
             strides[0],
             strides[1],
-            col_buffer_data,
-            &CPUMathUtil::Instance());
+            col_buffer_data);
       } else {
-        math::Im2colNd<T, CPUMathUtil, StorageOrder::NCHW>()(
+        math::Im2colNd<T, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
             col_buffer_shape.data(),
@@ -137,14 +136,13 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             dilations.data(),
             pads.data(),
             static_cast<int>(kernel_shape.size()),
-            col_buffer_data,
-            &CPUMathUtil::Instance());
+            col_buffer_data);
       }
       // Gradient with respect to W, filter.
       math::Gemm<T>(
           CblasNoTrans,
           CblasTrans,
-          M / group_,
+          M / conv_attrs_.group,
           kernel_dim,
           output_image_size,
           1,
@@ -167,8 +165,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
           dBdata,
           &CPUMathUtil::Instance());
     }
-    Xdata += X_offset * group_;
-    dYdata += Y_offset * group_;
+    Xdata += X_offset * conv_attrs_.group;
+    dYdata += Y_offset * conv_attrs_.group;
   }
 
   Tensor* dX = context->Output(0, X->Shape());
@@ -176,14 +174,14 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
     T* dXdata = dX->template MutableData<T>();
     dYdata = dY->template Data<T>();
     for (int image_id = 0; image_id < N; ++image_id) {
-      for (int group_id = 0; group_id < group_; ++group_id) {
+      for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
         // Compute gradient into col_buffer.
         math::Gemm<T>(
             CblasTrans,
             CblasNoTrans,
             kernel_dim,
             output_image_size,
-            M / group_,
+            M / conv_attrs_.group,
             1,
             Wdata + group_id * W_offset,
             dYdata,
@@ -194,7 +192,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
         if (Is2DKernel) {
           math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
               col_buffer_data,
-              C / group_,
+              C / conv_attrs_.group,
               input_shape[0],
               input_shape[1],
               kernel_shape[0],

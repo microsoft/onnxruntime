@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<VectorInt64> InferOutputShapes(OpKernelInfo info);
+std::vector<std::vector<int64_t>> InferOutputShapes(OpKernelInfo info);
 
 template <typename T>
 class SinGrad final : public OpKernel {

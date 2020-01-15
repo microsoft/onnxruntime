@@ -30,7 +30,7 @@ class MatMulComputeHelper {
     // A: [M1, M2, ... K], B: [1, ..., 1, K, N]
     // A: [M1, M2, ... K], B: [1, ..., 1, N, K]^T
     if (!transa && left_num_dims >= 2 && right_num_dims >= 2 &&
-      right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
+        right_shape.SizeToDimension(right_num_dims - 1) == right_shape[right_num_dims - 2]) {
       M_ = left_shape.SizeToDimension(left_num_dims - 1);
       K_ = left_shape[left_num_dims - 1];
       N_ = transb ? right_shape[right_num_dims - 2] : right_shape[right_num_dims - 1];
@@ -40,7 +40,8 @@ class MatMulComputeHelper {
       left_offsets_ = {0};
       right_offsets_ = {0};
       ORT_RETURN_IF_NOT(K_ == right_shape[right_num_dims - 2] ||
-                        transb && K_ == right_shape[right_num_dims - 1], "MatMul dimension mismatch");
+                            transb && K_ == right_shape[right_num_dims - 1],
+                        "MatMul dimension mismatch");
       return Status::OK();
     }
 
@@ -253,7 +254,7 @@ class MatMulComputeHelper {
   template <typename T>
   static void OffsetToArrays(T* p, const std::vector<size_t>& offsets, gsl::span<T*> arrays) {
     auto len = offsets.size();
-    ORT_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
+    ORT_ENFORCE(arrays.size() == len);
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
     }
@@ -262,7 +263,7 @@ class MatMulComputeHelper {
   template <typename T>
   static void OffsetToArrays(const T* p, const std::vector<size_t>& offsets, gsl::span<const T*> arrays) {
     auto len = offsets.size();
-    ORT_ENFORCE(arrays.size() == gsl::narrow_cast<ptrdiff_t>(len));
+    ORT_ENFORCE(arrays.size() == len);
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
     }

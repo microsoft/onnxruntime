@@ -32,20 +32,19 @@ class BatchNorm : public OpKernel {
   explicit BatchNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
     auto st = op_kernel_info.GetAttr<float>("epsilon", &epsilon_);
     ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
-    
-    // opset 6-8
-    int64_t spatial;
-    if (op_kernel_info.GetAttr<int64_t>("spatial", &spatial).IsOK()) { 
-      ORT_ENFORCE(spatial == 1, "BatchNormalization kernel for CPU provider does not support non-spatial cases");
-    }
+
+    // For opset 6-8, if spatial attribute exists, pick up the value (by default spatial == 1)
+    // From opset 9 onwards, by default, only the spatial case (spatial == 1) is defined per spec
+    is_spatial_ = op_kernel_info.GetAttrOrDefault<int64_t>("spatial", 1) == 1 ? true : false;
 
     //TODO: momentum
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
-  protected:
-   float epsilon_;
-   //int64_t is_test_;   ignored in this implementation since we're doing inferencing only.
+ protected:
+  float epsilon_;
+  bool is_spatial_;
+  //int64_t is_test_;   ignored in this implementation since we're doing inferencing only.
 };
 }  // namespace onnxruntime

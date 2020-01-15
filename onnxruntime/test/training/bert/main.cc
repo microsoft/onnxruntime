@@ -521,7 +521,7 @@ static Status RunPerformanceTest(const BertParameters& params) {
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-  auto random_perf_data_loader = std::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
+  auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
   TrainingRunner runner{params};
   ORT_RETURN_IF_ERROR(runner.Initialize());
@@ -533,14 +533,14 @@ static Status RunPerformanceTest(const BertParameters& params) {
 static Status RunTraining(const BertParameters& params) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = std::make_unique<TrainingRunner>(params);
+  auto runner = onnxruntime::make_unique<TrainingRunner>(params);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
 
-    auto training_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+    auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                              params_for_phase.train_data_dir,
                                                              max_num_files_preload,
                                                              params_for_phase.mpi_context.world_rank,
@@ -549,7 +549,7 @@ static Status RunTraining(const BertParameters& params) {
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
     if (params_for_phase.mpi_context.world_rank == 0) {
-      test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+      test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                       params_for_phase.test_data_dir,
                                                       max_num_files_preload);
     }
@@ -561,7 +561,7 @@ static Status RunTraining(const BertParameters& params) {
 
   // only test and save trained model on device #0
   if (params_for_phase.mpi_context.world_rank == 0) {
-    auto test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+    auto test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                          params_for_phase.test_data_dir,
                                                          max_num_files_preload);
 
@@ -573,7 +573,7 @@ static Status RunTraining(const BertParameters& params) {
 
 int main(int argc, char* argv[]) {
   BertParameters params;
-  OrtParameters ort_params;
+  OrtParameters ort_params{logging::Severity::kWARNING, -1};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   setup_training_params(params);
 

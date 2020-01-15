@@ -12,6 +12,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/path_lib.h"
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace {
@@ -21,14 +22,16 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
   }
 }
 }  // namespace
+
+namespace test {
 TEST(MemcpyTest, copy1) {
   concurrency::ThreadPool tp{"test", 1};
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;
-  auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, std::make_unique<CPUExecutionProvider>(epi));
+  auto st = execution_providers.Add(onnxruntime::kCpuExecutionProvider, onnxruntime::make_unique<CPUExecutionProvider>(epi));
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
-  SessionState s{execution_providers, true, &tp};
+  SessionState s{execution_providers, true, &tp, nullptr};
   s.SetLogger(logging::LoggingManager::DefaultLogger());
   KernelRegistryManager kernel_registry_manager;
   kernel_registry_manager.RegisterKernels(execution_providers);
@@ -39,19 +42,19 @@ TEST(MemcpyTest, copy1) {
   const bool result = mp.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
   ASSERT_TRUE(result);
 
-  Model model(mp);
+  Model model(mp, nullptr, DefaultLoggingManager().DefaultLogger());
   st = model.MainGraph().Resolve();
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);
   SessionStateInitializer session_initializer{true, ORT_TSTR(""), model.MainGraph(),
                                               s, execution_providers, kernel_registry_manager};
-  st = session_initializer.CreatePlan(nullptr, {}, true);
+  st = session_initializer.CreatePlan(nullptr, {}, ExecutionMode::ORT_SEQUENTIAL);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
   AllocatorPtr allocator =
       execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
   auto* data_type = DataTypeImpl::GetType<float>();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
+  std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(data_type, TensorShape({3, 2}), allocator);
   float data[] = {1.f, 1.f, 0.f, 1.f, 1.f, 1.f};
   memcpy(p_tensor->MutableData<float>(), data, sizeof(data));
   OrtValue input =
@@ -61,4 +64,5 @@ TEST(MemcpyTest, copy1) {
   st = utils::CopyOneInputAcrossDevices(s, "X", input, output);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
+}  // namespace test
 }  // namespace onnxruntime

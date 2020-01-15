@@ -68,6 +68,32 @@ TEST(QuantizeLinearOpTest, QuantizeLinear_int8) {
   test.Run();
 }
 
+// quantize with scalar zero point and scale
+TEST(QuantizeLinearOpTest, QuantizeLinear_int8_NegativeZeroPoint) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{8};
+  test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
+  test.AddInput<float>("y_scale", {}, {.039215686f});
+  test.AddInput<int8_t>("y_zero_point", {}, {-23});
+  test.AddOutput<int8_t>("y", dims, {-23, 28, 53, 104, 127, -74, -127, -127});
+  // TODO: nGraph returns a range of [-128,127] but the default CPU provider
+  // returns a range of [-127,127]. Resolve this difference in behavior later.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kNGraphExecutionProvider});
+}
+
+// quantize with scalar zero point and scale
+TEST(QuantizeLinearOpTest, QuantizeLinear_int8_PositiveZeroPoint) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{8};
+  test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
+  test.AddInput<float>("y_scale", {}, {.039215686f});
+  test.AddInput<int8_t>("y_zero_point", {}, {23});
+  test.AddOutput<int8_t>("y", dims, {23, 74, 99, 127, 127, -28, -104, -127});
+  // TODO: nGraph returns a range of [-128,127] but the default CPU provider
+  // returns a range of [-127,127]. Resolve this difference in behavior later.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",  {kNGraphExecutionProvider});
+}
+
 // quantize with 2D data
 TEST(QuantizeLinearOpTest, QuantizeLinear_1) {
   OpTester test("QuantizeLinear", 10);

@@ -5,7 +5,7 @@
 
 #include <string>
 #include <unordered_map>
-
+#include "core/common/logging/logging.h"
 #include "core/graph/node_arg.h"
 
 namespace onnxruntime {

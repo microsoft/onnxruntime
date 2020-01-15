@@ -5,7 +5,6 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "contrib_ops/cpu/crop.h"
 
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
 namespace onnxruntime {

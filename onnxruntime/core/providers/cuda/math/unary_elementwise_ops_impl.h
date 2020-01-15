@@ -23,7 +23,7 @@ namespace cuda {
   UNARY_OP_NAME_EXPR(Exp, _Exp(a))         \
   UNARY_OP_NAME_EXPR(Log, _Log(a))         \
   UNARY_OP_NAME_EXPR(Erf, _Erf(a))         \
-  UNARY_OP_NAME_EXPR(Not, !(a))
+  UNARY_OP_NAME_EXPR(Not, !a)
 
 #define UNARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                          \

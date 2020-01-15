@@ -46,9 +46,4 @@ Status Tanh<float>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-namespace contrib {
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Gelu, 9);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(GeluGrad, 9);
-}  // namespace contrib
-
 }  // namespace onnxruntime

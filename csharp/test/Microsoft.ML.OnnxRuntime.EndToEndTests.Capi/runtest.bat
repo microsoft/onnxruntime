@@ -5,19 +5,10 @@ ECHO on
 SET LocalNuGetRepo=%1
 SET TargetArch=x64
 IF NOT "%2"=="" (SET TargetArch=%2)
+SET CurrentOnnxRuntimeVersion=%3
 
 SETLOCAL enableextensions disabledelayedexpansion
 
-REM WorkingDirectory is Build.SourcesDirectory\csharp
-SET /p MajorVersionNumber=<..\VERSION_NUMBER
-SET VersionSuffix=
-IF NOT DEFINED IsReleaseBuild (
-    FOR /F "tokens=* USEBACKQ" %%F IN (`git rev-parse --short HEAD`) DO (
-        SET VersionSuffix=-dev-%%F
-    )
-)
-
-SET CurrentOnnxRuntimeVersion=%MajorVersionNumber%%VersionSuffix%
 @ECHO %CurrentOnnxRuntimeVersion%
 
 PUSHD test\Microsoft.ML.OnnxRuntime.EndToEndTests.Capi

@@ -18,7 +18,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class InferenceSession : IDisposable
     {
         protected IntPtr _nativeHandle;
-        protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata;
+        protected Dictionary<string, NodeMetadata> _inputMetadata, _outputMetadata, _overridableInitializerMetadata;
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
 
@@ -46,6 +46,25 @@ namespace Microsoft.ML.OnnxRuntime
             Init(modelPath, options);
         }
 
+        /// <summary>
+        /// Constructs an InferenceSession from a model data in byte array
+        /// </summary>
+        /// <param name="model"></param>
+        public InferenceSession(byte[] model)
+        {
+            _builtInSessionOptions = new SessionOptions(); // need to be disposed
+            Init(model, _builtInSessionOptions);
+        }
+
+        /// <summary>
+        /// Constructs an InferenceSession from a model data in byte array, with some additional session options
+        /// </summary>
+        /// <param name="model"></param>
+        /// <param name="options"></param>
+        public InferenceSession(byte[] model, SessionOptions options)
+        {
+            Init(model, options);
+        }
 
         /// <summary>
         /// Meta data regarding the input nodes, keyed by input names
@@ -69,6 +88,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Metadata regarding the overridable initializers, keyed by node names
+        /// </summary>
+        public IReadOnlyDictionary<string, NodeMetadata> OverridableInitializerMetadata
+        {
+            get
+            {
+                return _overridableInitializerMetadata;
+            }
+        }
 
         /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
@@ -182,27 +211,46 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region private methods
 
-        protected void Init(string modelPath, SessionOptions options)
+        private void Init(string modelPath, SessionOptions options)
         {
             var envHandle = OnnxRuntime.Handle;
+            var session = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath), options.Handle, out session));
 
-            _nativeHandle = IntPtr.Zero;
+            InitWithSessionHandle(session, options);
+        }
+
+        private void Init(byte[] modelData, SessionOptions options)
+        {
+            var envHandle = OnnxRuntime.Handle;
+            var session = IntPtr.Zero;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
+
+            InitWithSessionHandle(session, options);
+        }
+
+        /// <summary>
+        /// Initializes the session object with a native session handle
+        /// </summary>
+        /// <param name="session">Handle of a native session object</param>
+        /// <param name="options">Session options</param>
+        private void InitWithSessionHandle(IntPtr session, SessionOptions options)
+        {
+            _nativeHandle = session;
             try
             {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.Unicode.GetBytes(modelPath), options.Handle, out _nativeHandle));
-                else
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, System.Text.Encoding.UTF8.GetBytes(modelPath), options.Handle, out _nativeHandle));
 
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();
+                _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>();
 
                 // get input count
                 UIntPtr inputCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
 
-                // get all the output names
+                // get all the input names and metadata
                 for (ulong i = 0; i < (ulong)inputCount; i++)
                 {
                     var iname = GetInputName(i);
@@ -212,10 +260,20 @@ namespace Microsoft.ML.OnnxRuntime
                 UIntPtr outputCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
 
-                // get all the output names
+                // get all the output names and metadata
                 for (ulong i = 0; i < (ulong)outputCount; i++)
                 {
                     _outputMetadata[GetOutputName(i)] = GetOutputMetadata(i);
+                }
+
+                // get overridable initializer count
+                UIntPtr initilaizerCount = UIntPtr.Zero;
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerCount(_nativeHandle, out initilaizerCount));
+
+                // get all the overridable initializer names and metadata
+                for (ulong i = 0; i < (ulong)initilaizerCount; i++)
+                {
+                    _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
                 }
 
             }
@@ -285,6 +343,31 @@ namespace Microsoft.ML.OnnxRuntime
             return str;
         }
 
+        private string GetOverridableInitializerName(ulong index)
+        {
+            IntPtr nameHandle = IntPtr.Zero;
+            string str = null;
+
+            IntPtr status = NativeMethods.OrtSessionGetOverridableInitializerName(
+                                                _nativeHandle,
+                                                (UIntPtr)index,
+                                                NativeMemoryAllocator.DefaultInstance.Handle,
+                                                out nameHandle);
+            try
+            {
+
+                NativeApiStatus.VerifySuccess(status);
+                str = Marshal.PtrToStringAnsi(nameHandle); //assumes charset = ANSI
+            }
+            finally
+            {
+                if (nameHandle != IntPtr.Zero)
+                {
+                    NativeMemoryAllocator.DefaultInstance.FreeMemory(nameHandle);
+                }
+            }
+            return str;
+        }
 
         private NodeMetadata GetInputMetadata(ulong index)
         {
@@ -320,6 +403,23 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        private NodeMetadata GetOverridableInitializerMetadata(ulong index)
+        {
+            IntPtr typeInfo = IntPtr.Zero;
+            try
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerTypeInfo(_nativeHandle, (UIntPtr)index, out typeInfo));
+                return GetMetadataFromTypeInfo(typeInfo);
+            }
+            finally
+            {
+                if (typeInfo != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseTypeInfo(typeInfo);
+                }
+            }
+        }
+
         internal static NodeMetadata GetMetadataFromTypeInfo(IntPtr typeInfo)
         {
             OnnxValueType valueType;
@@ -329,7 +429,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             if (valueType != OnnxValueType.ONNX_TYPE_TENSOR && valueType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
-                return new NodeMetadata(valueType, new int[] { }, typeof(NamedOnnxValue));
+                return new NodeMetadata(valueType, new int[] { }, new string[] { },  typeof(NamedOnnxValue));
             }
 
             IntPtr tensorInfo;
@@ -349,14 +449,26 @@ namespace Microsoft.ML.OnnxRuntime
             TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width);
             UIntPtr numDimensions;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(tensorInfo, out numDimensions));
+
             long[] dimensions = new long[(int)numDimensions];
-            NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(tensorInfo, dimensions, numDimensions));
             int[] intDimensions = new int[(int)numDimensions];
             for (var i = 0; i < (long)numDimensions; i++)
             {
                 intDimensions[i] = (int)dimensions[i];
             }
-            return new NodeMetadata(valueType, intDimensions, dotnetType);
+
+            IntPtr[] dimensionNamePtrs = new IntPtr[(int)numDimensions];
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetSymbolicDimensions(tensorInfo, dimensionNamePtrs, numDimensions));
+
+            string[] symbolicDimensions = new string[(int)numDimensions];
+            for (var i = 0; i < (int)numDimensions; i++)
+            {
+                symbolicDimensions[i] = Marshal.PtrToStringAnsi(dimensionNamePtrs[i]); //assumes charset = ANSI
+            }
+          
+            return new NodeMetadata(valueType, intDimensions, symbolicDimensions, dotnetType);
         }
 
         #endregion
@@ -410,12 +522,14 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private OnnxValueType _onnxValueType;
         private int[] _dimensions;
+        private string[] _symbolicDimensions;
         private Type _type;
 
-        internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, Type type)
+        internal NodeMetadata(OnnxValueType onnxValueType, int[] dimensions, string[] symbolicDimensions, Type type)
         {
             _onnxValueType = onnxValueType;
             _dimensions = dimensions;
+            _symbolicDimensions = symbolicDimensions;
             _type = type;
         }
 
@@ -434,6 +548,15 @@ namespace Microsoft.ML.OnnxRuntime
                 return _dimensions;
             }
         }
+
+        public string[] SymbolicDimensions
+        {
+            get
+            {
+                return _symbolicDimensions;
+            }
+        }
+
         public System.Type ElementType
         {
             get

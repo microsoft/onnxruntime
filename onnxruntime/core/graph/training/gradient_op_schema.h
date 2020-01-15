@@ -5,6 +5,7 @@
 
 #include <string>
 #include <set>
+#include "core/common/make_unique.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 
 namespace onnxruntime {
@@ -24,7 +25,7 @@ class GradOpSchema {
  public:
   GradOpSchema(const std::string& name,
                const std::string& file,
-               const int line) : op_schema_(std::make_unique<ONNX_NAMESPACE::OpSchema>(name, file, line)),
+               const int line) : op_schema_(onnxruntime::make_unique<ONNX_NAMESPACE::OpSchema>(name, file, line)),
                                  schema_registry_(ONNX_NAMESPACE::OpSchemaRegistry::Instance()),
                                  variadic_input_(false),
                                  variadic_output_(false) {}

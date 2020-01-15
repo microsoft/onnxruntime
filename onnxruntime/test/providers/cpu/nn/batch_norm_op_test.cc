@@ -23,19 +23,27 @@ void TestBatchNorm(const InputDataMap& input_data_map,
                    const vector<int64_t>& expected_output_shape,
                    int64_t spatial_mode = 1,
                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                   const std::string& err_str = "") {
-  OpTester test("BatchNormalization");
+                   const std::string& err_str = "",
+                   int opset_version = 9) {
+  OpTester test("BatchNormalization", opset_version);
   if (epsilon.has_value()) {
     test.AddAttribute("epsilon", epsilon.value());
   }
-  test.AddAttribute("spatial", spatial_mode);
+  if (opset_version < 9) {  // spatial is only defined for opset-8 and below in the spec
+    test.AddAttribute("spatial", spatial_mode);
+  }
   test.AddInput<float>("X", input_shapes_map.at("X"), input_data_map.at("X"));
   test.AddInput<float>("scale", input_shapes_map.at("scale"), input_data_map.at("scale"));
   test.AddInput<float>("B", input_shapes_map.at("B"), input_data_map.at("B"));
   test.AddInput<float>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"));
   test.AddInput<float>("var", input_shapes_map.at("var"), input_data_map.at("var"));
   test.AddOutput<float>("output", expected_output_shape, expected_output);
-  test.Run(expect_result, err_str, {kTensorrtExecutionProvider});// Weight as input is not supported by TensorRT
+  // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
+  std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
+  if (spatial_mode == 0) {
+    excluded_eps.insert(kNGraphExecutionProvider);
+  }
+  test.Run(expect_result, err_str, excluded_eps);
 }
 
 TEST(BatchNormTest, PositiveTestCase) {
@@ -513,6 +521,76 @@ TEST(BatchNormTest, InvalidVarDim) {
                 "Invalid input var");
 }
 
+TEST(BatchNormTest, NonSpatial_Simple) {
+  vector<float> X{1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f};
+  vector<float> scale{1.f, 1.f, 1.f, 1.f};
+  vector<float> B{1.f, 0.f, 0.f, 1.f};
+  vector<float> mean{0.f, 0.f, 0.f, 0.f};
+  vector<float> var{1.f, 1.f, 1.f, 1.f};
+
+  InputDataMap input_data_map;
+  input_data_map.insert({"X", X});
+  input_data_map.insert({"scale", scale});
+  input_data_map.insert({"B", B});
+  input_data_map.insert({"mean", mean});
+  input_data_map.insert({"var", var});
+
+  InputShapesMap input_shapes_map;
+  input_shapes_map.insert({"X", {2, 2, 2}});
+  input_shapes_map.insert({"scale", {2, 2}});
+  input_shapes_map.insert({"B", {2, 2}});
+  input_shapes_map.insert({"mean", {2, 2}});
+  input_shapes_map.insert({"var", {2, 2}});
+
+  vector<int64_t> expected_output_shape{2, 2, 2};
+  auto expected_output = {2.f, 2.f, 3.f, 5.f, 2.f, 2.f, 3.f, 5.f};
+  float epsilon = 0.f;
+  TestBatchNorm(input_data_map,
+                input_shapes_map,
+                epsilon,
+                expected_output,
+                expected_output_shape,
+                0,
+                OpTester::ExpectResult::kExpectSuccess,
+                "",
+                7);  // opset-7
+}
+
+TEST(BatchNormTest, NonSpatial_Complicated) {
+  vector<float> X{0.2134f, 0.32434f, 0.5644f, 0.3234f, 0.4545f, 0.3445f};
+  vector<float> scale{0.5f, 0.6f};
+  vector<float> B{0.2f, 0.1f};
+  vector<float> mean{0.034f, 0.342f};
+  vector<float> var{1.f, 1.f};
+
+  InputDataMap input_data_map;
+  input_data_map.insert({"X", X});
+  input_data_map.insert({"scale", scale});
+  input_data_map.insert({"B", B});
+  input_data_map.insert({"mean", mean});
+  input_data_map.insert({"var", var});
+
+  InputShapesMap input_shapes_map;
+  input_shapes_map.insert({"X", {3, 1, 2}});
+  input_shapes_map.insert({"scale", {1, 2}});
+  input_shapes_map.insert({"B", {1, 2}});
+  input_shapes_map.insert({"mean", {1, 2}});
+  input_shapes_map.insert({"var", {1, 2}});
+
+  vector<int64_t> expected_output_shape{3, 1, 2};
+  auto expected_output = {0.2897f, 0.089404f, 0.4652f, 0.08884f, 0.41025f, 0.1015f};
+  float epsilon = 1e-05f;
+  TestBatchNorm(input_data_map,
+                input_shapes_map,
+                epsilon,
+                expected_output,
+                expected_output_shape,
+                0,
+                OpTester::ExpectResult::kExpectSuccess,
+                "",
+                8);  // opset-8
+}
+
 // Only CUDA kernel has float 16 support
 #ifdef USE_CUDA
 TEST(BatchNormTest, BatchNorm2d_fp16) {
@@ -631,7 +709,7 @@ TEST(BatchNormTest, ForwardTrainingTest) {
   // exclude CPU Execution Provider so that test is run with CUDA with ForwardTraining mode
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider,  
                                                         kTensorrtExecutionProvider, 
-                                                        kMklDnnExecutionProvider, 
+                                                        kDnnlExecutionProvider, 
                                                         kNGraphExecutionProvider, 
                                                         kOpenVINOExecutionProvider,
                                                         kNupharExecutionProvider,

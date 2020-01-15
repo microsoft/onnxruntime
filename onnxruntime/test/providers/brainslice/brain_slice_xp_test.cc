@@ -69,7 +69,7 @@ static const std::string MODEL_URI = "testdata/gru_1.pb";
 
 TEST(BrainSliceExecutionProviderTest, BasicTest) {
   fpga::FPGAInfo info = {0, true, "testdata/firmwares/onnx_rnns/instructions.bin", "testdata/firmwares/onnx_rnns/data.bin", "testdata/firmwares/onnx_rnns/schema.bin"};
-  auto provider = std::make_unique<brainslice::BrainSliceExecutionProvider>(info);
+  auto provider = onnxruntime::make_unique<brainslice::BrainSliceExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
 
   SessionOptions so;

@@ -7,7 +7,7 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include "gsl/gsl_util"
+#include "gsl/gsl"
 
 #include "core/platform/ort_mutex.h"
 #include "core/common/common.h"
@@ -50,9 +50,15 @@ struct MemoryPatternGroup;
  */
 class SessionState {
  public:
-  SessionState(const ExecutionProviders& execution_providers, bool enable_mem_pattern,
-               concurrency::ThreadPool* thread_pool)
-      : execution_providers_{execution_providers}, enable_mem_pattern_(enable_mem_pattern), thread_pool_(thread_pool) {}
+  SessionState(const ExecutionProviders& execution_providers,
+               bool enable_mem_pattern,
+               concurrency::ThreadPool* thread_pool,
+               concurrency::ThreadPool* inter_op_thread_pool)
+      : execution_providers_(execution_providers),
+        enable_mem_pattern_(enable_mem_pattern),
+        thread_pool_(thread_pool),
+        inter_op_thread_pool_(inter_op_thread_pool) {
+  }
 
   ~SessionState() {
     for (auto* p : session_kernels_) {
@@ -70,6 +76,10 @@ class SessionState {
   // Get kernel for specified node.
   // It should called right before graph execution only.
   const OpKernel* GetKernel(size_t node_id) const {
+    return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
+  }
+
+  OpKernel* GetMutableKernel(size_t node_id) {
     return (node_id < session_kernels_.size()) ? session_kernels_[node_id] : nullptr;
   }
 
@@ -200,6 +210,7 @@ class SessionState {
   const NameNodeInfoMapType& GetInputNodeInfoMap() const;
 
   void AddOutputNameToNodeInfoMapping(const std::string& output_name, const NodeInfo& node_info);
+  common::Status GetOutputNodeInfo(const std::string& output_name, std::vector<NodeInfo>& node_info_vec) const;
   const NameNodeInfoMapType& GetOutputNodeInfoMap() const;
 
   /// Add a SessionState instance for executing a subgraph in a Node
@@ -214,7 +225,12 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
+  // Remove the SessionState for a node containing a subgraph.
+  // If the node isn't going to be executed by the CPU provider we don't need it.
+  void RemoveSubgraphSessionState(onnxruntime::NodeIndex index);
+
   concurrency::ThreadPool* GetThreadPool() const { return thread_pool_; }
+  concurrency::ThreadPool* GetInterOpThreadPool() const { return inter_op_thread_pool_; }
 
   bool ExportDll() const { return export_fused_dll_; }
   void SetExportDllFlag(bool flag) { export_fused_dll_ = flag; }
@@ -235,16 +251,16 @@ class SessionState {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   Status GeneratePatternGroupCache(
-	  const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
-	  const std::vector<int>& feed_mlvalue_idxs,
-	  MemoryPatternGroup* output) const;
+      const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+      const std::vector<int>& feed_mlvalue_idxs,
+      MemoryPatternGroup* output) const;
 
   // cache of the constructed kernels to avoid spending construction
   // time per executor
   std::vector<OpKernel*> session_kernels_;
   std::unique_ptr<GraphViewer> graph_viewer_;
 
-  const ExecutionProviders& execution_providers_;  // owned by InferenceSession
+  std::reference_wrapper<const ExecutionProviders> execution_providers_;  // owned by InferenceSession
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
@@ -278,16 +294,29 @@ class SessionState {
   SubgraphSessionStateMap subgraph_session_states_;
 
   // It could be NULL
-  concurrency::ThreadPool* const thread_pool_;
+  concurrency::ThreadPool* const thread_pool_{};
+  concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
-  const DataTransferManager* data_transfer_mgr_;
+  const DataTransferManager* data_transfer_mgr_ = nullptr;
 
   std::unique_ptr<NodeIndexInfo> node_index_info_;
   std::multimap<int, std::unique_ptr<FeedsFetchesManager>> cached_feeds_fetches_managers_;
-
   std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  SessionState* parent_ = nullptr;
+  //Assign each graph in each session an unique id.
+  int graph_id_ = 0;
+  int next_graph_id_ = 1;
+
+  void GenerateGraphId() {
+    SessionState* p = this;
+    while (p->parent_ != nullptr) p = p->parent_;
+    graph_id_ = p->next_graph_id_++;
+  }
+#endif
 };
 
 }  // namespace onnxruntime
