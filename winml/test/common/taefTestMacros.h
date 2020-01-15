@@ -30,11 +30,13 @@ using namespace WEX::TestExecution;
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) VERIFY_IS_TRUE(statement)
+#define WINML_EXPECT_FALSE(statement) VERIFY_IS_FALSE(statement)
 #define WINML_EXPECT_EQUAL(val1, val2) VERIFY_ARE_EQUAL(val1, val2)
 #define WINML_EXPECT_NOT_EQUAL(val1, val2) VERIFY_ARE_NOT_EQUAL(val1, val2)
 #define WINML_LOG_ERROR(message) \
   VERIFY_FAIL(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str())
-
+#define WINML_LOG_COMMENT(message)\
+  WEX::Logging::Log::Comment(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str())
 #define WINML_EXPECT_HRESULT_SUCCEEDED(hresult_expression) VERIFY_SUCCEEDED(hresult_expression)
 #define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) VERIFY_THROWS_SPECIFIC(statement, exception, condition)
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) VERIFY_FAILED(hresult_expression)

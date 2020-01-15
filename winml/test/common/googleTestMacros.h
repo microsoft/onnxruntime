@@ -30,17 +30,34 @@
 #define GTEST_SKIP GTEST_SKIP_("")
 #endif
 
+#define EXPECT_THROW_SPECIFIC(statement, exception, condition)  \
+    EXPECT_THROW(                                               \
+        try {                                                   \
+            statement;                                          \
+        } catch (const exception& e) {                          \
+            EXPECT_TRUE(condition(e));                          \
+            throw;                                              \
+        }                                                       \
+    , exception);
+
+#ifndef INSTANTIATE_TEST_SUITE_P
+// Use the old name, removed in newer versions of googletest
+#define INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
+#endif
+
 #define WINML_SKIP_TEST(message) \
   GTEST_SKIP() << message;
 
 #define WINML_EXPECT_NO_THROW(statement) EXPECT_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) EXPECT_TRUE(statement)
+#define WINML_EXPECT_FALSE(statement) EXPECT_FALSE(statement)
 #define WINML_EXPECT_EQUAL(val1, val2) EXPECT_EQ(val1, val2)
 #define WINML_EXPECT_NOT_EQUAL(val1, val2) EXPECT_NE(val1, val2)
 
 #define WINML_LOG_ERROR(message) \
   ADD_FAILURE() << message
-
+#define WINML_LOG_COMMENT(message)\
+  SCOPED_TRACE(message)
 #define WINML_EXPECT_HRESULT_SUCCEEDED(hresult_expression) EXPECT_HRESULT_SUCCEEDED(hresult_expression)
 #define WINML_EXPECT_HRESULT_FAILED(hresult_expression) EXPECT_HRESULT_FAILED(hresult_expression)
 #define WINML_EXPECT_THROW_SPECIFIC(statement, exception, condition) EXPECT_THROW_SPECIFIC(statement, exception, condition)

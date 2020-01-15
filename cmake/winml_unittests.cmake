@@ -69,6 +69,7 @@ add_winml_test(
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common
 )
+target_compile_definitions(winml_test_api PRIVATE BUILD_GOOGLE_TEST)
 target_precompiled_header(winml_test_api testPch.h)
 
 if (onnxruntime_USE_DML)
