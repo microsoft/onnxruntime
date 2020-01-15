@@ -744,5 +744,5 @@ if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
     add_test(NAME onnxruntime4j_test COMMAND ./gradlew test WORKING_DIRECTORY ${REPO_ROOT}/java)
-	set_tests_properties(onnxruntime4j_test PROPERTIES DEPENDS "onnxruntime4j_jni onnxruntime4j")
+	set_tests_properties(onnxruntime4j_test PROPERTIES DEPENDS onnxruntime4j_gradle)
 endif()

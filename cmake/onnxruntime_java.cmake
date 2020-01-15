@@ -40,14 +40,15 @@ onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/java/src/main/native)
 target_link_libraries(onnxruntime4j_jni PUBLIC ${JNI_LIBRARIES} onnxruntime onnxruntime4j_generated)
 
+# Copy the library and jni library over to gradle into the proper os-arch directory
 if(APPLE)
-	set(CLASSIFIER_OS macosx)
+	set(GRADLE_CLASSIFIER_OS macosx)
 endif()
 if(WIN32)
-	set(CLASSIFIER_OS windows)
+	set(GRADLE_CLASSIFIER_OS windows)
 endif()
 if(UNIX AND NOT APPLE)
-	set(CLASSIFIER_OS linux)
+	set(GRADLE_CLASSIFIER_OS linux)
 endif()
 
 set(GRADLE_SUBPROJECT cpu)
@@ -55,18 +56,13 @@ if (onnxruntime_USE_CUDA)
 	set(GRADLE_SUBPROJECT gpu)
 endif()
 
-if(CLASSIFIER_OS)
-	set(JAR_BASE_OUTPUT_DIR build/jni-output/${CLASSIFIER_OS}-${CMAKE_SYSTEM_PROCESSOR}/ai/onnxruntime/native/)
-	set(JAR_JNILIB_OUTPUT_DIR ${REPO_ROOT}/java/${JAR_BASE_OUTPUT_DIR})
-	# TODO: gpu
-	set(JAR_LIB_OUTPUT_DIR ${REPO_ROOT}/java/runtime-${GRADLE_SUBPROJECT}/${JAR_BASE_OUTPUT_DIR})
-	
-	add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
-	    COMMAND ${CMAKE_COMMAND} -E make_directory ${JAR_JNILIB_OUTPUT_DIR})
-	add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
-	    COMMAND ${CMAKE_COMMAND} -E make_directory ${JAR_LIB_OUTPUT_DIR})
-	add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:onnxruntime4j_jni> ${JAR_JNILIB_OUTPUT_DIR})
-	add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_LINKER_FILE_NAME:onnxruntime> ${JAR_LIB_OUTPUT_DIR})
+if(GRADLE_CLASSIFIER_OS)
+	set(GRADLE_NATIVE_DIR build/jni-output/${GRADLE_CLASSIFIER_OS}-${CMAKE_SYSTEM_PROCESSOR}/ai/onnxruntime/native/)
+	set(GRADLE_NATIVE_JNILIB_DIR ${REPO_ROOT}/java/${GRADLE_NATIVE_DIR})
+	set(GRADLE_NATIVE_LIB_DIR ${REPO_ROOT}/java/runtime-${GRADLE_SUBPROJECT}/${GRADLE_NATIVE_DIR})
+	add_custom_target(onnxruntime4j_gradle ALL DEPENDS onnxruntime4j_gradle_lib onnxruntime4j_gradle_jnilib)
+	file(MAKE_DIRECTORY ${GRADLE_NATIVE_JNILIB_DIR})
+	file(MAKE_DIRECTORY ${GRADLE_NATIVE_LIB_DIR})
+	add_custom_command(OUTPUT onnxruntime4j_gradle_jnilib COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni> ${GRADLE_NATIVE_JNILIB_DIR}$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni> DEPENDS onnxruntime4j_jni)
+	add_custom_command(OUTPUT onnxruntime4j_gradle_lib COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_LINKER_FILE_NAME:onnxruntime> ${GRADLE_NATIVE_LIB_DIR}$<TARGET_LINKER_FILE_NAME:onnxruntime> DEPENDS onnxruntime)
 endif()
