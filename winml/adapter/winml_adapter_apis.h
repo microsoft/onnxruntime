@@ -14,7 +14,6 @@ ORT_API(void, ReleaseModel, OrtModel*);
 ORT_API(void, ReleaseMapTypeInfo, OrtMapTypeInfo*);
 ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
-ORT_API(void, ReleaseOperatorRegistry, OrtOperatorRegistry*);
 
 ORT_API_STATUS(OverrideSchema);
 
@@ -65,9 +64,9 @@ ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtMod
 ORT_API_STATUS(SessionStartProfiling, _In_ OrtEnv* env, _In_ OrtSession* session);
 ORT_API_STATUS(SessionEndProfiling, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
+ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry);
 
 /*
-ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ OrtOperatorRegistry* registry);
 ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
     
 // Dml methods (TODO need to figure out how these need to move to session somehow...)

@@ -65,7 +65,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::SessionGetExecutionProvider,
   &winmla::SessionInitialize,
   &winmla::SessionRegisterGraphTransformers,
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
+  &winmla::SessionRegisterCustomRegistry,  // OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
   &winmla::SessionLoadAndPurloinModel,
   &winmla::SessionStartProfiling,
   &winmla::SessionEndProfiling,
@@ -82,8 +82,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
   &winmla::ReleaseSequenceTypeInfo,
-  &winmla::ReleaseExecutionProvider,
-  &winmla::ReleaseOperatorRegistry
+  &winmla::ReleaseExecutionProvider
 };
 
 const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(const OrtApi* ort_api) NO_EXCEPTION {

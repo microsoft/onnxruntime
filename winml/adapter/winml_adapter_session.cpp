@@ -15,6 +15,7 @@
 #include "winml_adapter_execution_provider.h"
 #include "winml_adapter_model.h"
 
+#include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 
 #ifdef USE_DML
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -122,6 +123,35 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterGraphTransformers, _In_ OrtSession* s
   // Bug 22973884 : Fix issues with BatchNorm + Add and BatchNorm + Mul handling implicit inputs, and move from Winml to ORT
   GraphTransformerHelpers::RegisterGraphTransformers(inference_session);
 #endif USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+inline std::list<std::shared_ptr<onnxruntime::CustomRegistry>>
+GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
+  if (registry != nullptr) {
+    // Down-cast to the concrete type.
+    // The only supported input is the AbiCustomRegistry type.
+    // Other implementations of IMLOperatorRegistry are forbidden.
+    auto abi_custom_registry =
+        static_cast<winmla::AbiCustomRegistry*>(registry);
+
+    // Get the ORT registry
+    return abi_custom_registry->GetRegistries();
+  }
+  return {};
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto custom_registries = GetLotusCustomRegistries(registry);
+
+  // Register
+  for (auto& custom_registry : custom_registries) {
+    ORT_THROW_IF_ERROR(inference_session->RegisterCustomRegistry(custom_registry));
+  }
+
   return nullptr;
   API_IMPL_END
 }

@@ -9,13 +9,13 @@ ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(MapTypeInfo);
 ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ExecutionProvider);
-ORT_RUNTIME_CLASS(OperatorRegistry);
 
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
 
 struct ID3D12Device;
 struct ID3D12CommandQueue;
+struct IMLOperatorRegistry;
 
 ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api) NO_EXCEPTION;
 
@@ -85,7 +85,7 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* SessionGetExecutionProvider)(_In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ OrtOperatorRegistry* registry)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry* registry)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel* model)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtEnv* env, _In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
@@ -101,5 +101,4 @@ struct WinmlAdapterApi {
   ORT_CLASS_RELEASE(MapTypeInfo);
   ORT_CLASS_RELEASE(SequenceTypeInfo);
   ORT_CLASS_RELEASE(ExecutionProvider);
-  ORT_CLASS_RELEASE(OperatorRegistry);
 };

@@ -51,7 +51,9 @@ HRESULT OnnxruntimeEngine::RegisterGraphTransformers() {
 }
 
 HRESULT OnnxruntimeEngine::RegisterCustomRegistry(IMLOperatorRegistry* registry) {
-  return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  winml_adapter_api->SessionRegisterCustomRegistry(session_.get(), registry);  
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::EndProfiling() {

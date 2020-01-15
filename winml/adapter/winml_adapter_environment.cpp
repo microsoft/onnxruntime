@@ -3,8 +3,6 @@
 #pragma once
 #include "pch.h"
 
-#include "winml_adapter_operator_registry.h"
-
 #include "winml_adapter_c_api.h"
 #include "core/session/ort_apis.h"
 #include "winml_adapter_apis.h"
