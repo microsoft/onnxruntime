@@ -1,0 +1,3 @@
+rootProject.name = 'runtime-base'
+include "runtime-cpu"
+include "runtime-gpu"

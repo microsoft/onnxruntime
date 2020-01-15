@@ -1,0 +1,124 @@
+plugins {
+    id 'maven-publish'
+    id 'signing'
+}
+
+def getClassifiers(theProject) {
+	def files =  fileTree("${theProject.buildDir}/jni-output")
+	def classifiers = []
+	files.visit { FileVisitDetails fd ->
+		if (fd.directory && !fd.path.contains("/")) {
+			classifiers << fd.name
+		}
+	}
+	return classifiers;
+}
+
+allprojects {
+	apply plugin: 'java'
+	apply plugin: 'maven-publish'
+
+	def classifiers = getClassifiers(project)	
+	classifiers.each { theClassifier ->
+		tasks.register("jar${theClassifier}", Jar) {
+		    classifier = theClassifier
+		 	from "${project.buildDir}/jni-output/${theClassifier}"
+		}
+		tasks.jar.dependsOn tasks["jar${theClassifier}"]
+	}
+	
+	group = 'ai.onnxruntime'
+	version = '1.1.0'
+	publishing {
+	    publications {
+	        mavenJava(MavenPublication) {
+	            artifactId = project.name
+				if (project.name == 'runtime-base') {
+	         	   from components.java
+				}
+				classifiers.each {
+					artifact tasks["jar${it}"]
+				}
+	            pom {
+	                name = 'onnxruntime'
+	                description = 'Cross-platform evaluator of ONNX models.'
+	                url = 'https://microsoft.github.io/onnxruntime/'
+	                licenses {
+	                    license {
+	                        name = 'The MIT License'
+	                        url = 'https://opensource.org/licenses/MIT'
+	                    }
+	                }
+	                scm {
+	                    connection = 'scm:git:git://github.com/microsoft/onnxruntime.git'
+	                    developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
+	                    url = 'https://github.com/microsoft/onnxruntime'
+	                }
+	            }
+	        }
+	    }
+	    repositories {
+	        maven {
+	            // change URLs to point to your repos, e.g. http://my.org/repo
+	            def releasesRepoUrl = "${rootProject.buildDir}/repos/releases"
+	            def snapshotsRepoUrl = "${rootProject.buildDir}/repos/snapshots"
+	            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+	        }
+	    }
+	}
+
+	/*signing {
+	    sign publishing.publications.mavenJava
+	}*/
+
+
+	javadoc {
+	    if(JavaVersion.current().isJava9Compatible()) {
+	        options.addBooleanOption('html5', true)
+	    }
+	}
+	
+}
+
+subprojects {
+	repositories {
+		mavenCentral()
+	}
+
+	sourceSets.test {
+		resources.srcDirs += [
+			"${project.buildDir}/jni-output-test",
+			"${rootProject.projectDir}/../csharp/testdata",
+			"${rootProject.projectDir}/../onnxruntime/test/testdata"
+		]
+	}
+
+	task testCopyJni(type: Copy) {
+		getClassifiers(rootProject).each { theClassifier ->
+			from "${rootProject.buildDir}/jni-output/$theClassifier"
+			into "${project.buildDir}/jni-output-test"
+		}
+		getClassifiers(project).each { theClassifier ->
+			from "${project.buildDir}/jni-output/$theClassifier"
+			into "${project.buildDir}/jni-output-test"
+		}
+	}
+	processTestResources.dependsOn testCopyJni
+	
+	dependencies {
+		implementation project(':')
+		testImplementation project(':')
+	    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
+	    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
+		testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
+	}
+
+	test {
+	    useJUnitPlatform()
+	}
+}
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
