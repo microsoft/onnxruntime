@@ -471,6 +471,45 @@ TEST(TopKOperator, BigArrayTopKSorted)
   RunTest(11, 1000, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
 }
 
+TEST(TopKOperator, NegTopK) 
+{
+  std::vector<float> input_vals(10, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), -5.0f);
+  std::vector<int64_t> input_dimensions = {10};
+  std::vector<float> expected_vals(7, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), -5.0f);
+  std::vector<int64_t> expected_indices(7, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 0);
+  std::vector<int64_t> expected_dimensions = {7};
+  RunTest(11, 7, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 0, 1);
+}
+
+TEST(TopKOperator, NegTopK2) 
+{
+  std::vector<float> input_vals(10, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), -5.0f);
+  std::vector<int64_t> input_dimensions = {10};
+  std::vector<float> expected_vals(5, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), -5.0f);
+  std::vector<int64_t> expected_indices(5, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 0);
+  std::vector<int64_t> expected_dimensions = {5};
+  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 0, 1);
+}
+
+TEST(TopKOperator, NegTopK3) 
+{
+  std::vector<float> input_vals(10, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), -5.0f);
+  std::vector<int64_t> input_dimensions = {10};
+  std::vector<float> expected_vals(3, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), -5.0f);
+  std::vector<int64_t> expected_indices(3, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 0);
+  std::vector<int64_t> expected_dimensions = {3};
+  RunTest(11, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 0, 1);
+}
+
 TEST(TopKOperator, BitArrayBigTopKSorted) 
 {
   std::vector<float> input_vals(10000, 0.0f);
