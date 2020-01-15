@@ -1,5 +1,45 @@
 # Quantization tool Overview
-This tool supports quantization of an onnx model. quantize() takes a model in ModelProto format and returns the quantized model in ModelProto format.
+This tool supports 8 bit linear quantization of an onnx model. quantize() takes a model in ModelProto format and returns the quantized model in ModelProto format.
+Today ORT does not guarantee support for E2E model quantization, meaning since not all ONNX ops have support for 8 bit data types therefore only the supported ops in the model are quantized. For rest of the ops inputs are reconverted to FP32.
+
+List of Supported Quantized Ops:
+The following ops were chosen as phase 1 ops because in most of the CNN models these ops consume most amount of compute and power and therefore there is benefit in quantizing these ops to get perf benefits.
+ * Convolution
+ * Matmul
+ * Data type agnostic ops like transpose, identity etc ( Note: special quantization is not done for these ops. )
+
+ ## Quantization specifics
+ ONNX implements 8 bit linear quantization. During quantization the floating point real values are mapped to a 8 bit quantization space and it is of the form :
+ VAL_fp32 = Scale * (VAL_quantized - Zero_point)
+ 
+ Scale is a positive real number used to map the floating point numbers to a quantization space. It is calculated as follows : 
+ For unsigned 8 bit
+ ```
+ scale = (data_rage_max - data_range_min) / (quantization_range_max - quantization_range_min)
+ ```
+
+ For signed 8 bit
+ ```
+ scale = Abs(data_rage_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
+ ```
+
+ Zero point represents zero in quantization space. It is important that floating point zero value be exactly representable in quantization space. This is because in lot of CNNs, zero padding is used and if after quantization it is not possible to represent 0 uniquely then it will lead to accuracy errors.
+
+## Quantization and model opset versions
+Quantization is fairly new in ONNX and ONNXRuntime. Quantization ops were introduced in ONNX opset version 10. Therefore it is important that the model which is being quantized be opset 10 or higher. In case the model opset version is < 10 then it is recommended that the model should be reconverted to ONNX from its original framework using the latest opset.
+
+Quantization tool displays a warning when the model opset version is < 10 and still goes ahead and quantizes the model and at the end changes the opset version to 10. It is the responsibility of the model owner to run model checker and make sure the model is valid. If the model is not valid then use the above recommended way i.e. reconvert the model from original framework.
+
+## Quantization and Graph Optimization
+Please note quantization and graph optimizations may not always work together.
+
+### Quantizing an optimized model
+If a model is optimized using level 99 (i.e. all possible optimizations are run on that model) then it is possible that after these optimizations are applied the model is converted in a way that quantization cannot be applied on this model anymore and therefore after running quantization script there will be no change in the model. 
+
+### Optimizing a quantized model
+Same goes other way round. After quantizing a model some graph optimizations which otherwise might have been applicable on this model may not be applicable anymore. 
+
+It is advised that the model owner be aware of this and run perf evaluations to understand which technique gives the best performance for their model.
 
 ## Quantize an ONNX model
 ```python
