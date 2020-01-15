@@ -198,7 +198,7 @@ This is an E2E example to demonstrate calibration, quantization and accuracy tes
 * Install latest versions of onnx and onnxruntime
 
 * Quantize the model : As described above there are 2 ways to do this. 
-    ** Use quantization tool only. This method uses Integer Ops :
+    * Use quantization tool only. This method uses Integer Ops :
     ```python
     import onnx
     from quantize import quantize, QuantizationMode
@@ -207,19 +207,16 @@ This is an E2E example to demonstrate calibration, quantization and accuracy tes
     onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
     ```
 
-    ** Use calibration and quantization. This method uses QLinear Ops :
-        *** Download the calibration dataset : 
-        *** Run the calibration and quantization on the mode :
-        ```
-        python calibrate.py \
-        --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx \
-        --dataset_path=/<path>/dataset-imagenet-ilsvrc2012-val \
-        --data_preprocess=preprocess_method2
+    * Use calibration and quantization. This method uses QLinear Ops :
+        * Download the calibration dataset : From [mlperf repo](https://github.com/mlperf/inference/tree/master/calibration/ImageNet)
+        * Run the calibration and quantization on the mode :
+        ```python
+        python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --dataset_path=/<path>/dataset-imagenet-ilsvrc2012-val --data_preprocess=preprocess_method2
         ```
 
 * Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks. 
-    ** Set up the [mlperf benchmark](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#prerequisites-and-installation)
-    ** Run accuracy test : For example
+    * Set up the [mlperf benchmark](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#prerequisites-and-installation)
+    * Run accuracy test : For example
     ```
     ./run_local.sh  onnxruntime resnet50 --accuracy --count 5000
     ```
