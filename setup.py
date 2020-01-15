@@ -34,6 +34,11 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
+    
+elif '--use_dnnl' in sys.argv:
+    package_name = 'onnxruntime-dnnl'
+    sys.argv.remove('--use_dnnl')
+
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
 elif '--use_nuphar' in sys.argv:
@@ -186,7 +191,13 @@ version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
-    date_suffix = str(datetime.datetime.now().date().strftime("%m%d"))
+    #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
+    date_suffix = environ.get('BUILD_BUILDNUMBER')
+    if date_suffix is None:
+      #The following line is only for local testing
+      date_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+    else:
+      date_suffix = date_suffix.replace('.','')
     version_number = version_number + ".dev" + date_suffix
 
 cmd_classes = {}
@@ -217,7 +228,7 @@ setup(
     py_modules=python_modules_list,
     install_requires=[
         'onnx>=1.2.3',
-        'numpy>=1.18.0,<2'
+        'numpy>=1.18.0'
     ],
     entry_points= {
         'console_scripts': [
