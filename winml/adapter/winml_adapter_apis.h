@@ -53,30 +53,43 @@ ORT_API_STATUS(ModelGetMetadataCount, _In_ const OrtModel* model, _Out_ size_t* 
 ORT_API_STATUS(ModelGetMetadata, _In_ const OrtModel* model, _Out_ size_t count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len);
 ORT_API_STATUS(ModelEnsureNoFloat16, _In_ const OrtModel* model);
 
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue);
+
 // OrtSession methods
 ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
 
 ORT_API_STATUS(SessionGetExecutionProvidersCount, _In_ OrtSession* session, _Out_ size_t* count);
-ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t index, _Out_ OrtExecutionProvider** provider);
+//Do not release provider... as there is no release method available
+ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t index, _Out_ const OrtExecutionProvider** provider);
 ORT_API_STATUS(SessionInitialize, _In_ OrtSession* session);
-ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel * model);
+ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel* model);
 
 ORT_API_STATUS(SessionStartProfiling, _In_ OrtEnv* env, _In_ OrtSession* session);
 ORT_API_STATUS(SessionEndProfiling, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry);
+//ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
 
-/*
-ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
-    
+
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
-ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider * dml_provider);
-ORT_API_STATUS(DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutionProvider* dml_provider);
-ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
-*/
+// ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ const OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
+// ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtSession* session, _In_ OrtExecutionProvider * dml_provider);
+// ORT_API_STATUS(DmlExecutionProviderTrimUploadHeap, _In_ const OrtExecutionProvider* dml_provider);
+// ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ const OrtExecutionProvider* dml_provider);
+// ORT_API_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void* dml_resource);
+// ORT_API_STATUS(DmlFreeGPUAllocation, _In_ void* ptr);
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-               _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue);
+// note: this returns a weak ref
+// ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
+
+// ORT_API_STATUS(GetProviderMemoryInfo, _In_ const OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
+// ORT_API_STATUS(GetProviderAllocator, _In_ const OrtExecutionProvider* provider, OrtAllocator** allocator);
+// ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
+// ORT_API_STATUS(GetValueMemoryInfo, const OrtValue * value, OrtMemoryInfo** memory_info);
+
+// ExecutionProvider Methods
+ORT_API_STATUS(ExecutionProviderSync, _In_ const OrtExecutionProvider* provider);
+//ORT_API_STATUS(ExecutionProviderCopyTensor, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst);
 
 }  // namespace Adapter
 }  // namespace MachineLearning

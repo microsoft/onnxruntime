@@ -43,10 +43,10 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::CreateModelFromData,  
   &winmla::CloneModel,
   &winmla::ModelGetAuthor,
-  &winmla::ModelGetName, // OrtStatus*(ORT_API_CALL* ModelGetName(_In_ const OrtModel* model, _Out_ const char* const name, _Out_ size_t* len)NO_EXCEPTION;
-  &winmla::ModelGetDomain, // OrtStatus*(ORT_API_CALL* ModelGetDomain(_In_ const OrtModel* model, _Out_ const char* const domain, _Out_ size_t* len)NO_EXCEPTION;
-  &winmla::ModelGetDescription, // OrtStatus*(ORT_API_CALL* ModelGetDescription(_In_ const OrtModel* model, _Out_ const char* const description, _Out_ size_t* len)NO_EXCEPTION;
-  &winmla::ModelGetVersion, // OrtStatus*(ORT_API_CALL* ModelGetVersion(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
+  &winmla::ModelGetName,
+  &winmla::ModelGetDomain,
+  &winmla::ModelGetDescription,
+  &winmla::ModelGetVersion,
   &winmla::ModelGetInputCount,
   &winmla::ModelGetOutputCount,
   &winmla::ModelGetInputName,
@@ -59,30 +59,43 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ModelGetMetadata,
   &winmla::ModelEnsureNoFloat16,
 
+  // OrtSessionOptions methods
+  &OrtSessionOptionsAppendExecutionProvider_CPU,
+  &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, 
+
   // OrtSession methods
   &winmla::CreateSessionWithoutModel,
   &winmla::SessionGetExecutionProvidersCount,
   &winmla::SessionGetExecutionProvider,
   &winmla::SessionInitialize,
   &winmla::SessionRegisterGraphTransformers,
-  &winmla::SessionRegisterCustomRegistry,  // OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
+  &winmla::SessionRegisterCustomRegistry,
   &winmla::SessionLoadAndPurloinModel,
   &winmla::SessionStartProfiling,
   &winmla::SessionEndProfiling,
   nullptr, // OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
       
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
+  nullptr, //OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ bool is_enabled)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext(onnxruntime::IExecutionProvider * dml_provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
-  &OrtSessionOptionsAppendExecutionProvider_CPU,
-  &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, 
+  
+  nullptr, // OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void* dml_resource)NO_EXCEPTION;
+  nullptr, // OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
+  nullptr, // OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
+  nullptr, // OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
+  nullptr, // OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
+  nullptr, // OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
+  nullptr, // OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue * value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
 
+  &winmla::ExecutionProviderSync,
+  
+  nullptr, // OrtStatus*(ORT_API_CALL* ExecutionProviderCopyTensor)(_In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)NO_EXCEPTION;
   // Release
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
-  &winmla::ReleaseSequenceTypeInfo,
-  &winmla::ReleaseExecutionProvider
+  &winmla::ReleaseSequenceTypeInfo
 };
 
 const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(const OrtApi* ort_api) NO_EXCEPTION {

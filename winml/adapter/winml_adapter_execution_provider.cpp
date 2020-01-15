@@ -3,24 +3,19 @@
 #pragma once
 
 #include "pch.h"
-#include "winml_adapter_execution_provider.h"
 
 #include "winml_adapter_c_api.h"
 #include "core/session/ort_apis.h"
 #include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/execution_provider.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-OrtExecutionProvider::OrtExecutionProvider(const std::string provider_id) : provider_id_(std::move(provider_id)) {
-
-}
-
-OrtStatus* OrtExecutionProvider::CreateProvider(const std::string provider_id, OrtExecutionProvider** out) {
-  *out = new OrtExecutionProvider(provider_id);
+ORT_API_STATUS_IMPL(winmla::ExecutionProviderSync, _In_ const OrtExecutionProvider* provider) {
+  API_IMPL_BEGIN
+  const auto execution_provider = reinterpret_cast<const onnxruntime::IExecutionProvider*>(provider);
+  execution_provider->Sync();
   return nullptr;
-}
-
-ORT_API(void, winmla::ReleaseExecutionProvider, OrtExecutionProvider* ptr) {
-  delete ptr;
+  API_IMPL_END
 }

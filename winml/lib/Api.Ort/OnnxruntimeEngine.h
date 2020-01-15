@@ -25,17 +25,17 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   OnnxruntimeEngine();
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, UniqueOrtSession&& session, IOrtSessionBuilder* session_builder);
   
-  STDMETHOD(LoadModel)(_In_ IModel* model);
-  STDMETHOD(Initialize)();
-  STDMETHOD(RegisterGraphTransformers)();
-  STDMETHOD(RegisterCustomRegistry)(IMLOperatorRegistry * registry);
-  STDMETHOD(EndProfiling)();
-  STDMETHOD(StartProfiling)();
-  STDMETHOD(FlushContext)();
-  STDMETHOD(TrimUploadHeap)();
-  STDMETHOD(ReleaseCompletedReferences)();
-  STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest);
-  STDMETHOD(Sync)() PURE;
+  STDMETHOD(LoadModel)(_In_ IModel* model) override;
+  STDMETHOD(Initialize)() override;
+  STDMETHOD(RegisterGraphTransformers)() override;
+  STDMETHOD(RegisterCustomRegistry)(IMLOperatorRegistry * registry) override;
+  STDMETHOD(EndProfiling)() override;
+  STDMETHOD(StartProfiling)() override;
+  STDMETHOD(FlushContext)() override;
+  STDMETHOD(TrimUploadHeap)() override;
+  STDMETHOD(ReleaseCompletedReferences)() override;
+  STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest) override;
+  STDMETHOD(Sync)() override;
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
@@ -49,9 +49,9 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
                               IEngineFactory> {
  public:
   HRESULT RuntimeClassInitialize();
-  STDMETHOD(CreateModel)(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out);
-  STDMETHOD(CreateModel)(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out);
-  STDMETHOD(CreateEngineBuilder)(IEngineBuilder** engine_builder);
+  STDMETHOD(CreateModel)(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) override;
+  STDMETHOD(CreateModel)(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) override;
+  STDMETHOD(CreateEngineBuilder)(IEngineBuilder** engine_builder) override;
   const OrtApi* UseOrtApi();
   const WinmlAdapterApi* UseWinmlAdapterApi();
   HRESULT GetOrtEnvironment(_Out_ OrtEnv** ort_env);

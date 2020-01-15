@@ -39,6 +39,9 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
 
   // Request the dml ep
   winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get());
+
+  // Request the cpu ep as well.... todo check if we need this
+  // winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true);
   
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
@@ -78,9 +81,8 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
   winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
   RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
 
-  OrtExecutionProvider* ort_provider_raw;
-  winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider_raw);
-  auto ort_provider = UniqueOrtExecutionProvider(ort_provider_raw, winml_adapter_api->ReleaseExecutionProvider);
+  const OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider);
 
   // OnnxRuntime uses the default rounding mode when calling the session's allocator.
   // During initialization, OnnxRuntime allocates weights, which are permanent across session

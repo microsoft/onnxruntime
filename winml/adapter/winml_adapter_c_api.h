@@ -13,6 +13,7 @@ ORT_RUNTIME_CLASS(ExecutionProvider);
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
 
+struct ID3D12Resource;
 struct ID3D12Device;
 struct ID3D12CommandQueue;
 struct IMLOperatorRegistry;
@@ -79,10 +80,14 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* ModelGetMetadata)(_In_ const OrtModel* model, _Out_ size_t count, _Out_ const char** const key, _Out_ size_t* key_len, _Out_ const char** const value, _Out_ size_t* value_len)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
 
+  // OrtSessionOptions methods
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(_In_ OrtSessionOptions* options, int use_arena)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
+
   // OrtSession methods
   OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionGetExecutionProvidersCount)(_In_ OrtSession* session, _Out_ size_t* count)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* SessionGetExecutionProvider)(_In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* SessionGetExecutionProvider)(_In_ OrtSession* session, _In_ size_t index, _Out_ const OrtExecutionProvider** provider)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry* registry)NO_EXCEPTION;
@@ -92,13 +97,22 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char** const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
 
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(_In_ OrtSessionOptions* options, int use_arena)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ bool is_enabled)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ const OrtExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ const OrtExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ const OrtExecutionProvider* dml_provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void* dml_resource)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ const OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ const OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ const OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue* value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* ExecutionProviderSync)(_In_ const OrtExecutionProvider* provider)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ExecutionProviderCopyTensor)(_In_ const OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)NO_EXCEPTION;
   ORT_CLASS_RELEASE(Model);
   ORT_CLASS_RELEASE(MapTypeInfo);
   ORT_CLASS_RELEASE(SequenceTypeInfo);
-  ORT_CLASS_RELEASE(ExecutionProvider);
 };

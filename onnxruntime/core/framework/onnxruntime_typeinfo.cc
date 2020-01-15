@@ -135,14 +135,10 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
         return nullptr;
       }
       case on::TypeProto::kMapType: {
-		// TODO: This api needs to return a map object to match the FromTypeProto call
-        *out = new OrtTypeInfo(ONNX_TYPE_MAP);
-        return nullptr;
+        return OrtTypeInfo::FromTypeProto(type_proto, out);
       }
       case on::TypeProto::kSequenceType: {
-        // TODO: This api needs to return a sequence object to match the FromTypeProto call
-        *out = new OrtTypeInfo(ONNX_TYPE_SEQUENCE);
-        return nullptr;
+        return OrtTypeInfo::FromTypeProto(type_proto, out);
       }
       // Real Tensor support
       case on::TypeProto::kTensorType:
