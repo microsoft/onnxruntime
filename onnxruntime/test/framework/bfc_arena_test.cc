@@ -246,7 +246,7 @@ TEST(BFCArenaTest, UtilsAllocateBlockTest) {
 
   auto cpu_arena = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 
-  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtArenaAllocator);
+  EXPECT_EQ(cpu_arena->Info().type, OrtAllocatorType::OrtArenaAllocator);
 
   // AllocateBlock should use Reserve so the growth rate of the arena doesn't change
   size_t block_size = 4 * 1024 * 1024;
