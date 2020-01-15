@@ -558,11 +558,11 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, Ort::Value&& ml
     }
   };
   if (ml_value.IsTensor()) {
-    OrtValue* new_mlvalue;
+  /*  OrtValue* new_mlvalue;
     WINML_THROW_IF_FAILED(m_session.as<LearningModelSession>()
-                              ->GetIInferenceSession()
+                              ->GetEngine()
                               ->CopyOneInputAcrossDevices(name.c_str(), ml_value, &new_mlvalue));
-    add_or_replace(rc.first, rc.second, Ort::Value(new_mlvalue), std::move(ort_allocator));
+    add_or_replace(rc.first, rc.second, Ort::Value(new_mlvalue), std::move(ort_allocator));*/
   } else {
     add_or_replace(rc.first, rc.second, Ort::Value(ml_value.release()), std::move(ort_allocator));
   }

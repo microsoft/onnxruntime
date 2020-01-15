@@ -79,5 +79,9 @@ OnnxruntimeCpuSessionBuilder::Initialize(
   if (auto status = winml_adapter_api->SessionInitialize(session)) {
     return E_FAIL;
   }
+
+  size_t num_providers;
+  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
+  RETURN_HR_IF(E_UNEXPECTED, num_providers != 1);
   return S_OK;
 }

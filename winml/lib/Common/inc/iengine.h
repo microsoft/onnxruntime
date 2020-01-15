@@ -23,9 +23,20 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
     STDMETHOD(CloneModel)(IModel** copy) PURE;
 };
 
+MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
+};
+
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
-	STDMETHOD(LoadModel)(_In_ IModel*)PURE;
-	STDMETHOD(Initialize)()PURE;
+	STDMETHOD(LoadModel)(_In_ IModel*) PURE;
+	STDMETHOD(Initialize)() PURE;
+    STDMETHOD(RegisterGraphTransformers)() PURE;
+    STDMETHOD(RegisterCustomRegistry)(IMLOperatorRegistry * registry) PURE;
+    STDMETHOD(EndProfiling)() PURE;
+    STDMETHOD(StartProfiling)() PURE;
+    STDMETHOD(FlushContext)() PURE;
+    STDMETHOD(TrimUploadHeap)() PURE;
+    STDMETHOD(ReleaseCompletedReferences)() PURE;
+    STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* source, IValue** dest) PURE;
 };
 
 

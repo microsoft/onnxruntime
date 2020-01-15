@@ -27,6 +27,14 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   
   STDMETHOD(LoadModel)(_In_ IModel* model);
   STDMETHOD(Initialize)();
+  STDMETHOD(RegisterGraphTransformers)();
+  STDMETHOD(RegisterCustomRegistry)(IMLOperatorRegistry * registry);
+  STDMETHOD(EndProfiling)();
+  STDMETHOD(StartProfiling)();
+  STDMETHOD(FlushContext)();
+  STDMETHOD(TrimUploadHeap)();
+  STDMETHOD(ReleaseCompletedReferences)();
+  STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

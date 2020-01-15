@@ -17,8 +17,8 @@ OnnxruntimeEngine::OnnxruntimeEngine() : session_(nullptr, nullptr), provider_(n
 }
 
 HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory,
-	UniqueOrtSession&& session,
-	IOrtSessionBuilder* session_builder) {
+                                                  UniqueOrtSession&& session,
+                                                  IOrtSessionBuilder* session_builder) {
   engine_factory_ = engine_factory;
   session_ = std::move(session);
   session_builder_ = session_builder;
@@ -42,6 +42,38 @@ HRESULT OnnxruntimeEngine::LoadModel(_In_ IModel* model) {
 HRESULT OnnxruntimeEngine::Initialize() {
   RETURN_IF_FAILED(session_builder_->Initialize(session_.get()));
   return S_OK;
+}
+
+HRESULT OnnxruntimeEngine::RegisterGraphTransformers() {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::RegisterCustomRegistry(IMLOperatorRegistry* registry) {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::EndProfiling() {
+	return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::StartProfiling() {
+	return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::FlushContext() {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::TrimUploadHeap() {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::ReleaseCompletedReferences() {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* input_name, const IValue* src, IValue** dest) {
+  return E_NOTIMPL;
 }
 
 // TODO supposedly this doesnt work if it is not static

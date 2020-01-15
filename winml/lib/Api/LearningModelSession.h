@@ -70,8 +70,8 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   onnxruntime::IExecutionProvider*
   GetExecutionProvider();
 
-  winmla::IInferenceSession*
-  GetIInferenceSession();
+  WinML::IEngine*
+  GetEngine();
 
   void
   CheckClosed();
@@ -105,13 +105,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
  private:
   com_ptr<WinML::IEngineFactory> engine_factory_;
   com_ptr<WinML::IEngine> engine_;
-  com_ptr<winmla::IInferenceSession> inference_session_;
-  struct IMLOperatorRegistryDeleter {
-    void operator()(IMLOperatorRegistry* p) {
-        p->Release();
-    }
-  };
-  std::unique_ptr<IMLOperatorRegistry, IMLOperatorRegistryDeleter> operatorRegistry_;
+
+  using MLOperatorRegistry = std::unique_ptr<IMLOperatorRegistry, void (*)(IMLOperatorRegistry*)>;
+        
+  MLOperatorRegistry operator_registry_;
 
   // reference to the active execution provider. weak
   onnxruntime::IExecutionProvider* cached_execution_provider_ = nullptr;
