@@ -11,6 +11,14 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_env.h"
 
+#ifdef USE_DML
+#include "AbiCustomRegistryImpl.h" 
+#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
+#include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
+#include "DmlOrtSessionBuilder.h"
+#endif USE_DML
+
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 class WinmlAdapterLoggingWrapper : public LoggingWrapper {
@@ -59,4 +67,19 @@ ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* en
   // Set a new default logging manager
   env->SetLoggingManager(std::move(winml_logging_manager));
   return nullptr;
+}
+
+// Override select shape inference functions which are incomplete in ONNX with versions that are complete,
+// and are also used in DML kernel registrations.  Doing this avoids kernel and shader creation being
+// deferred until first evaluation.  It also prevents a situation where inference functions in externally
+// registered schema are reachable only after upstream schema have been revised in a later OS release,
+// which would be a compatibility risk.
+ORT_API_STATUS_IMPL(winmla::OverrideSchema) {
+#ifdef USE_DML
+  static std::once_flag schema_override_once_flag;
+  std::call_once(schema_override_once_flag, []() {
+    SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
+  });
+  return nullptr;
+#endif USE_DML
 }

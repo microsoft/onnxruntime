@@ -16,6 +16,8 @@ ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 ORT_API(void, ReleaseOperatorRegistry, OrtOperatorRegistry*);
 
+ORT_API_STATUS(OverrideSchema);
+
 // OrtEnv methods
 ORT_API_STATUS(EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
@@ -60,11 +62,11 @@ ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t ind
 ORT_API_STATUS(SessionInitialize, _In_ OrtSession* session);
 ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel * model);
 
+ORT_API_STATUS(SessionStartProfiling, _In_ OrtEnv* env, _In_ OrtSession* session);
+ORT_API_STATUS(SessionEndProfiling, _In_ OrtSession* session);
 /*
 ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ OrtOperatorRegistry* registry);
-ORT_API_STATUS(SessionStartProfiling, _In_ OrtSession* session);
-ORT_API_STATUS(SessionEndProfiling, _In_ OrtSession* session);
 ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
     
 // Dml methods (TODO need to figure out how these need to move to session somehow...)

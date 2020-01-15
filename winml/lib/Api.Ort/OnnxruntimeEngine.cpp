@@ -53,11 +53,19 @@ HRESULT OnnxruntimeEngine::RegisterCustomRegistry(IMLOperatorRegistry* registry)
 }
 
 HRESULT OnnxruntimeEngine::EndProfiling() {
-	return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  winml_adapter_api->SessionEndProfiling(session_.get());
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::StartProfiling() {
-	return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  OrtEnv* ort_env;
+  engine_factory_->GetOrtEnvironment(&ort_env);
+
+  winml_adapter_api->SessionStartProfiling(ort_env, session_.get());
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::FlushContext() {

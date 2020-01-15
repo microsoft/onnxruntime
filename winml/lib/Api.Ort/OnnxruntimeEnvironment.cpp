@@ -120,14 +120,6 @@ static void WinmlOrtProfileEventCallback(const OrtProfilerEventRecord* profiler_
   }
 }
 
-static HRESULT OverrideSchemaInferenceFunctions(const OrtApi* ort_api) {
-  // This only makes sense for ORT.
-  // Before creating any models, we ensure that the schema has been overridden.
-  // TODO... need to call into the appro
-  //WINML_THROW_IF_FAILED(adapter_->OverrideSchemaInferenceFunctions());
-  return S_OK;
-}
-
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {
   OrtEnv* ort_env = nullptr;
   if (auto status = ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env)) {
@@ -144,7 +136,7 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
     throw;
   }
 
-  OverrideSchemaInferenceFunctions(ort_api);
+  winml_adapter_api->OverrideSchema();
 }
 
 HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {

@@ -20,6 +20,7 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
+  &winmla::OverrideSchema,
   &winmla::EnvConfigureCustomLoggerAndProfiler,
   &winmla::GetDenotationFromTypeInfo,
 
@@ -63,8 +64,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
   &winmla::SessionLoadAndPurloinModel,
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
+  &winmla::SessionStartProfiling,
+  &winmla::SessionEndProfiling,
   nullptr, // OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
       
   // Dml methods (TODO need to figure out how these need to move to session somehow...)

@@ -91,5 +91,20 @@ ORT_API_STATUS_IMPL(winmla::SessionLoadAndPurloinModel, _In_ OrtSession* session
   }
   return nullptr;
   API_IMPL_END
+}
 
+ORT_API_STATUS_IMPL(winmla::SessionStartProfiling, _In_ OrtEnv* env, _In_ OrtSession* session) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  inference_session->StartProfiling(&env->GetLoggingManager()->DefaultLogger());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionEndProfiling, _In_ OrtSession* session) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  inference_session->EndProfiling();
+  return nullptr;
+  API_IMPL_END
 }
