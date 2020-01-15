@@ -70,49 +70,6 @@ Status ReluGrad<T>::Compute(OpKernelContext* context) const {
 }
 
 ONNX_CPU_OPERATOR_KERNEL(
-    PowGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    PowGrad<float>);
-
-// This is currently implemented for when a is a single element.
-template <typename T>
-Status PowGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dz = *context->Input<Tensor>(0);
-  auto& w = *context->Input<Tensor>(1);
-  auto& a = *context->Input<Tensor>(2);
-
-  auto& dw = *context->Output(0, w.Shape());
-
-  // df/dw = a * w^(a-1) - all operations are element wise
-  float scalarA = a.Data<float>()[0];
-  MakeEigenArrayMap<float>(dw) = scalarA * MakeEigenArrayMap<float>(w).pow(scalarA - 1) * MakeEigenArrayMap<float>(dz);
-
-  // df/da =  w^a * ln w
-  // this is not implemented yet . needs ln
-
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    SigmoidGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    SigmoidGrad<float>);
-
-template <typename T>
-Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dY = *context->Input<Tensor>(0);
-  auto& Y = *context->Input<Tensor>(1);
-  auto& dX = *context->Output(0, Y.Shape());
-
-  // dx = dy * y * (1 - y)
-  // TODO: Would this be preferable as dx = dy * sigmoid(x) * (1 - sigmoid(x)) ???
-  MakeEigenArrayMap<float>(dX) = MakeEigenArrayMap<float>(dY) * MakeEigenArrayMap<float>(Y) * (T(1) - MakeEigenArrayMap<float>(Y));
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
     SoftmaxGrad,
     9,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -155,8 +112,8 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   auto ctx_internal = static_cast<OpKernelContextInternal*>(context);
   concurrency::ThreadPool* tp = ctx_internal->GetOperatorThreadPool();
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, n, d, 1, -1,
-                                 scaledata, sum_multiplier_.data(), 1,
-                                 dXdata, tp);
+                    scaledata, sum_multiplier_.data(), 1,
+                    dXdata, tp);
 
   math::Mul<float, CPUMathUtil>(gsl::narrow_cast<int>(Y.Shape().Size()), dXdata, Ydata, dXdata, nullptr);
 

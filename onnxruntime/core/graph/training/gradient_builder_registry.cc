@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gradient_schema_defs.h"
 #include "gradient_builder_registry.h"
 #include "gradient_builder.h"
-#include "gradient_op_schema.h"
 
 namespace onnxruntime {
 namespace training {
@@ -57,7 +57,6 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Transpose", GetTransposeGradient);
   REGISTER_GRADIENT_BUILDER("Gemm", GetGemmGradient);
   REGISTER_GRADIENT_BUILDER("MaxPool", GetMaxPoolGradient);
-  REGISTER_GRADIENT_BUILDER("LRN", GetLRNGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient);
   REGISTER_GRADIENT_BUILDER("Gather", GetGatherGradient);
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);

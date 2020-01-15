@@ -25,28 +25,28 @@ IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
   return std::vector<NodeDef>{
-      NodeDef("SinGradient",
-              {I(0), GO(0)},
+      NodeDef("SinGrad",
+              {GO(0), I(0)},
               {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetTanhGradient) {
   return std::vector<NodeDef>{
-      NodeDef("TanhGradient",
+      NodeDef("TanhGrad",
               {O(0), GO(0)},
               {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
   return std::vector<NodeDef>{
-      NodeDef("SqrtGradient",
+      NodeDef("SqrtGrad",
               {O(0), GO(0)},
               {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetErfGradient) {
   return std::vector<NodeDef>{
-      NodeDef("ErfGradient",
+      NodeDef("ErfGrad",
               {I(0), GO(0)},
               {GI(0)})};
 }
@@ -431,7 +431,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherNDGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetReshapeGradient) {
   return std::vector<NodeDef>{
-      NodeDef("ReshapeGradient",
+      NodeDef("ReshapeGrad",
               {I(0), GO(0)},
               {GI(0)})};
 }
@@ -479,14 +479,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetMaxPoolGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
   return std::vector<NodeDef>{
       NodeDef(SrcNodeOpType() + "Grad",
-              {GO(0), I(0), O(0)},
-              {GI(0)},
-              SrcNodeAttributes())};
-}
-
-IMPLEMENT_GRADIENT_BUILDER(GetLRNGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("LRNGrad",
               {GO(0), I(0), O(0)},
               {GI(0)},
               SrcNodeAttributes())};
@@ -795,8 +787,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
     ORT_THROW("GradientBuilder is not implemented for CUDA Pow's input exponent.");
   }
   return std::vector<NodeDef>{
-      NodeDef("PowGradient",
-              {I(0), I(1), GO(0)},
+      NodeDef("PowGrad",
+              {GO(0), I(0), I(1)},
               {GI(0)})};
 }
 

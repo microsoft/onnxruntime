@@ -1,7 +1,6 @@
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "gradient_schema_defs.h"
-#include "gradient_op_schema.h"
 
 namespace onnxruntime {
 namespace training {
@@ -16,13 +15,12 @@ void AddRepeatedInputs(
     const std::vector<std::string>& descriptions,
     const std::vector<std::string>& type_strs,
     const OpSchema::FormalParameterOption param_option) {
-
   ORT_ENFORCE(names.size() == descriptions.size(),
-    "Names and descriptions must be equal-length.");
+              "Names and descriptions must be equal-length.");
   ORT_ENFORCE(names.size() == type_strs.size(),
-    "Names and type_strs must be equal-length.");
+              "Names and type_strs must be equal-length.");
   ORT_ENFORCE(param_option != OpSchema::Variadic,
-    "param_option cannot be variadic.");
+              "param_option cannot be variadic.");
   ORT_ENFORCE(count > 0, "Count must be positive.");
 
   for (int i = 0; i < count; ++i) {
@@ -46,13 +44,12 @@ void AddRepeatedOutputs(
     const std::vector<std::string>& descriptions,
     const std::vector<std::string>& type_strs,
     const OpSchema::FormalParameterOption param_option) {
-
   ORT_ENFORCE(names.size() == descriptions.size(),
-    "Names and descriptions must be equal-length.");
+              "Names and descriptions must be equal-length.");
   ORT_ENFORCE(names.size() == type_strs.size(),
-    "Names and type_strs must be equal-length.");
+              "Names and type_strs must be equal-length.");
   ORT_ENFORCE(param_option != OpSchema::Variadic,
-    "param_option cannot be variadic.");
+              "param_option cannot be variadic.");
   ORT_ENFORCE(count > 0, "Count must be positive.");
 
   for (int i = 0; i < count; ++i) {
@@ -160,94 +157,110 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       op_schema,
       4,
       1024,
-      {
-        "weights",
-        "gradients",
-        "moment1",
-        "moment2",
-        "fp16_weights"
-      },
-      {
-        "weights to optimize.",
-        "gradients computed in this iteration.",
-        "exponentially averaged historical gradients.",
-        "exponentially averaged historical squared gradients.",
-        "FP16 weights to optimize."
-      },
-      {
-        "T2",
-        "T3",
-        "T4",
-        "T4",
-        "T_FP16"
-      },
+      {"weights",
+       "gradients",
+       "moment1",
+       "moment2",
+       "fp16_weights"},
+      {"weights to optimize.",
+       "gradients computed in this iteration.",
+       "exponentially averaged historical gradients.",
+       "exponentially averaged historical squared gradients.",
+       "FP16 weights to optimize."},
+      {"T2",
+       "T3",
+       "T4",
+       "T4",
+       "T_FP16"},
       OpSchema::Optional);
 
   AddRepeatedOutputs(
       op_schema,
       0,
       1024,
-      {
-        "new_weights",
-        "new_gradients",
-        "new_moment_1",
-        "new_moment_2",
-        "new_fp16_weights"
-      },
-      {
-        "New weights",
-        "New gradients",
-        "New averaged gradients",
-        "New averaged squared gradients",
-        "New FP16 weights"
-      },
-      {
-        "T2",
-        "T3",
-        "T4",
-        "T4",
-        "T_FP16"
-      },
+      {"new_weights",
+       "new_gradients",
+       "new_moment_1",
+       "new_moment_2",
+       "new_fp16_weights"},
+      {"New weights",
+       "New gradients",
+       "New averaged gradients",
+       "New averaged squared gradients",
+       "New FP16 weights"},
+      {"T2",
+       "T3",
+       "T4",
+       "T4",
+       "T_FP16"},
       OpSchema::Optional);
 
   return op_schema;
 }
 
 void RegisterGradientSchemas() {
-  ONNX_GRADIENT_OPERATOR_SCHEMA(SinGrad)
-      .NumInputs(2)
-      .NumOutputs(1)
-      .Reference("Sin");
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReluGrad)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Output(0, "dX", "Gradient of input X", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(ReluGrad)
-      .NumInputs(2)
-      .NumOutputs(1)
-      .Reference("Relu");
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxGrad)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Output(0, "dX", "Gradient of input X", "T")
+      .Attr(
+          "axis",
+          "Describes the axis of the inputs when coerced "
+          "to 2D; defaults to one because the 0th axis most likely describes "
+          "the batch_size",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(PowGrad)
-      .NumInputs(3)
-      .NumOutputs(1, 2)
-      .Reference("Pow");
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AveragePoolGrad)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Output(0, "dX", "Gradient of input X", "T")
+      .Attr(
+          "kernel_shape",
+          "The size of the kernel along each axis.",
+          AttributeProto::INTS)
+      .Attr(
+          "strides", "Stride along each axis.", AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "auto_pad",
+          "auto_pad doc",
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr("pads", "pads_doc", AttributeProto::INTS, OPTIONAL)
+      .Attr(
+          "count_include_pad",
+          "",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(SigmoidGrad)
-      .NumInputs(2)
-      .NumOutputs(1)
-      .Reference("Sigmoid");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(SoftmaxGrad)
-      .NumInputs(2)
-      .NumOutputs(1)
-      .Reference("Softmax");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(AveragePoolGrad)
-      .NumInputs(3)
-      .NumOutputs(1)
-      .Reference("AveragePool");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(MaxPoolGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaxPoolGrad)
+      .SinceVersion(9)
       .Input(0, "dY", "Gradient of output, Y", "T")
       .Input(1, "Indices", "Indices tensor from max pooling across the input tensor.", "I")
       .Output(0, "dX", "Gradient of input, X", "T")
+      .AllowUncheckedAttributes()
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -255,29 +268,49 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "I",
           {"tensor(int64)"},
-          "Constrain index tensor to int64")
-      .ReferenceAttributes("MaxPool");
+          "Constrain index tensor to int64");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(ConvGrad)
-      .NumInputs(2, 3)
-      .NumOutputs(1, 3)
-      .Reference("Conv");
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ConvGrad)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Input(2, "W", "Weight tensor", "T")
+      .Output(0, "dX", "Gradient of input X", "T")
+      .Output(1, "dW", "Gradient of W", "T")
+      .Output(2, "dB", "Gradient of B", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(LRNGrad)
-      .NumInputs(3)
-      .NumOutputs(1)
-      .Reference("LRN");
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DropoutGrad)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output, Y", "T")
+      .Input(1, "mask", "Mask applied for dropout", "T")
+      .Output(0, "dX", "Gradient of input, X", "T")
+      .Attr(
+          "ratio",
+          "The ratio of random dropout",
+          AttributeProto::FLOAT,
+          0.5f)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(DropoutGrad)
-      .NumInputs(1, 2)
-      .NumOutputs(1)
-      .Reference("Dropout");
-
-  ONNX_GRADIENT_OPERATOR_SCHEMA(GatherGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherGrad)
+      .SinceVersion(9)
       .Input(0, "shape", "Shape of the Gather input X.", "I")
       .Input(1, "indices", "Tensor of int32/int64 indices, of any rank q.", "Tind")
       .Input(2, "dY", "Gradient of output", "T")
       .Output(0, "dX", "Gradient of input", "T")
+      .Attr(
+          "axis",
+          "Which axis to gather on. Negative value means "
+          "counting dimensions from the back. Accepted range in [-r, r-1]",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .TypeConstraint(
           "I",
           {"tensor(int64)"},
@@ -289,10 +322,10 @@ void RegisterGradientSchemas() {
       .TypeConstraint(
           "Tind",
           {"tensor(int32)", "tensor(int64)"},
-          "Constrain indices to integer types")
-      .ReferenceAttributes("Gather");
+          "Constrain indices to integer types");
 
-  ONNX_GRADIENT_OPERATOR_SCHEMA(DivGrad)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DivGrad)
+      .SinceVersion(9)
       .Input(0, "dY", "Gradient of output", "T")
       .Input(1, "A", "dividend", "T")
       .Input(2, "B", "divisor", "T")
@@ -449,7 +482,6 @@ void RegisterGradientSchemas() {
           "T_BOOL",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
-
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 

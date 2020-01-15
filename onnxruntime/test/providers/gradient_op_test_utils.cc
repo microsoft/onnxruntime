@@ -73,7 +73,8 @@ void GradientOpTester::Run(
                                                       "",
                                                       true);
     status = grad_graph_builder.Build();
-    EXPECT_TRUE(status.IsOK());
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    ;
 
     // Hookup the inputs and outputs
     std::unordered_map<std::string, MLValue> feeds;
@@ -93,7 +94,8 @@ void GradientOpTester::Run(
     graph.SetGraphResolveNeeded();
     graph.SetGraphProtoSyncNeeded();
 
-    EXPECT_TRUE(graph.Resolve().IsOK());
+    status = graph.Resolve();
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
     // Run the model
     SessionOptions so;

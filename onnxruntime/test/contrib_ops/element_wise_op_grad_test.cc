@@ -15,6 +15,6 @@ TEST(ElementWiseOpGrad, SinGrad) {
 
   test.AddOutput<float>("dX", {3}, {std::cos(-1.0f) * 0, std::cos(0.0f) * 1, std::cos(1.0f) * 2});
   test.Run();
-}  // namespace test
+}
 }  // namespace test
 }  // namespace onnxruntime

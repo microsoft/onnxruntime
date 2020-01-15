@@ -2380,14 +2380,14 @@ Example 4:
           {"tensor(bool)"},
           "Binarize tensors.");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SinGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Gradient function for Sin")
       .AllowUncheckedAttributes()
-      .Input(0, "X", "Input tensor", "T")
-      .Input(1, "dY", "Sin output's grad", "T")
+      .Input(0, "dY", "Sin output's grad", "T")
+      .Input(1, "X", "Input tensor", "T")
       .Output(0, "dX", "Sin input's grad", "T")
       .TypeConstraint(
           "T",
@@ -2398,7 +2398,7 @@ Example 4:
            {{"X_1"}, "Cos", {"X"}},
            {{"dX"}, "Mul", {"X_1", "dY"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -2418,7 +2418,7 @@ Example 4:
            {{"Tanh_Grad"}, "Sub", {"One", "Squared_output"}},
            {{"dX"}, "Mul", {"dY", "Tanh_Grad"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SqrtGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SqrtGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -2437,7 +2437,7 @@ Example 4:
            {{"Sqrt_Grad"}, "Div", {"One_half", "X"}},
            {{"dX"}, "Mul", {"dY", "Sqrt_Grad"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ErfGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ErfGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -2459,7 +2459,7 @@ Example 4:
            {{"Erf_Grad"}, "Mul", {"Two_sqrt_pi", "Exp_Neg_Square_x"}},
            {{"dX"}, "Mul", {"dY", "Erf_Grad"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ReshapeGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ReshapeGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
@@ -2477,15 +2477,15 @@ Example 4:
            {{"x_shape"}, "Shape", {"X"}},
            {{"dX"}, "Reshape", {"dY", "x_shape"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(PowGradient)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PowGrad)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("Gradient function for Pow")
       .AllowUncheckedAttributes()
-      .Input(0, "X", "Input tensor", "T")
-      .Input(1, "Exponent", "Input tensor", "T")
-      .Input(2, "dY", "Reshape output's grad", "T")
+      .Input(0, "dY", "Reshape output's grad", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Input(2, "Exponent", "Input tensor", "T")
       .Output(0, "dX", "Pow input's grad", "T")
       .TypeConstraint(
           "T",
