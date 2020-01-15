@@ -262,7 +262,11 @@ class ONNXQuantizer:
         # Create a new topologically sorted list for quantizing a model
         new_list = []
         for node in self.model.graph.node:
+            # if a list of ops to be quantized is provided then only quantize those ops
             if self.nodes_to_quantize is not None and node.name not in self.nodes_to_quantize:
+                new_list +=self._handle_other_ops(node, new_list)
+            # only onnx domain ops can be quantized today
+            elif node.domain != "ai.onnx" or node.domain != "":
                 new_list +=self._handle_other_ops(node, new_list)
             else:
                 if node.op_type == 'Conv':
@@ -274,7 +278,7 @@ class ONNXQuantizer:
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list +=self._handle_activation_ops(node, new_list)
                 else:
-                    new_list +=self._handle_other_ops(node, new_list)                    
+                    new_list +=self._handle_other_ops(node, new_list)
 
         # extend is used to append to the list for a protobuf fields
         # https://developers.google.com/protocol-buffers/docs/reference/python-generated?csw=1#fields
@@ -284,7 +288,7 @@ class ONNXQuantizer:
         # Remove weights which are already quantized from graph.
         self._remove_quantized_weights()
 
-        # update opset.
+        # update opset. 
         opset_info = next((opset for opset in self.model.opset_import if opset.domain == '' or opset.domain == onnx_domain), None)
         if opset_info is not None:
             self.model.opset_import.remove(opset_info)

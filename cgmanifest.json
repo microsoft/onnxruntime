@@ -22,7 +22,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "9bda90b7e5e08c4c37a832d0cea218aed6af6470",
+               "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
                "repositoryUrl": "https://github.com/google/googletest.git"
             }
          }
@@ -446,11 +446,11 @@
             },
             "type": "git"
          }
-      }
+      },
       {
          "component": {
             "git": {
-               "commitHash": "3f0f9802553944b75015aad098d856b2d17220df",
+               "commitHash": "ebec32ef06859b6399bf8854f18b91158c87760b",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"

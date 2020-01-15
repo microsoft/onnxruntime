@@ -1,4 +1,4 @@
-[submodule "external/protobuf"]
+[submodule "cmake/external/protobuf"]
 	path = cmake/external/protobuf
 	url = https://github.com/google/protobuf.git
 [submodule "cmake/external/googletest"]
@@ -46,3 +46,6 @@
 [submodule "server/external/spdlog"]
 	path = server/external/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "cmake/external/FeaturizersLibrary"]
+	path = cmake/external/FeaturizersLibrary
+	url = https://github.com/microsoft/FeaturizersLibrary.git

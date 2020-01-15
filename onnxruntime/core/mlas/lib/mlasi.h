@@ -554,21 +554,8 @@ extern "C" {
 // Define the target number of per-thread multiplies before using another
 // thread to perform additional work.
 //
-// The number is derived from performance results running SGEMM across a
-// range of workloads and observing the ideal number of threads to complete
-// that workload.
-//
 
-#if defined(_OPENMP)
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#else
-#if defined(MLAS_TARGET_AMD64)
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (2 * 1024 * 1024)
-#else
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (1 * 1024 * 1024)
-#endif
-#endif
-
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
 
 //
