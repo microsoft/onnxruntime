@@ -33,7 +33,7 @@ allprojects {
 	    publications {
 	        mavenJava(MavenPublication) {
 	            artifactId = project.name
-				if (project.name == 'runtime-base') {
+				if (project.name == 'runtime-core') {
 	         	   from components.java
 				}
 				classifiers.each {
@@ -45,7 +45,7 @@ allprojects {
 	                url = 'https://microsoft.github.io/onnxruntime/'
 	                licenses {
 	                    license {
-	                        name = 'The MIT License'
+	                        name = 'MIT License'
 	                        url = 'https://opensource.org/licenses/MIT'
 	                    }
 	                }
@@ -86,28 +86,25 @@ subprojects {
 	}
 
 	sourceSets.test {
+		// add test resource files
 		resources.srcDirs += [
-			"${project.buildDir}/jni-output-test",
 			"${rootProject.projectDir}/../csharp/testdata",
 			"${rootProject.projectDir}/../onnxruntime/test/testdata"
 		]
-	}
-
-	task testCopyJni(type: Copy) {
-		getClassifiers(rootProject).each { theClassifier ->
-			from "${rootProject.buildDir}/jni-output/$theClassifier"
-			into "${project.buildDir}/jni-output-test"
+		// cmake test runner may provide a build directory
+		def cmakeBuildDir = System.properties['cmakeBuildDir']
+		if(cmakeBuildDir != null) {
+			// look for built libraries and add them to our resources
+			def cmakeBuildDirFile = new File("$cmakeBuildDir/java-libs")
+			if(!cmakeBuildDirFile.exists()) {
+				throw new GradleException('The cmakeBuildDir does not exist.')
+			}
+			resources.srcDirs += [cmakeBuildDirFile.absolutePath]
 		}
-		getClassifiers(project).each { theClassifier ->
-			from "${project.buildDir}/jni-output/$theClassifier"
-			into "${project.buildDir}/jni-output-test"
-		}
 	}
-	processTestResources.dependsOn testCopyJni
 	
 	dependencies {
 		implementation project(':')
-		testImplementation project(':')
 	    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
 	    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
 		testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
@@ -115,6 +112,9 @@ subprojects {
 
 	test {
 	    useJUnitPlatform()
+		testLogging {
+			events "passed", "skipped", "failed"
+		}
 	}
 }
 

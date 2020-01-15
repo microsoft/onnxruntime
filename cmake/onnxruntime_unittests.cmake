@@ -743,6 +743,7 @@ set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRU
 if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
-    add_test(NAME onnxruntime4j_test COMMAND ./gradlew test WORKING_DIRECTORY ${REPO_ROOT}/java)
-	set_tests_properties(onnxruntime4j_test PROPERTIES DEPENDS onnxruntime4j_gradle)
+    add_test(NAME onnxruntime4j_test COMMAND ./gradlew clean check -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${REPO_ROOT}/java)
+	set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+	set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j)
 endif()
