@@ -15,6 +15,11 @@
 #include "winml_adapter_execution_provider.h"
 #include "winml_adapter_model.h"
 
+
+#ifdef USE_DML
+#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
+#endif USE_DML
+
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 // ORT intentionally requires callers derive from their session class to access
@@ -105,6 +110,18 @@ ORT_API_STATUS_IMPL(winmla::SessionEndProfiling, _In_ OrtSession* session) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   inference_session->EndProfiling();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionRegisterGraphTransformers, _In_ OrtSession* session) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+
+  // Bug 22973884 : Fix issues with BatchNorm + Add and BatchNorm + Mul handling implicit inputs, and move from Winml to ORT
+  GraphTransformerHelpers::RegisterGraphTransformers(inference_session);
+#endif USE_DML
   return nullptr;
   API_IMPL_END
 }

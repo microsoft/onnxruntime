@@ -14,7 +14,6 @@
 #ifdef USE_DML
 #include "AbiCustomRegistryImpl.h" 
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
-#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
 #include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
 #include "DmlOrtSessionBuilder.h"
 #endif USE_DML

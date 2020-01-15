@@ -64,8 +64,9 @@ ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtMod
 
 ORT_API_STATUS(SessionStartProfiling, _In_ OrtEnv* env, _In_ OrtSession* session);
 ORT_API_STATUS(SessionEndProfiling, _In_ OrtSession* session);
-/*
 ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
+
+/*
 ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ OrtOperatorRegistry* registry);
 ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
     

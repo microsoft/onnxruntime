@@ -45,7 +45,9 @@ HRESULT OnnxruntimeEngine::Initialize() {
 }
 
 HRESULT OnnxruntimeEngine::RegisterGraphTransformers() {
-  return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  winml_adapter_api->SessionRegisterGraphTransformers(session_.get());
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::RegisterCustomRegistry(IMLOperatorRegistry* registry) {

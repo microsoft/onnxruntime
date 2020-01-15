@@ -20,11 +20,14 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
+  // Schema override
   &winmla::OverrideSchema,
+
+  // OrtEnv methods
   &winmla::EnvConfigureCustomLoggerAndProfiler,
-  &winmla::GetDenotationFromTypeInfo,
 
   // OrtTypeInfo Casting methods
+  &winmla::GetDenotationFromTypeInfo,
   &winmla::CastTypeInfoToMapTypeInfo,
   &winmla::CastTypeInfoToSequenceTypeInfo,
 
@@ -61,7 +64,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::SessionGetExecutionProvidersCount,
   &winmla::SessionGetExecutionProvider,
   &winmla::SessionInitialize,
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
+  &winmla::SessionRegisterGraphTransformers,
   nullptr, // OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry * registry)NO_EXCEPTION;
   &winmla::SessionLoadAndPurloinModel,
   &winmla::SessionStartProfiling,
@@ -74,6 +77,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
   &OrtSessionOptionsAppendExecutionProvider_CPU,
   &winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, 
+
+  // Release
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
   &winmla::ReleaseSequenceTypeInfo,
