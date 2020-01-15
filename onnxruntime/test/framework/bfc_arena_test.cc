@@ -265,7 +265,7 @@ TEST(BFCArenaTest, UtilsAllocateBlockTest) {
   EXPECT_TRUE(arena);
   arena->GetStats(&stats);
 
-  EXPECT_EQ(stats.total_allocated_bytes, block_size + initial_extend_size);
+  EXPECT_EQ(size_t(stats.total_allocated_bytes), block_size + initial_extend_size);
 
   cpu_arena->Free(block);
   cpu_arena->Free(bytes);
