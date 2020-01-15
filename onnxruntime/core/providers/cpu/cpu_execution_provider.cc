@@ -9,8 +9,8 @@
 #include "contrib_ops/cpu_contrib_kernels.h"
 #endif
 
-#ifdef MICROSOFT_AUTOML
-#include "automl_ops/cpu_automl_kernels.h"
+#ifdef ML_FEATURIZERS
+#include "featurizers_ops/cpu_featurizers_kernels.h"
 #endif
 
 #include "core/framework/compute_capability.h"
@@ -1270,8 +1270,8 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
 #ifndef DISABLE_CONTRIB_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuContribKernels(kernel_registry));
 #endif
-#ifdef MICROSOFT_AUTOML
-  ORT_RETURN_IF_ERROR(::onnxruntime::automl::RegisterCpuAutoMLKernels(kernel_registry));
+#ifdef ML_FEATURIZERS
+  ORT_RETURN_IF_ERROR(::onnxruntime::featurizers::RegisterCpuMSFeaturizersKernels(kernel_registry));
 #endif
   return Status::OK();
 }

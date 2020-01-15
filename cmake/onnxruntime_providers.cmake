@@ -25,14 +25,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
-file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -72,6 +69,10 @@ if(onnxruntime_USE_DML)
   set(PROVIDERS_DML onnxruntime_providers_dml)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
 endif()
+if(onnxruntime_USE_WINML)
+  set(PROVIDERS_WINML onnxruntime_providers_winml)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES winml)
+endif()
 if(onnxruntime_USE_ACL)
   set(PROVIDERS_ACL onnxruntime_providers_acl)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
@@ -87,18 +88,18 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_USE_AUTOML)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+if (onnxruntime_USE_FEATURIZERS)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_featurizers_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
 endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 
-if (onnxruntime_USE_AUTOML)
-  add_dependencies(onnxruntime_providers automl_featurizers)
-  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
-  target_link_libraries(onnxruntime_providers automl_featurizers)
+if (onnxruntime_USE_FEATURIZERS)
+  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
+  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
 if(HAS_DEPRECATED_COPY)
@@ -216,7 +217,7 @@ if (onnxruntime_USE_TENSORRT)
   if ( CMAKE_COMPILER_IS_GNUCC )
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
-  set(CXX_VERSION_DEFINED TRUE)  
+  set(CXX_VERSION_DEFINED TRUE)
   add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
   if (WIN32)
@@ -302,7 +303,7 @@ if (onnxruntime_USE_OPENVINO)
     if(WIN32)
      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/Release)
-     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)	 
+     set(OPENVINO_MKL_TINY_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/bin/intel64/Release)
     else()
      set(OPENVINO_LIB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64/)
      set(OPENVINO_TBB_DIR $ENV{INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib)
@@ -326,9 +327,9 @@ if (onnxruntime_USE_OPENVINO)
   else()
     target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR} ${OPENVINO_EXTENSIONS_DIR} ${OPENVINO_LIB_DIR} ${OPENVINO_TBB_INCLUDE_DIR} ${PYTHON_INCLUDE_DIRS})
   endif()
-  
-   if (WIN32)   
-     string(REPLACE "include" "libs" PYTHON_LIB ${PYTHON_INCLUDE_DIRS})	
+
+   if (WIN32)
+     string(REPLACE "include" "libs" PYTHON_LIB ${PYTHON_INCLUDE_DIRS})
 	   find_package(InferenceEngine 2.1 REQUIRED)
      set(PYTHON_LIBRARIES ${PYTHON_LIB})
      set(OPENVINO_CPU_EXTENSION_DIR ${onnxruntime_BINARY_DIR}/ie_cpu_extension/${CMAKE_BUILD_TYPE})
@@ -429,22 +430,37 @@ if (onnxruntime_USE_DML)
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
-  
-  target_link_libraries(onnxruntime_providers_dml ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
-  target_link_libraries(onnxruntime_providers_dml d3d12.lib dxgi.lib)
+
+  if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
+    message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
+  endif()
+  foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
+    add_custom_command(TARGET onnxruntime_providers_dml
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
+  endforeach()
+
+  function(target_add_dml target)
+    target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
+    target_include_directories(${target} PRIVATE "${DML_PACKAGE_DIR}/include")
+  endfunction()
+
+  target_add_dml(onnxruntime_providers_dml)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib delayimp.lib)
   list(APPEND ONNXRUNTIME_LINKER_FLAGS "/DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll")
 
   # The DML EP requires C++17
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
   set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
-  
+
   target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
   if (MSVC)
     target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
     target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
   endif()
-  
+
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)

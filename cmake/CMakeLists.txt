@@ -55,7 +55,7 @@ option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" O
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
-option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
+option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -84,6 +84,7 @@ option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output 
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
+option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
@@ -394,6 +395,13 @@ if (onnxruntime_USE_TVM)
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
+
+  if (onnxruntime_USE_MKLML)
+    add_dependencies(tvm project_mklml)
+    add_dependencies(tvm_topi project_mklml)
+    add_dependencies(tvm_runtime project_mklml)
+    add_dependencies(nnvm_compiler project_mklml)
+  endif()
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
@@ -714,8 +722,8 @@ include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
-if(onnxruntime_USE_AUTOML)
-  add_definitions(-DMICROSOFT_AUTOML)
+if(onnxruntime_USE_FEATURIZERS)
+  add_definitions(-DML_FEATURIZERS)
   # Fetch and build featurizers
   include(external/featurizers.cmake)
 endif()

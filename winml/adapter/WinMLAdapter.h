@@ -109,9 +109,6 @@ MIDL_INTERFACE("b19385e7-d9af-441a-ba7f-3993c7b1c9db") IWinMLAdapter : IUnknown 
     //virtual HRESULT STDMETHODCALLTYPE CreateTensorFromSequence(IInspectable * sequence, OrtValue * *ort_value) = 0;
 };
 
-extern "C"
-__declspec(dllexport) HRESULT STDMETHODCALLTYPE OrtGetWinMLAdapter(IWinMLAdapter** adapter);
-
 class InferenceSession : public Microsoft::WRL::RuntimeClass <
     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
     IInferenceSession> {

@@ -531,6 +531,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
 
     struct TensorContent
     {
+        bool isValid;
         std::vector<uint32_t> shape;
         MLOperatorTensorDataType type;
         std::vector<std::byte> data;

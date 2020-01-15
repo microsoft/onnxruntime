@@ -101,8 +101,12 @@ void TensorizeIntGemm8bit::TensorizeReduceKernel(std::vector<tvm::Stmt>& inits, 
   tvm::Expr c_i32v_pred = _0_i32v;
 
   for (int inner_k = 0; inner_k < tensorize_dim_k.tile_size / tensorize_dim_k.layout_size; inner_k++) {
+    // guard reducion dim k
+    tvm::Expr guard_reduce = (tensorize_dim_k.dim_iter * tensorize_dim_k.tile_size) + inner_k * tensorize_dim_k.layout_size < tensorize_dim_k.dim_size;
+
     // buffer a regular load
-    auto a_u8x4 = a_buf.vload({inner_m, inner_k * tensorize_dim_k.layout_size}, u8x4);
+    auto a_u8x4 = tvm::ir::Select::make(guard_reduce,
+                                        a_buf.vload({inner_m, inner_k * tensorize_dim_k.layout_size}, u8x4), tvm::make_const(u8x4, 0));
     auto a_u8v = ExpandScalarUInt8(a_u8x4);
     // buffer b regular load
     auto b_i8v = b_buf.vload({inner_n + inner_k % tensorize_dim_n.layout_size,

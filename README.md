@@ -105,7 +105,7 @@ system.
     [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 * GPU builds require CUDA runtime libraries being installed on the system:
-	 * Version: **CUDA 10.0** and **cuDNN 7.6**
+	 * Version: **CUDA 10.0**, **cuDNN 7.6 on Linux and cuDNN 7.3 on Windows**
   * Older ONNX Runtime releases: used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
 * Python binaries are compatible with **Python 3.5-3.7**. See [Python Dev Notes](./docs/Python_Dev_Notes.md). If using `pip` to be download the Python binaries, run `pip install --upgrade pip` prior to downloading. 
 * The Java API is compatible with **Java 8-13**.

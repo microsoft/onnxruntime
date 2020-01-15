@@ -361,7 +361,7 @@ template <>
 inline Value Value::CreateTensor<std::string>(const OrtMemoryInfo*, std::string* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
   // convert the array of std::string to an array of const char *
   std::vector<const char*> string_vector;
-  for (int i = 0; i < p_data_element_count; ++i) {
+  for (size_t i = 0; i < p_data_element_count; ++i) {
     string_vector.push_back(p_data[i].c_str());
   }
   // now make an empty tensor using the default allocator (strings have to make a copy)

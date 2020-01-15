@@ -6,11 +6,10 @@
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/DateTimeFeaturizer.h"
-
-namespace featurizers = Microsoft::Featurizer::Featurizers;
+#include "Archive.h"
 
 namespace onnxruntime {
-namespace automl {
+namespace featurizers {
 
 class DateTimeTransformer final : public OpKernel {
  public:
@@ -19,18 +18,18 @@ class DateTimeTransformer final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     // Create the transformer
-    featurizers::DateTimeTransformer transformer(
-        [ctx]() {
+    Microsoft::Featurizer::Featurizers::DateTimeTransformer transformer(
+        [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return featurizers::DateTimeTransformer(archive);
+          return Microsoft::Featurizer::Featurizers::DateTimeTransformer(archive);
         }());
 
     // Get the input
     const auto* input_tensor(ctx->Input<Tensor>(1));
-    const int64_t* input_data(input_tensor->Data<int64_t>());
+    const std::int64_t* input_data(input_tensor->Data<std::int64_t>());
 
     // Prepare the output
     Tensor* year_tensor(ctx->Output(0, input_tensor->Shape()));
@@ -78,7 +77,7 @@ class DateTimeTransformer final : public OpKernel {
     uint8_t* isPaidTimeOff_data(isPaidTimeOff_tensor->MutableData<uint8_t>());
 
     // Execute
-    int64_t const length = input_tensor->Shape().Size();
+    const int64_t length(input_tensor->Shape().Size());
 
     for (int64_t i = 0; i < length; ++i) {
       auto result(transformer.execute(input_data[i]));
@@ -112,17 +111,13 @@ class DateTimeTransformer final : public OpKernel {
 
 ONNX_OPERATOR_KERNEL_EX(
     DateTimeTransformer,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT0", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("InputT1", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("OutputT0", DataTypeImpl::GetTensorType<int32_t>())
-        .TypeConstraint("OutputT1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("OutputT2", DataTypeImpl::GetTensorType<uint16_t>())
-        .TypeConstraint("OutputT3", DataTypeImpl::GetTensorType<std::string>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint64_t>()),
     DateTimeTransformer);
 
-}  // namespace automl
+}  // namespace featurizers
 }  // namespace onnxruntime

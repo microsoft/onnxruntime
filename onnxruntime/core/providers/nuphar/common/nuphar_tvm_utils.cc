@@ -15,7 +15,9 @@
 #include "gsl/gsl"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING // required by VS 2019
 #include <experimental/filesystem>
+#undef _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <atomic>
 #include <fstream>
 namespace fs = std::experimental::filesystem;

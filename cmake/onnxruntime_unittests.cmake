@@ -44,7 +44,7 @@ function(AddTest)
   endif()
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND onnxruntime_ENABLE_PYTHON)
     target_compile_definitions(${_UT_TARGET} PRIVATE ENABLE_LANGUAGE_INTEROP_OPS)
-  endif()  
+  endif()
   if (WIN32)
     if (onnxruntime_USE_CUDA)
       # disable a warning from the CUDA headers about unreferenced local functions
@@ -129,10 +129,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
 endif()
 
-if(onnxruntime_USE_AUTOML)
+if(onnxruntime_USE_FEATURIZERS)
   list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/automl_ops/*.h"
-    "${TEST_SRC_DIR}/automl_ops/*.cc")
+    "${TEST_SRC_DIR}/featurizers_ops/*.h"
+    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
@@ -218,8 +218,8 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_AUTOML)
-   list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
+if(onnxruntime_USE_FEATURIZERS)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
 endif()
 
 if(onnxruntime_USE_DML)
@@ -318,7 +318,7 @@ if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_DNNL=1)
 endif()
 if (onnxruntime_USE_DML)
-  target_link_libraries(onnxruntime_test_utils_for_framework PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_add_dml(onnxruntime_test_utils_for_framework)
 endif()
 add_dependencies(onnxruntime_test_utils_for_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils_for_framework PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -336,7 +336,7 @@ if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
 endif()
 if (onnxruntime_USE_DML)
-  target_link_libraries(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_add_dml(onnxruntime_test_utils)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -722,7 +722,7 @@ if (onnxruntime_BUILD_SERVER)
       set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/executor_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     endif()
   endif()
-  
+
   add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
   onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock onnx onnx_proto server_proto server_grpc_proto)
   add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -751,13 +751,13 @@ if (onnxruntime_BUILD_SERVER)
           LANGUAGE python
           TARGET onnxruntime_server_tests
           OUT_VAR server_test_py)
-          
+
   set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
 
   add_custom_command(
     TARGET onnxruntime_server_tests
     COMMAND $<TARGET_FILE:protobuf::protoc>
-    ARGS 
+    ARGS
       --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
       --plugin=protoc-gen-grpc="${_GRPC_PY_PLUGIN_EXECUTABLE}"
       -I ${grpc_proto_path}

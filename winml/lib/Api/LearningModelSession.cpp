@@ -6,7 +6,6 @@
 #include "LearningModelSession.h"
 
 #include "ImageFeatureDescriptor.h"
-#include "WinMLAdapter.h"
 #include "LearningModel.h"
 #include "LearningModelBinding.h"
 #include "LearningModelEvaluationResult.h"
@@ -403,7 +402,7 @@ void LearningModelSession::ToggleProfiler() {
   CheckClosed();
   auto is_provider_enabled =
       TraceLoggingProviderEnabled(
-          winml_trace_logging_provider,
+          ::winml_trace_logging_provider,
           WINEVENT_LEVEL_VERBOSE,
           WINML_PROVIDER_KEYWORD_LOTUS_PROFILING);
 

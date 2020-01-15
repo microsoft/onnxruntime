@@ -7,7 +7,9 @@
 #include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
-namespace automl {
-Status RegisterCpuAutoMLKernels(KernelRegistry& kernel_registry);
-} // namespace automl
+namespace featurizers {
+
+Status RegisterCpuMSFeaturizersKernels(KernelRegistry& kernel_registry);
+
+}  // namespace featurizers
 }  // namespace onnxruntime

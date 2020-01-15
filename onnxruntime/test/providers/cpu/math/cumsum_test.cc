@@ -193,5 +193,19 @@ TEST(CumSumTest, _1DTestInt64) {
   test.AddOutput<int64_t>("y", {5}, {1, 3, 6, 10, 15});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+TEST(CumSumTest, _1DTestdouble) {
+  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+  test.AddInput<double>("x", {5}, {1., 2., 3., 4., 5.});
+  test.AddInput<int32_t>("axis", {1}, {0});
+  test.AddOutput<double>("y", {5}, {1., 3., 6., 10., 15.});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+TEST(CumSumTest, _1DTestdouble_WithInt64Axis) {
+  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+  test.AddInput<double>("x", {5}, {1., 2., 3., 4., 5.});
+  test.AddInput<int64_t>("axis", {1}, {0});
+  test.AddOutput<double>("y", {5}, {1., 3., 6., 10., 15.});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
 }  // namespace test
 }  // namespace onnxruntime
