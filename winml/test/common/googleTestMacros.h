@@ -10,18 +10,20 @@
   }
 
 #define WINML_TEST_CLASS_BEGIN_NO_SETUP(test_class_name) \
-  class test_class_name : public ::testing::Test {       \
-  };
+  namespace {                                            \
+    class test_class_name : public ::testing::Test {     \
+    };
 
 #define WINML_TEST_CLASS_BEGIN_WITH_SETUP(test_class_name, setup_method) \
-  class test_class_name : public ::testing::Test {                       \
-   protected:                                                            \
-    void SetUp() override {                                              \
-      getapi().setup_method();                                           \
-    }                                                                    \
-  };
+  namespace {                                                            \
+    class test_class_name : public ::testing::Test {                     \
+    protected:                                                           \
+      void SetUp() override {                                            \
+        getapi().setup_method();                                         \
+      }                                                                  \
+    };
 
-#define WINML_TEST_CLASS_END()
+#define WINML_TEST_CLASS_END() }
 
 // For old versions of gtest without GTEST_SKIP, stream the message and return success instead
 #ifndef GTEST_SKIP
