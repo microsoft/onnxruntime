@@ -88,6 +88,10 @@ HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* input_name, con
   return E_NOTIMPL;
 }
 
+HRESULT OnnxruntimeEngine::Sync() {
+  return E_NOTIMPL;
+}
+
 // TODO supposedly this doesnt work if it is not static
 static std::shared_ptr<OnnxruntimeEnvironment> onnxruntime_environment_;
 

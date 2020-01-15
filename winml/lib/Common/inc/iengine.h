@@ -37,6 +37,7 @@ MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
     STDMETHOD(TrimUploadHeap)() PURE;
     STDMETHOD(ReleaseCompletedReferences)() PURE;
     STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* source, IValue** dest) PURE;
+    STDMETHOD(Sync)() PURE;
 };
 
 

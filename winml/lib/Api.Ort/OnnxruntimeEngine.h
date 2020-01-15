@@ -35,6 +35,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(TrimUploadHeap)();
   STDMETHOD(ReleaseCompletedReferences)();
   STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest);
+  STDMETHOD(Sync)() PURE;
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
