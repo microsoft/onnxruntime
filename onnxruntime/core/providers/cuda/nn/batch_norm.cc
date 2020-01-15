@@ -193,7 +193,7 @@ Status BatchNormalizationGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape channel_shape = saved_mean->Shape();
 
   // no B here, but B has same size as Scale, so can validate inputs for gradient with this substitute
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_variance));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, Scale, Scale, saved_mean, saved_variance, spatial_ == 1));
 
   auto dY_data = reinterpret_cast<const CudaT*>(dY->template Data<T>());
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());

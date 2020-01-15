@@ -119,6 +119,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         &zero,
         reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
         ldc));
+    return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
              transa, transb, stride_A, stride_B, stride_C, batch_count)) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
@@ -139,6 +140,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count)));
+    return Status::OK();
   }
 
   CudaAsyncBuffer<const CudaT*> left_arrays(this, helper.LeftOffsets().size());

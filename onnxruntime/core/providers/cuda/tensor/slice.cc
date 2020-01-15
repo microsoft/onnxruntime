@@ -65,12 +65,12 @@ REGISTER_V11_TYPED_SLICE(float)
 
 template <typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
-  const auto* input_tensor = ctx->Input<Tensor>(0);
+  auto input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
-  const auto& input_dimensions = input_tensor->Shape().GetDims();
+  auto& input_dimensions = input_tensor->Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
-  int32_t dimension_count = gsl::narrow_cast<int32_t>(input_dimensions.size());
+  size_t dimension_count = input_dimensions.size();
   std::vector<int64_t> starts(dimension_count, 0);
   std::vector<int64_t> steps(dimension_count, 1);
   std::vector<int64_t> output_dims(input_dimensions);
@@ -103,22 +103,19 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     dimension_count = flattened_output_dims.size();
   }
 
-  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
+  ORT_ENFORCE(dimension_count <= MAX_ARRAY_SIZE);
   TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
-  for (auto i = 0; i < starts.size(); ++i) {
+  for (size_t i = 0; i < starts.size(); ++i) {
     starts_buffer.data_[i] = starts[i];
   }
 
   TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
-  for (auto i = 0; i < steps.size(); ++i) {
+  for (size_t i = 0; i < steps.size(); ++i) {
     steps_buffer.data_[i] = steps[i];
   }
 
-  
-  std::unique_ptr<TArray<int64_t>> input_strides = nullptr;
-  for (auto i = 0; i < original_input_strides.size(); ++i) {
-    input_strides.data_[i] = original_input_strides[i];
-  }
+  TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
+  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
@@ -131,29 +128,25 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     auto flattened_input_dims(input_dimensions);
     flattened_input_dims.resize(dimension_count);
     flattened_input_dims.back() = aggregated_last_dim;
-
-    TensorPitches original_input_strides(flattened_input_dims);
-    input_strides = onnxruntime::make_unique<TArray<int64_t>>(gsl::narrow_cast<int32_t>(original_input_strides.size()));
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, flattened_input_dims));
   } else {
-    TensorPitches original_input_strides(input_dimensions);
-    input_strides = onnxruntime::make_unique<TArray<int64_t>>(gsl::narrow_cast<int32_t>(original_input_strides.size()));
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, input_dimensions));
   }
 
-  TensorPitches output_pitches(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
-
-  TArray<fast_divmod> div_strides(gsl::narrow_cast<int32_t>(output_pitches.size()));
-  for (auto i = 0; i < output_pitches.size(); ++i) {
-    div_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+  TensorPitches original_output_strides(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
+  TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
+  for (size_t i = 0; i < original_output_strides.size(); ++i) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
   size_t element_size = input_tensor->DataType()->Size();
 
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
                                 gsl::narrow_cast<int32_t>(dimension_count),
-                                starts_buffer,
-                                steps_buffer,
-                                *input_strides,
-                                div_strides,
+                                &starts_buffer,
+                                &steps_buffer,
+                                &input_strides,
+                                &output_strides,
                                 input_tensor->DataRaw(),
                                 output_tensor->MutableDataRaw(),
                                 output_size));

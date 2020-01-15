@@ -152,6 +152,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_eigenthreadpool", action="store_true", help="Build with eigenthreadpool")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
+    parser.add_argument("--azure_sas_key", help="Azure storage sas key, starts with '?'")
     parser.add_argument("--use_brainslice", action="store_true", help="Build with brain slice")
     parser.add_argument("--brain_slice_package_path", help="Path to brain slice packages")
     parser.add_argument("--brain_slice_package_name", help="Name of brain slice packages")

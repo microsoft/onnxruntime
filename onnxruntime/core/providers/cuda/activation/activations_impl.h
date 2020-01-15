@@ -32,7 +32,6 @@ typedef CtxNull CtxSoftplus;
 typedef CtxNull CtxSoftsign;
 typedef CtxNull CtxTanh;
 typedef CtxAlpha CtxThresholdedRelu;
-typedef CtxNull CtxGelu;
 
 #define UNARY_ACTIVATION_OPS()          \
   UNARY_ACTIVATION_OP_NAME(Elu)         \
@@ -57,24 +56,6 @@ typedef CtxNull CtxGelu;
 #define UNARY_ACTIVATION_OP_NAME(name) UNARY_ACTIVATION_IMPL_DECLARATION(name);
 UNARY_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
-
-// Put Gradients Related Below
-typedef CtxNull CtxGeluGrad;
-
-#define ACTIVATION_GRAD_OPS() \
-  ACTIVATION_GRAD_OP_NAME(GeluGrad)
-
-#define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
-  template <typename T>                           \
-  void Impl_##name(const T* lhs_data,             \
-                   const T* rhs_data,             \
-                   T* output_data,                \
-                   const Ctx##name* func_ctx,     \
-                   size_t count)
-
-#define ACTIVATION_GRAD_OP_NAME(name) BINARY_ELEMENTWISE_IMPL_DECLARATION(name);
-ACTIVATION_GRAD_OPS()
-#undef ACTIVATION_GRAD_OP_NAME
 
 }  // namespace cuda
 }  // namespace onnxruntime

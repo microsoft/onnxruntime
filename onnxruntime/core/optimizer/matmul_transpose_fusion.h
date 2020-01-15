@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
+#include "core/graph/graph_utils.h"
 
 namespace onnxruntime {
 

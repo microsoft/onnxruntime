@@ -103,7 +103,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     // Compute the theoretical Jacobians one row at a time by back propagating
     // '1.0'for each element of 'dy', while holding all other elements of 'dy' at zero.
     for (int c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
-      GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, 9, op_def.domain.c_str(), false);
+      GradientOpTester op_session(op_def.type.c_str(), x_infos, y_infos, op_def.opset_version, op_def.domain.c_str(), false);
 
       for (size_t data_index = 0; data_index < x_num; data_index++) {
         std::string name = "input" + std::to_string(data_index);
@@ -275,7 +275,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     std::vector<std::vector<X_T>>* x_datas,
     std::vector<std::vector<Y_T>>* y_datas,
     JAC_T* max_error,
-    const std::vector<AttributeProto>& attributes, 
+    const std::vector<AttributeProto>& attributes,
     bool check_not_have_gradient) {
   // Initialize numeric Jacobian to zeros.
   std::vector<std::vector<JAC_T>> jacobian_ns;
@@ -355,7 +355,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const std::vector<TensorInfo>& y_infos,
     JAC_T* max_error,
     const std::vector<AttributeProto>& attributes,
-    bool check_not_have_gradient/* = true*/) {
+    bool check_not_have_gradient /* = true*/) {
   // TODO: Consider varying mean and variance
   float scale = 5.f;
   float mean = 0.f;
@@ -384,8 +384,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, 
-      attributes, check_not_have_gradient);
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error,
+                                      attributes, check_not_have_gradient);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>

@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// todo: Not sure why we don't have this on GitHub repo,
+// without this windows gpu build cannot pass, maybe there is some diff on compiler config.
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)
+#endif
+
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"

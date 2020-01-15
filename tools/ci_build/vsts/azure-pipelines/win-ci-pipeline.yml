@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Win_CPU
 
-  timeoutInMinutes: 80
+  timeoutInMinutes: 160
 
   strategy:
     maxParallel: 2
@@ -22,10 +22,9 @@ jobs:
       --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe
       --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe
       --build_shared_lib
-      --enable_onnx_tests
-      --use_mkldnn
-      --use_mklml
-      --use_tvm
+      --use_automl
+      --use_dnnl
+      --use_openmp
       --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
 
   steps:

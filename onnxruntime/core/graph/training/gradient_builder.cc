@@ -859,7 +859,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetGeluGradient) {
   return std::vector<NodeDef>{
-      NodeDef("GeluGrad",
+      NodeDef(OpDef{"GeluGrad", kMSDomain, 1},
               {GO(0), I(0)},
               {GI(0)})};
 }

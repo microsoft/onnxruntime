@@ -111,7 +111,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph() {
     // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
     // If we give values here, the check in transformer will fail.
     std::unordered_set<std::string> compatible_eps = {};
-    auto gelu_transformer = std::make_unique<GeluFusion>(compatible_eps);
+    auto gelu_transformer = onnxruntime::make_unique<GeluFusion>(compatible_eps);
     graph_transformation_mgr.Register(std::move(gelu_transformer), TransformerLevel::Level2);
 
     auto status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_);
@@ -125,8 +125,8 @@ Status TrainingSession::AddGistEncoding() {
   try {
     Graph& graph = model_->MainGraph();
 
-    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
+    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
+    rule_transformer_L1->Register(onnxruntime::make_unique<GistEncodeDecode>());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 

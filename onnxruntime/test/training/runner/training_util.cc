@@ -121,11 +121,11 @@ std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /
     TensorShape shape = tensor_shapes_[input_index];
 
     if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT64) {
-      element_type = SequenceTensorType<int64_t>::Type();
+      element_type = DataTypeImpl::GetType<int64_t>();
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_INT32) {
-      element_type = SequenceTensorType<int32_t>::Type();
+      element_type = DataTypeImpl::GetType<int32_t>();
     } else if (tensor_types_[input_index] == onnx::TensorProto_DataType_FLOAT) {
-      element_type = SequenceTensorType<float>::Type();
+      element_type = DataTypeImpl::GetType<float>();
     }
     AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
     auto p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);

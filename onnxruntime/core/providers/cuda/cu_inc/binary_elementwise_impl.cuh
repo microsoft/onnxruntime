@@ -264,11 +264,11 @@ void BinaryElementWiseImpl(
       _BinaryElementWise<T, FuncT, true, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
           <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
               output_rank_or_simple_broadcast,
-              lhs_padded_strides,
+              *lhs_padded_strides,
               lhs_data,
-              rhs_padded_strides,
+              *rhs_padded_strides,
               rhs_data,
-              fdm_output_strides,
+              *fdm_output_strides,
               output_data,
               func,
               N);
@@ -276,11 +276,11 @@ void BinaryElementWiseImpl(
       _BinaryElementWise<T, FuncT, true, false, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
           <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
               output_rank_or_simple_broadcast,
-              lhs_padded_strides,
+              *lhs_padded_strides,
               lhs_data,
-              rhs_padded_strides,
+              *rhs_padded_strides,
               rhs_data,
-              fdm_output_strides,
+              *fdm_output_strides,
               output_data,
               func,
               N);
@@ -288,11 +288,11 @@ void BinaryElementWiseImpl(
       _BinaryElementWise<T, FuncT, false, true, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
           <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
               output_rank_or_simple_broadcast,
-              lhs_padded_strides,
+              *lhs_padded_strides,
               lhs_data,
-              rhs_padded_strides,
+              *rhs_padded_strides,
               rhs_data,
-              fdm_output_strides,
+              *fdm_output_strides,
               output_data,
               func,
               N);

@@ -13,8 +13,8 @@ namespace onnxruntime {
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
-      kOnnxDomain,                                                \
-      9,                                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \

@@ -66,7 +66,7 @@ void DropoutKernelImpl(
     }
     thrust::fill_n(thrust::device_pointer_cast(mask_data), N, true);
   } else {
-    const auto& device_props = GridDim::GetDeviceProps();
+    const auto& device_props = DeviceProp::GetDeviceProps();
     const int block_size = 256;
     const int blocks_per_sm = device_props.maxThreadsPerMultiProcessor / block_size;
     const int grid_size = std::min(device_props.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, block_size)));

@@ -8,8 +8,8 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(T, U)                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
-      kOnnxDomain,                                                \
-      9,                                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \

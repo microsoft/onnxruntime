@@ -203,7 +203,7 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
     const Tind idx = indices_data[indices_index];
     const int64_t input_index = input_block_index * input_block_size + idx * block_size + offset;
     #ifdef USE_OPENMP
-    #pragma omp atomic update
+    #pragma omp atomic
     #endif
     output_data[input_index] += grad_data[g];
   }

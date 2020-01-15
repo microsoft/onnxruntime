@@ -24,7 +24,9 @@ void GradientOpTester::Run(
     run_called_ = true;
 #endif
     fetches_.clear();
-    auto p_model = BuildGraph();
+
+    std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
+    auto p_model = BuildGraph(extra_domain_to_version);
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();

@@ -28,12 +28,14 @@ struct ArgDef {
 
 struct OpDef {
   OpDef() {}
-  OpDef(const std::string& type, const std::string& domain = kOnnxDomain)
+  OpDef(const std::string& type, const std::string& domain = kOnnxDomain, const int opset_version = 9)
       : type(type),
-        domain(domain){};
+        domain(domain),
+        opset_version(opset_version){};
 
   std::string type;
   std::string domain;
+  int opset_version;
 };
 
 struct NodeDef {

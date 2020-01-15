@@ -116,7 +116,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-    removed_nodes.push_front(node.Index());
+    graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
   }
 
   // Have to remove node in reversed order for now to walk around the issue in RemoveNode

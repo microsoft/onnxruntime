@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _MSC_VER
+#pragma warning(disable : 4389)
+#endif
+
 #include "contrib_ops/cpu/trainable_dropout_op.h"
 
 #include <algorithm>
@@ -61,9 +65,9 @@ void RunTrainableDropoutTest(
     const auto num_output_zeros = std::count(output_span.begin(), output_span.end(), 0.0f);
 
     if (ratio == 1.0f) {
-      ASSERT_EQ(num_output_zeros, output_span.size()) << "provider: " << provider_type;
+      ASSERT_EQ(num_output_zeros, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
-      ASSERT_NEAR(static_cast<float>(num_output_zeros) / output_span.size(), ratio, 0.1f)
+      ASSERT_NEAR(static_cast<float>(num_output_zeros) / static_cast<size_t>(output_span.size()), ratio, 0.1f)
           << "provider: " << provider_type;
 
       for (decltype(output_span.size()) i = 0; i < output_span.size(); ++i) {

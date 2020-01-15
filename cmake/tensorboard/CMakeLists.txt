@@ -49,4 +49,8 @@ if(NOT WIN32)
   endif()
 endif()
 
+if(WIN32)
+  target_compile_options(tensorboard PRIVATE /wd4100)
+endif()
+
 set_target_properties(tensorboard PROPERTIES FOLDER "External/tensorboard")

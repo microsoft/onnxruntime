@@ -386,7 +386,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   }
 }
 
-std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
+std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(std::unordered_map<std::string, int> extra_domain_to_version) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -400,8 +400,13 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   }
 
   // Create a simple model
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[domain_] = opset_version_;
+  std::unordered_map<std::string, int> domain_to_version(extra_domain_to_version.begin(), extra_domain_to_version.end());
+  if (domain_to_version.count(domain_) == 0) {
+    domain_to_version.insert({domain_, opset_version_});
+  } else {
+    ORT_ENFORCE(extra_domain_to_version[domain_] == opset_version_);
+  }
+
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>("test", false, ModelMetaData(),
                                                               custom_schema_registries_,
                                                               domain_to_version,
@@ -626,6 +631,7 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
 
       fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
                                                 feeds, output_names, provider_types, custom_output_verifier);
+
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)

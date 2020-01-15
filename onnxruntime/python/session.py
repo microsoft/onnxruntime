@@ -157,7 +157,7 @@ class InferenceSession(Session):
         self._sess_options = sess_options
         self._load_model(providers)
         self._enable_fallback = True
-        Session.__init__(self, sess);
+        Session.__init__(self, self._sess)
 
     def _load_model(self, providers=[]):
         if isinstance(self._path_or_bytes, str): 

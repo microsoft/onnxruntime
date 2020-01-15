@@ -2627,8 +2627,8 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("LayerNormalization")
       .Attr("axis",
@@ -2658,8 +2658,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         }
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
-        auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
-        auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
         int64_t axis = -1;
         auto axis_proto = ctx.getAttribute("axis");
         if (axis_proto) {
@@ -2668,15 +2666,18 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         if (axis < 0) {
           axis += input_ndim;
         }
-        for (int i = 0; i < input_ndim; ++i) {
-          auto dim = saved_mean_shape->add_dim();
-          if (i < axis) {
-            dim->CopyFrom(input_shape.dim(i));
-          } else {
-            dim->set_dim_value(1);
-          }
+
+        if (ctx.getNumOutputs() > 1) {
+          auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+          saved_mean_shape->CopyFrom(input_shape);
+          saved_mean_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
-        saved_inv_std_var_shape->CopyFrom(*saved_mean_shape);
+
+        if (ctx.getNumOutputs() > 2) {
+          auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+          saved_inv_std_var_shape->CopyFrom(input_shape);
+          saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)

@@ -3,7 +3,7 @@ trigger: none
 jobs:
 - job: Onnxruntime_Win_GPU
 
-  timeoutInMinutes: 90
+  timeoutInMinutes: 180
 
   strategy:
     maxParallel: 2
@@ -26,9 +26,8 @@ jobs:
       --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe
       --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe
       --build_shared_lib
-      --enable_onnx_tests
       --use_cuda --cudnn_home $(CUDNN_PATH) --cuda_home $(CUDA_PATH)
-      --use_mkldnn
+      --use_dnnl
       --use_mklml
       --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
       --cmake_extra_defines CUDA_TOOLKIT_ROOT_DIR=$(CUDA_PATH)

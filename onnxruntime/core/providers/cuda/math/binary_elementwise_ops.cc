@@ -251,7 +251,7 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
       previous_output_shape = output_shape;
     }
     Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare
+    BinaryElementwisePreparation prepare;
 
     auto rhs_tensor = context->Input<Tensor>(1);
     if (input_count == 2) {
@@ -329,7 +329,7 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T, typename CudaT>
 Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
-  BinaryElementwisePreparation prepare
+  BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   size_t output_size = prepare.output_tensor->Shape().Size();
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);

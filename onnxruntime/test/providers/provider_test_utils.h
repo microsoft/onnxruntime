@@ -480,7 +480,7 @@ class OpTester {
   void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names);
 
-  std::unique_ptr<onnxruntime::Model> BuildGraph();
+  std::unique_ptr<onnxruntime::Model> BuildGraph(std::unordered_map<std::string, int> extra_domain_to_version = {});
 
   template <class SessionType>
   std::vector<MLValue> ExecuteModel(Model& model,

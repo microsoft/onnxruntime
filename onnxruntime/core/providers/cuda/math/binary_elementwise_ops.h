@@ -210,12 +210,12 @@ class VariadicInputBase : public CudaKernel {
     return Status(common::ONNXRUNTIME, common::FAIL);  // should not reach here
   }
 
-  typedef void (*ImplCompute)(size_t output_rank_or_simple_broadcast,
-                              const int64_t* lhs_padded_strides,
+  typedef void (*ImplCompute)(int32_t output_rank_or_simple_broadcast,
+                              const TArray<int64_t>* lhs_padded_strides,
                               const CudaT* lhs_data,
-                              const int64_t* rhs_padded_strides,
+                              const TArray<int64_t>* rhs_padded_strides,
                               const CudaT* rhs_data,
-                              const fast_divmod* fdm_output_strides,
+                              const TArray<fast_divmod>* fdm_output_strides,
                               const fast_divmod& fdm_H,
                               const fast_divmod& fdm_C,
                               CudaT* output_data,
@@ -254,12 +254,12 @@ class CompareFunction : public BinaryElementwise<ShouldBroadcast> {
  public:
   CompareFunction(const OpKernelInfo& info) : BinaryElementwise(info) {}
 
-  typedef void (*ImplCompare)(size_t output_rank_or_simple_broadcast,
-                              const int64_t* lhs_padded_strides,
+  typedef void (*ImplCompare)(int32_t output_rank_or_simple_broadcast,
+                              const TArray<int64_t>* lhs_padded_strides,
                               const CudaT* lhs_data,
-                              const int64_t* rhs_padded_strides,
+                              const TArray<int64_t>* rhs_padded_strides,
                               const CudaT* rhs_data,
-                              const fast_divmod* fdm_output_strides,
+                              const TArray<fast_divmod>* fdm_output_strides,
                               const fast_divmod& fdm_H,
                               const fast_divmod& fdm_C,
                               CudaT* output_data,

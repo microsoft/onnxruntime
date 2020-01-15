@@ -223,7 +223,7 @@ struct TrainingParameters {
   std::string loss_scale_input_name;
   std::string scaled_loss_output_name;
   std::string lr_params_feed_name = "Learning_Rate";
-  std::unordered_map<string, std::unordered_map<string, float>> optimizer_attributes_map;
+  std::unordered_map<std::string, std::unordered_map<std::string, float>> optimizer_attributes_map;
   bool use_fp16_moments = false;
 
   bool use_mixed_precision = false;
@@ -317,7 +317,7 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
                             const std::string& loss_scale_input_name,
                             const std::string& training_optimizer_name,
                             const std::string& lr_params_feed_name,
-                            const std::unordered_map<string, std::unordered_map<string, float>>& optimizer_attributes_map,
+                            const std::unordered_map<std::string, std::unordered_map<std::string, float>>& optimizer_attributes_map,
                             bool use_fp16_moments,
                             bool use_mixed_precision,
                             bool allreduce_post_accumulation,
@@ -334,7 +334,7 @@ Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_tr
     if (it_attr == optimizer_attributes_map.end())
       return Status(ONNXRUNTIME, FAIL, "Cannot find weight " + weight_name);
 
-    const std::unordered_map<string, float>& optimizer_attributes = it_attr->second;
+    const std::unordered_map<std::string, float>& optimizer_attributes = it_attr->second;
 
     OptimizerNodeConfig opt_config{
         training_optimizer_name,
@@ -1121,7 +1121,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
 
-        InitializeSession(sess);
+        std::vector<std::string> provider_types = {};
+        InitializeSession(sess, provider_types);
       })
       .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialziedModel, TrainingParameters& parameters) {
         std::istringstream buffer(serialziedModel);
@@ -1166,7 +1167,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
         }
 
-        InitializeSession(sess);
+        std::vector<std::string> provider_types = {};
+        InitializeSession(sess, provider_types);
       })
       .def("get_state", [](onnxruntime::training::TrainingSession* sess) {
         NameMLValMap state_tensors;
@@ -1177,19 +1179,24 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         for (auto& kv : state_tensors) {
           if (kv.second.IsTensor()) {
             py::object obj;
-            GetPyObjFromTensor(kv.second, obj, &data_transfer_manager)
-            rmap.insert({kv.first, obj)});
+            const Tensor& rtensor = kv.second.Get<Tensor>();
+            GetPyObjFromTensor(rtensor, obj, &data_transfer_manager);
+            rmap.insert({kv.first, obj});
           } else {
             throw std::runtime_error("Non tensor type in session state tensors is not expected.");
           }
         }
         return rmap;
       })
-      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<string, py::object>& state, bool strict) {
+      .def("load_state", [](onnxruntime::training::TrainingSession* sess, std::unordered_map<std::string, py::object>& state, bool strict) {
         NameMLValMap state_tensors;
         for (auto initializer : state) {
           OrtValue ml_value;
-          CreateGenericMLValue(GetAllocator(), initializer.first, initializer.second, &ml_value);
+          auto px = sess->GetModelInputs();
+          if (!px.first.IsOK() || !px.second) {
+            throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+          }
+          CreateGenericMLValue(px.second, GetAllocator(), initializer.first, initializer.second, &ml_value);
           if (PyErr_Occurred()) {
             PyObject *ptype, *pvalue, *ptraceback;
             PyErr_Fetch(&ptype, &pvalue, &ptraceback);

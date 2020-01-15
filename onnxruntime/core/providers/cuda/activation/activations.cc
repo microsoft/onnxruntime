@@ -52,47 +52,6 @@ UNARY_ACTIVATION_OP_HFD(Softplus, 1);
 UNARY_ACTIVATION_OP_HFD(Softsign, 1);
 UNARY_ACTIVATION_OP_HFD(Tanh, 6);
 UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
-UNARY_ACTIVATION_OP_HFD(Gelu, 9);
-
-// Put Gradients Related Below
-
-#define REGISTER_ACTIVATION_GRAD_KERNEL(x, ver, T)               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
-      x,                                                         \
-      kOnnxDomain,                                               \
-      ver,                                                       \
-      T,                                                         \
-      kCudaExecutionProvider,                                    \
-      KernelDefBuilder()                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
-          .MayInplace(0, 0),                                     \
-      x<T>);
-
-#define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
-  template <>                                                                                                    \
-  Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare;                                                                  \
-    Prepare(context, &prepare);                                                          \
-    CudaAsyncBuffer<Ctx##x> func_ctx(this, context->GetDeviceId(), MakeFuncCtx(), 1);                            \
-    if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
-    Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
-        func_ctx.GpuPtr(), prepare.output_tensor->Shape().Size());                                               \
-    return Status::OK();                                                                                         \
-  }
-
-#define ACTIVATION_GRAD_OP_TYPED(name, ver, T)  \
-  REGISTER_ACTIVATION_GRAD_KERNEL(name, ver, T) \
-  BINARY_ELEMENTWISE_COMPUTE(name, T)
-
-#define ACTIVATION_GRAD_OP_HFD(name, ver)        \
-  ACTIVATION_GRAD_OP_TYPED(name, ver, MLFloat16) \
-  ACTIVATION_GRAD_OP_TYPED(name, ver, float)     \
-  ACTIVATION_GRAD_OP_TYPED(name, ver, double)
-
-ACTIVATION_GRAD_OP_HFD(GeluGrad, 9);
 
 }  // namespace cuda
 }  // namespace onnxruntime

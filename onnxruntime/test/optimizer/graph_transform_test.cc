@@ -1432,7 +1432,7 @@ TEST(GraphTransformationTests, EmbedLayerNormFusionFormat5) {
 }
 
 TEST(GraphTransformationTests, GistEncodeDecode) {
-  string model_uri = MODEL_FOLDER "../test_training_model.onnx";
+  auto model_uri = MODEL_FOLDER "../test_training_model.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -1450,7 +1450,7 @@ TEST(GraphTransformationTests, GistEncodeDecode) {
 }
 
 TEST(GraphTransformationTests, TransposeMatmulFusion) {
-  string model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
+  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();

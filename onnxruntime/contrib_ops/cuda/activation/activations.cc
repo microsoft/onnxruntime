@@ -27,7 +27,7 @@ namespace cuda {
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                           \
     UnaryElementwisePreparation p;                                                                         \
     UnaryElementwise::Prepare(context, &p);                                                                \
-    CudaAsyncBuffer<Ctx##x> func_ctx(this, 0, MakeFuncCtx(), 1);                                           \
+    CudaAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                                           \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                  \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                          \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
@@ -74,7 +74,7 @@ REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
     BinaryElementwisePreparation prepare;                                                                        \
     Prepare(context, &prepare);                                                                                  \
-    CudaAsyncBuffer<Ctx##x> func_ctx(this, context->GetDeviceId(), MakeFuncCtx(), 1);                            \
+    CudaAsyncBuffer<Ctx##x> func_ctx(this, MakeFuncCtx(), 1);                            \
     if (!std::is_same<CtxNull, Ctx##x>::value) ORT_RETURN_IF_ERROR(func_ctx.CopyToGpu());                        \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \

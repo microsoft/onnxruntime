@@ -10,10 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-
-std::vector<cudaDeviceProp> GridDim::s_cachedDeviceProps;
-std::once_flag GridDim::s_cachedDevicePropsInitFlag;
-
 template <typename T, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void _Fill(
     T* output_data,

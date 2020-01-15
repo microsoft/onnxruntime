@@ -43,9 +43,9 @@ ONNX_OPERATOR_KERNEL_EX(
         GatherImpl(                                                             \
             input_block_size,                                                   \
             indices_max,                                                        \
-            p.indices_tensor->template Data<int32_t>(),                         \
             &divmod_output_block_size,                                          \
             &divmod_block_size,                                                 \
+            p.indices_tensor->template Data<int32_t>(),                         \
             reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
             reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
             p.output_tensor->Shape().Size());                                   \
@@ -57,9 +57,9 @@ ONNX_OPERATOR_KERNEL_EX(
         GatherImpl(                                                             \
             input_block_size,                                                   \
             indices_max,                                                        \
-            p.indices_tensor->template Data<int64_t>(),                         \
             &divmod_output_block_size,                                          \
             &divmod_block_size,                                                 \
+            p.indices_tensor->template Data<int64_t>(),                         \
             reinterpret_cast<const ToCudaType<T>::MappedType*>(input_data),     \
             reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_data), \
             p.output_tensor->Shape().Size());                                   \

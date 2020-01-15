@@ -91,7 +91,7 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   const std::vector<int64_t>& input_dims = input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
 
-  auto rank = input_dims.size();
+  auto rank = static_cast<int32_t>(input_dims.size());
   CudaAsyncBuffer<size_t> perm(&kernel, permutations);
   TensorPitches original_input_strides(input_dims);
   TensorPitches original_output_strides(output_dims);
@@ -99,7 +99,7 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
   TArray<int64_t> input_strides(rank);
   for (auto i = 0; i < rank; i++) {
-    input_strides.data_[i] = original_input_strides[(*p_perm)[i]];
+    input_strides.data_[i] = original_input_strides[permutations[i]];
   }
   TArray<fast_divmod> output_strides(rank);
   for (auto i = 0; i < rank; i++) {
@@ -108,7 +108,7 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   ORT_RETURN_IF_ERROR(perm.CopyToGpu());
   size_t element_size = input.DataType()->Size();
   auto status = TransposeImpl(element_size, rank, input_strides, perm.GpuPtr(), input.DataRaw(),
-                              fdm_output_strides, output.MutableDataRaw(), output.Shape().Size());
+                              output_strides, output.MutableDataRaw(), output.Shape().Size());
 
   return status;
 }
