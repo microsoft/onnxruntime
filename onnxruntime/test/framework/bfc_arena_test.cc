@@ -238,6 +238,8 @@ TEST(BFCArenaTest, TestReserve) {
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
 }
 
+// arena is disabled for CPUExecutionProvider on x86 and JEMalloc
+#if (defined(__amd64__) || defined(_M_AMD64)) && !defined(USE_JEMALLOC)
 TEST(BFCArenaTest, UtilsAllocateBlockTest) {
   // use a local CPUExecutionProvider so it has a clean arena.
   CPUExecutionProviderInfo info;
@@ -269,8 +271,8 @@ TEST(BFCArenaTest, UtilsAllocateBlockTest) {
 
   cpu_arena->Free(block);
   cpu_arena->Free(bytes);
-  //todo: test the used / max api.
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
