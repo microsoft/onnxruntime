@@ -25,13 +25,13 @@ Quantizatiin in ORT refers to 8 bit linear quantization of an onnx model. There 
 ## Quantizing an onnx model
 There are 2 ways of quantizing a model
 
-    * Only use quantization : This method assumes the model owner is going to use Integer Ops for quantization or has pre calculated the quantization params as they are required inputs for using QLinear Ops
+* Only use quantization : This method assumes the model owner is going to use Integer Ops for quantization or has pre calculated the quantization params as they are required inputs for using QLinear Ops
 
-    ONNX Model ---> quantize.py ---> ONNX Quantized Model
+ONNX Model ---> quantize.py ---> ONNX Quantized Model
 
-    * Use both calibration and quantization : This method is preferred when using QLinear Ops for quantization.
+* Use both calibration and quantization : This method is preferred when using QLinear Ops for quantization.
 
-    ONNX Mode --> calibrate.py --> quantize.py --> ONNX Quantized model
+ONNX Mode --> calibrate.py --> quantize.py --> ONNX Quantized model
 
 Today ORT does not guarantee support for E2E model quantization, meaning since not all ONNX ops have support for 8 bit data types therefore only the supported ops in the model are quantized. For rest of the ops inputs are reconverted to FP32.
 
@@ -176,7 +176,6 @@ Whether a set of files or a collected bundles of tensors, `calibrate.py` assumes
 - **data_preprocess**: Currently there are 2 pre-processing methods available ->
 *preprocess_method1*: reshapes an image into NCHW format and scales the pixel values to the[-1, 1] range.  This method mirrors [the treatment for mobilenet models available in version 0.5 of mlperf](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L226)
 *preprocess_method2*: resizes and normalizes image to NCHW format, in a [technique used by mlperf 0.5](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L250) for variants of ResNet.
-
 For maximum flexibility, it is recommended that the user carries out the necessary preprocessing as a separate stage in the quantization pipeline, and provides the already-preprocessed dataset to `calibrate.py`.  Alternatively, we welcome contributions of preprocessing techniques (see below).
 
 ### Adding preprocessing options
@@ -192,35 +191,35 @@ python calibrate.py --model_path=<'path/to/model.onnx'> --dataset_path=<'path/to
 ### End-to-end example
 This is an E2E example to demonstrate calibration, quantization and accuracy testing for a resnet model. We leverage instructions in MLperf for downloading the imagenet dataset, selecting the calibration data set and use mlperf accuracy benchmark for testing the accuracy of the quantized model.
 
-    * Donwload the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx)
+* Donwload the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx)
  
-    * Prepare imagenet dataset : Follow instructions provided in [mlperf repo](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#datasets)
+* Prepare imagenet dataset : Follow instructions provided in [mlperf repo](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#datasets)
 
-    * Install latest versions of onnx and onnxruntime
+* Install latest versions of onnx and onnxruntime
 
-    * Quantize the model : As described above there are 2 ways to do this. 
-        ** Use quantization tool only. This method uses Integer Ops :
-        ```python
-        import onnx
-        from quantize import quantize, QuantizationMode
-        model = onnx.load('path/to/the/model.onnx')
-        quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps, force_fusions=True)
-        onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
+* Quantize the model : As described above there are 2 ways to do this. 
+    ** Use quantization tool only. This method uses Integer Ops :
+    ```python
+    import onnx
+    from quantize import quantize, QuantizationMode
+    model = onnx.load('path/to/the/model.onnx')
+    quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps, force_fusions=True)
+    onnx.save(quantized_model, 'path/to/the/quantized_model.onnx')
+    ```
+
+    ** Use calibration and quantization. This method uses QLinear Ops :
+        *** Download the calibration dataset : 
+        *** Run the calibration and quantization on the mode :
+        ```
+        python calibrate.py \
+        --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx \
+        --dataset_path=/<path>/dataset-imagenet-ilsvrc2012-val \
+        --data_preprocess=preprocess_method2
         ```
 
-        ** Use calibration and quantization. This method uses QLinear Ops :
-            *** Download the calibration dataset : 
-            *** Run the calibration and quantization on the mode :
-            ```
-            python calibrate.py \
-            --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx \
-            --dataset_path=/<path>/dataset-imagenet-ilsvrc2012-val \
-            --data_preprocess=preprocess_method2
-            ```
-
-    * Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks. 
-        ** Set up the [mlperf benchmark](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#prerequisites-and-installation)
-        ** Run accuracy test : For example
-        ```
-        ./run_local.sh  onnxruntime resnet50 --accuracy --count 5000
-        ```
+* Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks. 
+    ** Set up the [mlperf benchmark](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#prerequisites-and-installation)
+    ** Run accuracy test : For example
+    ```
+    ./run_local.sh  onnxruntime resnet50 --accuracy --count 5000
+    ```
