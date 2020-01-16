@@ -28,6 +28,9 @@ def augment_graph(model):
         parameter model: loaded FP32 ONNX model to quantize
         return: augmented ONNX model
     '''
+    # Candidate nodes for quantization. Calibration will be done for these nodes only
+    # When more nodes are extended to support quantization, add them to this list
+    quantization_candidates = ['Conv', 'MatMul']
     added_nodes = []
     added_outputs = []
     for node in model.graph.node:
@@ -54,9 +57,9 @@ def augment_graph(model):
 def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     '''
     Gather intermediate model outputs after running inference
-        parameter model: path to augmented FP32 ONNX model
+        parameter model_path: path to augmented FP32 ONNX model
         parameter inputs: list of loaded test inputs (or image matrices)
-        parameter average_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
+        parameter calib_mode: type 'naive' gives (ReduceMin, ReduceMax) pairs
                                 for each augmented node across test data sets, where
                                 the first element is a minimum of all ReduceMin values
                                 and the second element is a maximum of all ReduceMax
@@ -126,10 +129,8 @@ def calculate_quantization_params(model, nbits=8, quantization_thresholds=None):
     '''
         Given a model and quantization thresholds, calculates the quantization params.
     :param model: ModelProto to quantize
-    :param asymmetric_input_types:
-        True: Weights are quantized into signed integers and inputs/activations into unsigned integers.
-        False: Weights and inputs/activations are quantized into unsigned integers.
-    :param output_quantization_thresholds:
+    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
+    :param quantization_thresholds:
         Dictionary specifying the min and max values for outputs of conv and matmul nodes.
         The quantization_thresholds should be specified in the following format:
             {
@@ -143,7 +144,7 @@ def calculate_quantization_params(model, nbits=8, quantization_thresholds=None):
     :return: Dictionary containing the zero point and scale values for outputs of conv and matmul nodes.
         The dictionary format is
             {
-                "param_name": [min, max]
+                "param_name": [zero_point, scale]
             }
     '''
     if nbits != 8:
@@ -168,8 +169,10 @@ def load_pb_file(data_file_name, dataset_size, samples, channels, height, width)
     Load tensor data from pb files.
     :param data_file_name: path to the pb file
     :param dataset_size: number of image-data in the pb file for data size check
-    :param height: image height for data size check
-    :param width: image width for data size check
+    :param samples: number of samples 'N'
+    :param channels: number of channels in the image 'C'
+    :param height: image height for data size check 'H'
+    :param width: image width for data size check 'W'
     :return input data for the model
     '''
     tensor = onnx.TensorProto()
@@ -182,7 +185,7 @@ def load_pb_file(data_file_name, dataset_size, samples, channels, height, width)
             inputs = inputs.reshape(dataset_size, samples, channels, height, width)
         except:
             sys.exit("Input .pb file contains incorrect input size. \nThe required size is: (%s). The real size is: (%s)"
-                        %((dataset_size, samples, channels,height, width), shape))
+                        %((dataset_size, samples, channels, height, width), shape))
 
     return inputs
 
@@ -224,10 +227,6 @@ def main():
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")
-
-# Candidate nodes for quantization. Calibration will be done for these nodes only
-# When more nodes are extended to support quantization, add them to this list
-quantization_candidates = ['Conv', 'MatMul']
 
 if __name__ == '__main__':
     main()
