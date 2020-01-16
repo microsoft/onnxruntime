@@ -44,7 +44,9 @@ OrtStatus* OrtSequenceTypeInfo::Clone(OrtSequenceTypeInfo** out) {
 }
 
 ORT_API_STATUS_IMPL(winmla::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
+  API_IMPL_BEGIN
   return sequence_type_info->sequence_key_type_->Clone(out);
+  API_IMPL_END
 }
 
 ORT_API(void, winmla::ReleaseSequenceTypeInfo, OrtSequenceTypeInfo* ptr) {

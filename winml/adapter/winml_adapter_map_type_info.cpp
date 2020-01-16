@@ -73,12 +73,16 @@ OrtStatus* OrtMapTypeInfo::Clone(OrtMapTypeInfo** out) {
 
 // OrtMapTypeInfo Accessors
 ORT_API_STATUS_IMPL(winmla::GetMapKeyType, const OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
+  API_IMPL_BEGIN
   *out = map_type_info->map_key_type_;
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::GetMapValueType, const OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
+  API_IMPL_BEGIN
   return map_type_info->map_value_type_->Clone(out);
+  API_IMPL_END
 }
 
 ORT_API(void, winmla::ReleaseMapTypeInfo, OrtMapTypeInfo* ptr) {

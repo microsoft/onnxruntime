@@ -44,8 +44,10 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     ID3D12Device* d3d_device, ID3D12CommandQueue* queue) {
+  API_IMPL_BEGIN
   auto dml_device = CreateDmlDevice(d3d_device);
   return OrtSessionOptionsAppendExecutionProviderEx_DML(options, dml_device.Get(), queue);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled) {

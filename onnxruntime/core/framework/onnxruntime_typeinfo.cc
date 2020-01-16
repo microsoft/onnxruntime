@@ -10,6 +10,7 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
+#include "core/framework/error_code_helper.h"
 
 #include "core/framework/tensor_type_and_shape.h"
 #include "../../winml/adapter/winml_adapter_map_type_info.h"
@@ -61,19 +62,25 @@ ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtType
 }
 
 ORT_API_STATUS_IMPL(winmla::CastTypeInfoToMapTypeInfo, const OrtTypeInfo* type_info, const OrtMapTypeInfo** out) {
+  API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_MAP ? type_info->map_type_info_ : nullptr;
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* type_info, const OrtSequenceTypeInfo** out) {
+  API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info_ : nullptr;
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::GetDenotationFromTypeInfo, const OrtTypeInfo* type_info, const char** const out, size_t* len) {
+  API_IMPL_BEGIN
   *out = type_info->denotation_.c_str();
   *len = type_info->denotation_.size();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
