@@ -144,15 +144,34 @@ HRESULT OnnxruntimeEngine::StartProfiling() {
 }
 
 HRESULT OnnxruntimeEngine::FlushContext() {
-  return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  const OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
+
+  winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider);
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::TrimUploadHeap() {
-  return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  const OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
+
+  winml_adapter_api->DmlExecutionProviderTrimUploadHeap(ort_provider);
+  return S_OK;
+
 }
 
 HRESULT OnnxruntimeEngine::ReleaseCompletedReferences() {
-  return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  const OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
+
+  winml_adapter_api->DmlExecutionProviderReleaseCompletedReferences(ort_provider);
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* input_name, const IValue* src, IValue** dest) {

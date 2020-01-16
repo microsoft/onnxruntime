@@ -9,6 +9,7 @@
 #include "core/framework/error_code_helper.h"
 
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
@@ -45,4 +46,28 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
                     ID3D12Device* d3d_device, ID3D12CommandQueue* queue) {
   auto dml_device = CreateDmlDevice(d3d_device);
   return OrtSessionOptionsAppendExecutionProviderEx_DML(options, dml_device.Get(), queue);
+}
+
+ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider* dml_provider) {
+  API_IMPL_BEGIN
+  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
+  Dml::FlushContext(dml_provider_internal);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutionProvider* dml_provider) {
+  API_IMPL_BEGIN
+  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
+  Dml::TrimUploadHeap(dml_provider_internal);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider) {
+  API_IMPL_BEGIN
+  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
+  Dml::ReleaseCompletedReferences(dml_provider_internal);
+  return nullptr;
+  API_IMPL_END
 }
