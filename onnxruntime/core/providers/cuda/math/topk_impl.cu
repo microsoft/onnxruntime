@@ -62,7 +62,9 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
           S[j] = tmp;
         }
       }
+      __syncthreads();
     }
+    __syncthreads();
   }
   __syncthreads();
   //merge and rebuild K
@@ -86,6 +88,7 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
           S[jj] = tmp;
         }
       }
+      __syncthreads();
     }
     __syncthreads();
   }
@@ -133,7 +136,9 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
             S[j] = tmp;
           }
         }
+        __syncthreads();
       }
+      __syncthreads();
     }
     __syncthreads();
     if (tid < K) {
