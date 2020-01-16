@@ -68,12 +68,12 @@ ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IML
 
 /*
 ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
-    
+*/
+
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
 ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider * dml_provider);
 ORT_API_STATUS(DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutionProvider* dml_provider);
 ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
-*/
 
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue);
