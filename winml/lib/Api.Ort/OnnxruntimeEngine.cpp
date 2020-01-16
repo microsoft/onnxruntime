@@ -89,7 +89,13 @@ HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* input_name, con
 }
 
 HRESULT OnnxruntimeEngine::Sync() {
-  return E_NOTIMPL;
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  const OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
+
+  winml_adapter_api->ExecutionProviderSync(ort_provider);
+  return S_OK;
 }
 
 // TODO supposedly this doesnt work if it is not static

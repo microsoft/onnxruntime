@@ -12,7 +12,6 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_env.h"
 
-#include "winml_adapter_execution_provider.h"
 #include "winml_adapter_model.h"
 
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
@@ -59,15 +58,17 @@ ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvidersCount, _In_ OrtSession* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** ort_provider) {
+ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ const OrtExecutionProvider** ort_provider) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_protected_load_accessor =
       static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
   const auto& session_state = session_protected_load_accessor->GetSessionState();
   auto& provider_id = session_state.GetExecutionProviders().GetIds().at(index);
+  const auto& provider = session_state.GetExecutionProviders().Get(provider_id);
 
-  return OrtExecutionProvider::CreateProvider(provider_id, ort_provider);
+  *ort_provider = reinterpret_cast<const OrtExecutionProvider*>(provider);
+  return nullptr;
   API_IMPL_END
 }
 

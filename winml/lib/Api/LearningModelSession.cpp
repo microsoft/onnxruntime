@@ -266,7 +266,7 @@ LearningModelSession::GetResults(
     engine_->ReleaseCompletedReferences();
   } else {
     // For CPU call the standard Sync function
-    GetExecutionProvider()->Sync();
+    engine_->Sync();
   }
 
   // This isn't the best we are holding the lock while we wait for detensorize on the GPU.
@@ -403,11 +403,6 @@ void LearningModelSession::ToggleProfiler() {
   } else {
     engine_->EndProfiling();
   }
-}
-
-onnxruntime::IExecutionProvider*
-LearningModelSession::GetExecutionProvider() {
-  return cached_execution_provider_;
 }
 
 WinML::IEngine*

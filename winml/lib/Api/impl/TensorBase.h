@@ -102,8 +102,8 @@ struct TensorBase : TBase {
 
     Ort::MemoryInfo dml_memory(nullptr);
     auto session_impl = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    auto provider = session_impl->GetExecutionProvider();
-    WINML_THROW_IF_FAILED(adapter_->GetProviderMemoryInfo(provider, dml_memory.put()));
+    //auto engine = session_impl->GetEngine();
+    // WINML_THROW_IF_FAILED(adapter_->GetProviderMemoryInfo(provider, dml_memory.put())); should be engine->CreateTensor()
 
     auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
@@ -289,7 +289,8 @@ struct TensorBase : TBase {
       // and was updated in place.
       auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
       auto cpuValue = GetCpuResource()->GetValue();
-      RETURN_IF_FAILED(adapter_->CopyTensor(spSession->GetExecutionProvider(), ort_value, cpuValue));
+      //auto engine = spSession->GetEngine();
+      //RETURN_IF_FAILED(adapter_->CopyTensor(spSession->GetExecutionProvider(), ort_value, cpuValue)); should be engine->CopyTensor();
     }
 
     return S_OK;

@@ -67,8 +67,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
  public:
   /* Non-ABI methods */
-  onnxruntime::IExecutionProvider*
-  GetExecutionProvider();
 
   WinML::IEngine*
   GetEngine();
@@ -107,11 +105,7 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   com_ptr<WinML::IEngine> engine_;
 
   using MLOperatorRegistry = std::unique_ptr<IMLOperatorRegistry, void (*)(IMLOperatorRegistry*)>;
-        
   MLOperatorRegistry operator_registry_;
-
-  // reference to the active execution provider. weak
-  onnxruntime::IExecutionProvider* cached_execution_provider_ = nullptr;
 
   winml::LearningModel model_;
   winml::LearningModelDevice device_;

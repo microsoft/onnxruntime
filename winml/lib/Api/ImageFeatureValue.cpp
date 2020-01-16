@@ -38,87 +38,6 @@ struct ImageFeatureValue::ImageResourceMetadata {
   ::Windows::AI::MachineLearning::Internal::ImageTensorDescription TensorDescriptor;
 };
 
-#ifdef ENABLE_IMAGE_FEATURE_VALUE_TENSOR_DUMP
-static void DumpResourceToCPU(
-    ID3D12Resource* pResource,
-    com_ptr<LearningModelSession> spSession,
-    ImageTensorDescription tensorDescriptor,
-    ::Windows::AI::MachineLearning::Internal::TensorToVideoFrameConverter* tensorToImageConverter) {
-  auto spDevice = spSession->Device().as<LearningModelDevice>();
-  auto spD3DDevice = spDevice->GetD3DDevice();
-  auto spCommandQueue = spDevice->GetDeviceQueue();
-  auto pProvider = spSession->GetExecutionProvider();
-
-  UINT64 bufferbytesize = pResource->GetDesc().Width;
-
-  Dml::FlushContext(pProvider);
-
-  D3D12_HEAP_PROPERTIES heapProperties = {
-      D3D12_HEAP_TYPE_READBACK,
-      D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-      D3D12_MEMORY_POOL_UNKNOWN,
-      0,
-      0};
-  D3D12_RESOURCE_DESC resourceDesc = {
-      D3D12_RESOURCE_DIMENSION_BUFFER,
-      0,
-      bufferbytesize,
-      1,
-      1,
-      1,
-      DXGI_FORMAT_UNKNOWN,
-      {1, 0},
-      D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-      D3D12_RESOURCE_FLAG_NONE};
-
-  ID3D12Resource* pCPUResource = nullptr;
-  spD3DDevice->CreateCommittedResource(
-      &heapProperties,
-      D3D12_HEAP_FLAG_NONE,
-      &resourceDesc,
-      D3D12_RESOURCE_STATE_COPY_DEST,
-      nullptr,
-      IID_PPV_ARGS(&pCPUResource));
-
-  {
-    ScopedCommandList scopedCommandList(spSession);
-    // Record command list copy action
-    scopedCommandList.get()->CopyResource(pCPUResource, pResource);
-    scopedCommandList.get()->Close();
-    ID3D12CommandList* pCommandLists[] = {scopedCommandList.get()};
-    spCommandQueue->ExecuteCommandLists(ARRAYSIZE(pCommandLists), pCommandLists);
-
-    // TODO: Do we need to set a fence here and wait for completion before
-    // reading the resource in cpu memory?
-  }
-
-  D3D12_RANGE range = {0, static_cast<SIZE_T>(bufferbytesize)};
-
-  void* pData = nullptr;
-  pCPUResource->Map(0, &range, reinterpret_cast<void**>(&pData));
-
-  range.End = 0;
-
-  DebugBreak();
-
-  SoftwareBitmap bitmap(BitmapPixelFormat::Bgra8, 720, 720);
-  Windows::Media::VideoFrame frame = Windows::Media::VideoFrame::CreateWithSoftwareBitmap(bitmap);
-  tensorToImageConverter->SoftwareTensorToVideoFrame(
-      spSession.as<winrt::Windows::AI::MachineLearning::LearningModelSession>(),
-      reinterpret_cast<BYTE*>(pData),
-      tensorDescriptor,
-      frame);
-
-  auto folder = Windows::Storage::StorageFolder::GetFolderFromPathAsync(L"C:\\").get();
-  auto imagefile = folder.CreateFileAsync(L"out.png", Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
-  auto stream = imagefile.OpenAsync(Windows::Storage::FileAccessMode::ReadWrite).get();
-  auto encoder = BitmapEncoder::CreateAsync(BitmapEncoder::JpegEncoderId(), stream).get();
-  encoder.SetSoftwareBitmap(frame.SoftwareBitmap());
-  encoder.FlushAsync();
-  pResource->Unmap(0, &range);
-}
-#endif
-
 Windows::AI::MachineLearning::ImageFeatureValue ImageFeatureValue::Create(
     uint32_t batchSize,
     BitmapPixelFormat format,
@@ -329,13 +248,12 @@ static void CPUTensorize(
     std::vector<BitmapBounds> bounds,
     ImageTensorDescription tensorDescriptor,
     com_ptr<LearningModelSession> spSession,
-    void* pResource,
+    BYTE* resource,
     unsigned int singleFrameBufferSize) {
   // Tensorize video frames one by one without extra copy.
-  BYTE* tempPResource = reinterpret_cast<BYTE*>(pResource);
   for (uint32_t batchIdx = 0; batchIdx < videoFrames.Size(); ++batchIdx) {
-    CPUTensorize(videoFrames.GetAt(batchIdx), bounds[batchIdx], tensorDescriptor, spSession, tempPResource);
-    tempPResource += singleFrameBufferSize;
+    CPUTensorize(videoFrames.GetAt(batchIdx), bounds[batchIdx], tensorDescriptor, spSession, resource);
+    resource += singleFrameBufferSize;
   }
 }
 
@@ -344,15 +262,11 @@ static void GPUTensorize(
     std::vector<BitmapBounds> bounds,
     ImageTensorDescription tensorDescriptor,
     com_ptr<LearningModelSession> spSession,
-    void* pAllocatedResource,
+    ID3D12Resource* d3dResource,
     WinML::BindingContext& context) {
-    com_ptr<winmla::IWinMLAdapter> adapter;
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
+  com_ptr<winmla::IWinMLAdapter> adapter;
+  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
 
-  auto d3dResource =
-      adapter->GetD3D12ResourceFromAllocation(
-          spSession->GetExecutionProvider(),
-          pAllocatedResource);
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
   ConverterResourceDescription descriptor = {};
@@ -502,7 +416,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
   // Get the session
   auto spSession = context.session.as<LearningModelSession>();
   auto spDevice = spSession->Device().as<LearningModelDevice>();
-  auto provider = spSession->GetExecutionProvider();
+  //auto engine = spSession->GetEngine();
 
   // and the adapter
   if (!m_adapter) {
@@ -511,7 +425,7 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
 
   // create the OrtValue
   Ort::Allocator dml_allocator(m_adapter.get(), nullptr);
-  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, dml_allocator.put()));
+  //WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, dml_allocator.put())); get from engine
 
   // create the OrtValue as a tensor letting ort know that we own the data buffer
   Ort::Value ort_tensor = Ort::Value::CreateTensor(
@@ -530,10 +444,15 @@ HRESULT ImageFeatureValue::GetOrtValue(WinML::BindingContext& context, OrtValue*
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize;
     auto singleFrameBufferSize = bufferByteSize / m_batchSize;
     if (spDevice->IsCpuDevice()) {
-      CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, static_cast<unsigned int>(singleFrameBufferSize));
+      auto resource = reinterpret_cast<BYTE*>(pAllocatedResource);
+      CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, static_cast<unsigned int>(singleFrameBufferSize));
     }
     else {
-      GPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, pAllocatedResource, context);
+      /*auto d3dResource =
+          adapter->GetD3D12ResourceFromAllocation(
+              spSession->GetExecutionProvider(),
+              pAllocatedResource);*/
+      GPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, nullptr, context);
     }
   }
 
@@ -598,8 +517,8 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, Ort
 
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
-    auto pProvider = spSession->GetExecutionProvider();
-    auto d3dResource = m_adapter->GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
+    //auto engine = spSession->GetEngine();
+    ID3D12Resource* d3dResource = nullptr; // = m_adapter->GetD3D12ResourceFromAllocation(pProvider, pAllocatedResource);
 
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
