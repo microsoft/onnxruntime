@@ -30,61 +30,75 @@ spotless {
 	}
 }
 
+// cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
+def cmakeJavaDir = "${cmakeBuildDir}/java"
+def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
+def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
+def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
 compileJava {
 	options.compilerArgs += ["-h", "${projectDir}/src/main/native/"]
 }
 
 sourceSets.test {
-	// add compiled native libs and test resource files
+	// add test resource files
 	resources.srcDirs += [
-		"${cmakeBuildDir}/java/native-lib",
-		"${cmakeBuildDir}/java/native-jnilib",
 		"${rootProject.projectDir}/../csharp/testdata",
 		"${rootProject.projectDir}/../onnxruntime/test/testdata"
 	]
+	if (cmakeBuildDir != null) {
+		// add compiled native libs
+		resources.srcDirs += [
+			cmakeNativeLibDir,
+			cmakeNativeJniDir
+		]
+	}
 }
 
-task jniJar(type: Jar) {
-	classifier = 'jni'
-	from sourceSets.main.output
-	from "${cmakeBuildDir}/java/native-jnilib"
-}
+if (cmakeBuildDir != null) {
+	// generate tasks to be called from cmake
 
-task libJar(type: Jar) {
-	classifier = 'lib'
-	from "${cmakeBuildDir}/java/native-lib"
-}
+	task jniJar(type: Jar) {
+		classifier = 'jni'
+		from cmakeNativeJniDir
+	}
 
-task allJar(type: Jar) {
-	classifier = 'all'
-	from sourceSets.main.output
-	from "${cmakeBuildDir}/java/native-jnilib"
-	from "${cmakeBuildDir}/java/native-lib"
-}
+	task libJar(type: Jar) {
+		classifier = 'lib'
+		from cmakeNativeLibDir
+	}
 
-task runBuild(type: Copy) {
-	from "${project.buildDir}"
-	include 'libs/**'
-	include 'docs/**'
-	into "${cmakeBuildDir}/java"
-}
-runBuild.dependsOn jar
-runBuild.dependsOn jniJar
-runBuild.dependsOn libJar
-runBuild.dependsOn allJar
-runBuild.dependsOn sourcesJar
-runBuild.dependsOn javadocJar
-runBuild.dependsOn javadoc
+	task allJar(type: Jar) {
+		classifier = 'all'
+		from sourceSets.main.output
+		from cmakeNativeJniDir
+		from cmakeNativeLibDir
+	}
+
+	task cmakeBuild(type: Copy) {
+		from project.buildDir
+		include 'libs/**'
+		include 'docs/**'
+		into cmakeBuildOutputDir
+	}
+	cmakeBuild.dependsOn jar
+	cmakeBuild.dependsOn jniJar
+	cmakeBuild.dependsOn libJar
+	cmakeBuild.dependsOn allJar
+	cmakeBuild.dependsOn sourcesJar
+	cmakeBuild.dependsOn javadocJar
+	cmakeBuild.dependsOn javadoc
 
 
-task runCheck(type: Copy) {
-	from "${project.buildDir}"
-	include 'reports/**'
-	into "${cmakeBuildDir}/java"
+	task cmakeCheck(type: Copy) {
+		from project.buildDir
+		include 'reports/**'
+		into cmakeBuildOutputDir
+	}
+	cmakeCheck.dependsOn check
+
 }
-runCheck.dependsOn check
 
 
 dependencies {
