@@ -744,6 +744,6 @@ if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
     # delegate to gradle's test runner
     add_test(NAME onnxruntime4j_test COMMAND ./gradlew runCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${REPO_ROOT}/java)
-	set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
-	set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j)
+    set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+    set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j)
 endif()

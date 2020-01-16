@@ -20,23 +20,21 @@ else()
 endif()
 
 # Specify the Java source files
-file(GLOB onnxruntime4j_src 
-    "${REPO_ROOT}/java/src/main/java/ai/onnxruntime/*.java"
-    )
+file(GLOB onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
 add_custom_target(onnxruntime4j SOURCES ${onnxruntime4j_src})
 
 # Specify the native sources (without the generated headers)
 file(GLOB onnxruntime4j_native_src 
-    "${REPO_ROOT}/java/src/main/native/*.c"
-    "${REPO_ROOT}/java/src/main/native/*.h"
+    "${JAVA_ROOT}/src/main/native/*.c"
+    "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
-include_directories(${REPO_ROOT}/java/build/jni-headers)
+include_directories(${JAVA_ROOT}/build/jni-headers)
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
-target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/java/src/main/native)
+target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/src/main/native)
 target_link_libraries(onnxruntime4j_jni PUBLIC ${JNI_LIBRARIES} onnxruntime)
 
 # expose native libraries to the gradle build process
@@ -48,4 +46,4 @@ file(MAKE_DIRECTORY ${JAVA_NATIVE_JNILIB_DIR}/${JAVA_PACKAGE_DIR})
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime> ${JAVA_NATIVE_LIB_DIR}/${JAVA_PACKAGE_DIR})
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni> ${JAVA_NATIVE_JNILIB_DIR}/${JAVA_PACKAGE_DIR})
 # run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ./gradlew runBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${REPO_ROOT}/java)
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ./gradlew runBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
