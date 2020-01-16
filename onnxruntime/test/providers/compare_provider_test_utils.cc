@@ -24,8 +24,6 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultNGraphExecutionProvider();
   else if (provider_type == onnxruntime::kNupharExecutionProvider)
     execution_provider = DefaultNupharExecutionProvider();
-  else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
-    execution_provider = DefaultBrainSliceExecutionProvider();
   else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
     execution_provider = DefaultTensorrtExecutionProvider();
   else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)

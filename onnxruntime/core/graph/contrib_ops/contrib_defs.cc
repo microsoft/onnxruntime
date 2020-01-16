@@ -13,10 +13,6 @@
 #include "onnx/defs/function.h"
 #include "core/mlas/inc/mlas.h"
 
-#ifdef MICROSOFT_INTERNAL
-#include "core/graph/contrib_ops/internal_schema_defs.h"
-#endif
-
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
@@ -1580,7 +1576,6 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
         updateOutputShape(ctx, 0, input_shape);
       });
 
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3028,11 +3023,6 @@ Return true if all elements are true and false otherwise.
           "Constrain scale types to float tensors.");
 
   RegisterBertSchemas();
-
-#ifdef MICROSOFT_INTERNAL
-  // register internal ops
-  RegisterInternalSchemas();
-#endif
 }
 }  // namespace contrib
 }  // namespace onnxruntime

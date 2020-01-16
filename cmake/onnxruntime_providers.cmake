@@ -509,7 +509,3 @@ if (onnxruntime_USE_ACL)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 endif()
-
-if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
-  include(onnxruntime_providers_internal.cmake)
-endif()

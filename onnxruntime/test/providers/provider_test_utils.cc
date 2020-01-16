@@ -602,7 +602,6 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         kDnnlExecutionProvider,
         kNGraphExecutionProvider,
         kNupharExecutionProvider,
-        kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
@@ -659,8 +658,6 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
           execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
-        else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
-          execution_provider = DefaultBrainSliceExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)

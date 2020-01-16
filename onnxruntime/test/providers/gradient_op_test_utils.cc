@@ -107,7 +107,6 @@ void GradientOpTester::Run(
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
         kNupharExecutionProvider,
-        kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
     };
     bool has_run = false;
@@ -122,8 +121,6 @@ void GradientOpTester::Run(
         execution_provider = DefaultDnnlExecutionProvider();
       else if (provider_type == onnxruntime::kNupharExecutionProvider)
         execution_provider = DefaultNupharExecutionProvider();
-      else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
-        execution_provider = DefaultBrainSliceExecutionProvider();
       else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
         execution_provider = DefaultTensorrtExecutionProvider();
       // skip if execution provider is disabled

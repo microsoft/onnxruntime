@@ -1,9 +1,0 @@
-set PkgBond_Fpga=%~f1\Bond.Fpga.0.2.9
-set PkgBond_Fpga_Compiler=%~f1\Bond.Fpga.Compiler.0.2.14
-set PkgBond_Cpp=%~f1\Bond.Cpp.7.0.5
-set Pkgboost=%~f1\boost.1.64.0.0
-set PkgCatapult_HaaS_Rtl=%~f1\Catapult.HaaS.Rtl.0.4.7
-set BrainSliceNiosEds=%~f1\Quartus.18.1.0.625-std\nios2eds
-set DevKit=%~f1\BrainSlice.v3.DevKit.Release.3.0.0
-set Giano=%~f1\Microsoft.Giano.BS.3.3.34
-set BrainSliceImage=%~f1\BrainSlice.v3.NicholasPeak-Bedrock.RNN-Batch.3.0.0

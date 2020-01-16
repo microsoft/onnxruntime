@@ -707,14 +707,7 @@ TEST(BatchNormTest, ForwardTrainingTest) {
   test.AddOutput<float>("saved_var", channel_dims, {1.229f, 0.861f});
 
   // exclude CPU Execution Provider so that test is run with CUDA with ForwardTraining mode
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider,  
-                                                        kTensorrtExecutionProvider, 
-                                                        kDnnlExecutionProvider, 
-                                                        kNGraphExecutionProvider, 
-                                                        kOpenVINOExecutionProvider,
-                                                        kNupharExecutionProvider,
-                                                        kBrainSliceExecutionProvider,
-                                                        kNnapiExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kTensorrtExecutionProvider, kDnnlExecutionProvider, kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider, kNnapiExecutionProvider});
 }
 #endif
 
