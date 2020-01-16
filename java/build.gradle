@@ -48,17 +48,12 @@ sourceSets.test {
 
 task jniJar(type: Jar) {
 	classifier = 'jni'
+	from sourceSets.main.output
 	from "${cmakeBuildDir}/java/native-jnilib"
 }
 
 task libJar(type: Jar) {
 	classifier = 'lib'
-	from "${cmakeBuildDir}/java/native-lib"
-}
-
-task jnilibJar(type: Jar) {
-	classifier = 'jnilib'
-	from "${cmakeBuildDir}/java/native-jnilib"
 	from "${cmakeBuildDir}/java/native-lib"
 }
 
@@ -78,7 +73,6 @@ task runBuild(type: Copy) {
 runBuild.dependsOn jar
 runBuild.dependsOn jniJar
 runBuild.dependsOn libJar
-runBuild.dependsOn jnilibJar
 runBuild.dependsOn allJar
 runBuild.dependsOn sourcesJar
 runBuild.dependsOn javadocJar
