@@ -442,8 +442,9 @@ if (onnxruntime_USE_DML)
   endforeach()
 
   function(target_add_dml target)
-    target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
-    target_include_directories(${target} PRIVATE "${DML_PACKAGE_DIR}/include")
+    #target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
+    #target_include_directories(${target} PRIVATE "${DML_PACKAGE_DIR}/include")
+    target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/build/DirectML.targets")
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
