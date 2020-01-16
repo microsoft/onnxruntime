@@ -65,6 +65,8 @@ MIDL_INTERFACE("5eddd25a-70ad-46ef-a445-78fbaf792c2f") IEngineFactory : IUnknown
     STDMETHOD(CreateModel)(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) PURE;
     STDMETHOD(CreateModel)( _In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
     STDMETHOD(CreateEngineBuilder)(IEngineBuilder** engine_builder) PURE;
+    STDMETHOD(EnableDebugOutput)(bool is_enabled) PURE;
+    STDMETHOD(CreateCustomRegistry)(_Out_ IMLOperatorRegistry** registry) PURE;
 };
 
 }

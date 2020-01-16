@@ -18,8 +18,6 @@ struct ID3D12Device;
 struct ID3D12CommandQueue;
 struct IMLOperatorRegistry;
 
-ORT_EXPORT const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(_In_ const OrtApi* ort_api) NO_EXCEPTION;
-
 // TODO: Must match onnxruntime::profiling::EventRecord
 enum OrtProfilerEventCategory {
   SESSION_EVENT = 0,
@@ -112,6 +110,8 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue* value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* ExecutionProviderSync)(_In_ OrtExecutionProvider* provider)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateCustomRegistry)(_Out_ IMLOperatorRegistry** registry)NO_EXCEPTION;
   ORT_CLASS_RELEASE(Model);
   ORT_CLASS_RELEASE(MapTypeInfo);
   ORT_CLASS_RELEASE(SequenceTypeInfo);

@@ -17,6 +17,7 @@
 
 
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
+#include "AbiCustomRegistryImpl.h"
 
 #ifdef USE_DML
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
@@ -155,6 +156,14 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* sess
     ORT_THROW_IF_ERROR(inference_session->RegisterCustomRegistry(custom_registry));
   }
 
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry) {
+  API_IMPL_BEGIN
+  auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
+  *registry = impl.Detach();  
   return nullptr;
   API_IMPL_END
 }

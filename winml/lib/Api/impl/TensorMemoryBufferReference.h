@@ -12,19 +12,17 @@ namespace Windows::AI::MachineLearning {
 struct DMLResource {
   DMLResource(ID3D12Resource* pResource, UINT64 resource_width) {
     DXResource.copy_from(pResource);
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-    ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
+    //ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
     resource_width_ = resource_width;
   }
 
   ~DMLResource() {
-    adapter_->FreeGPUAllocation(ExecutionProviderAllocatedResource);
+    //adapter_->FreeGPUAllocation(ExecutionProviderAllocatedResource);
   }
 
   winrt::com_ptr<ID3D12Resource> DXResource;
   UINT64 resource_width_;
   void* ExecutionProviderAllocatedResource = nullptr;
-  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 };
 
 template <typename T>
@@ -46,9 +44,7 @@ struct TensorResources {
     try {
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
-        winrt::com_ptr<winmla::IWinMLAdapter> adapter;
-        WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-        CpuResource = std::make_shared<WinML::Tensor<T>>(adapter.get(), shape);
+        //CpuResource = std::make_shared<WinML::Tensor<T>>(adapter.get(), shape);
       }
 
       if constexpr (std::is_same_v<T, std::string>) {

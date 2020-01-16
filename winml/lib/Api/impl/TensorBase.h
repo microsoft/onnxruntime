@@ -69,24 +69,20 @@ struct TensorBase : TBase {
   ///  3) use provided backing gpu memory
   ///    a) TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource)
   TensorBase() : m_resources(std::make_shared<TensorResources<T>>()) {
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
   }
 
   TensorBase(winrt::Windows::Foundation::Collections::IIterable<int64_t> const& shape) : shape_(begin(shape), end(shape)),
                                                                                          m_resources(std::make_shared<TensorResources<T>>()) {
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), shape_);
+    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
   }
 
   TensorBase(std::vector<int64_t> const& shape) : shape_(shape),
                                                   m_resources(std::make_shared<TensorResources<T>>()) {
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), shape_);
+    GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
   }
 
   TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource, UINT64 resource_width) : shape_(shape),
                                                                                                     m_resources(std::make_shared<TensorResources<T>>()) {
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
     // This Api is not supported for TensorString
     WINML_THROW_HR_IF_TRUE_MSG(
         E_ILLEGAL_METHOD_CALL,
@@ -148,7 +144,7 @@ struct TensorBase : TBase {
     if (TensorKind() == winrt::Windows::AI::MachineLearning::TensorKind::String) {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
-      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), shape_);
+      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
       return GetCpuResource()->GetValue();
     } else {
       // Try to allocate the backing memory for the caller
@@ -257,7 +253,7 @@ struct TensorBase : TBase {
 
     //// make sure we always have a CPU resource
     //if (GetCpuResource() == nullptr) {
-    //  GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), shape_);
+    //  GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
     //}
 
     //// get the memory info for the ort value
@@ -375,7 +371,7 @@ struct TensorBase : TBase {
     typename TBase::class_type tensorValue = winrt::make<TDerived>();
     auto tensorValueImpl = tensorValue.as<TDerived>();
     tensorValueImpl->shape_ = vecShape;
-    tensorValueImpl->GetCpuResource() = std::make_shared<WinML::Tensor<T>>(tensorValueImpl->adapter_.get(), vecShape, buffer);
+    tensorValueImpl->GetCpuResource() = std::make_shared<WinML::Tensor<T>>(vecShape, buffer);
     return tensorValue;
   }
   WINML_CATCH_ALL
@@ -838,7 +834,6 @@ struct TensorBase : TBase {
   std::shared_ptr<TensorResources<T>> m_resources;
   std::vector<winrt::weak_ref<TensorMemoryBufferReference<T>>> m_outstandingReferences;
   bool m_isClosed = false;
-  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
 };
 
 }  // namespace Windows::AI::MachineLearning

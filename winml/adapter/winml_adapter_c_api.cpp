@@ -5,6 +5,7 @@
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
 
+#include <core/providers/winml/winml_provider_factory.h>
 #include <core/providers/cpu/cpu_provider_factory.h>
 #include <core/providers/dml/dml_provider_factory.h>
 
@@ -92,13 +93,14 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
 
   &winmla::ExecutionProviderSync,
   
+  &winmla::CreateCustomRegistry,
   // Release
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
   &winmla::ReleaseSequenceTypeInfo
 };
 
-const WinmlAdapterApi* ORT_API_CALL GetWinmlAdapterApi(const OrtApi* ort_api) NO_EXCEPTION {
+const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
   if (GetVersion1Api() == ort_api)
   {
     return &winml_adapter_api_1;

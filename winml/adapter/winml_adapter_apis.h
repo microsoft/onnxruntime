@@ -89,6 +89,10 @@ ORT_API_STATUS(GetValueMemoryInfo, const OrtValue * value, OrtMemoryInfo** memor
 // ExecutionProvider Methods
 ORT_API_STATUS(ExecutionProviderSync, _In_ OrtExecutionProvider* provider);
 ORT_API_STATUS(DmlCopyTensor, _In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst);
+ORT_API_STATUS(CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry);
+
+
+
 
 }  // namespace Adapter
 }  // namespace MachineLearning

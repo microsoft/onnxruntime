@@ -5,8 +5,7 @@
 #include "OnnxruntimeCpuSessionBuilder.h"
 #include "OnnxruntimeDmlSessionBuilder.h"
 
-// Add back when we remove the winmladapter.h
-//#include "core/providers/winml/winml_provider_factory.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 using namespace WinML;
 

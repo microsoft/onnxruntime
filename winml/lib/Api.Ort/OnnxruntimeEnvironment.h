@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/providers/winml/winml_provider_factory.h"
 #include "adapter/winml_adapter_c_api.h"
 
 #pragma warning(push)
@@ -17,6 +18,7 @@ class OnnxruntimeEnvironment {
   OnnxruntimeEnvironment(const OrtApi* ort_api);
 
   HRESULT GetOrtEnvironment(_Out_ OrtEnv** ert_env);
+  HRESULT EnableDebugOutput(bool is_enabled);
 
  private:
   UniqueOrtEnv ort_env_;

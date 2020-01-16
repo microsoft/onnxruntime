@@ -382,9 +382,7 @@ void LearningModelSession::ApplyEvaluationProperties() try {
   if (evaluation_properties_) {
     auto is_debug_output_enabled = evaluation_properties_.HasKey(c_enable_debug_output);
     if (is_debug_output_enabled) {
-      com_ptr<winmla::IWinMLAdapter> adapter;
-      WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-      adapter->EnableDebugOutput();
+      engine_factory_->EnableDebugOutput(is_debug_output_enabled);
     }
   }
 }

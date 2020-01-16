@@ -8,8 +8,7 @@
 #include "OnnxruntimeModel.h"
 #include "OnnxruntimeSessionBuilder.h"
 
-// Add back when we remove the winmladapter.h
-//#include "core/providers/winml/winml_provider_factory.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 using namespace WinML;
 
@@ -269,7 +268,7 @@ HRESULT OnnxruntimeEngineFactory::RuntimeClassInitialize() {
   const uint32_t ort_version = 1;
   const auto ort_api_base = OrtGetApiBase();
   ort_api_ = ort_api_base->GetApi(ort_version);
-  winml_adapter_api_ = GetWinmlAdapterApi(ort_api_);
+  winml_adapter_api_ = OrtGetWinMLAdapter(ort_api_);
 
   environment_ = onnxruntime_environment_ = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
   return S_OK;
@@ -314,6 +313,16 @@ const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
 
 HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
   RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngineFactory::EnableDebugOutput(bool is_enabled) {
+  RETURN_IF_FAILED(environment_->EnableDebugOutput(is_enabled));
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngineFactory::CreateCustomRegistry(IMLOperatorRegistry** registry) {
+  winml_adapter_api_->CreateCustomRegistry(registry);
   return S_OK;
 }
 

@@ -264,9 +264,6 @@ static void GPUTensorize(
     com_ptr<LearningModelSession> spSession,
     ID3D12Resource* d3dResource,
     WinML::BindingContext& context) {
-  com_ptr<winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
   ConverterResourceDescription descriptor = {};

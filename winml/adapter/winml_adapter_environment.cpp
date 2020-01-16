@@ -9,11 +9,11 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_env.h"
 
+#include "AbiCustomRegistryImpl.h"
+
 #ifdef USE_DML
-#include "AbiCustomRegistryImpl.h" 
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
-#include "DmlOrtSessionBuilder.h"
 #endif USE_DML
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;

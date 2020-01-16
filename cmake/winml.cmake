@@ -189,41 +189,26 @@ target_link_libraries(winml_lib_ort PRIVATE wil)
 ###########################
 
 list(APPEND winml_adapter_files
-    ${winml_adapter_dir}/CpuOrtSessionBuilder.cpp
-    ${winml_adapter_dir}/CpuOrtSessionBuilder.h
+    ${winml_adapter_dir}/AbiCustomRegistryImpl.cpp
+    ${winml_adapter_dir}/AbiCustomRegistryImpl.h
     ${winml_adapter_dir}/CustomRegistryHelper.h
-    ${winml_adapter_dir}/FeatureDescriptorFactory.cpp
-    ${winml_adapter_dir}/FeatureDescriptorFactory.h
-    ${winml_adapter_dir}/LotusEnvironment.cpp
-    ${winml_adapter_dir}/LotusEnvironment.h
     ${winml_adapter_dir}/pch.h
-    ${winml_adapter_dir}/WinMLAdapter.cpp
-    ${winml_adapter_dir}/WinMLAdapter.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
-	${winml_adapter_dir}/winml_adapter_apis.h
+    ${winml_adapter_dir}/winml_adapter_apis.h
     ${winml_adapter_dir}/winml_adapter_c_api.h
-	${winml_adapter_dir}/winml_adapter_c_api.cpp
-	${winml_adapter_dir}/winml_adapter_dml.cpp
-	${winml_adapter_dir}/winml_adapter_environment.cpp
-	${winml_adapter_dir}/winml_adapter_execution_provider.cpp
-	${winml_adapter_dir}/winml_adapter_map_type_info.cpp
-	${winml_adapter_dir}/winml_adapter_map_type_info.h
-	${winml_adapter_dir}/winml_adapter_model.cpp
-	${winml_adapter_dir}/winml_adapter_model.h
-	${winml_adapter_dir}/winml_adapter_sequence_type_info.cpp
-	${winml_adapter_dir}/winml_adapter_sequence_type_info.h
-	${winml_adapter_dir}/winml_adapter_session.cpp
+    ${winml_adapter_dir}/winml_adapter_c_api.cpp
+    ${winml_adapter_dir}/winml_adapter_dml.cpp
+    ${winml_adapter_dir}/winml_adapter_environment.cpp
+    ${winml_adapter_dir}/winml_adapter_execution_provider.cpp
+    ${winml_adapter_dir}/winml_adapter_map_type_info.cpp
+    ${winml_adapter_dir}/winml_adapter_map_type_info.h
+    ${winml_adapter_dir}/winml_adapter_model.cpp
+    ${winml_adapter_dir}/winml_adapter_model.h
+    ${winml_adapter_dir}/winml_adapter_sequence_type_info.cpp
+    ${winml_adapter_dir}/winml_adapter_sequence_type_info.h
+    ${winml_adapter_dir}/winml_adapter_session.cpp
     )
-
-if (onnxruntime_USE_DML)
-  list(APPEND winml_adapter_files
-      ${winml_adapter_dir}/AbiCustomRegistryImpl.cpp
-      ${winml_adapter_dir}/AbiCustomRegistryImpl.h
-      ${winml_adapter_dir}/DmlOrtSessionBuilder.cpp
-      ${winml_adapter_dir}/DmlOrtSessionBuilder.h
-      )
-endif(onnxruntime_USE_DML)
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -492,6 +477,7 @@ target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/s
 target_include_directories(winml_dll PRIVATE ${winml_dll_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir}/impl)
+target_include_directories(winml_dll PRIVATE ${winml_lib_api_ort_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_image_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_lib_telemetry_dir}/inc)
