@@ -20,9 +20,12 @@ struct winml_adapter_api_model_feature_helper {
 };
 
 HRESULT CreateFeatureDescriptors(
+    OnnxruntimeEngine* engine,
     const winml_adapter_api_model_feature_helper* feature_helpers,
     OrtModel* ort_model,
     std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
+  const auto ort_api = engine->UseOrtApi();
+
   size_t count;
   if (auto status = feature_helpers->GetCount(ort_model, &count)) {
     return E_FAIL;
@@ -36,9 +39,12 @@ HRESULT CreateFeatureDescriptors(
     if (auto status = feature_helpers->GetDescription(ort_model, i, &descriptor.description_, &descriptor.description_length_)) {
       return E_FAIL;
     }
-    if (auto status = feature_helpers->GetTypeInfo(ort_model, i, &descriptor.type_info_)) {
+
+    OrtTypeInfo* type_info = nullptr;
+    if (auto status = feature_helpers->GetTypeInfo(ort_model, i, &type_info)) {
       return E_FAIL;
     }
+    &descriptor.type_info_ = std::make_unique<OrtTypeInfo>(type_info, ort_api->ReleaseTypeInfo);
 
     descriptors.push_back(descriptor);
   }
@@ -81,7 +87,7 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* o
 
   // Create inputs
   std::vector<OnnxruntimeValueInfoWrapper> inputs;
-  RETURN_IF_FAILED(CreateFeatureDescriptors(&input_helpers, ort_model, inputs));
+  RETURN_IF_FAILED(CreateFeatureDescriptors(engine, &input_helpers, ort_model, inputs));
   input_features_ = converter.ConvertToLearningModelDescriptors(inputs);
 
   // Create outputs
@@ -92,7 +98,7 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngine* engine, OrtModel* o
       winml_adapter_api->ModelGetOutputTypeInfo};
 
   std::vector<OnnxruntimeValueInfoWrapper> outputs;
-  RETURN_IF_FAILED(CreateFeatureDescriptors(&output_helpers, ort_model, outputs));
+  RETURN_IF_FAILED(CreateFeatureDescriptors(engine, &output_helpers, ort_model, outputs));
   output_features_ = converter.ConvertToLearningModelDescriptors(outputs);
 
   const char* out;

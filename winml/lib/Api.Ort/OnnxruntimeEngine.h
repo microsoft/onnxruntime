@@ -10,13 +10,39 @@ namespace Windows::AI::MachineLearning {
 using UniqueOrtSessionOptions = std::unique_ptr<OrtSessionOptions, void (*)(OrtSessionOptions*)>;
 using UniqueOrtSession = std::unique_ptr<OrtSession, void (*)(OrtSession*)>;
 using UniqueOrtExecutionProvider = std::unique_ptr<OrtExecutionProvider, void (*)(OrtExecutionProvider*)>;
+using UniqueOrtValue = std::unique_ptr<OrtValue, void (*)(OrtValue*)>;
+using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, void (*)(OrtMemoryInfo*)>;
+using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
 class OnnxruntimeEnvironment;
 class OnnxruntimeModel;
+class OnnxruntimeEngine;
 
 struct IOrtSessionBuilder;
+
+class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
+                              Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                              IValue> {
+ public:
+  OnnxruntimeValue();
+
+  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& value);
+
+  STDMETHOD(IsCpu)(bool* out) override;
+  STDMETHOD(GetResource)(void** resource) override;
+  STDMETHOD(IsTensor)(bool* out) override;
+  STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) override;
+  STDMETHOD(GetTensorShape)(int64_t** shape, size_t* size) override;
+  STDMETHOD(IsOfMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
+  STDMETHOD(IsOfVectorMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
+
+ private:
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
+  Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
+  UniqueOrtValue value_;
+};
 
 class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
                               Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
@@ -39,11 +65,12 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) override;
 
+  OrtSession* UseOrtSession();
+
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> session_builder_;
   UniqueOrtSession session_;
-  UniqueOrtExecutionProvider provider_;
 };
   
 class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<

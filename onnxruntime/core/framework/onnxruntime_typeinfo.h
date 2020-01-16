@@ -37,9 +37,10 @@ struct OrtTypeInfo {
   OrtTypeInfo(const OrtTypeInfo& other) = delete;
   OrtTypeInfo& operator=(const OrtTypeInfo& other) = delete;
 
+  OrtStatus* Clone(OrtTypeInfo** out);
+
   static OrtStatus* FromOrtValue(const OrtValue& value, OrtTypeInfo** out);
   static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtTypeInfo** out);
-
   static const onnxruntime::DataTypeImpl* ElementTypeFromProto(int type);
 
  private:

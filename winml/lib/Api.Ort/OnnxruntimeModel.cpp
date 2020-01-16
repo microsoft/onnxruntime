@@ -19,9 +19,11 @@ struct winml_adapter_api_model_feature_helper {
 };
 
 HRESULT CreateFeatureDescriptors(
+    OnnxruntimeEngineFactory* engine_factory,
     const winml_adapter_api_model_feature_helper* feature_helpers,
     OrtModel* ort_model,
     std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
+  const auto ort_api = engine_factory->UseOrtApi();
   size_t count;
   if (auto status = feature_helpers->GetCount(ort_model, &count)) {
     return E_FAIL;
@@ -35,11 +37,14 @@ HRESULT CreateFeatureDescriptors(
     if (auto status = feature_helpers->GetDescription(ort_model, i, &descriptor.description_, &descriptor.description_length_)) {
       return E_FAIL;
     }
-    if (auto status = feature_helpers->GetTypeInfo(ort_model, i, &descriptor.type_info_)) {
+
+    OrtTypeInfo* type_info;
+    if (auto status = feature_helpers->GetTypeInfo(ort_model, i, &type_info)) {
       return E_FAIL;
     }
-
-    descriptors.push_back(descriptor);
+    descriptor.type_info_ = UniqueOrtTypeInfo(type_info, ort_api->ReleaseTypeInfo);
+    
+    descriptors.push_back(std::move(descriptor));
   }
   return S_OK;
 }
@@ -79,7 +84,7 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
 
   // Create inputs
   std::vector<OnnxruntimeValueInfoWrapper> inputs;
-  RETURN_IF_FAILED(CreateFeatureDescriptors(&input_helpers, ort_model, inputs));
+  RETURN_IF_FAILED(CreateFeatureDescriptors(engine_factory, &input_helpers, ort_model, inputs));
   input_features_ = converter.ConvertToLearningModelDescriptors(inputs);
 
   // Create outputs
@@ -90,7 +95,7 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
       winml_adapter_api->ModelGetOutputTypeInfo};
 
   std::vector<OnnxruntimeValueInfoWrapper> outputs;
-  RETURN_IF_FAILED(CreateFeatureDescriptors(&output_helpers, ort_model, outputs));
+  RETURN_IF_FAILED(CreateFeatureDescriptors(engine_factory, &output_helpers, ort_model, outputs));
   output_features_ = converter.ConvertToLearningModelDescriptors(outputs);
 
   const char* out;

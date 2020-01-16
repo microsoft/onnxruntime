@@ -12,7 +12,7 @@
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-OrtSequenceTypeInfo::OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept : sequence_key_type_(sequence_key_type) {  
+OrtSequenceTypeInfo::OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept : sequence_key_type_(sequence_key_type, &OrtApis::ReleaseTypeInfo) {
 }
 
 OrtStatus* OrtSequenceTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* type_proto, OrtSequenceTypeInfo** out) {
@@ -33,9 +33,18 @@ OrtStatus* OrtSequenceTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* t
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(winmla::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
-  *out = sequence_type_info->sequence_key_type_;
+OrtStatus* OrtSequenceTypeInfo::Clone(OrtSequenceTypeInfo** out) {
+  OrtTypeInfo* sequence_key_type_copy = nullptr;
+  if (auto status = sequence_key_type_->Clone(&sequence_key_type_copy))
+  {
+    return status;
+  }
+  *out = new OrtSequenceTypeInfo(sequence_key_type_copy);
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
+  return sequence_type_info->sequence_key_type_->Clone(out);
 }
 
 ORT_API(void, winmla::ReleaseSequenceTypeInfo, OrtSequenceTypeInfo* ptr) {

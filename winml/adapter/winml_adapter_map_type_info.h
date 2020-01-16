@@ -11,12 +11,15 @@ class TypeProto;
 struct OrtMapTypeInfo {
  public:
   ONNXTensorElementDataType map_key_type_ = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-  OrtTypeInfo* map_value_type_ = nullptr;
-  
+  std::unique_ptr<OrtTypeInfo, void(*)(OrtTypeInfo*)> map_value_type_;
+
   static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtMapTypeInfo** out); 
+
+  OrtStatus* Clone(OrtMapTypeInfo** out);
 
  private:
   OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, OrtTypeInfo* map_value_type)noexcept;
   OrtMapTypeInfo(const OrtMapTypeInfo& other) = delete;
   OrtMapTypeInfo& operator=(const OrtMapTypeInfo& other) = delete;
+
 };

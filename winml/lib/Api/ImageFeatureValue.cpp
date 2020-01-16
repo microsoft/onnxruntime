@@ -472,7 +472,8 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
   descriptor.width = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[3]);
   descriptor.height = static_cast<int>(resourceMetadata.TensorDescriptor.sizes[2]);
 
-  if (value->IsCpu()) {
+  bool out;
+  if (SUCCEEDED(value->IsCpu(&out)) && out) {
     descriptor.pixel_format = static_cast<DWORD>(BitmapPixelFormat::Bgra8);
     descriptor.luid = {};  // Converted image on CPU
 

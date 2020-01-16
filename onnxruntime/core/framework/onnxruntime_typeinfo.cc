@@ -11,6 +11,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
 
+#include "core/framework/tensor_type_and_shape.h"
 #include "../../winml/adapter/winml_adapter_map_type_info.h"
 #include "../../winml/adapter/winml_adapter_sequence_type_info.h"
 #include "../../winml/adapter/winml_adapter_apis.h"
@@ -39,7 +40,7 @@ OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtSequenceTypeInfo* sequence_type_info
 
 OrtTypeInfo::~OrtTypeInfo() {
   OrtApis::ReleaseTensorTypeAndShapeInfo(data);
-  
+
   namespace winmla = Windows::AI::MachineLearning::Adapter;
   if (map_type_info_) {
     winmla::ReleaseMapTypeInfo(map_type_info_);
@@ -74,7 +75,6 @@ ORT_API_STATUS_IMPL(winmla::GetDenotationFromTypeInfo, const OrtTypeInfo* type_i
   *len = type_info->denotation_.size();
   return nullptr;
 }
-
 
 ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   delete ptr;
@@ -249,8 +249,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
     case on::TypeProto::kSequenceType: {
       OrtSequenceTypeInfo* sequence_type_info = nullptr;
 
-      if (auto status = OrtSequenceTypeInfo::FromTypeProto(input, &sequence_type_info))
-      {
+      if (auto status = OrtSequenceTypeInfo::FromTypeProto(input, &sequence_type_info)) {
         return status;
       }
 
@@ -262,8 +261,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
     case on::TypeProto::kMapType: {
       OrtMapTypeInfo* map_type_info = nullptr;
 
-      if (auto status = OrtMapTypeInfo::FromTypeProto(input, &map_type_info))
-      {
+      if (auto status = OrtMapTypeInfo::FromTypeProto(input, &map_type_info)) {
         return status;
       }
 
@@ -280,6 +278,51 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
     } break;
     case on::TypeProto::VALUE_NOT_SET:
       break;
+    default:
+      // Not implemented
+      break;
+  }
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "not implemented");
+}
+
+OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
+  switch (type) {
+    case ONNX_TYPE_TENSOR:
+    case ONNX_TYPE_SPARSETENSOR:
+    {
+      OrtTensorTypeAndShapeInfo* clone;
+      if (auto status = data->Clone(&clone)) {
+        return status;
+      }
+      *out = new OrtTypeInfo(type, clone);
+      (*out)->denotation_ = denotation_;
+      return nullptr;
+    }
+    case ONNX_TYPE_SEQUENCE:
+    {
+      OrtSequenceTypeInfo* clone;
+      if (auto status = sequence_type_info_->Clone(&clone)) {
+        return status;
+      }
+      *out = new OrtTypeInfo(type, clone);
+      (*out)->denotation_ = denotation_;
+      return nullptr;
+    }
+    case ONNX_TYPE_MAP: {
+      OrtMapTypeInfo* clone;
+      if (auto status = map_type_info_->Clone(&clone)) {
+        return status;
+      }
+      *out = new OrtTypeInfo(type, clone);
+      (*out)->denotation_ = denotation_;
+      return nullptr;
+    }
+    case ONNX_TYPE_OPAQUE:
+    {
+      *out = new OrtTypeInfo(type);
+      (*out)->denotation_ = denotation_;
+      return nullptr;
+    }
     default:
       // Not implemented
       break;

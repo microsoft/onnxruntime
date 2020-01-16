@@ -9,11 +9,12 @@
 namespace Windows::AI::MachineLearning {
 
 struct OnnxruntimeValueInfoWrapper {
-  const char* name_;
-  size_t name_length_;
-  const char* description_;
-  size_t description_length_;
-  OrtTypeInfo* type_info_;
+  OnnxruntimeValueInfoWrapper() : type_info_(std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>(nullptr, nullptr)) {}
+  const char* name_ = nullptr;
+  size_t name_length_ = 0;
+  const char* description_ = nullptr;
+  size_t description_length_ = 0;
+  std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)> type_info_;
 };
 
 class OnnxruntimeEngineFactory;

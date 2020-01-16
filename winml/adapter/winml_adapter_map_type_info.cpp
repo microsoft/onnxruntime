@@ -12,7 +12,7 @@
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, OrtTypeInfo* map_value_type) noexcept : map_key_type_(map_key_type), map_value_type_(map_value_type) {  
+OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, OrtTypeInfo* map_value_type) noexcept : map_key_type_(map_key_type), map_value_type_(map_value_type, &OrtApis::ReleaseTypeInfo) {  
 }
 
 static ONNXTensorElementDataType
@@ -61,6 +61,16 @@ OrtStatus* OrtMapTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* type_p
   return nullptr;
 }
 
+OrtStatus* OrtMapTypeInfo::Clone(OrtMapTypeInfo** out) {
+  OrtTypeInfo* map_value_type_copy = nullptr;
+  if (auto status = map_value_type_->Clone(&map_value_type_copy))
+  {
+    return status;
+  }
+  *out = new OrtMapTypeInfo(map_key_type_, map_value_type_copy);
+  return nullptr;
+}
+
 // OrtMapTypeInfo Accessors
 ORT_API_STATUS_IMPL(winmla::GetMapKeyType, const OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
   *out = map_type_info->map_key_type_;
@@ -68,8 +78,7 @@ ORT_API_STATUS_IMPL(winmla::GetMapKeyType, const OrtMapTypeInfo* map_type_info, 
 }
 
 ORT_API_STATUS_IMPL(winmla::GetMapValueType, const OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
-  *out = map_type_info->map_value_type_;
-  return nullptr;
+  return map_type_info->map_value_type_->Clone(out);
 }
 
 ORT_API(void, winmla::ReleaseMapTypeInfo, OrtMapTypeInfo* ptr) {

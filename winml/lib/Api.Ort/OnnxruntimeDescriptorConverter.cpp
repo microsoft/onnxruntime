@@ -49,7 +49,7 @@ namespace Windows::AI::MachineLearning {
 static winml::ILearningModelFeatureDescriptor
 CreateFeatureDescriptor(
     OnnxruntimeEngineFactory* engine_factory,
-    OnnxruntimeValueInfoWrapper* feature_descriptor, 
+    const OnnxruntimeValueInfoWrapper* feature_descriptor, 
     const std::unordered_map<std::string, std::string>& metadata);
 
 static TensorKind
@@ -395,10 +395,10 @@ GetTensorType(
 static winml::ILearningModelFeatureDescriptor
 CreateTensorFeatureDescriptor(
     OnnxruntimeEngineFactory* engine_factory,
-    OnnxruntimeValueInfoWrapper* feature_descriptor, 
+    const OnnxruntimeValueInfoWrapper* feature_descriptor, 
     const std::unordered_map<std::string, std::string>& metadata,
     bool has_unsupported_image_metadata) {
-  auto type_info = feature_descriptor->type_info_;
+  auto type_info = feature_descriptor->type_info_.get();
 
   const OrtTensorTypeAndShapeInfo* tensor_info;
   if (auto status = engine_factory->UseOrtApi()->CastTypeInfoToTensorInfo(type_info, &tensor_info)) {
@@ -435,9 +435,9 @@ CreateTensorFeatureDescriptor(
 static winml::ILearningModelFeatureDescriptor
 CreateImageFeatureDescriptor(
     OnnxruntimeEngineFactory* engine_factory,
-    OnnxruntimeValueInfoWrapper* feature_descriptor, 
+    const OnnxruntimeValueInfoWrapper* feature_descriptor, 
     const std::unordered_map<std::string, std::string>& metadata) {
-  auto type_info = feature_descriptor -> type_info_;
+  auto type_info = feature_descriptor->type_info_.get();
 
   const OrtTensorTypeAndShapeInfo* tensor_info;
   if (auto status = engine_factory->UseOrtApi()->CastTypeInfoToTensorInfo(type_info, &tensor_info)) {
@@ -503,9 +503,9 @@ CreateImageFeatureDescriptor(
 static winml::ILearningModelFeatureDescriptor
 CreateMapFeatureDescriptor(
     OnnxruntimeEngineFactory* engine_factory,
-    OnnxruntimeValueInfoWrapper* feature_descriptor, 
+    const OnnxruntimeValueInfoWrapper* feature_descriptor, 
     const std::unordered_map<std::string, std::string>& metadata) {
-  auto type_info = feature_descriptor->type_info_;
+  auto type_info = feature_descriptor->type_info_.get();
 
   const OrtMapTypeInfo* map_info;
   if (auto status = engine_factory->UseWinmlAdapterApi()->CastTypeInfoToMapTypeInfo(type_info, &map_info)) {
@@ -522,13 +522,14 @@ CreateMapFeatureDescriptor(
   if (auto status = engine_factory->UseWinmlAdapterApi()->GetMapValueType(map_info, &map_value_type_info)) {
     throw;  //TODO fix throw here!;
   }
+  UniqueOrtTypeInfo unique_map_value_type_info(map_value_type_info, engine_factory->UseOrtApi()->ReleaseTypeInfo);
 
   OnnxruntimeValueInfoWrapper dummy_ort_value_info_wrapper;
   dummy_ort_value_info_wrapper.description_ = feature_descriptor->description_;
   dummy_ort_value_info_wrapper.description_length_ = feature_descriptor->description_length_;
   dummy_ort_value_info_wrapper.name_ = feature_descriptor->name_;
   dummy_ort_value_info_wrapper.name_length_ = feature_descriptor->name_length_;
-  dummy_ort_value_info_wrapper.type_info_ = map_value_type_info;
+  dummy_ort_value_info_wrapper.type_info_ = std::move(unique_map_value_type_info);
 
   auto value_descriptor =
       CreateFeatureDescriptor(engine_factory, &dummy_ort_value_info_wrapper, metadata);
@@ -546,9 +547,9 @@ CreateMapFeatureDescriptor(
 static winml::ILearningModelFeatureDescriptor
 CreateSequenceFeatureDescriptor(
     OnnxruntimeEngineFactory* engine_factory,
-    OnnxruntimeValueInfoWrapper* feature_descriptor, 
+    const OnnxruntimeValueInfoWrapper* feature_descriptor, 
     const std::unordered_map<std::string, std::string>& metadata) {
-  auto type_info = feature_descriptor->type_info_;
+  auto type_info = feature_descriptor->type_info_.get();
 
   const OrtSequenceTypeInfo* sequence_info;
   if (auto status = engine_factory->UseWinmlAdapterApi()->CastTypeInfoToSequenceTypeInfo(type_info, &sequence_info)) {
@@ -559,13 +560,14 @@ CreateSequenceFeatureDescriptor(
   if (auto status = engine_factory->UseWinmlAdapterApi()->GetSequenceElementType(sequence_info, &sequence_element_type_info)) {
     throw;  //TODO fix throw here!;
   }
+  UniqueOrtTypeInfo unique_sequence_element_type_info(sequence_element_type_info, engine_factory->UseOrtApi()->ReleaseTypeInfo);
 
   OnnxruntimeValueInfoWrapper dummy_ort_value_info_wrapper;
   dummy_ort_value_info_wrapper.description_ = feature_descriptor->description_;
   dummy_ort_value_info_wrapper.description_length_ = feature_descriptor->description_length_;
   dummy_ort_value_info_wrapper.name_ = feature_descriptor->name_;
   dummy_ort_value_info_wrapper.name_length_ = feature_descriptor->name_length_;
-  dummy_ort_value_info_wrapper.type_info_ = sequence_element_type_info;
+  dummy_ort_value_info_wrapper.type_info_ = std::move(unique_sequence_element_type_info);
 
   auto element_descriptor =
       CreateFeatureDescriptor(engine_factory, &dummy_ort_value_info_wrapper, metadata);
@@ -582,9 +584,9 @@ CreateSequenceFeatureDescriptor(
 static winml::ILearningModelFeatureDescriptor
 CreateFeatureDescriptor(
     OnnxruntimeEngineFactory* engine_factory,
-    OnnxruntimeValueInfoWrapper* feature_descriptor,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata) {
-  auto type_info = feature_descriptor->type_info_;
+  auto type_info = feature_descriptor->type_info_.get();
 
   ONNXType onnx_type;
   engine_factory->UseOrtApi()->GetOnnxTypeFromTypeInfo(type_info, &onnx_type);
@@ -631,7 +633,7 @@ wfc::IVector<winml::ILearningModelFeatureDescriptor>
 OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
   auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
-  for (auto descriptor : descriptors) {
+  for (const auto& descriptor : descriptors) {
     auto learning_model_descriptor = WinML::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
     features.Append(learning_model_descriptor);
   }
