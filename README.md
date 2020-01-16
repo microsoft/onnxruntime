@@ -90,6 +90,7 @@ Additional dockerfiles can be found [here](./dockerfiles).
 * [C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)
 * [Java](docs/Java_API.md)
 * [Ruby](https://github.com/ankane/onnxruntime) (external project)
+* [Go](https://github.com/owulveryck/onnx-go) (external project)
 
 ### Official Builds
 | | CPU (MLAS+Eigen) | CPU (MKL-ML) | GPU (CUDA)
