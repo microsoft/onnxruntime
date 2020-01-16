@@ -1,6 +1,6 @@
 # Quantization and Calibration Tools
 
-Quantizatiin in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model. 
+Quantization in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model. 
 
     * Quantization Tool 
     * Calibration Tool
@@ -39,7 +39,7 @@ Today ORT does not guarantee support for E2E model quantization, meaning since n
 The following ops were chosen as phase 1 ops because in most of the CNN models these ops consume most amount of compute and power and therefore there is benefit in quantizing these ops to get perf benefits.
  * Convolution
  * Matmul
- * Data type agnostic ops like transpose, identity etc ( Note: special quantization is not done for these ops.)
+ * Data type agnostic ops like transpose, identity etc. ( Note: special quantization is not done for these ops.)
 
  ### Quantization and model opset versions
 Quantization is fairly new in ONNX and ONNXRuntime. Quantization ops were introduced in ONNX opset version 10. Therefore it is important that the model which is being quantized be opset 10 or higher. In case the model opset version is < 10 then it is recommended that the model should be reconverted to ONNX from its original framework using the latest opset.
@@ -61,6 +61,7 @@ It is advised that the model owner be aware of this and run perf evaluations to 
 quantize() takes a model in ModelProto format and returns the quantized model in ModelProto format.
 
 ### Various quantization modes
+Default is set to QuantizationMode.IntegerOps with dynamic input quantization.
 
 - **QuantizationMode.IntegerOps with static input quantization**:
     Quantize using integer ops. Inputs/activations are quantized using static scale and zero point values which are specified through "quantization_params" option.
@@ -73,14 +74,13 @@ quantize() takes a model in ModelProto format and returns the quantized model in
     ```
 
 - **QuantizationMode.IntegerOps with dynamic input quantization**:
-    Quantize using integer ops. Inputs/activations are quantized using dynamic scale and zero point values which are computed while running the model.
+    Quantize using integer ops. Inputs/activations are quantized using dynamic scale and zero point values which are computed while running the model. This is the default quantization mode.
     ```python
     quantized_model = quantize(model, quantization_mode=QuantizationMode.IntegerOps, static=False)
     ```
 
 - **QuantizationMode.QLinearOps with static input quantization**:
-    Quantize using QLinear ops. Inputs/activations are quantized using static scale and zero point values which are specified through "input_quantization_params" option.
-    Output scale and zero point values have to be specified using "output_quantization_params" option.
+    Quantize using QLinear ops. Inputs/activations are quantized using static scale and zero point values which are specified through "quantization_params" option.
     ```python
     quantized_model = quantize(model, quantization_mode=QuantizationMode.QLinearOps,
                                static=True,
@@ -140,7 +140,7 @@ If False, the inputs/activations are quantized using dynamic scale and zero poin
 - **nodes_to quantize**: *default: None*
     List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
-        exmaple:
+        example:
         [
             'Cov__224',
             'Conv__252'
@@ -169,6 +169,8 @@ Calibration uses a small data set representative of the original data set to cal
 See below for a description of all the options to calibrate():
 
 - **model_path**: Path to the original FP32 model
+- **output_model_path**: *default: calibrated_quantized_model.onnx*
+    Path to the output model
 - **dataset_path**: Path to the calibration dataset. This dataset is meant to contain "representative" examples of the input (presumably, a subset of the dataset the original model was trained on), which are used to collect statistics on the "typical" outputs of selected nodes in the model, as described in the sections below.  The dataset can be provided as:
     * A filepath for a directory, containing images or
     * A protobuf file, encoding a set of images using the `TensorProto` schema,
@@ -185,17 +187,17 @@ Alternatively the script also accepts preprocessed tensors in .pb format. Refer 
 
 ### Example - Calibrate and Quantize an ONNX Model
 ```
-python calibrate.py --model_path=<'path/to/model.onnx'> --dataset_path=<'path/to/data/folder'>
+python calibrate.py --model_path=<'path/to/model.onnx'> --output_model_path=<'path/to/output_model.onnx'> --dataset_path=<'path/to/data/folder'> --data_preprocess=<custom or prebuilt preprocessing method>
 ```
 
 ### End-to-end example
 This is an E2E example to demonstrate calibration, quantization and accuracy testing for a resnet model. We leverage instructions in MLperf for downloading the imagenet dataset, selecting the calibration data set and use mlperf accuracy benchmark for testing the accuracy of the quantized model.
 
-* Donwload the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx)
+* Download the model : Download the [resnet50_v1](./E2E_example_model/resnet50_v1.onnx)
  
 * Prepare imagenet dataset : Follow instructions provided in [mlperf repo](https://github.com/mlperf/inference/tree/master/v0.5/classification_and_detection#datasets)
 
-* Install latest versions of onnx and onnxruntime
+* Install latest versions of ONNX and ONNXRuntime
 
 * Quantize the model : As described above there are 2 ways to do this. 
     * Use quantization tool only. This method uses Integer Ops :
@@ -209,10 +211,10 @@ This is an E2E example to demonstrate calibration, quantization and accuracy tes
 
     * Use calibration and quantization. This method uses QLinear Ops :
         * Download the calibration image list : From [mlperf repo](https://github.com/mlperf/inference/tree/master/calibration/ImageNet)
-        * Create a calibration_data_set folder and copy the list of images names mentioned in  "cal_image_list_option_<1/2>.txt" from the Imagenet dataset to this new folder.
-        * Run the calibration and quantization on the mode :
+        * Create a calibration_data_set folder and copy the list of image names mentioned in "cal_image_list_option_<1/2>.txt" from the Imagenet dataset to this new folder.
+        * Run the calibration tool :
         ```python
-        python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --dataset_path=/<path>/calibration_data_set --data_preprocess=preprocess_method2
+        python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --output_model_path=/<output_path>/calibrated_quantized_model.onnx --dataset_path=/<path>/calibration_data_set --data_preprocess=preprocess_method2
         ```
 
 * Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks. 

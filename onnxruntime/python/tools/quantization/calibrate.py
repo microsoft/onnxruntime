@@ -60,8 +60,9 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
                                 for each augmented node across test data sets, where
                                 the first element is a minimum of all ReduceMin values
                                 and the second element is a maximum of all ReduceMax
-                                values; the type 'smooth' yields a smooth average
-                                with anomalous values removed
+                                values; more techniques can be added based on further experimentation
+                                to improve the selection of the min max values. For example: some kind
+                                of noise reduction can be applied before taking the min and max values.
         return: dictionary mapping added node names to (ReduceMin, ReduceMax) pairs
     '''
     model = onnx.load(model_path)
@@ -86,11 +87,9 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
         pairs = [tuple([float(min(clean_merged_dict[added_node_output_names[i]])),
                 float(max(clean_merged_dict[added_node_output_names[i+1]]))])
                 for i in range(0, len(added_node_output_names), 2)]
-    elif calib_mode == 'smooth':
-        # Calls smoooth averaging script (number of bootstraps and confidence threshold are adjustable)
-        pairs = [tuple([float(smooth_average(sorted(clean_merged_dict[added_node_output_names[i]]))),
-                float(smooth_average(sorted(clean_merged_dict[added_node_output_names[i+1]])))])
-                for i in range(0, len(added_node_output_names), 2)]
+    else:
+        raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
+
     final_dict = dict(zip(node_names, pairs))
     return final_dict
 
@@ -192,11 +191,13 @@ def main():
     parser = argparse.ArgumentParser(description='parsing model and test data set paths')
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--dataset_path', required=True)
+    parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
     parser.add_argument('--calib_mode', default='naive')
     parser.add_argument('--dataset_size', type=int, default=30)
-    parser.add_argument('--data_preprocess', type=str, default='')
+    parser.add_argument('--data_preprocess', type=str, required=True)
     args = parser.parse_args()
     model_path = args.model_path
+    output_model_path = args.output_model_path
     images_folder = args.dataset_path
     calib_mode = args.calib_mode
     size_limit = args.dataset_size
@@ -220,7 +221,7 @@ def main():
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
     calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict)
-    onnx.save(calibrated_quantized_model, 'calibrated_quantized_model.onnx')
+    onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")
 
