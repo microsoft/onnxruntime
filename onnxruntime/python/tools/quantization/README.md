@@ -208,10 +208,11 @@ This is an E2E example to demonstrate calibration, quantization and accuracy tes
     ```
 
     * Use calibration and quantization. This method uses QLinear Ops :
-        * Download the calibration dataset : From [mlperf repo](https://github.com/mlperf/inference/tree/master/calibration/ImageNet)
+        * Download the calibration image list : From [mlperf repo](https://github.com/mlperf/inference/tree/master/calibration/ImageNet)
+        * Create a calibration_data_set folder and copy the list of images names mentioned in  "cal_image_list_option_<1/2>.txt" from the Imagenet dataset to this new folder.
         * Run the calibration and quantization on the mode :
         ```python
-        python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --dataset_path=/<path>/dataset-imagenet-ilsvrc2012-val --data_preprocess=preprocess_method2
+        python calibrate.py --model_path=/<path>/E2E_example_model/resnet50_v1.onnx.onnx --dataset_path=/<path>/calibration_data_set --data_preprocess=preprocess_method2
         ```
 
 * Setup and run mlperf accuracy tests : Now that quantized model is ready run the accuracy tests using the mlperf accuracy benchmarks. 
