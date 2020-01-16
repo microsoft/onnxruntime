@@ -31,7 +31,7 @@ struct LabelEncoderTransformerImpl {
 
     // Prepare the output
     Tensor* output_tensor(ctx->Output(0, input_tensor->Shape()));
-    std::uint32_t* output_data(output_tensor->MutableData<std::uint32_t>());
+    uint32_t* output_data(output_tensor->MutableData<uint32_t>());
 
     // Execute
     const int64_t length(input_tensor->Shape().Size());

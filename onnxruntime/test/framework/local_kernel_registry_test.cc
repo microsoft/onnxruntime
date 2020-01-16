@@ -214,7 +214,8 @@ void RunSession(InferenceSession& session_object,
   ASSERT_EQ(1, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
-  EXPECT_EQ(expected_shape, rtensor.Shape());
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
   const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_shape.Size());
   ASSERT_EQ(values_y, found);
 }

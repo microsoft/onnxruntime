@@ -6,46 +6,23 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/MaxAbsScalarFeaturizer.h"
+#include "Featurizers/OneHotEncoderFeaturizer.h"
 #include "Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {
 
-template <typename T>
-struct OutputTypeMapper {};
-template <>
-struct OutputTypeMapper<int8_t> { using type = float; };
-template <>
-struct OutputTypeMapper<int16_t> { using type = float; };
-template <>
-struct OutputTypeMapper<uint8_t> { using type = float; };
-template <>
-struct OutputTypeMapper<uint16_t> { using type = float; };
-template <>
-struct OutputTypeMapper<float> { using type = float; };
-template <>
-struct OutputTypeMapper<int32_t> { using type = double; };
-template <>
-struct OutputTypeMapper<int64_t> { using type = double; };
-template <>
-struct OutputTypeMapper<uint32_t> { using type = double; };
-template <>
-struct OutputTypeMapper<uint64_t> { using type = double; };
-template <>
-struct OutputTypeMapper<double> { using type = double; };
-
 template <typename InputT>
-struct MaxAbsScalarTransformerImpl {
+struct OneHotEncoderTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
+    Microsoft::Featurizer::Featurizers::OneHotEncoderTransformer<InputT> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type>(archive);
+          return Microsoft::Featurizer::Featurizers::OneHotEncoderTransformer<InputT>(archive);
         }());
 
     // Get the input
@@ -53,26 +30,35 @@ struct MaxAbsScalarTransformerImpl {
     const InputT* input_data(input_tensor->Data<InputT>());
 
     // Prepare the output
-    Tensor* output_tensor(ctx->Output(0, input_tensor->Shape()));
-    typename OutputTypeMapper<InputT>::type* output_data(output_tensor->MutableData<typename OutputTypeMapper<InputT>::type>());
+    Tensor* NumElements_tensor(ctx->Output(0, input_tensor->Shape()));
+    Tensor* Value_tensor(ctx->Output(1, input_tensor->Shape()));
+    Tensor* Index_tensor(ctx->Output(2, input_tensor->Shape()));
+
+    uint64_t* NumElements_data(NumElements_tensor->MutableData<uint64_t>());
+    uint8_t* Value_data(Value_tensor->MutableData<uint8_t>());
+    uint64_t* Index_data(Index_tensor->MutableData<uint64_t>());
 
     // Execute
     const int64_t length(input_tensor->Shape().Size());
 
     for (int64_t i = 0; i < length; ++i) {
-      output_data[i] = transformer.execute(input_data[i]);
+      auto result(transformer.execute(input_data[i]));
+
+      NumElements_data[i] = std::move(result.NumElements);
+      Value_data[i] = std::move(result.Value);
+      Index_data[i] = std::move(result.Index);
     }
   }
 };
 
-class MaxAbsScalarTransformer final : public OpKernel {
+class OneHotEncoderTransformer final : public OpKernel {
  public:
-  explicit MaxAbsScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit OneHotEncoderTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<MaxAbsScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
-                                int64_t, uint64_t, float, double>
+    utils::MLTypeCallDispatcher<OneHotEncoderTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double, bool, std::string>
         t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
     return Status::OK();
@@ -80,7 +66,7 @@ class MaxAbsScalarTransformer final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    MaxAbsScalarTransformer,
+    OneHotEncoderTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -95,7 +81,10 @@ ONNX_OPERATOR_KERNEL_EX(
                                    DataTypeImpl::GetTensorType<int64_t>(),
                                    DataTypeImpl::GetTensorType<uint64_t>(),
                                    DataTypeImpl::GetTensorType<float>(),
-                                   DataTypeImpl::GetTensorType<double>()}),
-    MaxAbsScalarTransformer);
+                                   DataTypeImpl::GetTensorType<double>(),
+                                   DataTypeImpl::GetTensorType<bool>(),
+                                   DataTypeImpl::GetTensorType<std::string>()}),
+    OneHotEncoderTransformer);
+
 }  // namespace featurizers
 }  // namespace onnxruntime

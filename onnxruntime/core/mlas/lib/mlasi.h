@@ -131,6 +131,7 @@ Abstract:
 
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
+#define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
 
 //
 // Define the prototypes of the platform optimized routines.
@@ -332,6 +333,24 @@ size_t
     );
 
 typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_X8X8_OPERATION)(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    int16_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
+    );
+
+typedef MLAS_GEMM_X8X8_OPERATION* PMLAS_GEMM_X8X8_OPERATION;
 
 typedef
 void
@@ -557,6 +576,7 @@ extern "C" {
 
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -658,6 +678,28 @@ MlasGetMaximumThreadCount(
 #else
     return 1;
 #endif
+}
+
+inline
+void
+MlasPartitionWork(
+    int32_t ThreadId,
+    int32_t ThreadCount,
+    size_t TotalWork,
+    size_t* WorkIndex,
+    size_t* WorkRemaining
+    )
+{
+    const size_t WorkPerThread = TotalWork / ThreadCount;
+    const size_t WorkPerThreadExtra = TotalWork % ThreadCount;
+
+    if (uint32_t(ThreadId) < WorkPerThreadExtra) {
+        *WorkIndex = (WorkPerThread + 1) * ThreadId;
+        *WorkRemaining = WorkPerThread + 1;
+    } else {
+        *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
+        *WorkRemaining = WorkPerThread;
+    }
 }
 
 //
