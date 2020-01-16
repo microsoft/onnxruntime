@@ -59,7 +59,7 @@ static vector<pair<typename Comparator::DataType, int64_t>> select_top_k(
     int64_t block_slice, int64_t inter_block_offset, const unsigned k,
     bool sort_top_k) {
   // create a data holder and insert elements
-  vector<pair<Comparator::DataType, int64_t>> data_holder;
+  vector<pair<typename Comparator::DataType, int64_t>> data_holder;
   data_holder.reserve(num_blocks);
   for (int64_t l = 0; l < num_blocks; ++l) {
     data_holder.push_back({raw_data(row_num, l * block_slice + inter_block_offset), l});
@@ -88,13 +88,13 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
   const int64_t rows = input_shape.SizeToDimension(static_cast<size_t>(axis_parsed));
   const int64_t cols = input->Shape().Size() / rows;
   auto input_map =
-      ConstEigenMatrixMapRowMajor<Comparator::DataType>(
-          static_cast<const Comparator::DataType*>(input->template Data<Comparator::DataType>()), rows, cols);
+      ConstEigenMatrixMapRowMajor<typename Comparator::DataType>(
+          static_cast<const typename Comparator::DataType*>(input->template Data<typename Comparator::DataType>()), rows, cols);
 
   // Use Eigen maps to allow indexing into the 2d tensors like Values_map(i,j)
   const int64_t reduced_cols = output_shape.SizeFromDimension(static_cast<size_t>(axis_parsed));
-  auto values_map = EigenMatrixMapRowMajor<Comparator::DataType>(
-      values->template MutableData<Comparator::DataType>(), rows, reduced_cols);
+  auto values_map = EigenMatrixMapRowMajor<typename Comparator::DataType>(
+      values->template MutableData<typename Comparator::DataType>(), rows, reduced_cols);
   auto indices_map = EigenMatrixMapRowMajor<int64_t>(indices->template MutableData<int64_t>(), rows, reduced_cols);
 
   // This is basically the number of elements within each of the "k" rows
@@ -124,7 +124,7 @@ static void extract_top_k_elements(const Tensor* input, const TensorShape& input
           // Build a min-heap/max-heap, the heap element is pair of (value, idx)
           // The top of the heap is the smallest/largest value depending on whether it is a min-heap/max-heap
           // This is a min-heap if largest == true, this is a max-heap if largest == false
-          priority_queue<pair<Comparator::DataType, int64_t>, vector<pair<Comparator::DataType, int64_t>>, Comparator> heap;
+          priority_queue<pair<typename Comparator::DataType, int64_t>, vector<pair<typename Comparator::DataType, int64_t>>, Comparator> heap;
 
           // Maintain the size of heap to be less or equal to k, so the
           // heap will hold the k largest/smallest values
