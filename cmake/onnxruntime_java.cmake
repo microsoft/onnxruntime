@@ -23,6 +23,7 @@ endif()
 file(GLOB onnxruntime4j_src 
     "${REPO_ROOT}/java/src/main/java/ai/onnxruntime/*.java"
     )
+add_custom_target(onnxruntime4j SOURCES ${onnxruntime4j_src})
 
 # Specify the native sources (without the generated headers)
 file(GLOB onnxruntime4j_native_src 
@@ -33,10 +34,12 @@ file(GLOB onnxruntime4j_native_src
 include_directories(${REPO_ROOT}/java/build/jni-headers)
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/java/src/main/native)
 target_link_libraries(onnxruntime4j_jni PUBLIC ${JNI_LIBRARIES} onnxruntime)
 
+# expose native libraries to the gradle build process
 set(JAVA_PACKAGE_DIR ai/onnxruntime/native/)
 set(JAVA_NATIVE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/java/native-lib)
 set(JAVA_NATIVE_JNILIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/java/native-jnilib)
@@ -44,4 +47,5 @@ file(MAKE_DIRECTORY ${JAVA_NATIVE_LIB_DIR}/${JAVA_PACKAGE_DIR})
 file(MAKE_DIRECTORY ${JAVA_NATIVE_JNILIB_DIR}/${JAVA_PACKAGE_DIR})
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime> ${JAVA_NATIVE_LIB_DIR}/${JAVA_PACKAGE_DIR})
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni> ${JAVA_NATIVE_JNILIB_DIR}/${JAVA_PACKAGE_DIR})
+# run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ./gradlew runBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${REPO_ROOT}/java)
