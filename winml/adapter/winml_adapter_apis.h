@@ -60,7 +60,7 @@ ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessio
 
 ORT_API_STATUS(SessionGetExecutionProvidersCount, _In_ OrtSession* session, _Out_ size_t* count);
 //Do not release provider... as there is no release method available
-ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t index, _Out_ const OrtExecutionProvider** provider);
+ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t index, _Out_ OrtExecutionProvider** provider);
 ORT_API_STATUS(SessionInitialize, _In_ OrtSession* session);
 ORT_API_STATUS(SessionLoadAndPurloinModel, _In_ OrtSession* session, _In_ OrtModel* model);
 
@@ -72,23 +72,23 @@ ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IML
 
 
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
-// ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ const OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
+ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
 ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider * dml_provider);
 ORT_API_STATUS(DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutionProvider* dml_provider);
-ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
+ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_  OrtExecutionProvider* dml_provider);
 // ORT_API_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void* dml_resource);
 // ORT_API_STATUS(DmlFreeGPUAllocation, _In_ void* ptr);
 
 // note: this returns a weak ref
 // ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
 
-// ORT_API_STATUS(GetProviderMemoryInfo, _In_ const OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
-// ORT_API_STATUS(GetProviderAllocator, _In_ const OrtExecutionProvider* provider, OrtAllocator** allocator);
+// ORT_API_STATUS(GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
+// ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
 // ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
 // ORT_API_STATUS(GetValueMemoryInfo, const OrtValue * value, OrtMemoryInfo** memory_info);
 
 // ExecutionProvider Methods
-ORT_API_STATUS(ExecutionProviderSync, _In_ const OrtExecutionProvider* provider);
+ORT_API_STATUS(ExecutionProviderSync, _In_ OrtExecutionProvider* provider);
 //ORT_API_STATUS(ExecutionProviderCopyTensor, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst);
 
 }  // namespace Adapter

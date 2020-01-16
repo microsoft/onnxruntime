@@ -12,9 +12,9 @@
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-ORT_API_STATUS_IMPL(winmla::ExecutionProviderSync, _In_ const OrtExecutionProvider* provider) {
+ORT_API_STATUS_IMPL(winmla::ExecutionProviderSync, _In_ OrtExecutionProvider* provider) {
   API_IMPL_BEGIN
-  const auto execution_provider = reinterpret_cast<const onnxruntime::IExecutionProvider*>(provider);
+  const auto execution_provider = reinterpret_cast<onnxruntime::IExecutionProvider*>(provider);
   execution_provider->Sync();
   return nullptr;
   API_IMPL_END

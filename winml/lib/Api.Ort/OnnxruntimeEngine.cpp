@@ -50,7 +50,7 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
   void* mutable_data = nullptr;
   ort_api->GetTensorMutableData(value_.get(), &mutable_data);
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider);
 
   auto is_dml = false; // TODO figure out when an OrtSession is configured with dml
@@ -146,7 +146,7 @@ HRESULT OnnxruntimeEngine::StartProfiling() {
 HRESULT OnnxruntimeEngine::FlushContext() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
 
   winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider);
@@ -156,7 +156,7 @@ HRESULT OnnxruntimeEngine::FlushContext() {
 HRESULT OnnxruntimeEngine::TrimUploadHeap() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
 
   winml_adapter_api->DmlExecutionProviderTrimUploadHeap(ort_provider);
@@ -167,7 +167,7 @@ HRESULT OnnxruntimeEngine::TrimUploadHeap() {
 HRESULT OnnxruntimeEngine::ReleaseCompletedReferences() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
 
   winml_adapter_api->DmlExecutionProviderReleaseCompletedReferences(ort_provider);
@@ -181,7 +181,7 @@ HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* input_name, con
 HRESULT OnnxruntimeEngine::Sync() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
 
   winml_adapter_api->ExecutionProviderSync(ort_provider);
@@ -218,7 +218,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
 
   OrtAllocator* ort_allocator;

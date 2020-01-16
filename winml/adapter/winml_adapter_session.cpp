@@ -58,7 +58,7 @@ ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvidersCount, _In_ OrtSession* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ const OrtExecutionProvider** ort_provider) {
+ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** ort_provider) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_protected_load_accessor =
@@ -67,7 +67,7 @@ ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvider, _In_ OrtSession* sessio
   auto& provider_id = session_state.GetExecutionProviders().GetIds().at(index);
   const auto& provider = session_state.GetExecutionProviders().Get(provider_id);
 
-  *ort_provider = reinterpret_cast<const OrtExecutionProvider*>(provider);
+  *ort_provider = const_cast<OrtExecutionProvider*>(reinterpret_cast<const OrtExecutionProvider*>(provider));
   return nullptr;
   API_IMPL_END
 }

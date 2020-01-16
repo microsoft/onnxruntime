@@ -78,25 +78,22 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
   winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
   RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
 
-  const OrtExecutionProvider* ort_provider;
+  OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider);
 
   // OnnxRuntime uses the default rounding mode when calling the session's allocator.
   // During initialization, OnnxRuntime allocates weights, which are permanent across session
   // lifetime and can be large, so shouldn't be rounded.
-  //Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Disabled);
-  //winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(session, provider)
+  winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false);
 
   if (auto status = winml_adapter_api->SessionInitialize(session)) {
     return E_FAIL;
   }
 
-  //Dml::SetDefaultRoundingMode(p_provider, AllocatorRoundingMode::Enabled);
-  //winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(session, provider)
+  winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true);
 
-  //// Flush the D3D12 work from the DML execution provider
-  //Dml::FlushContext(p_provider);
-  //winml_adapter_api->DmlExecutionProviderFlushContext(session, provider)
+  // Flush the D3D12 work from the DML execution provider
+  winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider);
 
   return S_OK;
 }

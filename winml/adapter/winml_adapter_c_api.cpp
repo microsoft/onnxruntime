@@ -76,7 +76,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
       
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
-  nullptr, //OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ bool is_enabled)NO_EXCEPTION;
+  &winmla::DmlExecutionProviderSetDefaultRoundingMode,
   &winmla::DmlExecutionProviderFlushContext,
   &winmla::DmlExecutionProviderTrimUploadHeap,
   &winmla::DmlExecutionProviderReleaseCompletedReferences,
