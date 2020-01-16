@@ -24,6 +24,15 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
 };
 
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
+	STDMETHOD(IsCpu)() PURE;
+    STDMETHOD(GetResource)(void* resource) PURE;
+
+    STDMETHOD(IsTensor)(bool* out) PURE;
+    STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) PURE;
+    STDMETHOD(GetTensorShape)(int64_t** shape, size_t* size) PURE;
+
+    STDMETHOD(IsOfMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
+    STDMETHOD(IsOfVectorMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
 };
 
 MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
@@ -38,6 +47,8 @@ MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
     STDMETHOD(ReleaseCompletedReferences)() PURE;
     STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* source, IValue** dest) PURE;
     STDMETHOD(Sync)() PURE;
+    STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) PURE;
 };
 
 

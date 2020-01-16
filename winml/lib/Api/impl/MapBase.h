@@ -61,31 +61,31 @@ struct MapBase : winrt::implements<
     return WinML::Strings::UTF8FromHString(raw);
   }
 
-  template <typename TRawType>
-  static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
-    // make sure this is an array of these types
-    auto shape = ort_value.GetTensorTypeAndShapeInfo().GetShape();
-    // there needs to be only one dimension
-    THROW_HR_IF(E_INVALIDARG, shape.size() != 1);
-    auto lotus_value = ort_value.GetTensorMutableData<typename ValidLotusType<TRawType>::Type>();
-    // now go through all the entries
-    std::vector<TRawType> out;
-    for (auto i = 0; i < shape[0]; i++) {
-      out.push_back(lotus_value[i]);
-    }
-    // retun the vector
-    return out;
-  }
+  //template <typename TRawType>
+  //static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
+  //  // make sure this is an array of these types
+  //  auto shape = ort_value.GetTensorTypeAndShapeInfo().GetShape();
+  //  // there needs to be only one dimension
+  //  THROW_HR_IF(E_INVALIDARG, shape.size() != 1);
+  //  auto lotus_value = ort_value.GetTensorMutableData<typename ValidLotusType<TRawType>::Type>();
+  //  // now go through all the entries
+  //  std::vector<TRawType> out;
+  //  for (auto i = 0; i < shape[0]; i++) {
+  //    out.push_back(lotus_value[i]);
+  //  }
+  //  // retun the vector
+  //  return out;
+  //}
 
-  template <>
-  static std::vector<winrt::hstring> ConvertToABIType<winrt::hstring>(Ort::Value& ort_value) {
-    auto strings = ort_value.GetStrings();
-    std::vector<winrt::hstring> out;
-    for (auto i = 0; i < strings.size(); ++i) {
-      out.push_back(WinML::Strings::HStringFromUTF8(strings[i].c_str()));
-    }
-    return out;
-  }
+  //template <>
+  //static std::vector<winrt::hstring> ConvertToABIType<winrt::hstring>(Ort::Value& ort_value) {
+  //  auto strings = ort_value.GetStrings();
+  //  std::vector<winrt::hstring> out;
+  //  for (auto i = 0; i < strings.size(); ++i) {
+  //    out.push_back(WinML::Strings::HStringFromUTF8(strings[i].c_str()));
+  //  }
+  //  return out;
+  //}
 
   MapBase(ABIMap const& data) : data_(data) {}
 
@@ -141,13 +141,13 @@ struct MapBase : winrt::implements<
     lotus_data_ = std::make_unique<LotusMap>(std::make_pair(keys, values));
   }
 
-  template <typename TLotusKey, typename TLotusValue>
-  static onnxruntime::MLDataType GetLotusType(winmla::IWinMLAdapter* adapter) {
-    return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
-  }
+  //template <typename TLotusKey, typename TLotusValue>
+  //static onnxruntime::MLDataType GetLotusType(winmla::IWinMLAdapter* adapter) {
+  //  return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
+  //}
 
   template <typename TLotusKey, typename TLotusValue>
-  static Ort::Value CreateOrtMap(TLotusKey* keys, TLotusValue* values, size_t len) {
+  static HRESULT CreateOrtMap(TLotusKey* keys, TLotusValue* values, size_t len, IValue** out) {
     // now create OrtValue wrappers over the buffers
     auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
     std::vector<int64_t> shape = {static_cast<int64_t>(len)};
@@ -157,15 +157,13 @@ struct MapBase : winrt::implements<
     return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
   }
 
-  STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue** ort_value, OrtAllocator** ort_allocator) {
-    ORT_UNUSED_PARAMETER(ort_allocator);
+  STDMETHOD(GetValue)(WinML::BindingContext& context, IValue** out) {
     ORT_UNUSED_PARAMETER(context);
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
     if (context.type == WinML::BindingType::kOutput) {
-      *ort_value = nullptr;
+      *out = nullptr;
       return S_OK;
     }
 
@@ -173,7 +171,7 @@ struct MapBase : winrt::implements<
     ConvertToLotusMap(data_);
 
     // and make the map
-    *ort_value = CreateOrtMap(lotus_data_->first.data(), lotus_data_->second.data(), lotus_data_->first.size()).release();
+    //RETURN_IF_FAILED(CreateOrtMap(lotus_data_->first.data(), lotus_data_->second.data(), lotus_data_->first.size(), out));
     return S_OK;
   }
 
@@ -185,28 +183,29 @@ struct MapBase : winrt::implements<
   }
 
   STDMETHOD(UpdateSourceResourceData)
-  (BindingContext& context, OrtValue* ort_value) {
+  (BindingContext& context, IValue* value) {
     ORT_UNUSED_PARAMETER(context);
+    ORT_UNUSED_PARAMETER(value);
     data_.Clear();
 
-    Ort::AllocatorWithDefaultOptions allocator;
+    //Ort::AllocatorWithDefaultOptions allocator;
 
-    // get the keys
-    OrtValue* ptr = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, 0, allocator, &ptr));
-    Ort::Value keys{ptr};
-    // get the values
-    ptr = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, 1, allocator, &ptr));
-    Ort::Value values{ptr};
+    //// get the keys
+    //OrtValue* ptr = nullptr;
+    //Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, 0, allocator, &ptr));
+    //Ort::Value keys{ptr};
+    //// get the values
+    //ptr = nullptr;
+    //Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, 1, allocator, &ptr));
+    //Ort::Value values{ptr};
 
-    auto keys_vector = ConvertToABIType<TKey>(keys);
-    auto values_vector = ConvertToABIType<TValue>(values);
+    //auto keys_vector = ConvertToABIType<TKey>(keys);
+    //auto values_vector = ConvertToABIType<TValue>(values);
 
-    auto len = keys.GetCount();
-    for (auto i = 0; i < len; ++i) {
-      data_.Insert(keys_vector[i], values_vector[i]);
-    }
+    //auto len = keys.GetCount();
+    //for (auto i = 0; i < len; ++i) {
+    //  data_.Insert(keys_vector[i], values_vector[i]);
+    //}
     return S_OK;
 
     // TODO: code this
@@ -217,7 +216,7 @@ struct MapBase : winrt::implements<
     //  data_.Insert(key, value);
     //}
 
-    return S_OK;
+    //return S_OK;
   }
 
   STDMETHOD(AbiRepresentation)

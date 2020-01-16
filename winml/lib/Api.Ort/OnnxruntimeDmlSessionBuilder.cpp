@@ -64,9 +64,6 @@ HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
   winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw);
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
 
-  // Was not here before refactor.. is this needed, do we need to bring this back into winml???
-  //const onnxruntime::Env& env = onnxruntime::Env::Default();
-  //env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid());
   *session = ort_session.release();
 
   return S_OK;
