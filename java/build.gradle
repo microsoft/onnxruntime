@@ -1,5 +1,6 @@
 plugins {
-    id 'java'
+	id 'java'
+	id "com.diffplug.gradle.spotless" version "3.26.0"
 }
 
 allprojects {
@@ -13,14 +14,26 @@ subprojects {
 }
 
 java {
-    withJavadocJar()
-    withSourcesJar()
+	withJavadocJar()
+	withSourcesJar()
+}
+
+spotless {
+	java {
+		removeUnusedImports()
+		googleJavaFormat()
+	}
+	format 'gradle', {
+		target '**/*.gradle'
+		trimTrailingWhitespace()
+		indentWithTabs()
+	}
 }
 
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 
 compileJava {
-    options.compilerArgs += ["-h", "${projectDir}/src/main/native/"]
+	options.compilerArgs += ["-h", "${projectDir}/src/main/native/"]
 }
 
 sourceSets.test {
@@ -81,13 +94,13 @@ runCheck.dependsOn check
 
 
 dependencies {
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
 	testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
 }
 
 test {
-    useJUnitPlatform()
+	useJUnitPlatform()
 	testLogging {
 		events "passed", "skipped", "failed"
 	}
