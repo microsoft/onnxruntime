@@ -437,6 +437,7 @@ public:
     template<typename Info_t, typename Shape_t>
     GemmHelper(const Info_t& info, const Shape_t& shape)
     {
+        ORT_UNUSED_PARAMETER(shape);
         m_transA = info.GetOptionalAttribute<int>(AttrName::TransA, 0);
         m_transB = info.GetOptionalAttribute<int>(AttrName::TransB, 0);
         m_broadcast = info.GetOptionalAttribute<int>(AttrName::Broadcast, 0);
@@ -528,7 +529,7 @@ public:
             ends.push_back(gsl::narrow_cast<int32_t>(endsData[i]));
         }
         uint32_t inputCount = operatorInfo.GetInputCount();
-        if (operatorInfo.GetInputCount() > 3)
+        if (inputCount > 3)
         {
             MLOperatorTensor axesTensor = operatorInfo.GetConstantInputTensor(3);
             const std::vector<uint32_t>& axesTensorDimensions = axesTensor.GetShape();
@@ -540,7 +541,7 @@ public:
             }
         }
 
-        if (operatorInfo.GetInputCount() > 4)
+        if (inputCount > 4)
         {
             MLOperatorTensor stepsTensor = operatorInfo.GetConstantInputTensor(4);
             const std::vector<uint32_t>& stepsTensorDimensions = stepsTensor.GetShape();

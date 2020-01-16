@@ -323,9 +323,9 @@ winrt::Windows::AI::MachineLearning::LearningModel ProtobufHelpers::CreateModel(
     DataWriter m_dataWriter;
   };
 
-  auto size = model.ByteSize();
+  auto size = model.ByteSizeLong();
   auto raw_array = std::unique_ptr<char[]>(new char[size]);
-  model.SerializeToArray(raw_array.get(), size);
+  model.SerializeToArray(raw_array.get(), static_cast<int>(size));
 
   BufferStreamAdapter buffer;
   std::ostream os(&buffer);
