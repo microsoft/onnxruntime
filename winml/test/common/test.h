@@ -1,5 +1,13 @@
+#pragma once
+
 using VoidTest = void (*)();
 using SetupTest = VoidTest;
+
+constexpr bool alwaysTrue() {
+    return true;
+}
+#define WINML_SUPRESS_UNREACHABLE_BELOW(statement)    \
+    if (alwaysTrue()) { statement; }
 
 #ifdef BUILD_GOOGLE_TEST
 #include "googleTestMacros.h"

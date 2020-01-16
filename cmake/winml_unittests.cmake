@@ -44,7 +44,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_telemetry winml_lib_api onnxruntime)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_telemetry winml_lib_api onnxruntime)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -81,7 +81,7 @@ endif()
 add_winml_test(
   TARGET winml_test_scenario
   SOURCES ${winml_test_scenario_src}
-  LIBS winml_test_common ${winml_test_scenario_libs}
+  LIBS winml_test_common delayimp.lib ${winml_test_scenario_libs}
 )
 target_precompiled_header(winml_test_scenario testPch.h)
 target_compile_definitions(winml_test_scenario PRIVATE BUILD_GOOGLE_TEST)

@@ -66,7 +66,7 @@
 
 #ifndef USE_DML
 #define GPUTEST \
-  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
+  WINML_SUPRESS_UNREACHABLE_BELOW(WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)"))
 #else
 #define GPUTEST                                                                         \
   if (auto noGpuTests = RuntimeParameters::Parameters.find("noGPUtests");               \
