@@ -80,7 +80,7 @@ ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecution
 // ORT_API_STATUS(DmlFreeGPUAllocation, _In_ void* ptr);
 
 // note: this returns a weak ref
-// ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtSession* session, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
+// ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
 
 // ORT_API_STATUS(GetProviderMemoryInfo, _In_ const OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
 // ORT_API_STATUS(GetProviderAllocator, _In_ const OrtExecutionProvider* provider, OrtAllocator** allocator);

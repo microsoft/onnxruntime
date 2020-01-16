@@ -219,11 +219,11 @@ LearningModelSession::Run(
   for (int i = 0; i < binding_impl->GetOutputNames().size(); i++) {
     outputNames_c.push_back(binding_impl->GetOutputNames()[i].c_str());
   }
-  OrtSession* session = nullptr;
+//  OrtSession* session = nullptr;
 
   //    WINML_THROW_IF_FAILED(inference_session_->GetOrtSession(&session));
   // Invoke run on the ORT session.
-  Ort::ThrowOnError(OrtRun(
+  /*Ort::ThrowOnError(OrtRun(
       session,
       run_options,
       inputNames_c.data(),
@@ -231,7 +231,7 @@ LearningModelSession::Run(
       binding_impl->GetInputs().size(),
       outputNames_c.data(),
       binding_impl->GetOutputs().data(),
-      binding_impl->GetOutputs().size()));
+      binding_impl->GetOutputs().size()));*/
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.

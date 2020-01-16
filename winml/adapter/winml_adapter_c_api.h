@@ -83,7 +83,7 @@ struct WinmlAdapterApi {
   // OrtSessionOptions methods
   OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(_In_ OrtSessionOptions* options, int use_arena)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
-
+  
   // OrtSession methods
   OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* SessionGetExecutionProvidersCount)(_In_ OrtSession* session, _Out_ size_t* count)NO_EXCEPTION;

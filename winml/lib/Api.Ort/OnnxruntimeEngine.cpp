@@ -98,6 +98,14 @@ HRESULT OnnxruntimeEngine::Sync() {
   return S_OK;
 }
 
+HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* /*shape*/, size_t /*count*/, winml::TensorKind /*kind*/, _Out_ IValue** /*out*/) {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
+  return E_NOTIMPL;
+}
+
 // TODO supposedly this doesnt work if it is not static
 static std::shared_ptr<OnnxruntimeEnvironment> onnxruntime_environment_;
 
@@ -159,3 +167,82 @@ STDAPI CreateOnnxruntimeEngineFactory(_Out_ Windows::AI::MachineLearning::IEngin
   RETURN_IF_FAILED(onnxruntime_engine_factory.CopyTo(engine_factory));
   return S_OK;
 }
+
+/* add these implementation pieces into the right places into the onnxruntime value/engine api calls
+
+engine->CreateValue
+
+  Ort::Allocator dml_allocator(m_adapter.get(), nullptr);
+  WINML_THROW_IF_FAILED(m_adapter->GetProviderAllocator(provider, dml_allocator.put())); get from engine
+
+  // create the OrtValue as a tensor letting ort know that we own the data buffer
+  Ort::Value ort_tensor = Ort::Value::CreateTensor(
+      dml_allocator,
+      &(resourceMetadata.TensorDescriptor.sizes[0]),
+      sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
+      (resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32) ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+
+value->GetResource
+
+  void* pAllocatedResource = nullptr;
+  Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_tensor, &pAllocatedResource));
+
+  if (dml)
+      auto d3dResource =
+          adapter->GetD3D12ResourceFromAllocation(
+              spSession->GetExecutionProvider(),
+              allocated_resource);
+
+value->IsCpu()
+    //Ort::MemoryInfo memory_info(nullptr);
+    //m_adapter->GetValueMemoryInfo(ort_value, memory_info.put());
+
+    if (!strcmp(memory_info.Name(), onnxruntime::CPU) ||
+        memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUOutput ||
+        memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUInput) {
+  bool LearningModelBinding::IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind) {
+    if (ort_value.GetTypeInfo().GetONNXType() != ONNX_TYPE_MAP)
+      return false;
+
+    ONNXTensorElementDataType onnx_key_type;
+    ONNXTensorElementDataType onnx_value_type;
+
+    WINML_THROW_IF_FAILED(adapter_->GetMapType(ort_value, &onnx_key_type, &onnx_value_type));
+
+    if (onnx_key_type != GetONNXTensorElementDataType(key_kind))
+      return false;
+
+    if (onnx_value_type != GetONNXTensorElementDataType(value_kind))
+      return false;
+
+    return true;
+  };
+
+  bool LearningModelBinding::IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind) {
+    if (ort_value.GetTypeInfo().GetONNXType() != ONNX_TYPE_SEQUENCE)
+      return false;
+
+    ONNXTensorElementDataType onnx_key_type;
+    ONNXTensorElementDataType onnx_value_type;
+
+    WINML_THROW_IF_FAILED(adapter_->GetVectorMapType(ort_value, &onnx_key_type, &onnx_value_type));
+
+    if (onnx_key_type != GetONNXTensorElementDataType(key_kind))
+      return false;
+
+    if (onnx_value_type != GetONNXTensorElementDataType(value_kind))
+      return false;
+
+    return true;
+  };
+
+  bool LearningModelBinding::IsOfTensorType(const Ort::Value& ort_value, TensorKind kind) {
+    return ort_value.GetTensorTypeAndShapeInfo().GetElementType() == GetONNXTensorElementDataType(kind);
+  };
+
+  gettensorshape
+      uint32_t width = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[3]);
+  uint32_t height = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[2]);
+  uint32_t batchSize = static_cast<uint32_t>(ort_value.GetTensorTypeAndShapeInfo().GetShape()[0]);
+
+  */

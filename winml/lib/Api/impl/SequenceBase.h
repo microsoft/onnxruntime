@@ -192,16 +192,14 @@ struct SequenceBase : public winrt::implements<
     return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
   }
 
-  STDMETHOD(GetOrtValue)(
+  STDMETHOD(GetValue)(
       WinML::BindingContext& context,
-      OrtValue** ort_value,
-      OrtAllocator** ort_allocator) {
-    ORT_UNUSED_PARAMETER(ort_allocator);
+      IValue** out) {
     // TODO: Tensorized data should be cached so multiple bindings work more efficiently
 
     // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
     if (context.type == WinML::BindingType::kOutput) {
-      *ort_value = nullptr;
+      *out = nullptr;
       return S_OK;
     }
 
@@ -213,9 +211,9 @@ struct SequenceBase : public winrt::implements<
     for (auto it = lotus_data_->begin(); it != lotus_data_->end(); ++it) {
       // make a ort value for this map
       auto map = *it;
-      sequence_values.emplace_back(CreateOrtMap(map.first.data(), map.second.data(), map.first.size()));
+      //sequence_values.emplace_back(CreateOrtMap(map.first.data(), map.second.data(), map.first.size()));
     }
-    *ort_value = Ort::Value::CreateSequence(sequence_values).release();
+    //*ort_value = Ort::Value::CreateSequence(sequence_values).release();
     return S_OK;
 
     /*    winrt::com_ptr<winmla::IWinMLAdapter> adapter;
@@ -266,9 +264,10 @@ struct SequenceBase : public winrt::implements<
 
   STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
-      OrtValue* ort_value) {
+      IValue* out) {
+    ORT_UNUSED_PARAMETER(out);
     ORT_UNUSED_PARAMETER(context);
-    auto writable_vector = data_.as<wfc::IVector<T>>();
+    /*auto writable_vector = data_.as<wfc::IVector<T>>();
     writable_vector.Clear();
 
     Ort::AllocatorWithDefaultOptions allocator;
@@ -292,7 +291,7 @@ struct SequenceBase : public winrt::implements<
         std::move(std_map));
     
       writable_vector.Append(abi_map);
-    }
+    }*/
     return S_OK;
   }
 

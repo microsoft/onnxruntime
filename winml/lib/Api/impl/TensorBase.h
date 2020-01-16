@@ -207,9 +207,7 @@ struct TensorBase : TBase {
   }
 
   // ILotusValueProviderPrivate::GetOrtValue
-  STDMETHOD(GetOrtValue)
-  (WinML::BindingContext& context, OrtValue** ort_value, OrtAllocator** ort_allocator) {
-    ORT_UNUSED_PARAMETER(ort_allocator);
+  STDMETHOD(GetValue)(WinML::BindingContext& context, IValue** /*out*/) {
     RETURN_HR_IF_NULL_MSG(
         WINML_ERR_INVALID_BINDING,
         m_resources,
@@ -220,9 +218,9 @@ struct TensorBase : TBase {
     auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
     if (spDevice->IsCpuDevice()) {
-      *ort_value = CPUTensorize(context).release();
+      //*ort_value = CPUTensorize(context).release();
     } else {
-      *ort_value = GPUTensorize(context).release();
+      //*ort_value = GPUTensorize(context).release();
     }
 
     return S_OK;
@@ -242,56 +240,55 @@ struct TensorBase : TBase {
 
 
   // ILotusValueProviderPrivate::UpdateSourceResourceData
-  STDMETHOD(UpdateSourceResourceData)
-  (BindingContext& context, OrtValue* ort_value) {
+  STDMETHOD(UpdateSourceResourceData)(BindingContext& /*context*/, IValue* /*value*/) {
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
         m_resources,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
-    // get the mutable raw data buffer
-    void* pResource = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_value, &pResource));
+    //// get the mutable raw data buffer
+    //void* pResource = nullptr;
+    //Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_value, &pResource));
 
-    // get the shape
-    Ort::TensorTypeAndShapeInfo type_and_shape(nullptr);
-    Ort::ThrowOnError(Ort::GetApi().GetTensorTypeAndShape(ort_value, type_and_shape.put()));
-    shape_ = type_and_shape.GetShape();
+    //// get the shape
+    //Ort::TensorTypeAndShapeInfo type_and_shape(nullptr);
+    //Ort::ThrowOnError(Ort::GetApi().GetTensorTypeAndShape(ort_value, type_and_shape.put()));
+    //shape_ = type_and_shape.GetShape();
 
-    // make sure we always have a CPU resource
-    if (GetCpuResource() == nullptr) {
-      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), shape_);
-    }
+    //// make sure we always have a CPU resource
+    //if (GetCpuResource() == nullptr) {
+    //  GetCpuResource() = std::make_shared<WinML::Tensor<T>>(adapter_.get(), shape_);
+    //}
 
-    // get the memory info for the ort value
-    Ort::MemoryInfo memory_info(nullptr);
-    RETURN_IF_FAILED(adapter_->GetValueMemoryInfo(ort_value, memory_info.put()));
+    //// get the memory info for the ort value
+    //Ort::MemoryInfo memory_info(nullptr);
+    //RETURN_IF_FAILED(adapter_->GetValueMemoryInfo(ort_value, memory_info.put()));
 
-    // is it from the CPU provider?
-    if (!strcmp(memory_info.Name(), onnxruntime::CPU) ||
-        memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUOutput ||
-        memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUInput) {
-      // Get the data pointer and size
-      T* pData;
-      uint32_t pSize;
-      std::tie(pSize, pData) = GetCpuResource()->buffer();
+    //// is it from the CPU provider?
+    //if (!strcmp(memory_info.Name(), onnxruntime::CPU) ||
+    //    memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUOutput ||
+    //    memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUInput) {
+    //  // Get the data pointer and size
+    //  T* pData;
+    //  uint32_t pSize;
+    //  std::tie(pSize, pData) = GetCpuResource()->buffer();
 
-      if (pResource != reinterpret_cast<void*>(pData)) {
-        // Only copy the data if the source and destination are not the same!
-        // The engine provided buffer will not match the tensor buffer when
-        // the tensor is created as a placeholder output, or as an unbound output.
-        GetCpuResource()->set(static_cast<uint32_t>(ShapeSize(shape_)), reinterpret_cast<T*>(pResource));
-      }
-    } else {
-      // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
-      // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
-      // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
-      // and was updated in place.
-      auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-      auto cpuValue = GetCpuResource()->GetValue();
-      //auto engine = spSession->GetEngine();
-      //RETURN_IF_FAILED(adapter_->CopyTensor(spSession->GetExecutionProvider(), ort_value, cpuValue)); should be engine->CopyTensor();
-    }
+    //  if (pResource != reinterpret_cast<void*>(pData)) {
+    //    // Only copy the data if the source and destination are not the same!
+    //    // The engine provided buffer will not match the tensor buffer when
+    //    // the tensor is created as a placeholder output, or as an unbound output.
+    //    GetCpuResource()->set(static_cast<uint32_t>(ShapeSize(shape_)), reinterpret_cast<T*>(pResource));
+    //  }
+    //} else {
+    //  // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
+    //  // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
+    //  // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
+    //  // and was updated in place.
+    //  auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    //  auto cpuValue = GetCpuResource()->GetValue();
+    //  //auto engine = spSession->GetEngine();
+    //  //RETURN_IF_FAILED(adapter_->CopyTensor(spSession->GetExecutionProvider(), ort_value, cpuValue)); should be engine->CopyTensor();
+    //}
 
     return S_OK;
   }

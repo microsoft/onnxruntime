@@ -36,6 +36,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(ReleaseCompletedReferences)() override;
   STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest) override;
   STDMETHOD(Sync)() override;
+  STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) override;
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
