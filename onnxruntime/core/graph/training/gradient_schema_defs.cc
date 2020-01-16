@@ -284,21 +284,6 @@ void RegisterGradientSchemas() {
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DropoutGrad)
-      .SinceVersion(9)
-      .Input(0, "dY", "Gradient of output, Y", "T")
-      .Input(1, "mask", "Mask applied for dropout", "T")
-      .Output(0, "dX", "Gradient of input, X", "T")
-      .Attr(
-          "ratio",
-          "The ratio of random dropout",
-          AttributeProto::FLOAT,
-          0.5f)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.");
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherGrad)
       .SinceVersion(9)
       .Input(0, "shape", "Shape of the Gather input X.", "I")

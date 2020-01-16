@@ -51,35 +51,3 @@ Status Dropout::Compute(OpKernelContext* context) const {
 }
 
 }  // namespace onnxruntime
-
-namespace onnxruntime {
-namespace contrib {
-ONNX_CPU_OPERATOR_KERNEL(
-    DropoutGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
-    DropoutGrad);
-
-Status DropoutGrad::Compute(OpKernelContext* context) const {
-  const Tensor& dY = *context->Input<Tensor>(0);
-  const TensorShape& shape = dY.Shape();
-  Tensor& dX = *context->Output(0, shape);
-
-  if (!is_train_) {
-    auto data_type = dY.DataType();
-    const void* source = dY.DataRaw(data_type);
-    void* target = dX.MutableDataRaw(data_type);
-    if (target != source) {
-      //If source and target pointers are not equal, we need to copy the data.
-      memcpy(target, source, shape.Size() * data_type->Size());
-    }
-  } else {
-    const Tensor& mask = *context->Input<Tensor>(1);
-    float scale = 1.0f / keep_prob_;
-    EigenMap<float>(dX) = scale * EigenMap<float>(dY).cwiseProduct(EigenMap<bool>(mask).cast<float>());
-  }
-
-  return Status::OK();
-}
-}  // namespace contrib
-}  // namespace onnxruntime

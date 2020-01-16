@@ -35,28 +35,3 @@ class Dropout final : public OpKernel {
   float keep_prob_;
 };
 }  // namespace onnxruntime
-
-namespace onnxruntime {
-namespace contrib {
-class DropoutGrad final : public OpKernel {
- public:
-  DropoutGrad(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr<float>("ratio", &ratio_).IsOK());
-    keep_prob_ = 1.0f - ratio_;
-
-    // TODO: enable following when is_train is present
-    /*int64_t is_train = 1;
-        ORT_ENFORCE(info.GetAttr("is_train", &is_train).IsOK());
-        is_train_ = (is_train == 1);*/
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- private:
-  bool is_train_ = false;
-  float ratio_;
-  float keep_prob_;
-};
-
-}  // namespace contrib
-}  // namespace onnxruntime

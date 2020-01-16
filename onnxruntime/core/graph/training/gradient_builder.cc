@@ -484,28 +484,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
               SrcNodeAttributes())};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
-  // TODO: Add is_test to Dropout Op Schema
-  std::vector<NodeDef> result;
-  auto mask = O(1);
-
-  // TODO: In latter version, when the mask type is enforced to tensor(float),
-  // this conversion might not be needed anymore
-  if (mask.type_proto->tensor_type().elem_type() != TensorProto_DataType_FLOAT) {
-    mask = IA("f_mask");
-    result.push_back(
-        NodeDef("Cast",
-                {O(1)},
-                {mask},
-                {MakeAttribute("to", int64_t(TensorProto_DataType_FLOAT))}));
-  }
-  result.push_back(
-      NodeDef("DropoutGrad",
-              {GO(0), mask},
-              {GI(0)}));
-  return result;
-}
-
 IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
   return std::vector<NodeDef>{
       NodeDef("TrainableDropoutGrad",
