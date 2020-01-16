@@ -152,10 +152,11 @@ using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
 class IAllocator {
  public:
+  IAllocator(const OrtMemoryInfo& info) : memory_info_(info) {}
   virtual ~IAllocator() = default;
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
-  virtual const OrtMemoryInfo& Info() const = 0;
+  const OrtMemoryInfo& Info() const { return memory_info_; };
 
   /**
      optional CreateFence interface, as provider like DML has its own fence
@@ -168,7 +169,7 @@ class IAllocator {
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html
-   * \tparam alignment must be power of 2
+   * \param alignment must be power of 2
    * \param nmemb
    * \param size
    * \param out
@@ -223,8 +224,13 @@ class IAllocator {
 
     return IAllocatorUniquePtr<T>{
         static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
-        [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
+        [=](T* ptr) {                                   // capture 'allocator' by value so it's always valid
+          allocator->Free(ptr);
+        }};
   }
+
+ private:
+  OrtMemoryInfo memory_info_;
 };
 
 template <size_t alignment>
@@ -258,50 +264,30 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 */
 class IDeviceAllocator : public IAllocator {
  public:
+  IDeviceAllocator(const OrtMemoryInfo& info) : IAllocator(info) {}
   ~IDeviceAllocator() override = default;
   void* Alloc(size_t size) override = 0;
   void Free(void* p) override = 0;
-  const OrtMemoryInfo& Info() const override = 0;
-  virtual bool AllowsArena() const { return true; }
 };
 
 class CPUAllocator : public IDeviceAllocator {
  public:
-  explicit CPUAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
-    ORT_ENFORCE(nullptr != memory_info);
-    memory_info_ = std::move(memory_info);
-  }
+  explicit CPUAllocator(const OrtMemoryInfo& memory_info) : IDeviceAllocator(memory_info) {}
 
-  CPUAllocator() {
-    memory_info_ = onnxruntime::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
-  }
+  CPUAllocator() : IDeviceAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  const OrtMemoryInfo& Info() const override;
-
- private:
-  std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
 #ifdef USE_MIMALLOC
 class MiMallocAllocator : public IDeviceAllocator {
  public:
-  explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
-    ORT_ENFORCE(nullptr != memory_info);
-    memory_info_ = std::move(memory_info);
-  }
-
-  MiMallocAllocator() {
-    memory_info_ = std::make_unique<OrtMemoryInfo>(CPU, OrtAllocatorType::OrtDeviceAllocator);
-  }
+  explicit MiMallocAllocator(const OrtMemoryInfo& memory_info) : IDeviceAllocator(memory_info) {}
+  MiMallocAllocator() : IDeviceAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  const OrtMemoryInfo& Info() const override;
-
- private:
-  std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
 #endif

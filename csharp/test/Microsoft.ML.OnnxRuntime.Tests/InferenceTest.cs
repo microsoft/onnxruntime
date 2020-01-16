@@ -37,6 +37,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.False(opt.EnableProfiling);
                 Assert.Equal("onnxruntime_profile_", opt.ProfileOutputPathPrefix);
                 Assert.True(opt.EnableCpuMemArena);
+                Assert.True(opt.EnableCudaMemArena);
                 Assert.Equal("", opt.LogId);
                 Assert.Equal(LogLevel.Verbose, opt.LogVerbosityLevel);
                 Assert.Equal(0, opt.IntraOpNumThreads);
@@ -59,6 +60,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.EnableCpuMemArena = false;
                 Assert.False(opt.EnableCpuMemArena);
+
+                opt.EnableCudaMemArena = false;
+                Assert.False(opt.EnableCudaMemArena);
 
                 opt.LogId = "MyLogId";
                 Assert.Equal("MyLogId", opt.LogId);

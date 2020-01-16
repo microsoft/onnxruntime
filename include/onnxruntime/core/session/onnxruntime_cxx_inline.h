@@ -203,6 +203,16 @@ inline SessionOptions& SessionOptions::DisableCpuMemArena() {
   return *this;
 }
 
+inline SessionOptions& SessionOptions::EnableCudaMemArena() {
+  ThrowOnError(Global<void>::api_.EnableCudaMemArena(p_));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::DisableCudaMemArena() {
+  ThrowOnError(Global<void>::api_.DisableCudaMemArena(p_));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::SetExecutionMode(ExecutionMode execution_mode) {
   ThrowOnError(Global<void>::api_.SetSessionExecutionMode(p_, execution_mode));
   return *this;

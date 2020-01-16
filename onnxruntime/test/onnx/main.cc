@@ -88,6 +88,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   std::vector<std::basic_string<PATH_CHAR_TYPE> > whitelisted_test_cases;
   int concurrent_session_runs = GetNumCpuCores();
   bool enable_cpu_mem_arena = true;
+  bool enable_cuda_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   int repeat_count = 1;
   int p_models = GetNumCpuCores();
@@ -109,10 +110,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("ABc:hj:Mn:r:e:xvo:d:"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
+          break;
+        case 'B':
+          enable_cuda_mem_arena = false;
           break;
         case 'v':
           verbosity_option_count += 1;
@@ -264,10 +268,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.EnableCpuMemArena();
     else
       sf.DisableCpuMemArena();
+
+    if (enable_cuda_mem_arena)
+      sf.EnableCudaMemArena();
+    else
+      sf.DisableCudaMemArena();
+
     if (enable_mem_pattern)
       sf.EnableMemPattern();
     else
       sf.DisableMemPattern();
+
     sf.SetExecutionMode(execution_mode);
 
     if (enable_tensorrt) {
@@ -459,7 +470,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
     broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
     broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
     broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});

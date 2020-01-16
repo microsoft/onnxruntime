@@ -24,6 +24,7 @@
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -174,7 +175,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   LoadInferenceSessionFromModel(session, *model);
   CUDAExecutionProviderInfo xp_info;
   session.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info));
-  ASSERT_TRUE(session.Initialize().IsOK());
+  ASSERT_STATUS_OK(session.Initialize());
 
   vector<OrtValue> outputs;
   session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs);

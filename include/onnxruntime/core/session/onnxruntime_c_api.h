@@ -296,11 +296,17 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* EnableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
-  // Enable the memory arena on CPU
+  // Enable a memory arena for CPU allocations.
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
   OrtStatus*(ORT_API_CALL* EnableCpuMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* DisableCpuMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+
+  // Enable a memory arena for CUDA allocations.
+  // Arena may pre-allocate memory for future usage.
+  // set this option to false if you don't want it.
+  OrtStatus*(ORT_API_CALL* EnableCudaMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* DisableCudaMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
   // < logger id to use for session output
   OrtStatus*(ORT_API_CALL* SetSessionLogId)(_Inout_ OrtSessionOptions* options, const char* logid)NO_EXCEPTION;

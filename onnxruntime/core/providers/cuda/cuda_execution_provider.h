@@ -18,6 +18,8 @@ const int CPU_ALLOCATOR_DEVICE_ID = 0;
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   int device_id{0};
+  bool use_cuda_arena{true};
+  bool use_cpu_arena{true};
 };
 
 // Logical device representation.
@@ -50,35 +52,38 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void AddDeferredReleaseCPUPtr(void* p);
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     if (count_or_bytes == 0)
       return nullptr;
 
     return IAllocator::MakeUniquePtr<T>(GetAllocator(device_id_, OrtMemTypeDefault), count_or_bytes);
   }
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  virtual std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
 
  private:
   int device_id_;
+  bool use_cuda_arena_;
+  bool use_cpu_arena_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
   };
+
   std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
   class PerThreadContext final {
    public:
-    PerThreadContext(int device_id);
+    PerThreadContext(int device_id, bool use_cuda_arena);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {

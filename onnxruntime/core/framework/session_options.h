@@ -33,10 +33,15 @@ struct SessionOptions {
   // See class 'OrtValuePatternPlanner'.
   bool enable_mem_pattern = true;
 
-  // enable the memory arena on CPU
+  // enable a memory arena for CPU allocations.
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
   bool enable_cpu_mem_arena = true;
+
+  // enable a memory arena usage for CUDA allocations.
+  // Arena may pre-allocate memory for future usage.
+  // set this option to false if you don't want it.
+  bool enable_cuda_mem_arena = true;
 
   // the prefix of the profile file. The current time will be appended to the file name.
   std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_profile_");

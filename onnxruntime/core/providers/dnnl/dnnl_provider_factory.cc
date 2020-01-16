@@ -25,14 +25,13 @@ std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
   return onnxruntime::make_unique<DNNLExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int device_id) {
-  return std::make_shared<onnxruntime::DnnlProviderFactory>(device_id);
-  //TODO: This is apparently a bug. The consructor parameter is create-arena-flag, not the device-id
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(bool use_arena) {
+  return std::make_shared<onnxruntime::DnnlProviderFactory>(use_arena);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(bool(use_arena)));
   return nullptr;
 }

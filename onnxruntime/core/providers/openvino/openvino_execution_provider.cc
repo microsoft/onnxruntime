@@ -29,7 +29,13 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(OpenVINOExecutionProviderIn
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
 
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return onnxruntime::make_unique<CPUAllocator>(onnxruntime::make_unique<OrtMemoryInfo>(OPENVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(OPENVINO, OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -568,17 +574,16 @@ std::vector<std::unique_ptr<ComputeCapability>> OpenVINOExecutionProvider::GetCa
     const auto node = graph_viewer.GetNode(index);
 
     auto process_input_fn =
-      [&fused_inputs, &fused_outputs, &inner_inputs, &inner_outputs, &node](
-          const onnxruntime::NodeArg& input_def, size_t) {
-
-        const auto& name = input_def.Name();
-        if (fused_outputs.find(name) == fused_outputs.end()) {
-          fused_inputs.insert(name);
-        } else {
-          inner_outputs.insert(name);
-        }
-        return Status::OK();
-      };
+        [&fused_inputs, &fused_outputs, &inner_inputs, &inner_outputs, &node](
+            const onnxruntime::NodeArg& input_def, size_t) {
+          const auto& name = input_def.Name();
+          if (fused_outputs.find(name) == fused_outputs.end()) {
+            fused_inputs.insert(name);
+          } else {
+            inner_outputs.insert(name);
+          }
+          return Status::OK();
+        };
 
     // Track graph inputs (both explicit and implicit) and initializers
     node->ForEachWithIndex(node->InputDefs(), process_input_fn);

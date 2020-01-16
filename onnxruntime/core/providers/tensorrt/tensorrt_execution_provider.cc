@@ -85,13 +85,23 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, TRT); }, std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_);
+      {OrtMemTypeDefault,
+       [](int id) {
+         return onnxruntime::make_unique<CUDAAllocator>(id, TRT);
+       },
+       std::numeric_limits<size_t>::max()});
+  allocator_ = CreateAllocator(default_memory_info, device_id_, info.use_cuda_arena);
+
   InsertAllocator(allocator_);
 
   DeviceAllocatorRegistrationInfo pinned_allocator_info(
-      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
+      {OrtMemTypeCPUOutput,
+       [](int) {
+         return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED);
+       },
+       std::numeric_limits<size_t>::max()});
+
+  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_, info.use_cuda_arena));
 
   const char* batch_env = getenv("ORT_TENSORRT_MAX_PARTITION_ITERATIONS");
   if (batch_env)
@@ -163,7 +173,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Find inputs and outputs of the subgraph
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
-  std::unordered_map<const NodeArg *, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -229,7 +239,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
   // Sort inputs and outputs by the order they were added
-  std::multimap<int, const NodeArg *> inputs, outputs;
+  std::multimap<int, const NodeArg*> inputs, outputs;
   for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
     inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
@@ -289,7 +299,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-          std::vector<onnxruntime::NodeArg *> inputs, outputs;
+          std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
@@ -375,7 +385,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
   for (const auto& index : node_index) {
     const auto& node = graph.GetNode(index);
-    std::vector<onnxruntime::NodeArg *> inputs, outputs;
+    std::vector<onnxruntime::NodeArg*> inputs, outputs;
     for (auto input : node->InputDefs()) {
       auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&n_input);

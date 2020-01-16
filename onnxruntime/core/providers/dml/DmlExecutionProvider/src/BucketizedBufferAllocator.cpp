@@ -40,7 +40,9 @@ namespace Dml
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
         D3D12_RESOURCE_STATES initialState)
-        : m_device(device)
+        : onnxruntime::IAllocator(OrtMemoryInfo("DML allocator", OrtAllocatorType::OrtDeviceAllocator,
+                                                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)))
+        , m_device(device)
         , m_context(context)
         , m_heapProperties(heapProps)
         , m_heapFlags(heapFlags)
@@ -202,11 +204,6 @@ namespace Dml
         // The allocation info is already destructing at this point
     }
 
-    const ::OrtMemoryInfo& BucketizedBufferAllocator::Info() const
-    {
-        static const ::OrtMemoryInfo sc_info("DML allocator", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
-        return sc_info;
-    }
 
     const AllocationInfo* BucketizedBufferAllocator::DecodeDataHandle(const void* opaqueHandle)
     {
@@ -229,7 +226,11 @@ namespace Dml
     }
 
     CPUAllocator::CPUAllocator(OrtMemType memType)
-        : m_allocatorInfo("DML CPU", ::OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0), 0, memType)
+        : onnxruntime::IDeviceAllocator(
+              OrtMemoryInfo("DML CPU",
+                            OrtAllocatorType::OrtDeviceAllocator,
+                            OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                            0, memType)) 
     {
     }
 
@@ -245,11 +246,6 @@ namespace Dml
     void CPUAllocator::Free(void* p) {
         free(p);
     }
-
-    const ::OrtMemoryInfo& CPUAllocator::Info() const {
-        return m_allocatorInfo;
-    }
-
 
 
 } // namespace Dml

@@ -16,10 +16,6 @@ namespace Dml
 
         void* Alloc(size_t size) override;
         void Free(void* p) override;
-        const ::OrtMemoryInfo& Info() const override;
-
-    private:
-        OrtMemoryInfo m_allocatorInfo;
     };
 
     class BucketizedBufferAllocator;
@@ -111,7 +107,6 @@ namespace Dml
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
         void Free(void* p) final;
-        const ::OrtMemoryInfo& Info() const final;
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB

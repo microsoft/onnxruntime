@@ -48,6 +48,8 @@ ORT_API_STATUS_IMPL(EnableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(EnableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisableCpuMemArena, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(EnableCudaMemArena, _In_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(DisableCudaMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(SetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);
 ORT_API_STATUS_IMPL(SetSessionLogVerbosityLevel, _In_ OrtSessionOptions* options, int session_log_verbosity_level);
 ORT_API_STATUS_IMPL(SetSessionLogSeverityLevel, _In_ OrtSessionOptions* options, int session_log_severity_level);

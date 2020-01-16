@@ -24,13 +24,13 @@ std::unique_ptr<IExecutionProvider> ACLProviderFactory::CreateProvider() {
   return std::make_unique<ACLExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena) {
-  return std::make_shared<onnxruntime::ACLProviderFactory>(use_arena != 0);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool use_arena) {
+  return std::make_shared<onnxruntime::ACLProviderFactory>(use_arena);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ACL, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ACL(use_arena));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ACL(bool(use_arena)));
   return nullptr;
 }

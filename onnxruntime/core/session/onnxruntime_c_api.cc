@@ -1356,6 +1356,8 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::DisableMemPattern,
     &OrtApis::EnableCpuMemArena,
     &OrtApis::DisableCpuMemArena,
+    &OrtApis::EnableCudaMemArena,
+    &OrtApis::DisableCudaMemArena,
     &OrtApis::SetSessionLogId,
     &OrtApis::SetSessionLogVerbosityLevel,
     &OrtApis::SetSessionLogSeverityLevel,

@@ -52,7 +52,7 @@ namespace perftest {
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:AMPvhs"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:o:u:ABMPvhs"))) != -1) {
     switch (ch) {
       case 'm':
         if (!CompareCString(optarg, ORT_TSTR("duration"))) {
@@ -74,6 +74,9 @@ namespace perftest {
         break;
       case 'A':
         test_config.run_config.enable_cpu_mem_arena = false;
+        break;
+      case 'B':
+        test_config.run_config.enable_cuda_mem_arena = false;
         break;
       case 'e':
         if (!CompareCString(optarg, ORT_TSTR("cpu"))) {

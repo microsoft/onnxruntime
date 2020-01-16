@@ -147,11 +147,11 @@ class DNNLExecutionProvider : public IExecutionProvider {
   }
 
   void CreateOrUpdateDnnlNode(const Node* node,
-                                std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
-                                ort_dnnl::Subgraph::SubgraphVariables& sub_var,
-                                bool fused,
-                                std::map<std::string, size_t>& output_to_source_node_map,
-                                NodeAttributes& subgraph_attributes) const;
+                              std::shared_ptr<ort_dnnl::Subgraph>& subgraph_ptr,
+                              ort_dnnl::Subgraph::SubgraphVariables& sub_var,
+                              bool fused,
+                              std::map<std::string, size_t>& output_to_source_node_map,
+                              NodeAttributes& subgraph_attributes) const;
 
   // Create Dnnl node, update inputs, outputs and parent nodes
   // collect attribtes
@@ -171,7 +171,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
   // supported Dnnl Operators
   std::set<std::string> dnnl_ops_ = {"Conv", "BatchNormalization", "Relu", "Sum",
-                                       "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
+                                     "AveragePool", "GlobalMaxPool", "GlobalAveragePool", "MaxPool", "LRN"};
 
   mutable std::unordered_map<std::string, std::shared_ptr<ort_dnnl::Subgraph>> mkl_subgraphs_;
 };

@@ -8,16 +8,16 @@
 
 namespace onnxruntime {
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(bool use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id, bool use_cuda_arena, bool use_cpu_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(bool use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id, bool use_cuda_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool use_arena);
 
 namespace test {
 
@@ -25,10 +25,11 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
   return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
 }
 
-std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider(bool enable_cuda_arena) {
 #ifdef USE_TENSORRT
-  return CreateExecutionProviderFactory_Tensorrt(0)->CreateProvider();
+  return CreateExecutionProviderFactory_Tensorrt(0, enable_cuda_arena)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(enable_cuda_arena);
   return nullptr;
 #endif
 }
@@ -41,17 +42,19 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider(bool enable_cuda_arena, bool enable_cpu_arena) {
 #ifdef USE_CUDA
-  return CreateExecutionProviderFactory_CUDA(0)->CreateProvider();
+  return CreateExecutionProviderFactory_CUDA(0, enable_cuda_arena, enable_cpu_arena)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(enable_cuda_arena);
+  ORT_UNUSED_PARAMETER(enable_cpu_arena);
   return nullptr;
 #endif
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
 #ifdef USE_DNNL
-  return CreateExecutionProviderFactory_Dnnl(enable_arena ? 1 : 0)->CreateProvider();
+  return CreateExecutionProviderFactory_Dnnl(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;

@@ -109,10 +109,10 @@ std::string nuphar_settings;
 #endif
 
 namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(bool use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id, bool use_cuda_arena, bool use_cpu_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id, bool use_cuda_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(bool use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
@@ -263,8 +263,9 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kNupharExecutionProvider,
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider,
+                                                   kDnnlExecutionProvider, kNGraphExecutionProvider,
+                                                   kOpenVINOExecutionProvider, kNupharExecutionProvider,
                                                    kBrainSliceExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
@@ -302,19 +303,27 @@ const std::vector<std::string>& GetAvailableProviders() {
 void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types) {
   for (const std::string& type : provider_types) {
     if (type == kCpuExecutionProvider) {
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_CPU(sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
+      RegisterExecutionProvider(
+          sess,
+          *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0, sess->GetSessionOptions().enable_cuda_mem_arena));
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      // device id??
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+      // TODO: Do we need a way to be able to specify the device id?
+      RegisterExecutionProvider(
+          sess,
+          *onnxruntime::CreateExecutionProviderFactory_CUDA(0,
+                                                            sess->GetSessionOptions().enable_cuda_mem_arena,
+                                                            sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_Dnnl(sess->GetSessionOptions().enable_cpu_mem_arena));
 #endif
     } else if (type == kNGraphExecutionProvider) {
 #if USE_NGRAPH
@@ -326,12 +335,14 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kNupharExecutionProvider) {
 #if USE_NUPHAR
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_Nuphar(true, nuphar_settings.c_str()));
       nuphar_settings.clear();  // clear nuphar_settings after use to avoid it being accidentally passed on to next session
 #endif
     } else if (type == kBrainSliceExecutionProvider) {
 #ifdef USE_BRAINSLICE
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_BrainSlice(0, -1, -1, false, "", "", ""));
 #endif
     } else {
       // unknown provider
@@ -402,12 +413,12 @@ void addGlobalMethods(py::module& m) {
                 /*default_max_vlog_level*/ -1);
 
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
-            onnxruntime::CreateExecutionProviderFactory_CPU(0),
+            onnxruntime::CreateExecutionProviderFactory_CPU(true),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(0),
+            onnxruntime::CreateExecutionProviderFactory_CUDA(0, true, true),
 #endif
 #ifdef USE_DNNL
-            onnxruntime::CreateExecutionProviderFactory_Dnnl(1),
+            onnxruntime::CreateExecutionProviderFactory_Dnnl(true),
 #endif
 #ifdef USE_NGRAPH
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
@@ -416,7 +427,7 @@ void addGlobalMethods(py::module& m) {
             onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
 #endif
 #ifdef USE_TENSORRT
-            onnxruntime::CreateExecutionProviderFactory_Tensorrt(0)
+            onnxruntime::CreateExecutionProviderFactory_Tensorrt(0, true)
 #endif
         };
 
@@ -562,7 +573,10 @@ void addObjectMethods(py::module& m) {
   sess
       .def(py::init())
       .def_readwrite("enable_cpu_mem_arena", &SessionOptions::enable_cpu_mem_arena,
-                     R"pbdoc(Enables the memory arena on CPU. Arena may pre-allocate memory for future usage.
+                     R"pbdoc(Enables a memory arena for CPU allocations. Arena may pre-allocate memory for future usage.
+Set this option to false if you don't want it. Default is True.)pbdoc")
+      .def_readwrite("enable_cuda_mem_arena", &SessionOptions::enable_cuda_mem_arena,
+                     R"pbdoc(Enables a memory arena for CUDA allocations. Arena may pre-allocate memory for future usage.
 Set this option to false if you don't want it. Default is True.)pbdoc")
       .def_readwrite("enable_profiling", &SessionOptions::enable_profiling,
                      R"pbdoc(Enable profiling for this session. Default is false.)pbdoc")

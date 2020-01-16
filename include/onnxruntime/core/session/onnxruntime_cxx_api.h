@@ -53,7 +53,6 @@ template <typename T>
 const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
-
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
 inline const OrtApi& GetApi() { return Global<void>::api_; }
 
@@ -82,7 +81,7 @@ struct Base {
   ~Base() { OrtRelease(p_); }
 
   operator T*() { return p_; }
-  operator const T*() const { return p_; }
+  operator const T *() const { return p_; }
 
   T* release() {
     T* p = p_;
@@ -170,6 +169,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& EnableCpuMemArena();
   SessionOptions& DisableCpuMemArena();
+
+  SessionOptions& EnableCudaMemArena();
+  SessionOptions& DisableCudaMemArena();
 
   SessionOptions& SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_file);
 
@@ -274,7 +276,7 @@ struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
   operator OrtAllocator*() { return p_; }
-  operator const OrtAllocator*() const { return p_; }
+  operator const OrtAllocator *() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);

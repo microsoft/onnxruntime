@@ -82,7 +82,7 @@ ORT_API_STATUS_IMPL(OrtApis::DisableMemPattern, _In_ OrtSessionOptions* options)
   return nullptr;
 }
 
-// enable the memory arena on CPU
+// enable a memory arena for CPU allocations.
 // Arena may pre-allocate memory for future usage.
 // set this option to false if you don't want it.
 ORT_API_STATUS_IMPL(OrtApis::EnableCpuMemArena, _In_ OrtSessionOptions* options) {
@@ -92,6 +92,19 @@ ORT_API_STATUS_IMPL(OrtApis::EnableCpuMemArena, _In_ OrtSessionOptions* options)
 
 ORT_API_STATUS_IMPL(OrtApis::DisableCpuMemArena, _In_ OrtSessionOptions* options) {
   options->value.enable_cpu_mem_arena = false;
+  return nullptr;
+}
+
+// enable a memory arena for CUDA allocations.
+// Arena may pre-allocate memory for future usage.
+// set this option to false if you don't want it.
+ORT_API_STATUS_IMPL(OrtApis::EnableCudaMemArena, _In_ OrtSessionOptions* options) {
+  options->value.enable_cuda_mem_arena = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DisableCudaMemArena, _In_ OrtSessionOptions* options) {
+  options->value.enable_cuda_mem_arena = false;
   return nullptr;
 }
 

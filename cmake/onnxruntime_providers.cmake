@@ -13,18 +13,6 @@ file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
-file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
-)
-
-file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
-)
-
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
@@ -118,6 +106,10 @@ set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
 if (onnxruntime_USE_CUDA)
+  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_inc CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/cuda/*.h"
+  )
+
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
@@ -126,14 +118,28 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
+
+  file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda_contrib_kernels.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
+  )
+
+  file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_INCLUDE_DIR} PREFIX include FILES ${onnxruntime_providers_cuda_cc_inc})
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
 
   # disable contrib ops conditionally
   if(onnxruntime_DISABLE_CONTRIB_OPS)
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_inc} ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   else()
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_inc} ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   endif()
 
   if (UNIX)

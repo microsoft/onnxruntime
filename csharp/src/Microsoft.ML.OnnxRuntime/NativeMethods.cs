@@ -37,6 +37,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr DisableMemPattern;
         public IntPtr EnableCpuMemArena;
         public IntPtr DisableCpuMemArena;
+        public IntPtr EnableCudaMemArena;
+        public IntPtr DisableCudaMemArena;
         public IntPtr SetSessionLogId;
         public IntPtr SetSessionLogVerbosityLevel;
         public IntPtr SetSessionLogSeverityLevel;
@@ -179,6 +181,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtDisableMemPattern = (DOrtDisableMemPattern)Marshal.GetDelegateForFunctionPointer(api_.DisableMemPattern, typeof(DOrtDisableMemPattern));
             OrtEnableCpuMemArena = (DOrtEnableCpuMemArena)Marshal.GetDelegateForFunctionPointer(api_.EnableCpuMemArena, typeof(DOrtEnableCpuMemArena));
             OrtDisableCpuMemArena = (DOrtDisableCpuMemArena)Marshal.GetDelegateForFunctionPointer(api_.DisableCpuMemArena, typeof(DOrtDisableCpuMemArena));
+            OrtEnableCudaMemArena = (DOrtEnableCudaMemArena)Marshal.GetDelegateForFunctionPointer(api_.EnableCudaMemArena, typeof(DOrtEnableCudaMemArena));
+            OrtDisableCudaMemArena = (DOrtDisableCudaMemArena)Marshal.GetDelegateForFunctionPointer(api_.DisableCudaMemArena, typeof(DOrtDisableCudaMemArena));
             OrtSetSessionLogId = (DOrtSetSessionLogId)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogId, typeof(DOrtSetSessionLogId));
             OrtSetSessionLogVerbosityLevel = (DOrtSetSessionLogVerbosityLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogVerbosityLevel, typeof(DOrtSetSessionLogVerbosityLevel));
             OrtSetSessionLogSeverityLevel = (DOrtSetSessionLogSeverityLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionLogSeverityLevel, typeof(DOrtSetSessionLogSeverityLevel));
@@ -385,6 +389,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableCpuMemArena(IntPtr /* OrtSessionOptions* */ options);
         public static DOrtDisableCpuMemArena OrtDisableCpuMemArena;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableCudaMemArena(IntPtr /* OrtSessionOptions* */ options);
+        public static DOrtEnableCudaMemArena OrtEnableCudaMemArena;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableCudaMemArena(IntPtr /* OrtSessionOptions* */ options);
+        public static DOrtDisableCudaMemArena OrtDisableCudaMemArena;
 
         public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, string logId);
         public static DOrtSetSessionLogId OrtSetSessionLogId;
