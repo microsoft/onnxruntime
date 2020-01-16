@@ -1,10 +1,10 @@
 #include "testPch.h"
-#include "APITest.h"
-#include "LearningModelSessionAPITest.h"
-#include "winrt/Windows.Storage.h"
 
-#include "DeviceHelpers.h"
+#include "APITest.h"
+#include "CommonDeviceHelpers.h"
+#include "LearningModelSessionAPITest.h"
 #include "protobufHelpers.h"
+#include "winrt/Windows.Storage.h"
 
 #include <D3d11_4.h>
 #include <dxgi1_6.h>
@@ -231,7 +231,7 @@ static LearningModelSession CreateSession(LearningModel model)
     WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
 
     LearningModelSession session(nullptr);
-    if (DeviceHelpers::IsFloat16Supported(device))
+    if (CommonDeviceHelpers::IsFloat16Supported(device))
     {
         WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
     }

@@ -15,20 +15,21 @@
 #ifdef GetCurrentTime
 #undef GetCurrentTime
 #endif
+#include "CommonDeviceHelpers.h"
 #include "CustomOperatorProvider.h"
-#include "DeviceHelpers.h"
 #include "filehelpers.h"
 #include "robuffer.h"
+#include "scenariotestscppwinrt.h"
 #include "Windows.AI.MachineLearning.Native.h"
 #include "Windows.Graphics.DirectX.Direct3D11.interop.h"
 #include "windows.ui.xaml.media.dxinterop.h"
 #include "winrt/Windows.UI.Xaml.Controls.h"
 #include "winrt/Windows.UI.Xaml.Media.Imaging.h"
+
 #include <d2d1.h>
 #include <d3d11.h>
 #include <initguid.h>
 #include <MemoryBuffer.h>
-#include "scenariotestscppwinrt.h"
 #include <iostream>
 #if __has_include("dxcore.h")
 #define ENABLE_DXCORE 1
@@ -408,8 +409,8 @@ static void Scenario8SetDeviceSampleCustomCommandQueue() {
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
 
   com_ptr<ID3D12Device> pD3D12Device = nullptr;
-  DeviceHelpers::AdapterEnumerationSupport support;
-  if (FAILED(DeviceHelpers::GetAdapterEnumerationSupport(&support))) {
+  CommonDeviceHelpers::AdapterEnumerationSupport support;
+  if (FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support))) {
     WINML_LOG_ERROR("Unable to load DXGI or DXCore");
     return;
   }
@@ -696,7 +697,7 @@ static void Scenario17DevDiagnostics() {
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
 }
 
-/** 
+/**
  * Custom Operator Tests are labeled as GPU tests because the DML code is interlaced with the custom op code
  * even though CPU custom ops shouldn't be dependent on GPU functionality.
  * These should be reclassed to ScenarioCppWinrt once the DML code is decoupled from the custom op code.
@@ -1242,8 +1243,8 @@ static void ReuseVideoFrame() {
 
   std::vector<LearningModelDeviceKind> deviceKinds = {LearningModelDeviceKind::Cpu, LearningModelDeviceKind::DirectX};
   std::vector<std::string> videoFrameSources;
-  DeviceHelpers::AdapterEnumerationSupport support;
-  DeviceHelpers::GetAdapterEnumerationSupport(&support);
+  CommonDeviceHelpers::AdapterEnumerationSupport support;
+  CommonDeviceHelpers::GetAdapterEnumerationSupport(&support);
   if (support.has_dxgi) {
     videoFrameSources = {"SoftwareBitmap", "Direct3DSurface"};
   } else {
