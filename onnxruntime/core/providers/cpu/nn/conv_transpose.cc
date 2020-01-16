@@ -16,7 +16,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv_transpose.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -42,7 +41,7 @@ Status ConvTranspose<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   ConvTransposeAttributes::Prepare p;
@@ -87,7 +86,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
             Xdata + group_id * X_offset,
             0,
             col_buffer_data,
-            tp);
+            thread_pool);
 
         // Col2im
         math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
@@ -136,7 +135,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
             Xdata + group_id * X_offset,
             0,
             col_buffer_data,
-            tp);
+            thread_pool);
 
         // Col2im
         math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
@@ -155,7 +154,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       }
 
       if (p.B != nullptr) {
-        
+
         auto Ymatrix = EigenMatrixMap<T>(Ydata, output_size, p.num_output_channels);
         auto Bvec = ConstEigenVectorMap<T>(p.B->template Data<T>(), p.num_output_channels);
         Ymatrix.rowwise() += Bvec.transpose();
