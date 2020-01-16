@@ -41,6 +41,5 @@ onnxprofile_profile_test_*.json
 /csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.props
 cmake/external/FeaturizersLibrary/
 # Java specific ignores
-java/src/main/native/ai_onnxruntime_*.h
 java/.gradle
 

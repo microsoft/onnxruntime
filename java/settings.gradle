@@ -1,3 +1,2 @@
-rootProject.name = 'runtime-core'
-include "runtime"
-include "runtime-gpu"
+rootProject.name = 'onnxruntime'
+//include "runtime"

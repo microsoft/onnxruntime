@@ -1,124 +1,94 @@
 plugins {
-    id 'maven-publish'
-    id 'signing'
-}
-
-def getClassifiers(theProject) {
-	def files =  fileTree("${theProject.buildDir}/jni-output")
-	def classifiers = []
-	files.visit { FileVisitDetails fd ->
-		if (fd.directory && !fd.path.contains("/")) {
-			classifiers << fd.name
-		}
-	}
-	return classifiers;
+    id 'java'
 }
 
 allprojects {
-	apply plugin: 'java'
-	apply plugin: 'maven-publish'
-
-	def classifiers = getClassifiers(project)	
-	classifiers.each { theClassifier ->
-		tasks.register("jar${theClassifier}", Jar) {
-		    classifier = theClassifier
-		 	from "${project.buildDir}/jni-output/${theClassifier}"
-		}
-		tasks.jar.dependsOn tasks["jar${theClassifier}"]
-	}
-	
-	group = 'ai.onnxruntime'
-	version = '1.1.0'
-	publishing {
-	    publications {
-	        mavenJava(MavenPublication) {
-	            artifactId = project.name
-				if (project.name == 'runtime-core') {
-	         	   from components.java
-				}
-				classifiers.each {
-					artifact tasks["jar${it}"]
-				}
-	            pom {
-	                name = 'onnxruntime'
-	                description = 'Cross-platform evaluator of ONNX models.'
-	                url = 'https://microsoft.github.io/onnxruntime/'
-	                licenses {
-	                    license {
-	                        name = 'MIT License'
-	                        url = 'https://opensource.org/licenses/MIT'
-	                    }
-	                }
-	                scm {
-	                    connection = 'scm:git:git://github.com/microsoft/onnxruntime.git'
-	                    developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
-	                    url = 'https://github.com/microsoft/onnxruntime'
-	                }
-	            }
-	        }
-	    }
-	    repositories {
-	        maven {
-	            // change URLs to point to your repos, e.g. http://my.org/repo
-	            def releasesRepoUrl = "${rootProject.buildDir}/repos/releases"
-	            def snapshotsRepoUrl = "${rootProject.buildDir}/repos/snapshots"
-	            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
-	        }
-	    }
-	}
-
-	/*signing {
-	    sign publishing.publications.mavenJava
-	}*/
-
-
-	javadoc {
-	    if(JavaVersion.current().isJava9Compatible()) {
-	        options.addBooleanOption('html5', true)
-	    }
-	}
-	
-}
-
-subprojects {
 	repositories {
 		mavenCentral()
 	}
+}
 
-	sourceSets.test {
-		// add test resource files
-		resources.srcDirs += [
-			"${rootProject.projectDir}/../csharp/testdata",
-			"${rootProject.projectDir}/../onnxruntime/test/testdata"
-		]
-		// cmake test runner may provide a build directory
-		def cmakeBuildDir = System.properties['cmakeBuildDir']
-		if(cmakeBuildDir != null) {
-			// look for built libraries and add them to our resources
-			def cmakeBuildDirFile = new File("$cmakeBuildDir/java-libs")
-			if(!cmakeBuildDirFile.exists()) {
-				throw new GradleException('The cmakeBuildDir does not exist.')
-			}
-			resources.srcDirs += [cmakeBuildDirFile.absolutePath]
-		}
-	}
-	
-	dependencies {
-		implementation project(':')
-	    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
-	    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
-		testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
-	}
+subprojects {
 
-	test {
-	    useJUnitPlatform()
-		testLogging {
-			events "passed", "skipped", "failed"
-		}
-	}
 }
 
 java {
     withJavadocJar()
     withSourcesJar()
+}
+
+def cmakeBuildDir = System.properties['cmakeBuildDir']
+
+compileJava {
+    options.compilerArgs += ["-h", "${projectDir}/src/main/native/"]
+}
+
+sourceSets.test {
+	// add compiled native libs and test resource files
+	resources.srcDirs += [
+		"${cmakeBuildDir}/java/native-lib",
+		"${cmakeBuildDir}/java/native-jnilib",
+		"${rootProject.projectDir}/../csharp/testdata",
+		"${rootProject.projectDir}/../onnxruntime/test/testdata"
+	]
+}
+
+task jniJar(type: Jar) {
+	classifier = 'jni'
+	from "${cmakeBuildDir}/java/native-jnilib"
+}
+
+task libJar(type: Jar) {
+	classifier = 'lib'
+	from "${cmakeBuildDir}/java/native-lib"
+}
+
+task jnilibJar(type: Jar) {
+	classifier = 'jnilib'
+	from "${cmakeBuildDir}/java/native-jnilib"
+	from "${cmakeBuildDir}/java/native-lib"
+}
+
+task allJar(type: Jar) {
+	classifier = 'all'
+	from sourceSets.main.output
+	from "${cmakeBuildDir}/java/native-jnilib"
+	from "${cmakeBuildDir}/java/native-lib"
+}
+
+task runBuild(type: Copy) {
+	from "${project.buildDir}"
+	include 'libs/**'
+	include 'docs/**'
+	into "${cmakeBuildDir}/java"
+}
+runBuild.dependsOn jar
+runBuild.dependsOn jniJar
+runBuild.dependsOn libJar
+runBuild.dependsOn jnilibJar
+runBuild.dependsOn allJar
+runBuild.dependsOn sourcesJar
+runBuild.dependsOn javadocJar
+runBuild.dependsOn javadoc
+
+
+task runCheck(type: Copy) {
+	from "${project.buildDir}"
+	include 'reports/**'
+	into "${cmakeBuildDir}/java"
+}
+runCheck.dependsOn check
+
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.1'
+	testImplementation 'com.google.protobuf:protobuf-java:3.10.0'
+}
+
+test {
+    useJUnitPlatform()
+	testLogging {
+		events "passed", "skipped", "failed"
+	}
 }

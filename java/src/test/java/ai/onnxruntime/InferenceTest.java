@@ -325,7 +325,6 @@ public class InferenceTest {
         List<String> props = Files.readAllLines(Paths.get(cwd, propertiesFile));
         String modelsRelDir = props.get(0).split("=")[1].trim();
         File modelsDir = Paths.get(cwd, "../../..", modelsRelDir, "models").toFile();
-		System.out.println(modelsDir);
         return modelsDir;
     }
 
@@ -755,11 +754,13 @@ public class InferenceTest {
     }
 
     @Test
-    public void testModelSerialization() throws OrtException {
+    public void testModelSerialization() throws OrtException, IOException {
         String cwd = System.getProperty("user.dir");
         Path squeezeNet = getResourcePath("/squeezenet.onnx");
         String modelPath = squeezeNet.toString();
-        String modelOutputPath = Paths.get(cwd, "optimized-squeezenet.onnx").toString();
+		File tmpFile = File.createTempFile("optimized-squeezenet", ".onnx");
+		String modelOutputPath = tmpFile.getAbsolutePath();
+		Assertions.assertEquals(0, tmpFile.length());
         try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
             // Set the optimized model file path to assert that no exception are thrown.
             SessionOptions options = new SessionOptions();
@@ -767,9 +768,11 @@ public class InferenceTest {
             options.setOptimizationLevel(OptLevel.BASIC_OPT);
             try (OrtSession session = env.createSession(modelPath, options)) {
                 Assertions.assertNotNull(session);
-                Assertions.assertTrue((new File(modelOutputPath)).exists());
+                Assertions.assertTrue(tmpFile.length() > 0);
             }
-        }
+        } finally {
+			tmpFile.delete();
+		}
     }
 
     @Test
