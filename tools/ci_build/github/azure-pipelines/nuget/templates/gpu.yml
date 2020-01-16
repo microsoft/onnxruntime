@@ -23,7 +23,6 @@ jobs:
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}    
     CudaVersion: '10.0'
-    ArtifactName: drop-nuget-cuda
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
