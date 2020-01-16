@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/collective/nccl_kernels.h"
+#include "nccl_kernels.h"
 
 namespace onnxruntime {
 namespace cuda {

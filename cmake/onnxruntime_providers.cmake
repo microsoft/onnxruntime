@@ -35,14 +35,33 @@ file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
 )
 
+file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/training_ops/cpu_training_kernels.h"
+  "${ONNXRUNTIME_ROOT}/training_ops/cpu_training_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/training_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/training_ops/cpu/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/training_ops/cuda_training_kernels.h"
+  "${ONNXRUNTIME_ROOT}/training_ops/cuda_training_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.h"
+  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.cu"
+  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.cuh"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
 
 if (NOT onnxruntime_USE_HOROVOD)
-  list(REMOVE_ITEM onnxruntime_providers_srcs
-  "${ONNXRUNTIME_ROOT}/core/providers/cpu/collective/horovod_kernels.cc"
+  list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
+  "${ONNXRUNTIME_ROOT}/training_ops/cpu/collective/horovod_kernels.cc"
   )
 endif()
 
@@ -98,6 +117,11 @@ if (onnxruntime_USE_AUTOML)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
+endif()
+
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto tensorboard protobuf::libprotobuf)
 
@@ -141,16 +165,16 @@ if (onnxruntime_USE_CUDA)
   )
 
   if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/horovod_kernels.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/ready_event.cc"
+    list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/horovod_kernels.cc"
+    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/ready_event.cc"
     )
   endif()
 
   if (NOT onnxruntime_USE_NCCL)
-    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/nccl_common.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/collective/nccl_kernels.cc"
+    list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/nccl_common.cc"
+    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/nccl_kernels.cc"
     )
   endif()
 
@@ -162,14 +186,21 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
-  if(onnxruntime_DISABLE_CONTRIB_OPS)
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
-  else()
-    add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs} ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   endif()
+
+  if (onnxruntime_ENABLE_TRAINING)
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
+  endif()
+
+  add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
 
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"

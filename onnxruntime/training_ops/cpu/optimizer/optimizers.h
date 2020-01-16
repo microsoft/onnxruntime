@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
+namespace contrib {
 
 template <typename T>
 class SGDOptimizer final : public OpKernel {
@@ -42,4 +43,5 @@ class ZeroGradient final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+}  // namespace contrib
 }  // namespace onnxruntime

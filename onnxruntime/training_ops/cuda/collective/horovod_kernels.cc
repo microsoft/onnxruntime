@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/collective/horovod_kernels.h"
-#include "core/providers/cuda/collective/ready_event.h"
+#include "horovod_kernels.h"
+#include "ready_event.h"
 #include "core/graph/training/horovod_adapters.h"
 #include <thread>
 

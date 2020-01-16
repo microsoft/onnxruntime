@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/controlflow/group.h"
+#include "group.h"
 
 namespace onnxruntime {
+namespace contrib {
 
 Status Group::Compute(OpKernelContext* context) const {
   Tensor& output = *context->Output(0, TensorShape({1}));
@@ -20,4 +21,5 @@ ONNX_CPU_OPERATOR_KERNEL(Group,
                              .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
                          Group);
 
+}  // namespace contrib
 }  // namespace onnxruntime

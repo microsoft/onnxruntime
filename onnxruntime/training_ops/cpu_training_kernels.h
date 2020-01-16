@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/kernel_registry.h"
 
 namespace onnxruntime {
-class Group final : public OpKernel {
- public:
-  Group(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const override;
-};
+namespace contrib {
+
+Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry);
+
+}  // namespace contrib
 }  // namespace onnxruntime

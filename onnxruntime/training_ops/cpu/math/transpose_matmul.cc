@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cpu/transpose_matmul.h"
+#include "transpose_matmul.h"
 
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cpu/math/matmul_helper.h"

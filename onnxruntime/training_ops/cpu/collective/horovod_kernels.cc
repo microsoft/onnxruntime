@@ -6,6 +6,7 @@
 #include <thread>
 
 namespace onnxruntime {
+namespace contrib {
 
 ONNX_CPU_OPERATOR_KERNEL(
     HorovodAllReduce,
@@ -90,4 +91,5 @@ Status HorovodBarrier::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+}  // namespace contrib
 }  // namespace onnxruntime

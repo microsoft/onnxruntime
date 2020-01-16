@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "softmax.h"
+
 #include "contrib_ops/cpu/reduction_type.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/reduction/reduction_functions.h"
+#include "core/providers/cuda/math/softmax.h"
 #include "softmaxcrossentropy_impl.h"
 
 namespace onnxruntime {

@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/math/optimizers.h"
+#include "optimizers.h"
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 
 namespace onnxruntime {
+namespace contrib {
 
 template <typename T>
 Status SGDOptimizer<T>::Compute(OpKernelContext* ctx) const {
@@ -124,4 +125,5 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),
     ZeroGradient<float>);
 
+}  // namespace contrib
 }  // namespace onnxruntime

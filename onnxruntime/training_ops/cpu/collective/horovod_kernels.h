@@ -6,8 +6,8 @@
 #include "core/providers/common.h"
 #include "core/framework/op_kernel.h"
 
-namespace onnxruntime
-{
+namespace onnxruntime {
+namespace contrib {
 
 class HorovodAllReduce final : public OpKernel {
 public:
@@ -26,4 +26,5 @@ class HorovodBarrier final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+}  // namespace contrib
 }  // namespace onnxruntime
