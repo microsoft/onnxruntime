@@ -99,8 +99,8 @@ jobs:
     displayName: 'Run End to End Test (C++ API) '
     timeoutInMinutes: 30
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: always()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'always'
 
   - template: ../../templates/clean-agent-build-directory-step.yml
