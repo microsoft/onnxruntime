@@ -67,6 +67,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) override;
 
   OrtSession* UseOrtSession();
+  bool IsDmlSession();
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

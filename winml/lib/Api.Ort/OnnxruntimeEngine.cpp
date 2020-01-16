@@ -74,8 +74,7 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
   OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider);
 
-  auto is_dml = false; // TODO figure out when an OrtSession is configured with dml
-  if (is_dml) {
+  if (engine_->IsDmlSession()) {
     winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
         reinterpret_cast<ID3D12Resource**>(resource));
   } 
@@ -259,6 +258,13 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml
 
 HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
   return E_NOTIMPL;
+}
+
+bool OnnxruntimeEngine::IsDmlSession() {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  size_t num_providers;
+  winml_adapter_api->SessionGetExecutionProvidersCount(session_.get(), &num_providers);
+  return num_providers == 2; // There should be a better way to validate that the session is configured as to use dml
 }
 
 // TODO supposedly this doesnt work if it is not static
