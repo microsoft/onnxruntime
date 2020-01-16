@@ -37,24 +37,3 @@ class Conv<float> : public OpKernel {
 };
 
 }  // namespace onnxruntime
-
-namespace onnxruntime {
-namespace contrib {
-
-template <typename T>
-class ConvGrad final : public OpKernel {
- public:
-  explicit ConvGrad(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
-  }
-
-  Status Compute(OpKernelContext* context) const override;
-
- protected:
-   ConvAttributes conv_attrs_;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvGrad);
-};
-
-}  // namespace contrib
-}  // namespace onnxruntime
