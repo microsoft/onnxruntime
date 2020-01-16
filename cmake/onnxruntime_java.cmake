@@ -12,7 +12,6 @@ include_directories(${JNI_INCLUDE_DIRS})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
-set(CMAKE_JAVA_COMPILE_FLAGS "-source" "1.8" "-target" "1.8" "-encoding" "UTF-8")
 if (onnxruntime_RUN_ONNX_TESTS)
   set(JAVA_DEPENDS onnxruntime ${test_data_target})
 else()
@@ -20,16 +19,15 @@ else()
 endif()
 
 # Specify the Java source files
-file(GLOB onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
+file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
 add_custom_target(onnxruntime4j SOURCES ${onnxruntime4j_src})
 
-# Specify the native sources (without the generated headers)
+# Specify the native sources
 file(GLOB onnxruntime4j_native_src 
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
-include_directories(${JAVA_ROOT}/build/jni-headers)
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
