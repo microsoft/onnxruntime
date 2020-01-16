@@ -77,9 +77,9 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
       
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
   nullptr, //OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ bool is_enabled)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext(onnxruntime::IExecutionProvider * dml_provider)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences(onnxruntime::IExecutionProvider* dml_provider)NO_EXCEPTION;
+  &winmla::DmlExecutionProviderFlushContext,
+  &winmla::DmlExecutionProviderTrimUploadHeap,
+  &winmla::DmlExecutionProviderReleaseCompletedReferences,
   
   nullptr, // OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void* dml_resource)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
