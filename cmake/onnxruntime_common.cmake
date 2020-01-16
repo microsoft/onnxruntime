@@ -44,22 +44,6 @@ else()
     endif()
 endif()
 
-if(CMAKE_GENERATOR_PLATFORM)
-    # Multi-platform generator
-    set(onnxruntime_target_platform ${CMAKE_GENERATOR_PLATFORM})
-else()
-    set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
-endif()
-if(onnxruntime_target_platform STREQUAL "ARM64")
-    set(onnxruntime_target_platform "ARM64")
-elseif(onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
-    set(onnxruntime_target_platform "ARM")
-elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
-    set(onnxruntime_target_platform "x64")
-elseif(onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "i386" OR onnxruntime_target_platform STREQUAL "i686")
-    set(onnxruntime_target_platform "x86")
-endif()
-
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )

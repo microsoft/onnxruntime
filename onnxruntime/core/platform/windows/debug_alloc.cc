@@ -232,8 +232,12 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     _snprintf_s(buffer, _TRUNCATE, "%d bytes of memory leaked in %d allocations", leaked_bytes, leak_count);
     string.append(buffer);
 
-    std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
-    if (!IsDebuggerPresent()) {
+    // If we're being actively debugged, show a message box to get the dev's attention
+    if (IsDebuggerPresent())
+      MessageBoxA(nullptr, string.c_str(), "Warning", MB_OK | MB_ICONWARNING);
+    else {
+      // If we're on the command line (like on a build machine), output to the console and exit(-1)
+      std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
       exit(-1);
     }
 

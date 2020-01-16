@@ -102,7 +102,7 @@ function(target_cppwinrt
         # Get directory
         get_filename_component(idl_source_directory ${file} DIRECTORY)
 
-        set(target_outputs ${CMAKE_CURRENT_BINARY_DIR}/${target_name})
+	set(target_outputs ${CMAKE_CURRENT_BINARY_DIR}/${target_name})
         convert_forward_slashes_to_back(${target_outputs}/comp output_dir_back_slash)
         convert_forward_slashes_to_back(${target_outputs}/temp temp_dir_back_slash)
         convert_forward_slashes_to_back(${target_outputs}/comp_generated generated_dir_back_slash)
@@ -126,53 +126,50 @@ function(target_cppwinrt
                 /tlb ${tlb_filename}
                 ${idl_file_forward_slash}
             COMMAND
-                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} -out ${generated_dir_back_slash} -verbose
+                    ${cppwinrt_exe} -in \"${winmd_filename}\" -comp \"${output_dir_back_slash}\" -ref \"${sdk_metadata_directory}\" -out \"${generated_dir_back_slash}\" -verbose
             COMMAND
                     # copy the generated component files into a temporary directory where headers exclusions will be applied
-                    xcopy ${output_dir_back_slash} ${temp_dir_back_slash}\\ /Y /D
+                    xcopy \"${output_dir_back_slash}\" \"${temp_dir_back_slash}\\\" /Y /D
             COMMAND
                     # for each file in the temp directory, ensure it is not in the exclusions list.
                     # if it is, then we need to delete it.
-                    cmd /C "@echo off \
-                    for /f %I in ('dir /b ${temp_dir_back_slash}') \
-                    do \
-                    ( \
-                        for /f %E in (${CPPWINRT_COMPONENT_EXCLUSION_LIST}) \
-                        do \
-                        ( \
-                            if %E == %I \
-                            ( \
-                                del ${temp_dir_back_slash}\\%I \
-                            ) \
-                        ) \
-                    )"
+                    for /f %%I in ('dir /b \"${temp_dir_back_slash}\"')
+                    do
+                    (
+                        for /f %%E in (${CPPWINRT_COMPONENT_EXCLUSION_LIST})
+                        do
+                        (
+                            if %%E == %%I
+                            (
+                                del \"${temp_dir_back_slash}\\%%I\"
+                            )
+                        )
+                    )
             COMMAND
                     # for each file in the temp directory, copy the file back into the source tree
                     # unless the file already exists
-                    cmd /C "@echo off \
-                    for /f %I in ('dir /b ${temp_dir_back_slash}') \
-                    do \
-                    ( \
-                        if not exist ${out_sources_folder}\\%I \
-                        ( \
-                            copy ${temp_dir_back_slash}\\%I ${out_sources_folder}\\%I \
-                        ) \
-                    )"
+                    for /f %%I in ('dir /b \"${temp_dir_back_slash}\"')
+                    do
+                    (
+                        if not exist \"${out_sources_folder}\\%%I\"
+                        (
+                            xcopy \"${temp_dir_back_slash}\\%%I\" \"${out_sources_folder}\\%%I\"
+                        )
+                    )
             COMMAND
                     # open the generated module.g.cpp and strip all the includes (lines) containing excluded headers
                     # write the new file out to module.g.excl.cpp.
-                    powershell -Command "& { \
-                        $exclusions = get-content '${CPPWINRT_COMPONENT_EXCLUSION_LIST}'; \
-                        (get-content '${module_g_cpp_back_slash}') \
-                        | where { \
-                            $str = $_; \
-                            $matches = ($exclusions | where { $str -match $_ }); \
-                            $matches.Length -eq 0 } \
-                        | Out-File '${module_g_ecxl_cpp_back_slash}' \
-                    }"
+                    powershell -Command \"& {
+                        $exclusions = get-content '${CPPWINRT_COMPONENT_EXCLUSION_LIST}'\;
+                        (get-content '${module_g_cpp_back_slash}')
+                        | where {
+                            $str = $_\;
+                            $matches = ($exclusions | where { $str -match $_ }) \;
+                            $matches.Length -eq 0 }
+                        | Out-File '${module_g_ecxl_cpp_back_slash}'
+                    }\"
             BYPRODUCTS
                     ${generated_dir_back_slash}/module.g.excl.cpp
-            VERBATIM
         )
 
         add_custom_target(
