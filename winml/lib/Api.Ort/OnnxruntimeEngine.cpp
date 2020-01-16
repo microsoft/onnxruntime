@@ -34,12 +34,18 @@ ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
   }
 }
 
-OnnxruntimeValue::OnnxruntimeValue() : value_(nullptr, nullptr) {}
+OnnxruntimeValue::OnnxruntimeValue() : value_(nullptr, nullptr), allocator_(nullptr, nullptr) {}
 
-HRESULT OnnxruntimeValue::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& ort_value) {
+OnnxruntimeValue::~OnnxruntimeValue() {
+  value_.release();
+  allocator_.release();
+}
+
+HRESULT OnnxruntimeValue::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& ort_value, UniqueOrtAllocator&& allocator) {
   engine_factory_ = engine_factory;
   engine_ = engine;
   value_ = std::move(ort_value);
+  allocator_ = std::move(allocator);
 
   return S_OK;
 }
@@ -247,12 +253,13 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml
 
   OrtAllocator* ort_allocator;
   winml_adapter_api->GetProviderAllocator(ort_provider, &ort_allocator);
-    
+  auto unique_allocator = UniqueOrtAllocator(ort_allocator, winml_adapter_api->FreeProviderAllocator);  // the release here should probably not return anything
+
   OrtValue* ort_value;
-  ort_api->CreateTensorAsOrtValue(ort_allocator, shape, count, ONNXTensorElementDataTypeFromTensorKind(kind), &ort_value);
+  ort_api->CreateTensorAsOrtValue(unique_allocator.get(), shape, count, ONNXTensorElementDataTypeFromTensorKind(kind), &ort_value);
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
 
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_value)));
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_value), std::move(unique_allocator)));
   return S_OK;
 }
 

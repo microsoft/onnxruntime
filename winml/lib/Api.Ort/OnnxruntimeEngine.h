@@ -14,6 +14,7 @@ using UniqueOrtValue = std::unique_ptr<OrtValue, void (*)(OrtValue*)>;
 using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, void (*)(OrtMemoryInfo*)>;
 using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>;
 using UniqueOrtTensorTypeAndShapeInfo = std::unique_ptr<OrtTensorTypeAndShapeInfo, void (*)(OrtTensorTypeAndShapeInfo*)>;
+using UniqueOrtAllocator = std::unique_ptr<OrtAllocator, OrtStatus* (*)(OrtAllocator*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -28,8 +29,9 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
                               IValue> {
  public:
   OnnxruntimeValue();
+  ~OnnxruntimeValue();
 
-  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& value);
+  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& value, UniqueOrtAllocator&& allocator);
 
   STDMETHOD(IsCpu)(bool* out) override;
   STDMETHOD(GetResource)(void** resource) override;
@@ -43,6 +45,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
   UniqueOrtValue value_;
+  UniqueOrtAllocator allocator_; // Do we really need to cache this?
 };
 
 class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
