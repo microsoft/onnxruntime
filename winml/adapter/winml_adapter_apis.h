@@ -83,7 +83,7 @@ ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_  OrtExecutio
 // ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
 
 // ORT_API_STATUS(GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
-// ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
+ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
 // ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
 // ORT_API_STATUS(GetValueMemoryInfo, const OrtValue * value, OrtMemoryInfo** memory_info);
 

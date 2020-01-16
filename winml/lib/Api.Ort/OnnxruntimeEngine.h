@@ -13,6 +13,7 @@ using UniqueOrtExecutionProvider = std::unique_ptr<OrtExecutionProvider, void (*
 using UniqueOrtValue = std::unique_ptr<OrtValue, void (*)(OrtValue*)>;
 using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, void (*)(OrtMemoryInfo*)>;
 using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>;
+using UniqueOrtTensorTypeAndShapeInfo = std::unique_ptr<OrtTensorTypeAndShapeInfo, void (*)(OrtTensorTypeAndShapeInfo*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -34,7 +35,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(GetResource)(void** resource) override;
   STDMETHOD(IsTensor)(bool* out) override;
   STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) override;
-  STDMETHOD(GetTensorShape)(int64_t** shape, size_t* size) override;
+  STDMETHOD(GetTensorShape)(std::vector<int64_t>& shape_vector) override;
   STDMETHOD(IsOfMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
   STDMETHOD(IsOfVectorMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
 

@@ -29,7 +29,7 @@ MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
 
     STDMETHOD(IsTensor)(bool* out) PURE;
     STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) PURE;
-    STDMETHOD(GetTensorShape)(int64_t** shape, size_t* size) PURE;
+    STDMETHOD(GetTensorShape)(std::vector<int64_t>& shape_vector) PURE;
 
     STDMETHOD(IsOfMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;
     STDMETHOD(IsOfVectorMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) PURE;

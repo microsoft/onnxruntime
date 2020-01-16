@@ -13,6 +13,28 @@
 
 using namespace WinML;
 
+static ONNXTensorElementDataType
+ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
+  switch (kind) {
+    case winml::TensorKind::Boolean:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;       }
+    case winml::TensorKind::String:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;     }
+    case winml::TensorKind::Float16:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;    }
+    case winml::TensorKind::Float:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;      }
+    case winml::TensorKind::Double:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;     }
+    case winml::TensorKind::Int8:       { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;       }
+    case winml::TensorKind::Int16:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;      }
+    case winml::TensorKind::Int32:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;      }
+    case winml::TensorKind::Int64:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;      }
+    case winml::TensorKind::UInt8:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;      }
+    case winml::TensorKind::UInt16:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;     }
+    case winml::TensorKind::UInt32:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;     }
+    case winml::TensorKind::UInt64:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;     }
+    case winml::TensorKind::Complex64:  { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;  }
+    case winml::TensorKind::Complex128: { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128; }
+    default:                            { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  }
+  }
+}
+
 OnnxruntimeValue::OnnxruntimeValue() : value_(nullptr, nullptr) {}
 
 HRESULT OnnxruntimeValue::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& ort_value) {
@@ -65,15 +87,41 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
 }
 
 HRESULT OnnxruntimeValue::IsTensor(bool* out) {
-  return E_NOTIMPL;
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  ONNXType type = ONNXType::ONNX_TYPE_UNKNOWN;
+  ort_api->GetValueType(value_.get(), &type);
+  *out = type == ONNXType::ONNX_TYPE_TENSOR;
+  return S_OK;
 }
 
 HRESULT OnnxruntimeValue::IsOfTensorType(winml::TensorKind kind, bool* out) {
-  return E_NOTIMPL;
+  auto ort_api = engine_factory_->UseOrtApi();
+  OrtTensorTypeAndShapeInfo* info = nullptr;
+  ort_api->GetTensorTypeAndShape(value_.get(), &info);
+  auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
+
+  ONNXTensorElementDataType data_type = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  ort_api->GetTensorElementType(type_and_shape_info.get(), &data_type);
+
+  *out = data_type == ONNXTensorElementDataTypeFromTensorKind(kind);
+  return S_OK;
 }
 
-HRESULT OnnxruntimeValue::GetTensorShape(int64_t** shape, size_t* size) {
-  return E_NOTIMPL;
+HRESULT OnnxruntimeValue::GetTensorShape(std::vector<int64_t>& shape_vector) {
+  auto ort_api = engine_factory_->UseOrtApi();
+  OrtTensorTypeAndShapeInfo* info = nullptr;
+  ort_api->GetTensorTypeAndShape(value_.get(), &info);
+  auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
+
+  size_t size;
+  ort_api->GetDimensionsCount(type_and_shape_info.get(), &size);
+
+  std::vector<int64_t> shape(size);
+  ort_api->GetDimensions(type_and_shape_info.get(), &shape[0], size);
+
+  shape_vector = std::move(shape);
+  return S_OK;
 }
 
 HRESULT OnnxruntimeValue::IsOfMapType(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) {
@@ -190,28 +238,6 @@ HRESULT OnnxruntimeEngine::Sync() {
 
 OrtSession* OnnxruntimeEngine::UseOrtSession() {
   return session_.get();
-}
-
-static ONNXTensorElementDataType
-ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
-  switch (kind) {
-    case winml::TensorKind::Boolean:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;       }
-    case winml::TensorKind::String:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;     }
-    case winml::TensorKind::Float16:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;    }
-    case winml::TensorKind::Float:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;      }
-    case winml::TensorKind::Double:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;     }
-    case winml::TensorKind::Int8:       { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;       }
-    case winml::TensorKind::Int16:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;      }
-    case winml::TensorKind::Int32:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;      }
-    case winml::TensorKind::Int64:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;      }
-    case winml::TensorKind::UInt8:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;      }
-    case winml::TensorKind::UInt16:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;     }
-    case winml::TensorKind::UInt32:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;     }
-    case winml::TensorKind::UInt64:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;     }
-    case winml::TensorKind::Complex64:  { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;  }
-    case winml::TensorKind::Complex128: { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128; }
-    default:                            { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  }
-  }
 }
 
 HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {

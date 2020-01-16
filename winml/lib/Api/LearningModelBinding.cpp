@@ -267,9 +267,8 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
         using namespace Windows::Graphics::Imaging;
         // TODO: this format for unbound output needs more discussion
         BitmapPixelFormat format = descriptor.as<ImageFeatureDescriptor>()->BitmapPixelFormat();
-        int64_t* shape;
-        size_t size;
-        value->GetTensorShape(&shape, &size);
+        std::vector<int64_t> shape;
+        value->GetTensorShape(shape);
         uint32_t width = static_cast<uint32_t>(shape[3]);
         uint32_t height = static_cast<uint32_t>(shape[2]);
         uint32_t batchSize = static_cast<uint32_t>(shape[0]);

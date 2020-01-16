@@ -85,7 +85,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   nullptr, // OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
+  &winmla::GetProviderAllocator,
   nullptr, // OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
   nullptr, // OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue * value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
 
