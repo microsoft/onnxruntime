@@ -456,6 +456,21 @@ TEST(TopKOperator, SortedSelection) {
   RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
 }
 
+TEST(TopKOperator, MediumArrayTopKSorted) 
+{
+  std::vector<float> input_vals(1000, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+  std::vector<int64_t> input_dimensions = {1000};
+  std::vector<float> expected_vals(100, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), 900.0f);
+  //std::reverse(expected_vals.begin(), expected_vals.end());
+  std::vector<int64_t> expected_indices(100, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 900);
+  //std::reverse(expected_indices.begin(), expected_indices.end());
+  std::vector<int64_t> expected_dimensions = {100};
+  RunTest(11, 100, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 0);
+}
+
 TEST(TopKOperator, BigArrayTopKSorted) 
 {
   std::vector<float> input_vals(10000, 0.0f);
