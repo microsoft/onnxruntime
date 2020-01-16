@@ -331,16 +331,6 @@ void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, in
             scores[0] = -scores[0];
           }
           break;
-        /*
-        case 3:  //3 = mixed weights, winning class is negative
-          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(ComputeLogistic(scores[0]));  //ml_logit(scores[k]);
-            scores[0] = ComputeLogistic(-scores[0]);
-          } else {
-            scores.push_back(-scores[0]);
-          }
-          break;
-        */
       }
     }
   }
