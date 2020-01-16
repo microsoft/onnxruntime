@@ -54,3 +54,37 @@ ORT_API_STATUS_IMPL(winmla::GetProviderAllocator, _In_ OrtExecutionProvider* pro
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(winmla::GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info) {
+  API_IMPL_BEGIN
+  const auto execution_provider = reinterpret_cast<onnxruntime::IExecutionProvider*>(provider);
+
+  auto allocator = execution_provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault);
+
+  const auto& info = allocator->Info();
+  *memory_info = new (std::nothrow) OrtMemoryInfo(info.name, info.type, info.device, info.id, info.mem_type);
+  if (*memory_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Out of memory");
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::FreeProviderAllocator, _In_ OrtAllocator* allocator) {
+  API_IMPL_BEGIN
+  delete static_cast<OrtAllocatorWrapper*>(allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::GetValueMemoryInfo, const OrtValue* value, OrtMemoryInfo** memory_info) {
+  API_IMPL_BEGIN
+  const auto& tensor = value->Get<onnxruntime::Tensor>();
+  auto info = tensor.Location();
+  *memory_info = new OrtMemoryInfo(info.name, info.type, info.device, info.id, info.mem_type);
+  if (*memory_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Out of memory");
+  }
+  return nullptr;
+  API_IMPL_END
+}

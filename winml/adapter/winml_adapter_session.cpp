@@ -13,6 +13,8 @@
 #include "core/session/onnxruntime_env.h"
 
 #include "winml_adapter_model.h"
+#include "core/framework/utils.h"
+
 
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 
@@ -152,6 +154,25 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* sess
   for (auto& custom_registry : custom_registries) {
     ORT_THROW_IF_ERROR(inference_session->RegisterCustomRegistry(custom_registry));
   }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name,
+    _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value) {
+  API_IMPL_BEGIN
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto session_protected_load_accessor =
+      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
+    const onnxruntime::SessionState& sessionState = session_protected_load_accessor->GetSessionState();
+  auto ort_value = std::make_unique<OrtValue>();
+  auto status = onnxruntime::utils::CopyOneInputAcrossDevices(sessionState, input_name, *orig_value, *ort_value.get());
+  if (!status.IsOK()) {
+    return onnxruntime::ToOrtStatus(status);
+  }
+
+  *new_value = ort_value.release();
 
   return nullptr;
   API_IMPL_END

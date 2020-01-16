@@ -73,7 +73,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::SessionLoadAndPurloinModel,
   &winmla::SessionStartProfiling,
   &winmla::SessionEndProfiling,
-  nullptr, // OrtStatus*(ORT_API_CALL* SessionCopyOneInputAcrossDevices)(_In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value)NO_EXCEPTION;
+  &winmla::SessionCopyOneInputAcrossDevices,
       
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
   &winmla::DmlExecutionProviderSetDefaultRoundingMode,
@@ -81,17 +81,17 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::DmlExecutionProviderTrimUploadHeap,
   &winmla::DmlExecutionProviderReleaseCompletedReferences,
   
-  nullptr, // OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void* dml_resource)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
+  &winmla::DmlCreateGPUAllocationFromD3DResource,
+  &winmla::DmlFreeGPUAllocation,
+  &winmla::DmlGetD3D12ResourceFromAllocation,
+  &winmla::DmlCopyTensor,
+  &winmla::GetProviderMemoryInfo,
   &winmla::GetProviderAllocator,
-  nullptr, // OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
-  nullptr, // OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue * value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
+  &winmla::FreeProviderAllocator,
+  &winmla::GetValueMemoryInfo,
 
   &winmla::ExecutionProviderSync,
   
-  nullptr, // OrtStatus*(ORT_API_CALL* ExecutionProviderCopyTensor)(_In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)NO_EXCEPTION;
   // Release
   &winmla::ReleaseModel,
   &winmla::ReleaseMapTypeInfo,
