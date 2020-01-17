@@ -51,6 +51,7 @@ if (WIN32)
         /wd4100 # 'param' : unreferenced formal parameter
         /wd4244 # 'argument' conversion from 'google::protobuf::int64' to 'int', possible loss of data
         /EHsc   # exception handling - C++ may throw, extern "C" will not
+        /wd4996 # 'argument' Using double parameter version instead of single parameter version of SetTotalBytesLimit(). The second parameter is ignored.
     )
     set(onnx_static_library_flags
         -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
