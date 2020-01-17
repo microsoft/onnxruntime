@@ -7,6 +7,8 @@ Java Native Interface (JNI) is used to allow for seamless calls to ONNX runtime 
 
 TBD: maven distribution
 
+The `sample` directory contains an example evaluator implementation.
+
 This project can be built manually using the instructions below.
 
 ### Building
@@ -29,7 +31,7 @@ The reason the shared libraries are split out like that is that users can mix an
 #### Build System Overview 
 
 The Gradle build system is used here to manage the Java project's dependency management, compilation, testing, and assembly.
-Specifically, the Gradle wrapper `./gradlew` (for *nix) or `./gradlew.bat` (for Windows) is used.
+Specifically, the Gradle wrapper `./gradlew` (for *nix) or `gradlew.bat` (for Windows) is used.
 The main CMake build system delegates building and testing to Gradle.
 This allows the CMake system to ensure all of the C/C++ compilation is achieved prior to the Java build.
 The Java build depends on C/C++ onnxruntime shared library and a C JNI shared library (source located in the `src/main/native` directory).

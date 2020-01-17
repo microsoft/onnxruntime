@@ -1,16 +1,12 @@
 plugins {
 	id 'java'
-	id "com.diffplug.gradle.spotless" version "3.26.0"
+	id 'com.diffplug.gradle.spotless' version '3.26.0'
 }
 
 allprojects {
 	repositories {
 		mavenCentral()
 	}
-}
-
-subprojects {
-
 }
 
 java {
