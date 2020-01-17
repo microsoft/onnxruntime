@@ -3,15 +3,6 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# Convert Bert ONNX model exported from Tensorflow to use Attention, Gelu,
-# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
-# performance on NVidia GPU and CPU.
-
-# This script is retained for experiment purpose. Useful senarios like the following:
-#  (1) Change model from fp32 to fp16.
-#  (2) Change input data type from int64 to int32.
-#  (3) Model cannot be handled to OnnxRuntime graph optimization, and you can modify this script to get optimized model.
-
 import onnx
 import sys
 import argparse

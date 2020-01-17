@@ -3,21 +3,6 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-# Convert Bert ONNX model exported from PyTorch to use Attention, Gelu,
-# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
-# performance on NVidia GPU.
-
-# Note: This script is not required for Bert model optimization. 
-# OnnxRuntime has bert model optimization support internally. The recommended way is
-# to set optimization level to ORT_ENABLE_EXTENDED during Bert model inference.
-# See the following document for more information:
-# https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
-
-# This script is retained for experiment purpose. Useful senarios like the following:
-#  (1) Change model from fp32 to fp16.
-#  (2) Change input data type from int64 to int32.
-#  (3) Model cannot be handled to OnnxRuntime graph optimization, and you can modify this script to get optimized model.
-
 import onnx
 import sys
 import argparse
@@ -415,6 +400,7 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove = []
         nodes_to_add = []
 
+        # Don't need to fuse Gelu+Add here because ORT native code can handle it
         for node in self.get_nodes_by_op_type('FastGelu'):
             if len(node.input) != 1:
                 continue
@@ -937,8 +923,8 @@ class BertOnnxModel(OnnxModel):
         self.fuse_layer_norm()
 
         # FastGelu uses approximation for Gelu.  It is faster.
-        use_approximation = True
-        gelu_op_name = 'FastGelu' if use_approximation and self.gpu_only else 'Gelu'
+        use_approximation = self.gpu_only
+        gelu_op_name = 'FastGelu' if use_approximation else 'Gelu'
         self.fuse_gelu(gelu_op_name)
 
         self.fuse_reshape()

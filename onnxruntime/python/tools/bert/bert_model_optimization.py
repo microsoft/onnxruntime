@@ -1,3 +1,25 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
+# Convert Bert ONNX model converted from TensorFlow or exported from PyTorch to use Attention, Gelu,
+# SkipLayerNormalization and EmbedLayerNormalization ops to optimize
+# performance on NVidia GPU and CPU.
+
+# Note: This script is not required for Bert model exported from PyTorch. 
+# OnnxRuntime has bert model optimization support internally. The recommended way is
+# to set optimization level to ORT_ENABLE_EXTENDED during Bert model inference.
+# See the following document for more information:
+# https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md
+
+# This script is retained for experiment purpose. Useful senarios like the following:
+#  (1) Change model from fp32 to fp16.
+#  (2) Change input data type from int64 to int32.
+#  (3) Model cannot be handled to OnnxRuntime graph optimization, and you can modify this script to get optimized model.
+
+
+
 import onnx
 import sys
 import argparse
@@ -11,6 +33,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input', required=True, type=str)
     parser.add_argument('--output', required=True, type=str)
+    parser.add_argument('--framework', required=True, type=str, help="Original framework. Only support TensorFlow and PyTorch")
 
     # model parameters
     parser.add_argument('--num_heads', required=False, type=int, default=12, help="number of attention heads")
@@ -30,9 +53,6 @@ def main():
     parser.add_argument('--gpu_only', required=False, action='store_true')
     parser.set_defaults(gpu_only=False)
 
-    parser.add_argument('--tensor_flow', required=False, action='store_true')
-    parser.set_defaults(tensor_flow=False)
-
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
@@ -42,10 +62,12 @@ def main():
     with open(args.input, "rb") as f:
         model.ParseFromString(f.read())
 
-    if args.tensor_flow:
+    if args.framework.lower() == 'tensorflow':
         bert_model = BertOnnxModelTF(model, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16, args.gpu_only, args.verbose)
-    else:
+    elif args.framework.lower() == 'pytorch':
         bert_model = BertOnnxModel(model, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16, args.gpu_only, args.verbose)
+    else:
+        print("Unsupported framework:" + args.framework)
 
     bert_model.optimize()
 
