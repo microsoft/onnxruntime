@@ -7,7 +7,6 @@
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Media.h>
 #include "winrt/Windows.Storage.h"
-#include "DeviceHelpers.h"
 #include <sstream>
 using namespace winrt;
 using namespace winrt::Windows::AI::MachineLearning;

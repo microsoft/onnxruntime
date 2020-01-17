@@ -4,7 +4,6 @@
 set(WINML_TEST_SRC_DIR ${REPO_ROOT}/winml/test)
 set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/test/common
-  ${REPO_ROOT}/winml/lib/Api.Image/inc
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
   ${REPO_ROOT}/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/D3DX12
@@ -44,7 +43,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_telemetry winml_lib_api onnxruntime)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
