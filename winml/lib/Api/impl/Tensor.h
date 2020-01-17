@@ -73,24 +73,12 @@ class Tensor {
     return m_buffer->Size();
   }
 
-  auto buffer() {
-    return m_buffer->Buffer();
+  auto size_in_bytes() const {
+    return m_buffer->SizeInBytes();
   }
 
-  Ort::Value GetValue() {
-    // this is cpu memory
-    // TODO:  what is the difference between the device allocator and the arena allocator?
-    Ort::MemoryInfo cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-
-    // create the OrtValue as a tensor letting ort know that we own the data buffer
-    auto value = Ort::Value::CreateTensor<T>(
-        cpu_memory,
-        buffer().second,
-        m_buffer->SizeInBytes(),
-        shape_.data(),
-        shape_.size());
-//        Ort::TypeToTensorType<T>::type);
-    return value;
+  auto buffer() {
+    return m_buffer->Buffer();
   }
 
   void set(uint32_t size, const T* pData) {

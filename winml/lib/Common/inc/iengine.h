@@ -24,7 +24,8 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
 };
 
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
-	STDMETHOD(IsCpu)(bool* out) PURE;
+    STDMETHOD(IsEmpty)(bool* out) PURE;
+    STDMETHOD(IsCpu)(bool* out) PURE;
     STDMETHOD(GetResource)(void** resource) PURE;
 
     STDMETHOD(IsTensor)(bool* out) PURE;
@@ -45,12 +46,15 @@ MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
     STDMETHOD(FlushContext)() PURE;
     STDMETHOD(TrimUploadHeap)() PURE;
     STDMETHOD(ReleaseCompletedReferences)() PURE;
-    STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* source, IValue** dest) PURE;
     STDMETHOD(Sync)() PURE;
     STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
-    STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) PURE;
+    STDMETHOD(CreateTensorValueFromExternalD3DResource)(ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CreateNullValue)(_Out_ IValue** out) PURE;
+    STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) PURE;
+    STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) PURE;
+    STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) PURE;
 };
-
 
 MIDL_INTERFACE("0452ef15-b66b-47ca-9eff-aedac571764e") IEngineBuilder : IUnknown {
 	STDMETHOD(GetD3D12Device)(ID3D12Device** device) PURE;

@@ -80,12 +80,12 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::DmlExecutionProviderSetDefaultRoundingMode,
   &winmla::DmlExecutionProviderFlushContext,
   &winmla::DmlExecutionProviderTrimUploadHeap,
-  &winmla::DmlExecutionProviderReleaseCompletedReferences,
-  
+  &winmla::DmlExecutionProviderReleaseCompletedReferences,  
   &winmla::DmlCreateGPUAllocationFromD3DResource,
   &winmla::DmlFreeGPUAllocation,
   &winmla::DmlGetD3D12ResourceFromAllocation,
   &winmla::DmlCopyTensor,
+
   &winmla::GetProviderMemoryInfo,
   &winmla::GetProviderAllocator,
   &winmla::FreeProviderAllocator,

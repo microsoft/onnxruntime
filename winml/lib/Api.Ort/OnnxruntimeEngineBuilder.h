@@ -17,8 +17,8 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
-  Microsoft::WRL::ComPtr<ID3D12Device>* device_ = nullptr;
-  Microsoft::WRL::ComPtr<ID3D12CommandQueue>* queue_ = nullptr;
+  Microsoft::WRL::ComPtr<ID3D12Device> device_ = nullptr;
+  Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_ = nullptr;
   std::optional<uint32_t> batch_size_override_;
 };
 

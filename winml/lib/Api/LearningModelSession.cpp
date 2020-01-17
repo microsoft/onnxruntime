@@ -185,53 +185,52 @@ LearningModelSession::EvaluateFeaturesAsync(
   return EvaluateAsync(binding, correlation_id);
 }
 
-// copied from onnxruntime_cxx_inline.h
-inline OrtStatus* OrtRun(
-    OrtSession* session,
-    const Ort::RunOptions& run_options,
-    const char* const* input_names,
-    const Ort::Value* input_values,
-    size_t input_count,
-    const char* const* output_names,
-    Ort::Value* output_values,
-    size_t output_count) {
-  static_assert(sizeof(Ort::Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
-  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Ort::Value*>(input_values));
-  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
-  return Ort::GetApi().Run(session, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values);
-}
-
-uint64_t
-LearningModelSession::Run(
-    winrt::com_ptr<winmlp::LearningModelBinding> binding_impl) {
+uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> binding_impl) {
   CheckClosed();
+
   auto device = device_.as<LearningModelDevice>();
   CWinMLAutoLock lock(!device->IsCpuDevice() ? &evaluate_lock_ : nullptr);
-  // TODO : set the run_options
-  Ort::RunOptions run_options;
+
   binding_impl->BindUnboundOutputs();
 
-  std::vector<const char*> inputNames_c;
-  for (int i = 0; i < binding_impl->GetInputNames().size(); i++) {
-    inputNames_c.push_back(binding_impl->GetInputNames()[i].c_str());
-  }
-  std::vector<const char*> outputNames_c;
-  for (int i = 0; i < binding_impl->GetOutputNames().size(); i++) {
-    outputNames_c.push_back(binding_impl->GetOutputNames()[i].c_str());
-  }
-//  OrtSession* session = nullptr;
+  auto& input_names = binding_impl->GetInputNames();
+  std::vector<const char*> input_names_raw;
+  std::transform(
+      std::begin(input_names),
+      std::end(input_names),
+      std::back_inserter(input_names_raw),
+      [&](auto& name) { return name.c_str(); });
 
-  //    WINML_THROW_IF_FAILED(inference_session_->GetOrtSession(&session));
-  // Invoke run on the ORT session.
-  /*Ort::ThrowOnError(OrtRun(
-      session,
-      run_options,
-      inputNames_c.data(),
-      binding_impl->GetInputs().data(),
-      binding_impl->GetInputs().size(),
-      outputNames_c.data(),
-      binding_impl->GetOutputs().data(),
-      binding_impl->GetOutputs().size()));*/
+  auto& inputs = binding_impl->GetInputs();
+  std::vector<WinML::IValue*> inputs_raw;
+  std::transform(
+      std::begin(inputs),
+      std::end(inputs),
+      std::back_inserter(inputs_raw),
+      [&](auto& input) { return input.get(); });
+
+  auto& output_names = binding_impl->GetOutputNames();
+  std::vector<const char*> output_names_raw;
+  std::transform(
+      std::begin(output_names),
+      std::end(output_names),
+      std::back_inserter(output_names_raw),
+      [&](auto& name) { return name.c_str(); });
+
+  auto outputs = binding_impl->GetOutputs();
+  std::vector<WinML::IValue*> outputs_raw;
+  std::transform(
+      std::begin(outputs),
+      std::end(outputs),
+      std::back_inserter(outputs_raw),
+      [&](auto& input) { return input.get(); });
+
+  engine_->Run(input_names_raw.data(),
+               inputs_raw.data(),
+               input_names_raw.size(),
+               output_names_raw.data(),
+               outputs_raw.data(),
+               output_names_raw.size());
 
   if (!device->IsCpuDevice()) {
     // Flush the D3D12 work from the DML execution provider and queue a fence before we release the lock.

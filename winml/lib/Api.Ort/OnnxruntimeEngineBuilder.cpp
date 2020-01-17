@@ -23,7 +23,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
   }
   else {
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_->Get(), queue_->Get()));
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get()));
   }
 
   OrtSessionOptions* ort_options;
@@ -47,22 +47,22 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::GetD3D12Device(ID3D12Device** device) {
-  *device = device_->Get();
+  *device = device_.Get();
   return S_OK;
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetD3D12Device(ID3D12Device* device) {
-  *device_->ReleaseAndGetAddressOf() = device;
+  device_ = device;
   return S_OK;
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(ID3D12CommandQueue** queue) {
-  *queue = queue_->Get();
+  *queue = queue_.Get();
   return S_OK;
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetID3D12CommandQueue(ID3D12CommandQueue* queue) {
-  *queue_->ReleaseAndGetAddressOf() = queue;
+  queue_ = queue;
   return S_OK;
 }
 
