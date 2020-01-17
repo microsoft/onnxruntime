@@ -221,6 +221,15 @@ HRESULT OnnxruntimeValue::SetParameter(IUnknown* param) {
   return S_OK;
 }
 
+OrtValue* OnnxruntimeValue::UseOrtValue() {
+  return value_.get();
+}
+
+HRESULT OnnxruntimeValue::AssignOrtValue(OrtValue* in) {
+  value_.reset(in);
+  return S_OK;
+}
+
 OnnxruntimeEngine::OnnxruntimeEngine() : session_(nullptr, nullptr) {
 }
 
@@ -437,7 +446,64 @@ HRESULT OnnxruntimeEngine::CreateNullValue(_Out_ IValue** out) {
 }
 
 HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
-  return E_NOTIMPL;
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  auto src_value = static_cast<OnnxruntimeValue*>(src);
+
+  OrtValue* dest_ort_value = nullptr;
+  winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value);
+  auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
+  return S_OK;
+}
+
+HRESULT OnnxruntimeEngine::Run(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) {
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  OrtRunOptions* run_options;
+  ort_api->CreateRunOptions(&run_options);
+  auto unique_run_options = UniqueOrtRunOptions(run_options, ort_api->ReleaseRunOptions);
+
+  std::vector<OrtValue*> input_ort_values;
+  std::transform(
+      inputs,
+      inputs + num_inputs,
+      std::back_inserter(input_ort_values),
+      [&](auto& input) {
+        auto input_value = static_cast<OnnxruntimeValue*>(input);
+        return input_value->UseOrtValue();
+      });
+
+  std::vector<OrtValue*> output_ort_values;
+  std::transform(
+      outputs,
+      outputs + num_outputs,
+      std::back_inserter(output_ort_values),
+      [&](auto& output) {
+        auto output_value = static_cast<OnnxruntimeValue*>(output);
+        return output_value->UseOrtValue();
+      });
+
+  ort_api->Run(session_.get(),
+               unique_run_options.get(),
+               input_names,
+               input_ort_values.data(),
+               num_inputs,
+               output_names,
+               num_outputs,
+               output_ort_values.data());
+
+  for (size_t index = 0; index < num_outputs; index++) {
+    auto output_value = static_cast<OnnxruntimeValue*>(outputs[index]);
+    if (output_value->UseOrtValue() != output_ort_values[index])
+    {
+      RETURN_IF_FAILED(output_value->AssignOrtValue(output_ort_values[index]));
+    }
+  }
+
+  return S_OK;
 }
 
 // TODO supposedly this doesnt work if it is not static

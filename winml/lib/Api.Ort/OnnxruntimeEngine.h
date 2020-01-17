@@ -15,6 +15,7 @@ using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, void (*)(OrtMemoryInf
 using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>;
 using UniqueOrtTensorTypeAndShapeInfo = std::unique_ptr<OrtTensorTypeAndShapeInfo, void (*)(OrtTensorTypeAndShapeInfo*)>;
 using UniqueOrtAllocator = std::unique_ptr<OrtAllocator, OrtStatus* (*)(OrtAllocator*)>;
+using UniqueOrtRunOptions = std::unique_ptr<OrtRunOptions, void (*)(OrtRunOptions*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -42,6 +43,8 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(IsOfVectorMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
 
   HRESULT(SetParameter)(IUnknown* param);
+  OrtValue* UseOrtValue();
+  HRESULT AssignOrtValue(OrtValue* ptr);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
@@ -74,6 +77,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateNullValue)(_Out_ IValue** out) override;
   STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) override;
+  STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
 
   OrtSession* UseOrtSession();
   
