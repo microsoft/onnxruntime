@@ -1,0 +1,180 @@
+- job: Linux_Java_CPU
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Linux_CI_Dev'
+  steps:
+    - template: templates/linux-set-variables-and-download.yml
+
+    - script: |
+        ./build.sh --config Release --skip_submodule_sync --parallel --build-java
+      displayName: 'Run build for Java' 
+
+    - task: CopyFiles@2
+      displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)/Linux/Release/java/build/libs'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/linux-x86_64'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Java output'
+      inputs:
+        ArtifactName: onnxruntime4j
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Linux_Java_GPU
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Linux_CI_GPU_Dev'
+  steps:
+    - template: templates/linux-set-variables-and-download.yml
+
+    - script: |
+        ./build.sh --config Release --skip_submodule_sync --parallel --build-java
+      displayName: 'Run build for Java' 
+
+    - task: CopyFiles@2
+      displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)/Linux/Release/java/build/libs'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/linux-x86_64'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Java output'
+      inputs:
+        ArtifactName: onnxruntime4j_gpu
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: Windows_Java_CPU
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Win-CPU-2019'
+  steps:
+    - template: templates/set-variables-and-download.yml
+
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Run build for Java'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build-java'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\Windows\Release\java\build\libs'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)\windows-x86_64'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Java output'
+      inputs:
+        ArtifactName: onnxruntime4j
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: Windows_Java_GPU
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Win-CPU-2019'
+  steps:
+    - template: templates/set-variables-and-download.yml
+
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'Run build for Java'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build-java'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\Windows\Release\java\build\libs'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)\windows-x86_64'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Java output'
+      inputs:
+        ArtifactName: onnxruntime4j_gpu
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+
+    - template: templates/clean-agent-build-directory-step.yml
+
+- job: MacOS_Java_CPU
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'MacOS_CI_Dev'
+  steps:
+    - template: templates/mac-set-variables-and-download.yml
+
+    - script: |
+        export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
+        java --version
+        javac --version
+
+        sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        ./build.sh --config Release --skip_submodule_sync --parallel --build-java
+      displayName: 'Run build for Java' 
+
+    - task: CopyFiles@2
+      displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)/Linux/Release/java/build/libs'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/macosx-x86_64'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Java output'
+      inputs:
+        ArtifactName: onnxruntime4j
+
+    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+      displayName: 'Component Detection'
+
+    - template: templates/clean-agent-build-directory-step.yml
