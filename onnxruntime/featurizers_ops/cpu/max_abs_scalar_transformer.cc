@@ -72,7 +72,8 @@ class MaxAbsScalarTransformer final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     utils::MLTypeCallDispatcher<MaxAbsScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
-      int64_t, uint64_t, float, double> t_disp(ctx->Input<Tensor>(1)->GetElementType());
+                                int64_t, uint64_t, float, double>
+        t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
     return Status::OK();
   }

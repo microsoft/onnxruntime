@@ -242,8 +242,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
       // a math transform as below is leveraged to get a stable softmax:
       // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-      // And for convenience, force max to 0.f if all xi are negative
-      float max = 0.f;
+      float max = -std::numeric_limits<float>::infinity();
       for (int i = 0; i < D; i++) {
         if (max < x[i]) max = x[i];
       }

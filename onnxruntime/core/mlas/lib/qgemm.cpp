@@ -21,13 +21,33 @@ Abstract:
 // Define the default strides to step through slices of the input matrices.
 //
 
-#define MLAS_GEMM_U8S8_STRIDEM              24
-#define MLAS_GEMM_U8S8_STRIDEN              256
-#define MLAS_GEMM_U8S8_STRIDEK              128
+#define MLAS_GEMM_X8X8_STRIDEM              24
+#define MLAS_GEMM_X8X8_STRIDEN              256
+#define MLAS_GEMM_X8X8_STRIDEK              128
 
-#define MLAS_GEMM_U8U8_STRIDEM              24
-#define MLAS_GEMM_U8U8_STRIDEN              256
-#define MLAS_GEMM_U8U8_STRIDEK              128
+//
+// Define the parameters to execute segments of a QGEMM operation on worker
+// threads.
+//
+
+struct MLAS_GEMM_X8X8_WORK_BLOCK {
+    PMLAS_GEMM_X8X8_OPERATION GemmX8X8Operation;
+    size_t M;
+    size_t N;
+    size_t K;
+    const uint8_t* A;
+    size_t lda;
+    const uint8_t* B;
+    size_t ldb;
+    int32_t* C;
+    size_t ldc;
+    int32_t ThreadCountM;
+    int32_t ThreadCountN;
+    size_t StrideM;
+    size_t StrideN;
+    int16_t offa;
+    int16_t offb;
+};
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
@@ -1102,6 +1122,448 @@ Return Value:
 
 void
 MLASCALL
+MlasGemmU8S8Operation(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    int16_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
+    )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    offa - Supplies the zero point offset of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    offb - Supplies the zero point offset of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_DECLSPEC_ALIGN(uint8_t PanelA[MLAS_GEMM_X8X8_STRIDEM * MLAS_GEMM_X8X8_STRIDEK], 64);
+    MLAS_DECLSPEC_ALIGN(int8_t PanelB[MLAS_GEMM_X8X8_STRIDEN * MLAS_GEMM_X8X8_STRIDEK], 64);
+
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_X8X8_STRIDEM], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_X8X8_STRIDEN], 16);
+
+    size_t StrideM = MLAS_GEMM_X8X8_STRIDEM;
+    size_t StrideN = MLAS_GEMM_X8X8_STRIDEN;
+    size_t StrideK = MLAS_GEMM_X8X8_STRIDEK;
+
+#if defined(MLAS_TARGET_AMD64)
+
+    if (M == 1 && offa == 0 && offb == 0) {
+
+        if (MlasPlatform.GemvU8S8Kernel != nullptr) {
+            MlasPlatform.GemvU8S8Kernel(A, (const int8_t*)B, C, K, N, ldb);
+            return;
+        }
+    }
+
+#endif
+
+    //
+    // Step through each slice of matrix B along the K dimension.
+    //
+
+    size_t CountK;
+
+    for (size_t k = 0; k < K; k += CountK) {
+
+        CountK = StrideK;
+
+        if (CountK > (K - k)) {
+            CountK = K - k;
+        }
+
+        //
+        // Step through each slice of matrix B along the N dimension.
+        //
+
+        size_t CountN;
+
+        for (size_t n = 0; n < N; n += CountN) {
+
+            CountN = StrideN;
+
+            if (CountN > (N - n)) {
+                CountN = N - n;
+            }
+
+            const int8_t* b = (const int8_t*)B + n + k * ldb;
+
+            MlasPlatform.GemmU8S8CopyPackBRoutine(PanelB, b, ldb, CountN,
+                CountK, ColumnSumVector, -int16_t(offa));
+
+            size_t CountM;
+
+            for (size_t m = 0; m < M; m += CountM) {
+
+                CountM = StrideM;
+
+                if (CountM > (M - m)) {
+                    CountM = M - m;
+                }
+
+                MlasPlatform.GemmU8S8CopyPackARoutine(PanelA, A + k + m * lda,
+                    lda, CountM, CountK, RowSumVector, -int16_t(offb));
+
+                uint8_t* pa = PanelA;
+                int32_t* c = C + n + m * ldc;
+
+                int32_t* RowSums = RowSumVector;
+
+                size_t RowsRemaining = CountM;
+                size_t RowsHandled;
+
+                size_t QuadCountK = (CountK + 3) / 4;
+
+                while (RowsRemaining > 0) {
+
+                    RowsHandled = MlasPlatform.GemmU8S8Kernel(pa, PanelB, c,
+                        QuadCountK, RowsRemaining, CountN, ldc, RowSums,
+                        ColumnSumVector, int32_t(CountK) * offa * offb, k == 0);
+
+                    RowsRemaining -= RowsHandled;
+                    c += ldc * RowsHandled;
+                    pa += 4 * QuadCountK * RowsHandled;
+                    RowSums += RowsHandled;
+                }
+            }
+        }
+    }
+}
+
+void
+MLASCALL
+MlasGemmU8U8Operation(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    int16_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
+    )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    offa - Supplies the zero point offset of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    offb - Supplies the zero point offset of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_DECLSPEC_ALIGN(int16_t PanelA[MLAS_GEMM_X8X8_STRIDEM * MLAS_GEMM_X8X8_STRIDEK], 64);
+    MLAS_DECLSPEC_ALIGN(uint8_t PanelB[MLAS_GEMM_X8X8_STRIDEN * MLAS_GEMM_X8X8_STRIDEK], 64);
+
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_X8X8_STRIDEM], 16);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_X8X8_STRIDEN], 16);
+
+    size_t StrideM = MLAS_GEMM_X8X8_STRIDEM;
+    size_t StrideN = MLAS_GEMM_X8X8_STRIDEN;
+    size_t StrideK = MLAS_GEMM_X8X8_STRIDEK;
+
+    //
+    // Step through each slice of matrix B along the K dimension.
+    //
+
+    size_t CountK;
+
+    for (size_t k = 0; k < K; k += CountK) {
+
+        CountK = StrideK;
+
+        if (CountK > (K - k)) {
+            CountK = K - k;
+        }
+
+        //
+        // Step through each slice of matrix B along the N dimension.
+        //
+
+        size_t CountN;
+
+        for (size_t n = 0; n < N; n += CountN) {
+
+            CountN = StrideN;
+
+            if (CountN > (N - n)) {
+                CountN = N - n;
+            }
+
+            const uint8_t* b = (const uint8_t*)B + n + k * ldb;
+
+            MlasPlatform.GemmU8U8CopyPackBRoutine(PanelB, b, ldb, CountN,
+                CountK, ColumnSumVector, -int16_t(offa));
+
+            size_t CountM;
+
+            for (size_t m = 0; m < M; m += CountM) {
+
+                CountM = StrideM;
+
+                if (CountM > (M - m)) {
+                    CountM = M - m;
+                }
+
+                MlasPlatform.GemmU8U8CopyPackARoutine(PanelA, A + k + m * lda,
+                    lda, CountM, CountK, RowSumVector, -int16_t(offb));
+
+                int16_t* pa = PanelA;
+                int32_t* c = C + n + m * ldc;
+
+                int32_t* RowSums = RowSumVector;
+
+                size_t RowsRemaining = CountM;
+                size_t RowsHandled;
+
+                size_t PairCountK = (CountK + 1) / 2;
+
+                while (RowsRemaining > 0) {
+
+                    RowsHandled = MlasPlatform.GemmU8U8Kernel(pa, PanelB, c,
+                        PairCountK, RowsRemaining, CountN, ldc, RowSums,
+                        ColumnSumVector, int32_t(CountK) * offa * offb, k == 0);
+
+                    RowsRemaining -= RowsHandled;
+                    c += ldc * RowsHandled;
+                    pa += 2 * PairCountK * RowsHandled;
+                    RowSums += RowsHandled;
+                }
+            }
+        }
+    }
+}
+
+void
+MlasGemmX8X8Threaded(
+    void* Context,
+    int32_t ThreadId
+    )
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    QGEMM operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    ThreadId - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const auto* WorkBlock = (MLAS_GEMM_X8X8_WORK_BLOCK*)Context;
+
+    const int32_t ThreadCountM = WorkBlock->ThreadCountM;
+    const int32_t ThreadCountN = WorkBlock->ThreadCountN;
+
+    const int32_t ThreadIdM = ThreadId / ThreadCountN;
+    const int32_t ThreadIdN = ThreadId % ThreadCountN;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t M = WorkBlock->M;
+    size_t m;
+    size_t CountM;
+
+    MlasPartitionWork(ThreadIdM, ThreadCountM, M, &m, &CountM);
+
+    //
+    // Partition the operation along the N dimension.
+    //
+
+    size_t N = WorkBlock->N;
+    size_t n;
+    size_t CountN;
+
+    const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+        MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+    MlasPartitionWork(ThreadIdN, ThreadCountN, BlockedN, &n, &CountN);
+
+    n *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    CountN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+    if (CountN > N - n) {
+        CountN = N - n;
+    }
+
+    //
+    // Dispatch the partitioned operation.
+    //
+
+    const size_t lda = WorkBlock->lda;
+    const size_t ldb = WorkBlock->ldb;
+    const size_t ldc = WorkBlock->ldc;
+
+    const uint8_t* a = WorkBlock->A + m * lda;
+    const uint8_t* b = WorkBlock->B + n;
+    int32_t* c = WorkBlock->C + n + m * ldc;
+
+    WorkBlock->GemmX8X8Operation(CountM, CountN, WorkBlock->K, a, lda,
+        WorkBlock->offa, b, ldb, WorkBlock->offb, c, ldc);
+}
+
+void
+MlasGemmX8X8Schedule(
+    MLAS_GEMM_X8X8_WORK_BLOCK* WorkBlock,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This module schedules the quantized integer matrix/matrix multiply
+    operation (QGEMM) across one or more threads.
+
+Arguments:
+
+    WorkBlock - Supplies the structure containing the GEMM parameters.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+    const size_t K = WorkBlock->K;
+
+    //
+    // Compute the number of target threads given the complexity of the SGEMM
+    // operation. Small requests should run using the single threaded path.
+    //
+
+    double Complexity = double(M) * double(N) * double(K);
+
+    int32_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
+        TargetThreadCount = int32_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
+    } else {
+        TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+    }
+
+    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    //
+    // Segment the operation across multiple threads.
+    //
+    // N.B. Currently, the operation is segmented as a 1D partition, which
+    // works okay for operations involving skinny matrices.
+    //
+
+    if (N > M) {
+
+        const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
+            MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+
+        if (size_t(TargetThreadCount) > BlockedN) {
+            TargetThreadCount = int32_t(BlockedN);
+        }
+
+        WorkBlock->ThreadCountM = 1;
+        WorkBlock->ThreadCountN = TargetThreadCount;
+
+    } else {
+
+        if (size_t(TargetThreadCount) > M) {
+            TargetThreadCount = int32_t(M);
+        }
+
+        WorkBlock->ThreadCountM = TargetThreadCount;
+        WorkBlock->ThreadCountN = 1;
+    }
+
+    MlasExecuteThreaded(MlasGemmX8X8Threaded, WorkBlock, TargetThreadCount, ThreadPool);
+}
+
+void
+MLASCALL
 MlasGemm(
     size_t M,
     size_t N,
@@ -1116,87 +1578,71 @@ MlasGemm(
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    offa - Supplies the zero point offset of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    offb - Supplies the zero point offset of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
 {
-    MLAS_DECLSPEC_ALIGN(uint8_t PanelA[MLAS_GEMM_U8S8_STRIDEM * MLAS_GEMM_U8S8_STRIDEK], 64);
-    MLAS_DECLSPEC_ALIGN(int8_t PanelB[MLAS_GEMM_U8S8_STRIDEN * MLAS_GEMM_U8S8_STRIDEK], 64);
+    MLAS_GEMM_X8X8_WORK_BLOCK WorkBlock;
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_U8S8_STRIDEM], 16);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_U8S8_STRIDEN], 16);
+    //
+    // Capture the GEMM parameters to the work block.
+    //
 
-    size_t StrideM = MLAS_GEMM_U8S8_STRIDEM;
-    size_t StrideN = MLAS_GEMM_U8S8_STRIDEN;
-    size_t StrideK = MLAS_GEMM_U8S8_STRIDEK;
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+    WorkBlock.K = K;
+    WorkBlock.A = A;
+    WorkBlock.lda = lda;
+    WorkBlock.B = (const uint8_t*)B;
+    WorkBlock.ldb = ldb;
+    WorkBlock.C = C;
+    WorkBlock.ldc = ldc;
+    WorkBlock.offa = int16_t(offa);
+    WorkBlock.offb = int16_t(offb);
+    WorkBlock.GemmX8X8Operation = MlasGemmU8S8Operation;
 
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+    //
+    // Schedule the operation across a set of worker threads.
+    //
 
-#if defined(MLAS_TARGET_AMD64)
-
-    if (M == 1 && offa == 0 && offb == 0) {
-
-        if (MlasPlatform.GemvU8S8Kernel != nullptr) {
-            MlasPlatform.GemvU8S8Kernel(A, B, C, K, N, ldb);
-            return;
-        }
-    }
-
-#endif
-
-    size_t CountK;
-
-    for (size_t k = 0; k < K; k += CountK) {
-
-        CountK = StrideK;
-
-        if (CountK > (K - k)) {
-            CountK = K - k;
-        }
-
-        size_t CountN;
-
-        for (size_t n = 0; n < N; n += CountN) {
-
-            CountN = StrideN;
-
-            if (CountN > (N - n)) {
-                CountN = N - n;
-            }
-
-            MlasPlatform.GemmU8S8CopyPackBRoutine(PanelB, B + n + k * ldb, ldb, CountN, CountK, ColumnSumVector, -int16_t(offa));
-
-            size_t CountM;
-
-            for (size_t m = 0; m < M; m += CountM) {
-
-                CountM = StrideM;
-
-                if (CountM > (M - m)) {
-                    CountM = M - m;
-                }
-
-                MlasPlatform.GemmU8S8CopyPackARoutine(PanelA, A + k + m * lda, lda, CountM, CountK, RowSumVector, -int16_t(offb));
-
-                uint8_t* pa = PanelA;
-                int32_t* c = C + n + m * ldc;
-
-                int32_t* RowSums = RowSumVector;
-
-                size_t RowsRemaining = CountM;
-                size_t RowsHandled;
-
-                size_t QuadCountK = (CountK + 3) / 4;
-
-                while (RowsRemaining > 0) {
-
-                    RowsHandled = MlasPlatform.GemmU8S8Kernel(pa, PanelB, c, QuadCountK, RowsRemaining, CountN, ldc, RowSums, ColumnSumVector, int32_t(CountK) * offa * offb, k == 0);
-
-                    RowsRemaining -= RowsHandled;
-                    c += ldc * RowsHandled;
-                    pa += 4 * QuadCountK * RowsHandled;
-                    RowSums += RowsHandled;
-                }
-            }
-        }
-    }
+    MlasGemmX8X8Schedule(&WorkBlock, ThreadPool);
 }
 
 void
@@ -1215,75 +1661,71 @@ MlasGemm(
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     )
+/*++
+
+Routine Description:
+
+    This module implements the quantized integer matrix/matrix multiply
+    operation (QGEMM).
+
+Arguments:
+
+    M - Supplies the number of rows of matrix A and matrix C.
+
+    N - Supplies the number of columns of matrix B and matrix C.
+
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+
+    A - Supplies the address of matrix A.
+
+    lda - Supplies the first dimension of matrix A.
+
+    offa - Supplies the zero point offset of matrix A.
+
+    B - Supplies the address of matrix B.
+
+    ldb - Supplies the first dimension of matrix B.
+
+    offb - Supplies the zero point offset of matrix B.
+
+    C - Supplies the address of matrix C.
+
+    ldc - Supplies the first dimension of matrix C.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
 {
-    MLAS_DECLSPEC_ALIGN(int16_t PanelA[MLAS_GEMM_U8U8_STRIDEM * MLAS_GEMM_U8U8_STRIDEK], 64);
-    MLAS_DECLSPEC_ALIGN(uint8_t PanelB[MLAS_GEMM_U8U8_STRIDEN * MLAS_GEMM_U8U8_STRIDEK], 64);
+    MLAS_GEMM_X8X8_WORK_BLOCK WorkBlock;
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumVector[MLAS_GEMM_U8U8_STRIDEM], 16);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumVector[MLAS_GEMM_U8U8_STRIDEN], 16);
+    //
+    // Capture the GEMM parameters to the work block.
+    //
 
-    size_t StrideM = MLAS_GEMM_U8U8_STRIDEM;
-    size_t StrideN = MLAS_GEMM_U8U8_STRIDEN;
-    size_t StrideK = MLAS_GEMM_U8U8_STRIDEK;
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+    WorkBlock.K = K;
+    WorkBlock.A = A;
+    WorkBlock.lda = lda;
+    WorkBlock.B = B;
+    WorkBlock.ldb = ldb;
+    WorkBlock.C = C;
+    WorkBlock.ldc = ldc;
+    WorkBlock.offa = int16_t(offa);
+    WorkBlock.offb = int16_t(offb);
+    WorkBlock.GemmX8X8Operation = MlasGemmU8U8Operation;
 
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+    //
+    // Schedule the operation across a set of worker threads.
+    //
 
-    size_t CountK;
-
-    for (size_t k = 0; k < K; k += CountK) {
-
-        CountK = StrideK;
-
-        if (CountK > (K - k)) {
-            CountK = K - k;
-        }
-
-        size_t CountN;
-
-        for (size_t n = 0; n < N; n += CountN) {
-
-            CountN = StrideN;
-
-            if (CountN > (N - n)) {
-                CountN = N - n;
-            }
-
-            MlasPlatform.GemmU8U8CopyPackBRoutine(PanelB, B + n + k * ldb, ldb, CountN, CountK, ColumnSumVector, -int16_t(offa));
-
-            size_t CountM;
-
-            for (size_t m = 0; m < M; m += CountM) {
-
-                CountM = StrideM;
-
-                if (CountM > (M - m)) {
-                    CountM = M - m;
-                }
-
-                MlasPlatform.GemmU8U8CopyPackARoutine(PanelA, A + k + m * lda, lda, CountM, CountK, RowSumVector, -int16_t(offb));
-
-                int16_t* pa = PanelA;
-                int32_t* c = C + n + m * ldc;
-
-                int32_t* RowSums = RowSumVector;
-
-                size_t RowsRemaining = CountM;
-                size_t RowsHandled;
-
-                size_t PairCountK = (CountK + 1) / 2;
-
-                while (RowsRemaining > 0) {
-
-                    RowsHandled = MlasPlatform.GemmU8U8Kernel(pa, PanelB, c, PairCountK, RowsRemaining, CountN, ldc, RowSums, ColumnSumVector, int32_t(CountK) * offa * offb, k == 0);
-
-                    RowsRemaining -= RowsHandled;
-                    c += ldc * RowsHandled;
-                    pa += 2 * PairCountK * RowsHandled;
-                    RowSums += RowsHandled;
-                }
-            }
-        }
-    }
+    MlasGemmX8X8Schedule(&WorkBlock, ThreadPool);
 }
 
 #endif
