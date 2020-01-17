@@ -222,7 +222,7 @@ struct TensorBase : TBase {
       RETURN_IF_FAILED(GPUTensorize(context, out));
     }
 
-    return E_FAIL;
+    return S_OK;
   }
 
   static int64_t ShapeSize(std::vector<int64_t> shape) {

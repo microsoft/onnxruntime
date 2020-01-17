@@ -24,7 +24,8 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
 };
 
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
-	STDMETHOD(IsCpu)(bool* out) PURE;
+    STDMETHOD(IsEmpty)(bool* out) PURE;
+    STDMETHOD(IsCpu)(bool* out) PURE;
     STDMETHOD(GetResource)(void** resource) PURE;
 
     STDMETHOD(IsTensor)(bool* out) PURE;

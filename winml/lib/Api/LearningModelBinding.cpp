@@ -133,6 +133,8 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
         isPlaceHolder && bindingType == BindingType::kInput,
         "The model variable %s is an input, but has no associated resources to bind.",
         name.c_str());
+
+    WINML_THROW_IF_FAILED(spSession->GetEngine()->CreateNullValue(value.put()));
   }
 
   // Hold onto the input output providers so that our memory doesnt get destroyed!

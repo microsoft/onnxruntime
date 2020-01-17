@@ -90,6 +90,11 @@ HRESULT OnnxruntimeValue::RuntimeClassInitialize(OnnxruntimeEngineFactory* engin
   return S_OK;
 }
 
+HRESULT OnnxruntimeValue::IsEmpty(bool* out) {
+  *out = UseOrtValue() == nullptr;
+  return S_OK;
+}
+
 HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -451,11 +456,16 @@ HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* name, IValue* s
 
   auto src_value = static_cast<OnnxruntimeValue*>(src);
 
-  OrtValue* dest_ort_value = nullptr;
-  winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value);
-  auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+  bool is_empty;
+  if (SUCCEEDED(src_value->IsEmpty(&is_empty)) && !is_empty) {
+    OrtValue* dest_ort_value = nullptr;
+    winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value);
+    auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
 
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
+  } else {
+    *out = src;
+  }
   return S_OK;
 }
 
@@ -497,8 +507,7 @@ HRESULT OnnxruntimeEngine::Run(const char** input_names, IValue** inputs, size_t
 
   for (size_t index = 0; index < num_outputs; index++) {
     auto output_value = static_cast<OnnxruntimeValue*>(outputs[index]);
-    if (output_value->UseOrtValue() != output_ort_values[index])
-    {
+    if (output_value->UseOrtValue() != output_ort_values[index]) {
       RETURN_IF_FAILED(output_value->AssignOrtValue(output_ort_values[index]));
     }
   }

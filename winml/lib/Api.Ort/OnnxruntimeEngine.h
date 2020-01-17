@@ -34,6 +34,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
 
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& value, UniqueOrtAllocator&& allocator);
 
+  STDMETHOD(IsEmpty)(bool* out) override;
   STDMETHOD(IsCpu)(bool* out) override;
   STDMETHOD(GetResource)(void** resource) override;
   STDMETHOD(IsTensor)(bool* out) override;

@@ -185,22 +185,6 @@ LearningModelSession::EvaluateFeaturesAsync(
   return EvaluateAsync(binding, correlation_id);
 }
 
-// copied from onnxruntime_cxx_inline.h
-inline OrtStatus* OrtRun(
-    OrtSession* session,
-    const Ort::RunOptions& run_options,
-    const char* const* input_names,
-    const Ort::Value* input_values,
-    size_t input_count,
-    const char* const* output_names,
-    Ort::Value* output_values,
-    size_t output_count) {
-  static_assert(sizeof(Ort::Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
-  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Ort::Value*>(input_values));
-  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
-  return Ort::GetApi().Run(session, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values);
-}
-
 uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> binding_impl) {
   CheckClosed();
 
