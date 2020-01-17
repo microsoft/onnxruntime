@@ -15,6 +15,7 @@ using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, void (*)(OrtMemoryInf
 using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>;
 using UniqueOrtTensorTypeAndShapeInfo = std::unique_ptr<OrtTensorTypeAndShapeInfo, void (*)(OrtTensorTypeAndShapeInfo*)>;
 using UniqueOrtAllocator = std::unique_ptr<OrtAllocator, OrtStatus* (*)(OrtAllocator*)>;
+using UniqueOrtRunOptions = std::unique_ptr<OrtRunOptions, void (*)(OrtRunOptions*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -33,6 +34,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
 
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& value, UniqueOrtAllocator&& allocator);
 
+  STDMETHOD(IsEmpty)(bool* out) override;
   STDMETHOD(IsCpu)(bool* out) override;
   STDMETHOD(GetResource)(void** resource) override;
   STDMETHOD(IsTensor)(bool* out) override;
@@ -41,9 +43,14 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(IsOfMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
   STDMETHOD(IsOfVectorMapType)(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) override;
 
+  HRESULT(SetParameter)(IUnknown* param);
+  OrtValue* UseOrtValue();
+  HRESULT AssignOrtValue(OrtValue* ptr);
+
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
+  Microsoft::WRL::ComPtr<IUnknown> param_;
   UniqueOrtValue value_;
   UniqueOrtAllocator allocator_; // Do we really need to cache this?
 };
@@ -67,11 +74,14 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest) override;
   STDMETHOD(Sync)() override;
   STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateTensorValueFromExternalD3DResource)(ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateNullValue)(_Out_ IValue** out) override;
   STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) override;
+  STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
 
   OrtSession* UseOrtSession();
-  bool IsDmlSession();
-
+  
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> session_builder_;

@@ -81,71 +81,72 @@ struct TensorBase : TBase {
     GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
   }
 
-  TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* pResource, UINT64 resource_width) : shape_(shape),
-                                                                                                    m_resources(std::make_shared<TensorResources<T>>()) {
+  TensorBase(std::vector<int64_t> const& shape, ID3D12Resource* resource) : shape_(shape),
+                                                                            m_resources(std::make_shared<TensorResources<T>>()) {
     // This Api is not supported for TensorString
     WINML_THROW_HR_IF_TRUE_MSG(
         E_ILLEGAL_METHOD_CALL,
         (std::is_same<T, std::string>::value),
         "TensorString objects cannot be created from a ID3D12Resource!");
 
-    GetGpuResource() = std::make_shared<DMLResource>(pResource, resource_width);
+    GetGpuResource().copy_from(resource);
   }
 
-  Ort::Value CreateGPUMLValue(std::shared_ptr<DMLResource>& resource, BindingContext& context) {
+  HRESULT CreateGPUMLValue(ID3D12Resource* resource, BindingContext& context, IValue** out) {
     THROW_HR_IF_NULL(E_INVALIDARG, resource);
-    THROW_HR_IF_NULL(E_UNEXPECTED, resource->ExecutionProviderAllocatedResource);
 
-    Ort::MemoryInfo dml_memory(nullptr);
-    auto session_impl = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    //auto engine = session_impl->GetEngine();
-    // WINML_THROW_IF_FAILED(adapter_->GetProviderMemoryInfo(provider, dml_memory.put())); should be engine->CreateTensor()
-
-    auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto device = session->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
     WINML_THROW_HR_IF_TRUE_MSG(WINML_ERR_INVALID_BINDING,
-                               spDevice->IsCpuDevice(),
+                               device->IsCpuDevice(),
                                "Cannot create GPU tensor on CPU device");
-    // create the OrtValue as a tensor letting ort know that we own the data buffer
-    auto value = Ort::Value::CreateTensor(
-        dml_memory,
-        resource->ExecutionProviderAllocatedResource,
-        resource->resource_width_,
-        shape_.data(),
-        shape_.size(),
-        Ort::TypeToTensorType<T>::type);
 
-    return value;
+    auto engine = session->GetEngine();
+    RETURN_IF_FAILED(engine->CreateTensorValueFromExternalD3DResource(resource, shape_.data(), shape_.size(), TensorKind(), out));
+    return S_OK;
   }
 
-  Ort::Value CPUTensorize(WinML::BindingContext& context) {
+  HRESULT CPUTensorize(WinML::BindingContext& context, IValue** out) {
+    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto engine = session->GetEngine();
+
     if (GetCpuResource() != nullptr) {
-      return GetCpuResource()->GetValue();
+      return engine->CreateTensorValueFromExternalBuffer(
+          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+          GetCpuResource()->shape().size(), TensorKind(), out);
     }
 
     // If there is no matching cpu resource, then fallback to a gpu resource
     if (GetGpuResource() != nullptr) {
-      return CreateGPUMLValue(GetGpuResource(), context);
+      return CreateGPUMLValue(GetGpuResource().get(), context, out);
     }
 
     WINML_THROW_HR(WINML_ERR_INVALID_BINDING);
   }
 
-  Ort::Value GPUTensorize(WinML::BindingContext& context) {
+  HRESULT GPUTensorize(WinML::BindingContext& context, IValue** out) {
     if (GetGpuResource() != nullptr) {
-      return CreateGPUMLValue(GetGpuResource(), context);
+      return CreateGPUMLValue(GetGpuResource().get(), context, out);
     }
+
+    // Get engine
+    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto engine = session->GetEngine();
 
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (GetCpuResource() != nullptr) {
-      return GetCpuResource()->GetValue();
+      return engine->CreateTensorValueFromExternalBuffer(
+          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+          GetCpuResource()->shape().size(), TensorKind(), out);
     }
 
     if (TensorKind() == winrt::Windows::AI::MachineLearning::TensorKind::String) {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
       GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
-      return GetCpuResource()->GetValue();
+      return engine->CreateTensorValueFromExternalBuffer(
+          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+          GetCpuResource()->shape().size(), TensorKind(), out);
     } else {
       // Try to allocate the backing memory for the caller
       auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
@@ -174,21 +175,21 @@ struct TensorBase : TBase {
           D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
-      auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-      auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+      auto device = session->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
 
-      winrt::com_ptr<ID3D12Resource> pGPUResource = nullptr;
-      spDevice->GetD3DDevice()->CreateCommittedResource(
+      winrt::com_ptr<ID3D12Resource> gpu_resource = nullptr;
+      device->GetD3DDevice()->CreateCommittedResource(
           &heapProperties,
           D3D12_HEAP_FLAG_NONE,
           &resourceDesc,
           D3D12_RESOURCE_STATE_COMMON,
           nullptr,
           __uuidof(ID3D12Resource),
-          pGPUResource.put_void());
+          gpu_resource.put_void());
 
-      GetGpuResource() = std::make_shared<DMLResource>(pGPUResource.get(), resourceDesc.Width);
-      return CreateGPUMLValue(GetGpuResource(), context);
+      GetGpuResource() = gpu_resource;
+
+      return CreateGPUMLValue(GetGpuResource().get(), context, out);
     }
   }
 
@@ -203,7 +204,8 @@ struct TensorBase : TBase {
   }
 
   // ILotusValueProviderPrivate::GetOrtValue
-  STDMETHOD(GetValue)(WinML::BindingContext& context, IValue** /*out*/) {
+  STDMETHOD(GetValue)
+  (WinML::BindingContext& context, IValue** out) {
     RETURN_HR_IF_NULL_MSG(
         WINML_ERR_INVALID_BINDING,
         m_resources,
@@ -213,10 +215,11 @@ struct TensorBase : TBase {
 
     auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+
     if (spDevice->IsCpuDevice()) {
-      //*ort_value = CPUTensorize(context).release();
+      RETURN_IF_FAILED(CPUTensorize(context, out));
     } else {
-      //*ort_value = GPUTensorize(context).release();
+      RETURN_IF_FAILED(GPUTensorize(context, out));
     }
 
     return S_OK;
@@ -234,57 +237,52 @@ struct TensorBase : TBase {
     return size;
   }
 
-
   // ILotusValueProviderPrivate::UpdateSourceResourceData
-  STDMETHOD(UpdateSourceResourceData)(BindingContext& /*context*/, IValue* /*value*/) {
+  STDMETHOD(UpdateSourceResourceData)(BindingContext& context, IValue* value) {
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
         m_resources,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
-    //// get the mutable raw data buffer
-    //void* pResource = nullptr;
-    //Ort::ThrowOnError(Ort::GetApi().GetTensorMutableData(ort_value, &pResource));
+    void* updated_resource = nullptr;
+    RETURN_IF_FAILED_MSG(value->GetResource(&updated_resource), "Failed to get the tensor backing resource!");
 
-    //// get the shape
-    //Ort::TensorTypeAndShapeInfo type_and_shape(nullptr);
-    //Ort::ThrowOnError(Ort::GetApi().GetTensorTypeAndShape(ort_value, type_and_shape.put()));
-    //shape_ = type_and_shape.GetShape();
+    // get the shape
+    RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
 
-    //// make sure we always have a CPU resource
-    //if (GetCpuResource() == nullptr) {
-    //  GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
-    //}
+    // make sure we always have a CPU resource
+    if (GetCpuResource() == nullptr) {
+      GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
+    }
 
-    //// get the memory info for the ort value
-    //Ort::MemoryInfo memory_info(nullptr);
-    //RETURN_IF_FAILED(adapter_->GetValueMemoryInfo(ort_value, memory_info.put()));
+    bool is_cpu;
+    if (SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu) {
+      // Get the data pointer and size
+      T* data;
+      uint32_t size;
+      std::tie(size, data) = GetCpuResource()->buffer();
 
-    //// is it from the CPU provider?
-    //if (!strcmp(memory_info.Name(), onnxruntime::CPU) ||
-    //    memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUOutput ||
-    //    memory_info.MemType() == ::OrtMemType::OrtMemTypeCPUInput) {
-    //  // Get the data pointer and size
-    //  T* pData;
-    //  uint32_t pSize;
-    //  std::tie(pSize, pData) = GetCpuResource()->buffer();
+      if (updated_resource != reinterpret_cast<void*>(data)) {
+        // Only copy the data if the source and destination are not the same!
+        // The engine provided buffer will not match the tensor buffer when
+        // the tensor is created as a placeholder output, or as an unbound output.
+        GetCpuResource()->set(static_cast<uint32_t>(ShapeSize(shape_)), reinterpret_cast<T*>(updated_resource));
+      }
+    } else {
+      // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
+      // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
+      // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
+      // and was updated in place.
+      auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+      auto engine = spSession->GetEngine();
 
-    //  if (pResource != reinterpret_cast<void*>(pData)) {
-    //    // Only copy the data if the source and destination are not the same!
-    //    // The engine provided buffer will not match the tensor buffer when
-    //    // the tensor is created as a placeholder output, or as an unbound output.
-    //    GetCpuResource()->set(static_cast<uint32_t>(ShapeSize(shape_)), reinterpret_cast<T*>(pResource));
-    //  }
-    //} else {
-    //  // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
-    //  // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
-    //  // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
-    //  // and was updated in place.
-    //  auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
-    //  auto cpuValue = GetCpuResource()->GetValue();
-    //  //auto engine = spSession->GetEngine();
-    //  //RETURN_IF_FAILED(adapter_->CopyTensor(spSession->GetExecutionProvider(), ort_value, cpuValue)); should be engine->CopyTensor();
-    //}
+      winrt::com_ptr<IValue> dest;
+      RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
+          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+          GetCpuResource()->shape().size(), TensorKind(), dest.put()),
+          "Failed to prepare buffer for copy back from device resource.");
+      //RETURN_IF_FAILED(engine->CopyTensor(value, dest.get()));
+    }
 
     return S_OK;
   }
@@ -404,7 +402,7 @@ struct TensorBase : TBase {
       THROW_HR_IF(E_INVALIDARG, desc.Width < width);
 
       // make the underlying winrt object
-      typename TBase::class_type tensorValue = winrt::make<TDerived>(shapeVector, value, desc.Width);
+      typename TBase::class_type tensorValue = winrt::make<TDerived>(shapeVector, value);
 
       // return it (the caller owns the ref)
       *result = tensorValue.as<IUnknown>().detach();
@@ -512,7 +510,7 @@ struct TensorBase : TBase {
           m_resources,
           "The tensor has been closed and its resources have been detached!");
 
-      GetGpuResource()->DXResource.copy_to(ppResource);
+      GetGpuResource().copy_to(ppResource);
       return S_OK;
     }
     WINML_CATCH_ALL_COM
@@ -820,7 +818,7 @@ struct TensorBase : TBase {
     return m_resources->CpuResource;
   }
 
-  std::shared_ptr<DMLResource>& GetGpuResource() {
+  winrt::com_ptr<ID3D12Resource>& GetGpuResource() {
     WINML_THROW_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
         m_resources,

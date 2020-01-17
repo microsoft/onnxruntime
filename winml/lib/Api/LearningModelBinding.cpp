@@ -133,6 +133,8 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
         isPlaceHolder && bindingType == BindingType::kInput,
         "The model variable %s is an input, but has no associated resources to bind.",
         name.c_str());
+
+    WINML_THROW_IF_FAILED(spSession->GetEngine()->CreateNullValue(value.put()));
   }
 
   // Hold onto the input output providers so that our memory doesnt get destroyed!
@@ -226,37 +228,6 @@ void LearningModelBinding::Split(
   second = nullptr;
 }
 
-ONNXTensorElementDataType STDMETHODCALLTYPE GetONNXTensorElementDataType(winml::TensorKind kind) {
-  if (kind == TensorKind::Float) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-  } else if (kind == TensorKind::Double) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-  } else if (kind == TensorKind::String) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-  } else if (kind == TensorKind::UInt8) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-  } else if (kind == TensorKind::Int8) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-  } else if (kind == TensorKind::UInt16) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
-  } else if (kind == TensorKind::Int16) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
-  } else if (kind == TensorKind::UInt32) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
-  } else if (kind == TensorKind::Int32) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-  } else if (kind == TensorKind::UInt64) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
-  } else if (kind == TensorKind::Int64) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-  } else if (kind == TensorKind::Boolean) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-  } else if (kind == TensorKind::Float16) {
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-  }
-  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-}
-
 ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
     const winrt::com_ptr<IValue> value,
     ILearningModelFeatureDescriptor& descriptor) {
@@ -277,63 +248,51 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
         return implementation::TensorFloat::Create();
       }
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Double, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Double, &out)) && out) {
       return implementation::TensorDouble::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::String, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::String, &out)) && out) {
       return implementation::TensorString::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt8, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt8, &out)) && out) {
       return implementation::TensorUInt8Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int8, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int8, &out)) && out) {
       return implementation::TensorInt8Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt16, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt16, &out)) && out) {
       return implementation::TensorUInt16Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int16, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int16, &out)) && out) {
       return implementation::TensorInt16Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt32, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt32, &out)) && out) {
       return implementation::TensorUInt32Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int32, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int32, &out)) && out) {
       return implementation::TensorInt32Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt64, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::UInt64, &out)) && out) {
       return implementation::TensorUInt64Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int64, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Int64, &out)) && out) {
       return implementation::TensorInt64Bit::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Boolean, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Boolean, &out)) && out) {
       return implementation::TensorBoolean::Create();
     }
-    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Float16, &out)) && out)
-	{
+    if (SUCCEEDED(value->IsOfTensorType(TensorKind::Float16, &out)) && out) {
       return implementation::TensorFloat16Bit::Create();
     }
   }
-  
+
   // Maps
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::String, &out)) && out) {
     return implementation::MapStringToString::Create();
   }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Int64, &out)) && out) {
     return implementation::MapStringToInt64Bit::Create();
-  } 
+  }
   if (SUCCEEDED(value->IsOfMapType(TensorKind::String, TensorKind::Float, &out)) && out) {
     return implementation::MapStringToFloat::Create();
   }
@@ -441,7 +400,7 @@ std::unordered_map<std::string, Windows::Foundation::IInspectable> LearningModel
       auto provider = providerInfo.Provider;
       auto context = providerInfo.Context;
       WINML_THROW_IF_FAILED_MSG(
-          provider->UpdateSourceResourceData(context, nullptr),
+          provider->UpdateSourceResourceData(context, value.get()),
           "Failed to update bound object for model variable output %s",
           utf8_name.c_str());
 
@@ -469,8 +428,8 @@ STDMETHODIMP LearningModelBinding::Bind(
     IUnknown* value) {
   try {
     _winmlt::TelemetryEvent binding_event(_winmlt::EventCategory::kBinding);
-    BindingType bindingType;
-    std::string bindingName;
+    BindingType binding_type;
+    std::string binding_name;
     winrt::com_ptr<WinML::IValue> binding_value;
 
     winrt::Windows::Foundation::IInspectable to;
@@ -479,13 +438,13 @@ STDMETHODIMP LearningModelBinding::Bind(
         reinterpret_cast<void**>(winrt::put_abi(to))));
 
     auto featureName = WinML::Strings::UTF8FromUnicode(name, cchName);
-    std::tie(bindingName, binding_value, bindingType) = CreateBinding(featureName, to, nullptr);
-    switch (bindingType) {
+    std::tie(binding_name, binding_value, binding_type) = CreateBinding(featureName, to, nullptr);
+    switch (binding_type) {
       case BindingType::kInput:
-        WINML_THROW_IF_FAILED(BindInput(bindingName, binding_value));
+        WINML_THROW_IF_FAILED(BindInput(binding_name, binding_value));
         break;
       case BindingType::kOutput:
-        WINML_THROW_IF_FAILED(BindOutput(bindingName, binding_value));
+        WINML_THROW_IF_FAILED(BindOutput(binding_name, binding_value));
         break;
       default:
         FAIL_FAST();
@@ -505,35 +464,31 @@ static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, c
 
 // This method releases control of memory of ml_value from caller of BindInput
 HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<WinML::IValue> value) {
-  auto rc = Contains(input_names_, name);
+  bool exists;
+  size_t index;
+  std::tie(exists, index) = Contains(input_names_, name);
 
-  auto add_or_replace = [this, &name](const bool exists, size_t index, winrt::com_ptr<WinML::IValue> value) {
-    if (exists) {
-      inputs_[index] = std::move(value);
-    } else {
-      input_names_.push_back(name);
-      inputs_.push_back(std::move(value));
-    }
-  };
+  auto engine = m_session.as<LearningModelSession>()->GetEngine();
+  winrt::com_ptr<WinML::IValue> device_value;
+  WINML_THROW_IF_FAILED(engine->CopyOneInputAcrossDevices(name.c_str(), value.get(), device_value.put()));  // an input will always be copied on device mismatch
 
-  bool out;
-  if (SUCCEEDED(value->IsTensor(&out)) && out) {
-	auto engine = m_session.as<LearningModelSession>()->GetEngine();
-
-	winrt::com_ptr<WinML::IValue> dest;
-	WINML_THROW_IF_FAILED(engine->CopyOneInputAcrossDevices(name.c_str(), value.get(), dest.put()));
-    add_or_replace(rc.first, rc.second, dest);
+  if (exists) {
+    inputs_[index] = device_value;
+  } else {
+    input_names_.push_back(name);
+    inputs_.push_back(device_value);
   }
-  else {
-    add_or_replace(rc.first, rc.second, value);
-  }
+
   return S_OK;
 }
 
 HRESULT LearningModelBinding::BindOutput(const std::string& name, winrt::com_ptr<WinML::IValue> value) {
-  auto rc = Contains(output_names_, name);
-  if (rc.first) {
-    outputs_[rc.second] = value;
+  bool exists;
+  size_t index;
+  std::tie(exists, index) = Contains(output_names_, name);
+
+  if (exists) {
+    outputs_[index] = value;
     return S_OK;
   }
 
@@ -546,13 +501,17 @@ const std::vector<std::string>& LearningModelBinding::GetOutputNames() const {
   return output_names_;
 }
 
-std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetOutputs() { return outputs_; }
-
 const std::vector<std::string>& LearningModelBinding::GetInputNames() const {
   return input_names_;
 }
 
-const std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetInputs() const { return inputs_; }
+std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetOutputs() {
+  return outputs_;
+}
+
+const std::vector<winrt::com_ptr<WinML::IValue>>& LearningModelBinding::GetInputs() const {
+  return inputs_;
+}
 
 void LearningModelBinding::BindUnboundOutputs() {
   auto& bound_output_names = GetOutputNames();
@@ -592,7 +551,11 @@ void LearningModelBinding::BindUnboundOutputs() {
 
   // Add all unbound outputs to binding collection
   for (const auto& unbound_output : unbound_output_names) {
-    WINML_THROW_IF_FAILED(BindOutput(unbound_output, nullptr));
+    auto engine = m_session.as<LearningModelSession>()->GetEngine();
+
+    winrt::com_ptr<IValue> value;
+    WINML_THROW_IF_FAILED(engine->CreateNullValue(value.put()));
+    WINML_THROW_IF_FAILED(BindOutput(unbound_output, value));
   }
 }
 

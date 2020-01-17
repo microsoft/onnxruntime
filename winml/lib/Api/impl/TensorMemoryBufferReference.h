@@ -9,22 +9,6 @@
 #include <Memorybuffer.h>
 
 namespace Windows::AI::MachineLearning {
-struct DMLResource {
-  DMLResource(ID3D12Resource* pResource, UINT64 resource_width) {
-    DXResource.copy_from(pResource);
-    //ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
-    resource_width_ = resource_width;
-  }
-
-  ~DMLResource() {
-    //adapter_->FreeGPUAllocation(ExecutionProviderAllocatedResource);
-  }
-
-  winrt::com_ptr<ID3D12Resource> DXResource;
-  UINT64 resource_width_;
-  void* ExecutionProviderAllocatedResource = nullptr;
-};
-
 template <typename T>
 struct TensorResources {
   // ITensorNative::GetBuffer
@@ -44,7 +28,7 @@ struct TensorResources {
     try {
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
-        //CpuResource = std::make_shared<WinML::Tensor<T>>(adapter.get(), shape);
+        CpuResource = std::make_shared<WinML::Tensor<T>>(shape);
       }
 
       if constexpr (std::is_same_v<T, std::string>) {
@@ -73,7 +57,7 @@ struct TensorResources {
 
   // Theses are access directly by TensorMemoryBufferReference<T> and TensorBase
   std::shared_ptr<WinML::Tensor<T>> CpuResource;
-  std::shared_ptr<DMLResource> GpuResource;
+  winrt::com_ptr<ID3D12Resource> GpuResource;
 };
 
 // This class holds onto the lifetime of TensorResources<T> so that they can be kept alive by TensorBase AND its active MBRs.
