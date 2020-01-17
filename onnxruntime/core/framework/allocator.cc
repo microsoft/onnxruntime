@@ -71,7 +71,7 @@ ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetMemType, _In_ const OrtMemoryInfo* ptr
 }
 
 ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtAllocatorType* out) {
-  *out = ptr->type;
+  *out = ptr->alloc_type;
   return nullptr;
 }
 

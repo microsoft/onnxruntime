@@ -11,6 +11,15 @@ steps:
     arguments: 'analyze $(Build.BinariesDirectory)\RelWithDebInfo\*.dll  --recurse --verbose'
   continueOnError: true
 
+- task: DeleteFiles@1
+  displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+  inputs:
+    SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+    Contents: |
+     **/*.obj
+     **/*.pdb
+     **/*.dll
+      
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
   continueOnError: true

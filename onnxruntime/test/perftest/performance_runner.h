@@ -132,6 +132,8 @@ class PerformanceRunner {
   }
 
  private:
+  std::chrono::time_point<std::chrono::high_resolution_clock> session_create_start_;
+  std::chrono::time_point<std::chrono::high_resolution_clock> session_create_end_;
   PerformanceResult performance_result_;
   PerformanceTestConfig performance_test_config_;
   TestModelInfo* test_model_info_;

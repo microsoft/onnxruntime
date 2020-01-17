@@ -3,6 +3,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/MaxAbsScalarFeaturizer.h"
@@ -35,12 +36,8 @@ template <>
 struct OutputTypeMapper<double> { using type = double; };
 
 template <typename InputT>
-class MaxAbsScalarTransformer final : public OpKernel {
- public:
-  explicit MaxAbsScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* ctx) const override {
+struct MaxAbsScalarTransformerImpl {
+  void operator()(OpKernelContext* ctx) const {
     // Create the transformer
     Microsoft::Featurizer::Featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
         [ctx](void) {
@@ -65,110 +62,40 @@ class MaxAbsScalarTransformer final : public OpKernel {
     for (int64_t i = 0; i < length; ++i) {
       output_data[i] = transformer.execute(input_data[i]);
     }
+  }
+};
 
+class MaxAbsScalarTransformer final : public OpKernel {
+ public:
+  explicit MaxAbsScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* ctx) const override {
+    utils::MLTypeCallDispatcher<MaxAbsScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double>
+        t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke(ctx);
     return Status::OK();
   }
 };
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     MaxAbsScalarTransformer,
     kMSFeaturizersDomain,
     1,
-    int8,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int8_t>()),
-    MaxAbsScalarTransformer<int8_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    int16,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int16_t>()),
-    MaxAbsScalarTransformer<int16_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint8,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint8_t>()),
-    MaxAbsScalarTransformer<uint8_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint16,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint16_t>()),
-    MaxAbsScalarTransformer<uint16_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    float,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<float>()),
-    MaxAbsScalarTransformer<float>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    int32,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int32_t>()),
-    MaxAbsScalarTransformer<int32_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    int64,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int64_t>()),
-    MaxAbsScalarTransformer<int64_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint32,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint32_t>()),
-    MaxAbsScalarTransformer<uint32_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint64,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint64_t>()),
-    MaxAbsScalarTransformer<uint64_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    MaxAbsScalarTransformer,
-    kMSFeaturizersDomain,
-    1,
-    double,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<double>()),
-    MaxAbsScalarTransformer<double>);
-
+        .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("InputT", {DataTypeImpl::GetTensorType<int8_t>(),
+                                   DataTypeImpl::GetTensorType<uint8_t>(),
+                                   DataTypeImpl::GetTensorType<int16_t>(),
+                                   DataTypeImpl::GetTensorType<uint16_t>(),
+                                   DataTypeImpl::GetTensorType<int32_t>(),
+                                   DataTypeImpl::GetTensorType<uint32_t>(),
+                                   DataTypeImpl::GetTensorType<int64_t>(),
+                                   DataTypeImpl::GetTensorType<uint64_t>(),
+                                   DataTypeImpl::GetTensorType<float>(),
+                                   DataTypeImpl::GetTensorType<double>()}),
+    MaxAbsScalarTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime
