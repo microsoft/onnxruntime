@@ -42,7 +42,7 @@ jobs:
         script: docker run --rm --volume $(Build.SourcesDirectory)/server:/onnxruntime_src --volume $(Build.BinariesDirectory):/build onnxruntime-server-ubuntu16.04 /bin/bash /onnxruntime_src/ci/run.sh        
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
-    - template: component-governance-component-detection-steps.yml
+    - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'ci_only'
 

@@ -110,7 +110,7 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
 
-    - template: component-governance-component-detection-steps.yml
+    - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
 

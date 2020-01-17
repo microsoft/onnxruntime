@@ -100,7 +100,7 @@ jobs:
     displayName: 'Run tests'
 
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
 

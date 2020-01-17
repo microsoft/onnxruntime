@@ -24,7 +24,7 @@ jobs:
 
       displayName: 'Command Line Script'
 
-    - template: component-governance-component-detection-steps.yml
+    - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'ci_only'
 

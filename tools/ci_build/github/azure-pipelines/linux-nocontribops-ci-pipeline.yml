@@ -38,7 +38,7 @@ jobs:
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory) -x "--disable_contrib_ops"'
       displayName: 'Command Line Script'
 
-    - template: component-governance-component-detection-steps.yml
+    - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'ci_only'
 
