@@ -174,7 +174,7 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
   winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider);
 
   bool is_cpu = false;
-  if (SUCCEEDED(IsCpu(&is_cpu) && !is_cpu)) {
+  if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
     winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
                                                          reinterpret_cast<ID3D12Resource**>(resource));
   } else {
