@@ -110,7 +110,7 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     return false;
   }
 
-  // we allocated the same number of bytes as the current region, so we have 2x that now
+  // if we didn't update already, default to growing by 2x next time
   if (!increased_allocation) {
     curr_region_allocation_bytes_ *= 2;
   }
