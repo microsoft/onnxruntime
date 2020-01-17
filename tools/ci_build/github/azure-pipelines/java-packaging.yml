@@ -14,7 +14,7 @@
       displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)/Linux/Release/java/build/libs'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)/linux-x86_64'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/cpu/linux-x86_64'
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
@@ -42,7 +42,7 @@
       displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)/Linux/Release/java/build/libs'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)/linux-x86_64'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/gpu/linux-x86_64'
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
@@ -61,16 +61,27 @@
   timeoutInMinutes:  120
   pool: 'Win-CPU-2019'
   steps:
-    - template: templates/set-variables-and-download.yml
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.7'
+        addToPath: true
+        architecture: 'x64'
 
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
-  - task: PythonScript@0
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
+
+    - task: PythonScript@0
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
@@ -88,7 +99,7 @@
       displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\Windows\Release\java\build\libs'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)\windows-x86_64'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)\cpu\windows-x86_64'
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
@@ -104,18 +115,29 @@
   workspace:
     clean: all
   timeoutInMinutes:  120
-  pool: 'Win-CPU-2019'
+  pool: 'Win-GPU-2019'
   steps:
-    - template: templates/set-variables-and-download.yml
+    - template: templates/set-test-data-variables-step.yml
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.7'
+        addToPath: true
+        architecture: 'x64'
 
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
-  - task: PythonScript@0
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
+
+    - task: PythonScript@0
       displayName: 'Download test data'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
@@ -133,7 +155,7 @@
       displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\Windows\Release\java\build\libs'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)\windows-x86_64'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)\gpu\windows-x86_64'
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
@@ -167,7 +189,7 @@
       displayName: 'Copy Java output to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)/Linux/Release/java/build/libs'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)/macosx-x86_64'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)/cpu/macosx-x86_64'
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
