@@ -110,7 +110,7 @@ The DirectML execution provider works most efficiently when tensor shapes are kn
 1) Because constant folding can occur more often, there may be fewer CPU / GPU copies and stalls during evaluations.
 2) More initialization work occurs when sessions are created rather than during the first evaluation.
 3) Weights may be pre-processed within DirectML, enabling more efficient algorithms to be used.
-4) Graph optimization occurs within DirectML. For example, Concat operators may be removed, and different tensor layouts may be used for the input and output of operators.
+4) Graph optimization occurs within DirectML. For example, Concat operators may be removed, and more optimal tensor layouts may be used for the input and output of operators.
 
 Normally when the shapes of model inputs are known during session creation, the shapes for the reset of the model are inferred by OnnxRuntime when a session is created.  However if a model input contains a free dimension (such as for batch size), steps must be taken to retain the above performance benefits.
 
