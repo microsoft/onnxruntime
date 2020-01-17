@@ -6,37 +6,6 @@ Java Native Interface (JNI) is used to allow for seamless calls to ONNX runtime 
 ## Usage
 
 TBD: maven distribution
-<!---
-
-This project's Maven group ID is `ai.onnxruntime` and its main artifact ID is `runtime`. Use artifact `runtime-gpu` for GPU support. Both of these artifacts bundle the onnxruntime shared library. Use artifact `runtime-core` to use an onnxruntime shared library installed on your system's library path.
-
-These artifacts are cross-platform and are built for some commonly used OS/architectures.
-
-To add a dependency using Maven, use the following:
-
-```xml
-<dependency>
-  <groupId>ai.onnxruntime</groupId>
-  <artifactId>runtime</artifactId>
-  <version>$SELECT_A_VERSION</version>
-</dependency>
-```
-
-To add a dependency using Gradle:
-
-```gradle
-dependencies {
-  // Pick one depending on your use case:
-
-  // 1. Use in your implementation only:
-  implementation("ai.onnxruntime:runtime:$SELECT_A_VERSION")
-
-  // 2. Use types in your public API:
-  api("ai.onnxruntime:runtime:$SELECT_A_VERSION")
-
-}
-```
--->
 
 Java 8 is the minimum supported version.
 
