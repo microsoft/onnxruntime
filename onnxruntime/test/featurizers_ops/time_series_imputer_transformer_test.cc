@@ -34,6 +34,7 @@ using TransformedType = std::vector<
         std::vector<std::string>,
         std::vector<nonstd::optional<std::string>>>>;
 
+namespace {
 std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches,
                                const std::vector<NS::TypeId>& colsToImputeDataTypes,
                                bool supressError, NS::Featurizers::Components::TimeSeriesImputeStrategy tsImputeStrategy) {
@@ -49,6 +50,7 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
   pTransformer->save(ar);
   return ar.commit();
 }
+}  // namespace
 
 static void AddInputs(OpTester& test, const std::vector<std::vector<InputType>>& trainingBatches,
                       const std::vector<InputType>& inferenceBatches, const std::vector<NS::TypeId>& colsToImputeDataTypes,

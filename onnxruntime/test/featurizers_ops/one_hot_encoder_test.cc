@@ -13,6 +13,7 @@ namespace NS = Microsoft::Featurizer;
 namespace onnxruntime {
 namespace test {
 
+namespace {
 template <typename InputType>
 std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches, bool allowMissingValues) {
   using Estimator = NS::Featurizers::OneHotEncoderEstimator<InputType>;
@@ -25,6 +26,7 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
   pTransformer->save(ar);
   return ar.commit();
 }
+}  // namespace
 
 TEST(FeaturizersTests, OneHotEncoder_uint32_t) {
   using InputType = uint32_t;
