@@ -811,7 +811,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       });
 }
 
-#ifdef USE_MIMALLOC
+#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
 static struct {
   PyMemAllocatorEx mem;
   PyMemAllocatorEx raw;
@@ -823,7 +823,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
-#ifdef USE_MIMALLOC
+#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
   PyMemAllocatorEx alloc;
   alloc.malloc = [](void* ctx, size_t size) {
     ORT_UNUSED_PARAMETER(ctx);

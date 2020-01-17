@@ -1,4 +1,4 @@
-#ifdef USE_MIMALLOC
+#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
 #include "mimalloc.h"
 #include "core/framework/mimalloc_arena.h"
 

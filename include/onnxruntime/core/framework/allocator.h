@@ -275,7 +275,7 @@ class CPUAllocator : public IDeviceAllocator {
   std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
-#ifdef USE_MIMALLOC
+#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
 class MiMallocAllocator : public IDeviceAllocator {
  public:
   explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
@@ -298,7 +298,7 @@ class MiMallocAllocator : public IDeviceAllocator {
 #endif
 
 
-#ifdef USE_MIMALLOC
+#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
   using TAllocator = MiMallocAllocator;
 #else
   using TAllocator = CPUAllocator;
