@@ -434,12 +434,6 @@ const std::vector<std::string>& GetAvailableProviders() {
     available_providers.push_back(kTensorrtExecutionProvider);
 #endif
 #ifdef USE_CUDA
-    {
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
-      cuda_device_id = 0;
-      cuda_mem_limit = INT_MAX;
-    }
-
     available_providers.push_back(kCudaExecutionProvider);
 #endif
 #ifdef USE_DNNL
@@ -470,8 +464,9 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      // device id??
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(0));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
+      cuda_device_id = 0;
+      cuda_mem_limit = static_cast<size_t>(INT_MAX);
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
