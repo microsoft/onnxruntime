@@ -105,6 +105,20 @@ Additionally, as the DirectML execution provider does not support parallel execu
 
 A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](../../samples/c_cxx/fns_candy_style_transfer).
 
+## Performance best practices
+The DirectML execution provider works most efficiently when tensor shapes are known at the time a session is created.  This provides a few performance benefits:
+1) Because constant folding can occur more often, there may be fewer CPU / GPU copies and stalls during evaluations.
+2) More initialization work occurs when sessions are created rather than during the first evaluation.
+3) Weights may be pre-processed within DirectML, enabling more efficient algorithms to be used.
+4) Graph optimization occurs within DirectML. For example, Concat operators may be removed, and different tensor layouts may be used for the input and output of operators.
+
+Normally when the shapes of model inputs are known during session creation, the shapes for the reset of the model are inferred by OnnxRuntime when a session is created.  However if a model input contains a free dimension (such as for batch size), steps must be taken to retain the above performance benefits.
+
+In this case, there are two options:
+- Edit the model to replace an input's free dimension (specified through ONNX using "dim_param") with a fixed size.
+- Edit the model to ensure that an input's free dimension has a [denotation](https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md) (such as "DATA_BATCH," or a custom denotation).  Then when creating the session, specify the dimension size for each denotation.  This can be done using the OnnxRuntime *AddFreeDimensionOverride* ABI.
+
+
 ## See also
 
 [DirectML documentation \(docs.microsoft.com\)](https://docs.microsoft.com/en-us/windows/win32/direct3d12/dml)
