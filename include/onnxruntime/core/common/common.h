@@ -36,12 +36,19 @@
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
 
-#include "core/common/allocator_mimalloc.h"
+#ifdef USE_MIMALLOC
+#include <mimalloc.h>
+#endif
 
 namespace onnxruntime {
 
+#ifdef USE_MIMALLOC
 template <typename T>
-using FastAllocVector = std::vector<T,allocator_mimalloc<T>>;
+using FastAllocVector = std::vector<T,mi_stl_allocator<T>>;
+#else
+template <typename T>
+using FastAllocVector = std::vector<T>;
+#endif
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 
