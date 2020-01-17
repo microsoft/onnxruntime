@@ -324,8 +324,24 @@ HRESULT OnnxruntimeEngine::ReleaseCompletedReferences() {
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* input_name, const IValue* src, IValue** dest) {
-  return E_NOTIMPL;
+HRESULT OnnxruntimeEngine::CopyValueAcrossDevices(IValue* src, IValue* dest) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+
+  OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
+
+  auto src_value = static_cast<OnnxruntimeValue*>(src);
+  auto dest_value = static_cast<OnnxruntimeValue*>(dest);
+
+  bool is_empty;
+  auto has_null_source = (SUCCEEDED(src_value->IsEmpty(&is_empty)) && is_empty);
+  RETURN_HR_IF(E_FAIL, has_null_source);
+
+  auto has_null_dest = (SUCCEEDED(dest_value->IsEmpty(&is_empty)) && is_empty);
+  RETURN_HR_IF(E_FAIL, has_null_dest);
+
+  winml_adapter_api->DmlCopyTensor(ort_provider, src_value->UseOrtValue(), dest_value->UseOrtValue());
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::Sync() {
@@ -450,7 +466,7 @@ HRESULT OnnxruntimeEngine::CreateNullValue(_Out_ IValue** out) {
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
+HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 

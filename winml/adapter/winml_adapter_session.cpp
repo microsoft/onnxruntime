@@ -40,12 +40,52 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
 
 ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session) {
   API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
-    *session = reinterpret_cast<OrtSession*>(new onnxruntime::InferenceSession(options->value, env->GetLoggingManager()));
+    inference_session = std::make_unique<onnxruntime::InferenceSession>(options->value, env->GetLoggingManager());
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
+
+  // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
+  // byte addressable memory
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> provider_list;
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      auto provider = factory->CreateProvider();
+      if (provider->Type() == onnxruntime::kDmlExecutionProvider) {
+        if (options->value.enable_mem_pattern) {
+          // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
+          // Doing so would be inconsistent with the Python API that doesn't go through this code path.
+          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider.");
+        }
+        if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+          return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider.");
+        }
+      }
+      provider_list.push_back(std::move(provider));
+    }
+  }
+
+  Status status;
+  if (options) {
+    if (!options->custom_op_domains_.empty()) {
+      status = inference_session->AddCustomOpDomains(options->custom_op_domains_);
+      if (!status.IsOK())
+        return onnxruntime::ToOrtStatus(status);
+    }
+  }
+  
+  // register the providers
+  for (auto& provider : provider_list) {
+    if (provider) {
+      inference_session->RegisterExecutionProvider(std::move(provider));
+    }
+  }
+
+  *session = reinterpret_cast<OrtSession*>(inference_session.release());
+
   return nullptr;
   API_IMPL_END
 }

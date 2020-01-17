@@ -470,7 +470,7 @@ HRESULT LearningModelBinding::BindInput(const std::string& name, winrt::com_ptr<
 
   auto engine = m_session.as<LearningModelSession>()->GetEngine();
   winrt::com_ptr<WinML::IValue> device_value;
-  WINML_THROW_IF_FAILED(engine->CopyOneInputAcrossDevices(name.c_str(), value.get(), device_value.put()));  // an input will always be copied on device mismatch
+  WINML_THROW_IF_FAILED(engine->CreateOneInputAcrossDevices(name.c_str(), value.get(), device_value.put()));  // an input will always be copied on device mismatch
 
   if (exists) {
     inputs_[index] = device_value;

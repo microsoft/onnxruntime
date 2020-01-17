@@ -40,8 +40,12 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
   // Request the dml ep
   winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get());
 
-  // Request the cpu ep as well.... todo check if we need this
-  // winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true);
+#ifndef _WIN64
+  auto use_arena = false;
+#else
+  auto use_arena = true;
+#endif
+  winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena);
   
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
@@ -73,22 +77,17 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
     OrtSession* session) {
   RETURN_HR_IF_NULL(E_INVALIDARG, session);
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-
-  size_t num_providers;
-  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
-  RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
-
-  OrtExecutionProvider* ort_provider;
-  winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider);
-
-  // OnnxRuntime uses the default rounding mode when calling the session's allocator.
-  // During initialization, OnnxRuntime allocates weights, which are permanent across session
-  // lifetime and can be large, so shouldn't be rounded.
-  winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false);
-
+  
   if (auto status = winml_adapter_api->SessionInitialize(session)) {
     return E_FAIL;
   }
+
+  OrtExecutionProvider* ort_provider;
+  winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider);
+ 
+  size_t num_providers;
+  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
+  RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
 
   winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true);
 
