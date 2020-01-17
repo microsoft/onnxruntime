@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/framework/op_kernel_context_internal.h"
-#include "core/providers/cpu/math/matmul.h"
 
+#include "core/providers/cpu/math/matmul.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "matmul_helper.h"

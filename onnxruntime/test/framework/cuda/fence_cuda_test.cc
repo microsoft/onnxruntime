@@ -127,7 +127,8 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
-  EXPECT_EQ(output.Shape(), shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&output.Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape));
   EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
   float expected_output[4] = {13.0f, -18.0f, -27.0f, 40.0f};
@@ -179,7 +180,8 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Y"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
-  EXPECT_EQ(output.Shape(), TensorShape({2, 4}));
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&output.Shape()), (std::vector<int64_t>{2, 4}));
   EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
   float expected_output[8] = {-1, 2, -1, 2, 3, -4, 3, -4};
@@ -242,7 +244,8 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   session.Run(std::unordered_map<std::string, OrtValue>{{"X1", value}}, std::vector<std::string>{"Out"}, &outputs);
   ASSERT_TRUE(1 == outputs.size());
   const Tensor& output = outputs[0].Get<Tensor>();
-  EXPECT_EQ(output.Shape(), TensorShape({4, 4}));
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&output.Shape()), (std::vector<int64_t>{4, 4}));
   EXPECT_EQ(output.DataType(), DataTypeImpl::GetType<float>());
 
   float expected_output[16] = {7, -10, 7, -10, -15, 22, -15, 22, 7, -10, 7, -10, -15, 22, -15, 22};

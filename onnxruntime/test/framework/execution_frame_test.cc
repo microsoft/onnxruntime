@@ -90,7 +90,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   EXPECT_TRUE(p_tensor);
-  EXPECT_EQ(p_tensor->Shape(), shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor->Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape));
   EXPECT_EQ(p_tensor->DataType(), DataTypeImpl::GetType<float>());
 
   //test share memory from tensor
@@ -106,7 +107,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
   EXPECT_TRUE(tensor2);
-  EXPECT_EQ(tensor2->Shape(), shape2);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&tensor2->Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape2));
   EXPECT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
 }
 
@@ -155,7 +157,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   EXPECT_TRUE(p_tensor_arg_0);
-  EXPECT_EQ(p_tensor_arg_0->Shape(), shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor_arg_0->Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape));
   EXPECT_EQ(p_tensor_arg_0->DataType(), DataTypeImpl::GetType<float>());
   EXPECT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }

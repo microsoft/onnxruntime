@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel_context_internal.h"
 #include "nchwc_ops.h"
 #include "core/mlas/inc/mlas.h"
 
