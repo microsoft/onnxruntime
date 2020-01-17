@@ -9,7 +9,6 @@
 #include "cub/util_allocator.cuh"
 #include "cub/device/device_radix_sort.cuh"
 #include <limits>
-#include <chrono>
 
 namespace onnxruntime {
 namespace cuda {
@@ -66,7 +65,6 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
     }
     __syncthreads();
   }
-  __syncthreads();
   //merge and rebuild K
   for (int64_t len = aligned_K; len < aligned_dimension; len <<= 1) {
     auto dir = len << 1;
@@ -140,7 +138,6 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
       }
       __syncthreads();
     }
-    __syncthreads();
     if (tid < K) {
       auto to = TO(tid);
       V[to] = S[tid].key;
@@ -148,6 +145,7 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const int64_t* elem_nu
     }
   }
 }
+
 template <typename T>
 __device__ __inline__ bool Equal(const T& t0, const T& t1) {
   auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
@@ -392,25 +390,25 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
     auto output_key_buffer = kernel->GetScratchBuffer<T>(dimension);
     auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
     auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension);
-    auto input_key = input_key_buffer.get();
-    auto output_key = output_key_buffer.get();
-    auto input_value = input_value_buffer.get();
-    auto output_value = output_value_buffer.get();
+    auto* input_key = input_key_buffer.get();
+    auto* output_key = output_key_buffer.get();
+    auto* input_value = input_value_buffer.get();
+    auto* output_value = output_value_buffer.get();
     size_t temp_bytes = 0;
     CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key, output_key, input_value, output_value, dimension));
     auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes);
-    auto temp_storage = temp_storage_buffer.get();
-    auto blocksPerGridD = (int)(ceil(static_cast<float>(dimension) / GridDim::maxThreadsPerBlock));
-    auto blocksPerGridK = (int)(ceil(static_cast<float>(K) / GridDim::maxThreadsPerBlock));
+    auto* temp_storage = temp_storage_buffer.get();
+    auto blocks_per_grid_D = (int)(ceil(static_cast<float>(dimension) / BT));
+    auto blocks_per_grid_K = (int)(ceil(static_cast<float>(K) / BT));
     for (int64_t i = 0; i < N; i++) {
-      FillInput<T><<<blocksPerGridD, GridDim::maxThreadsPerBlock, 0>>>(input_x, input_key, input_value, elem_nums, size, axis, K, i, dimension);
+      FillInput<T><<<blocks_per_grid_D, BT, 0>>>(input_x, input_key, input_value, elem_nums, size, axis, K, i, dimension);
       CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension) : cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension));
       if (1 == sorted) {
-        FillOutput<T><<<blocksPerGridK, GridDim::maxThreadsPerBlock, 0>>>(output_key, output_value, output_v, output_i, elem_nums, size, axis, K, i, dimension);
+        FillOutput<T><<<blocks_per_grid_K, BT, 0>>>(output_key, output_value, output_v, output_i, elem_nums, size, axis, K, i, dimension);
       } else {  //reorder by ascending index
-        ExcludeOutput<<<blocksPerGridD, GridDim::maxThreadsPerBlock, 0>>>(output_value, K, dimension);
+        ExcludeOutput<<<blocks_per_grid_D, BT, 0>>>(output_value, K, dimension);
         CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, output_value, input_value, output_key, input_key, dimension));
-        FillOutput<T><<<blocksPerGridK, GridDim::maxThreadsPerBlock, 0>>>(input_key, input_value, output_v, output_i, elem_nums, size, axis, K, i, dimension);
+        FillOutput<T><<<blocks_per_grid_K, BT, 0>>>(input_key, input_value, output_v, output_i, elem_nums, size, axis, K, i, dimension);
       }
     } 
   }
