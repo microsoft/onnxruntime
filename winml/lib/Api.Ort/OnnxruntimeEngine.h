@@ -67,6 +67,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CopyOneInputAcrossDevices)(const char* input_name, const IValue* src, IValue** dest) override;
   STDMETHOD(Sync)() override;
   STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateTensorValueFromExternalD3DResource)(ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CopyOneInputAcrossDevices)(const char* name, IValue* src, IValue** out) override;
 
   OrtSession* UseOrtSession();

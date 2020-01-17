@@ -58,7 +58,7 @@
                                                                                                    \
     type(std::vector<int64_t> const& shape) : Base(shape){};                                       \
                                                                                                    \
-    type(std::vector<int64_t> const& shape, ID3D12Resource* pResource, UINT64 resource_width) : Base(shape, pResource, resource_width){}; \
+    type(std::vector<int64_t> const& shape, ID3D12Resource* pResource) : Base(shape, pResource){}; \
   };                                                                                               \
   }                                                                                                \
   namespace winrt::Windows::AI::MachineLearning::factory_implementation {                          \

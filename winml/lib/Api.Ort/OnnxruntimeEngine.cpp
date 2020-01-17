@@ -15,24 +15,117 @@ using namespace WinML;
 static ONNXTensorElementDataType
 ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
   switch (kind) {
-    case winml::TensorKind::Boolean:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;       }
-    case winml::TensorKind::String:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;     }
-    case winml::TensorKind::Float16:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;    }
-    case winml::TensorKind::Float:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;      }
-    case winml::TensorKind::Double:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;     }
-    case winml::TensorKind::Int8:       { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;       }
-    case winml::TensorKind::Int16:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;      }
-    case winml::TensorKind::Int32:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;      }
-    case winml::TensorKind::Int64:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;      }
-    case winml::TensorKind::UInt8:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;      }
-    case winml::TensorKind::UInt16:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;     }
-    case winml::TensorKind::UInt32:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;     }
-    case winml::TensorKind::UInt64:     { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;     }
-    case winml::TensorKind::Complex64:  { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;  }
-    case winml::TensorKind::Complex128: { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128; }
-    default:                            { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  }
+    case winml::TensorKind::Boolean: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+    }
+    case winml::TensorKind::String: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+    }
+    case winml::TensorKind::Float16: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+    }
+    case winml::TensorKind::Float: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    }
+    case winml::TensorKind::Double: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+    }
+    case winml::TensorKind::Int8: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+    }
+    case winml::TensorKind::Int16: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+    }
+    case winml::TensorKind::Int32: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+    }
+    case winml::TensorKind::Int64: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+    }
+    case winml::TensorKind::UInt8: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+    }
+    case winml::TensorKind::UInt16: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+    }
+    case winml::TensorKind::UInt32: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+    }
+    case winml::TensorKind::UInt64: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+    }
+    case winml::TensorKind::Complex64: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
+    }
+    case winml::TensorKind::Complex128: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
+    }
+    default: { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; }
   }
 }
+
+/*
+Need to implement OnnxruntimeExternalBufferBackedValue 
+
+
+      get the resource, and delete getvalue from tensor: GetCpuResource()->GetValue()
+
+      // this is cpu memory
+      // TODO:  what is the difference between the device allocator and the arena allocator?
+      Ort::MemoryInfo cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+
+      // create the OrtValue as a tensor letting ort know that we own the data buffer
+      auto value = Ort::Value::CreateTensor<T>(
+          cpu_memory,
+          buffer().second,
+          m_buffer->SizeInBytes(),
+          shape_.data(),
+          shape_.size());
+      //        Ort::TypeToTensorType<T>::type);
+      
+Need to implement OnnxruntimeExternalD3DResourceBackedValue 
+
+
+struct DMLResource {
+  DMLResource(ID3D12Resource* pResource, UINT64 resource_width) {
+    DXResource.copy_from(pResource);
+    //ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
+    resource_width_ = resource_width;
+  }
+
+  ~DMLResource() {
+    //adapter_->FreeGPUAllocation(ExecutionProviderAllocatedResource);
+  }
+
+  winrt::com_ptr<ID3D12Resource> DXResource;
+  UINT64 resource_width_;
+  void* ExecutionProviderAllocatedResource = nullptr;
+};
+
+
+    THROW_HR_IF_NULL(E_UNEXPECTED, resource->ExecutionProviderAllocatedResource);
+
+    Ort::MemoryInfo dml_memory(nullptr);
+    auto session_impl = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    //auto engine = session_impl->GetEngine();
+    // WINML_THROW_IF_FAILED(adapter_->GetProviderMemoryInfo(provider, dml_memory.put())); should be engine->CreateTensor()
+
+    auto spSession = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto spDevice = spSession->Device().as<winrt::Windows::AI::MachineLearning::implementation::LearningModelDevice>();
+    WINML_THROW_HR_IF_TRUE_MSG(WINML_ERR_INVALID_BINDING,
+                               spDevice->IsCpuDevice(),
+                               "Cannot create GPU tensor on CPU device");
+    // create the OrtValue as a tensor letting ort know that we own the data buffer
+    auto value = Ort::Value::CreateTensor(
+        dml_memory,
+        resource->ExecutionProviderAllocatedResource,
+        resource->resource_width_,
+        shape_.data(),
+        shape_.size(),
+        Ort::TypeToTensorType<T>::type);
+
+
+*/
 
 OnnxruntimeValue::OnnxruntimeValue() : value_(nullptr, nullptr), allocator_(nullptr, nullptr) {}
 
@@ -73,7 +166,7 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
 HRESULT OnnxruntimeValue::GetResource(void** resource) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  
+
   void* mutable_data = nullptr;
   ort_api->GetTensorMutableData(value_.get(), &mutable_data);
 
@@ -83,9 +176,8 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu) && !is_cpu)) {
     winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
-        reinterpret_cast<ID3D12Resource**>(resource));
-  } 
-  else {
+                                                         reinterpret_cast<ID3D12Resource**>(resource));
+  } else {
     *resource = mutable_data;
   }
   return S_OK;
@@ -176,7 +268,7 @@ HRESULT OnnxruntimeEngine::RegisterGraphTransformers() {
 
 HRESULT OnnxruntimeEngine::RegisterCustomRegistry(IMLOperatorRegistry* registry) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  winml_adapter_api->SessionRegisterCustomRegistry(session_.get(), registry);  
+  winml_adapter_api->SessionRegisterCustomRegistry(session_.get(), registry);
   return S_OK;
 }
 
@@ -214,7 +306,6 @@ HRESULT OnnxruntimeEngine::TrimUploadHeap() {
 
   winml_adapter_api->DmlExecutionProviderTrimUploadHeap(ort_provider);
   return S_OK;
-
 }
 
 HRESULT OnnxruntimeEngine::ReleaseCompletedReferences() {
@@ -264,6 +355,14 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml
   return S_OK;
 }
 
+HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
+  return E_NOTIMPL;
+}
+
+HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
+  return E_NOTIMPL;
+}
+
 HRESULT OnnxruntimeEngine::CopyOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
   return E_NOTIMPL;
 }
@@ -272,7 +371,7 @@ bool OnnxruntimeEngine::IsDmlSession() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   size_t num_providers;
   winml_adapter_api->SessionGetExecutionProvidersCount(session_.get(), &num_providers);
-  return num_providers == 2; // There should be a better way to validate that the session is configured as to use dml
+  return num_providers == 2;  // There should be a better way to validate that the session is configured as to use dml
 }
 
 // TODO supposedly this doesnt work if it is not static
