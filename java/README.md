@@ -38,13 +38,15 @@ dependencies {
 ```
 -->
 
+Java 8 is the minimum supported version.
+
 The `sample` directory contains an example evaluator implementation.
 
 This project can be built manually using the instructions below.
 
 ### Building
 
-Use the main project's [build instructions](../BUILD.md) with the `--build_java` option. This will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/build`:
+Use the main project's [build instructions](../BUILD.md) with the `--build_java` option. JDK version 8 or later is required. This will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/build`:
 
 * `docs/javadoc/` - HTML javadoc
 * `reports/` - detailed test results and other reports
