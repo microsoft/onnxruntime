@@ -6,7 +6,7 @@ target_include_directories(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprot
 target_compile_definitions(onnx_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${ONNXRUNTIME_ROOT}/core/protobuf TARGET onnx_proto)
 if (WIN32)
-  target_compile_options(onnx_proto PRIVATE "/wd4146" "/wd4125" "/wd4456" "/wd4267")
+  target_compile_options(onnx_proto PRIVATE "/wd4146" "/wd4125" "/wd4456" "/wd4267" "/wd4309")
 else()
   if(HAS_UNUSED_VARIABLE)
     target_compile_options(onnx_proto PRIVATE "-Wno-unused-variable")
