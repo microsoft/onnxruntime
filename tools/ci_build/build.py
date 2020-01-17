@@ -120,7 +120,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_submodule_sync", action='store_true', help="Don't do a 'git submodule update'. Makes the Update phase faster.")
 
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
-    parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
+    parser.add_argument("--use_mimalloc", action='store_false', help="Use mimalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
