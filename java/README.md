@@ -6,6 +6,37 @@ Java Native Interface (JNI) is used to allow for seamless calls to ONNX runtime 
 ## Usage
 
 TBD: maven distribution
+<!---
+
+This project's Maven group ID is `ai.onnxruntime` and its main artifact ID is `runtime`. Use artifact `runtime-gpu` for GPU support. Both of these artifacts bundle the onnxruntime shared library. Use artifact `runtime-core` to use an onnxruntime shared library installed on your system's library path.
+
+These artifacts are cross-platform and are built for some commonly used OS/architectures.
+
+To add a dependency using Maven, use the following:
+
+```xml
+<dependency>
+  <groupId>ai.onnxruntime</groupId>
+  <artifactId>runtime</artifactId>
+  <version>$SELECT_A_VERSION</version>
+</dependency>
+```
+
+To add a dependency using Gradle:
+
+```gradle
+dependencies {
+  // Pick one depending on your use case:
+
+  // 1. Use in your implementation only:
+  implementation("ai.onnxruntime:runtime:$SELECT_A_VERSION")
+
+  // 2. Use types in your public API:
+  api("ai.onnxruntime:runtime:$SELECT_A_VERSION")
+
+}
+```
+-->
 
 The `sample` directory contains an example evaluator implementation.
 
@@ -13,7 +44,7 @@ This project can be built manually using the instructions below.
 
 ### Building
 
-Use the main project's build instructions with the `--build_java` option. This will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/build`:
+Use the main project's [build instructions](../BUILD.md) with the `--build_java` option. This will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/build`:
 
 * `docs/javadoc/` - HTML javadoc
 * `reports/` - detailed test results and other reports
@@ -25,8 +56,8 @@ Use the main project's build instructions with the `--build_java` option. This w
 The reason the shared libraries are split out like that is that users can mix and match to suit their use case:
 
 * To support a single OS/Architecture without any dependencies, use `libs/onnxruntime-all.jar`.
-* To support cross-platform: bundle a single libs/onnxruntime.jar` and with all of the `libs/onnxruntime-jni.jar` and `libs/onnxruntime-lib.jar` for all of the OS/Architectures you built for.
-* To support use case where an onnxruntime shared library will reside in the system's library search path: bundle a single libs/onnxruntime.jar` and with all of the `libs/onnxruntime-jni.jar`. The onnxruntime shared library should be loaded automatically assuming the system (specifically, something like `ldconfig`) can find it.
+* To support cross-platform: bundle a single `libs/onnxruntime.jar` and with all of the respective `libs/onnxruntime-jni.jar` and `libs/onnxruntime-lib.jar` for all of the desired OS/Architectures.
+* To support use case where an onnxruntime shared library will reside in the system's library search path: bundle a single `libs/onnxruntime.jar` and with all of the `libs/onnxruntime-jni.jar`. The onnxruntime shared library should be loaded automatically assuming the system (specifically, something like `ldconfig`) can find it.
 
 #### Build System Overview 
 
@@ -45,7 +76,7 @@ Upon successful compilation of those targets, a special Gradle task to build wil
 
 ### Code Formatting
 
-Spotless is used to keep the code properly formatted.
+[Spotless](https://github.com/diffplug/spotless/tree/master/plugin-gradle) is used to keep the code properly formatted.
 Gradle's `spotlessCheck` will show any misformatted code.
 Gradle's `spotlessApply` will try to fix the formatting.
 Misformatted code will raise failures when checks are ran during test run.
