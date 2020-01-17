@@ -471,7 +471,7 @@ bool TrainingSession::IsImmutableWeight(const ImmutableWeights& immutable_weight
 
     if (input_idx < node->InputDefs().size() &&
         node->InputDefs()[input_idx]->Name() == tensor->name()) {
-      if (tensor->data_type() == TensorProto_DataType_FLOAT && tensor->dims_size() == 0) {
+      if (tensor->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT && tensor->dims_size() == 0) {
         float tensor_value;
         if (tensor->has_raw_data()) {
           memcpy(&tensor_value, tensor->raw_data().data(), sizeof(float));

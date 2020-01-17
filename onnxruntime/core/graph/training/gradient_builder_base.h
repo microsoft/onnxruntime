@@ -8,7 +8,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/training/graph_augmenter.h"
-#include "core/graph/training/attr_proto_util.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -134,7 +134,7 @@ class GradientBuilderBase {
     return NodeDef("Constant",
                    {},
                    {ArgDef(arg_name, nullptr)},
-                   {MakeAttribute("value", t_proto)});
+                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
   static NodeDef ConstantValueNode(float value, const std::string& arg_name) {
@@ -146,7 +146,7 @@ class GradientBuilderBase {
     return NodeDef("Constant",
                    {},
                    {ArgDef(arg_name, nullptr)},
-                   {MakeAttribute("value", t_proto)});
+                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
   }
 
   static NodeDef ZeroConstantNode() {

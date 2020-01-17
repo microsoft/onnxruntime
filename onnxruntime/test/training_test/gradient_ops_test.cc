@@ -13,14 +13,12 @@
 #include "test/providers/gradient_op_test_utils.h"
 #include "test/random_seed.h"
 
-// TODO: replace this with ONNX version of attr_proto_util.h when ONNX dependency version is updated
-// TODO: update attributes type to AttributeProtoWrapper when ONNX version is ready
-#include "core/graph/training/attr_proto_util.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace test {
 
-using onnxruntime::training::MakeAttribute;
+using ONNX_NAMESPACE::MakeAttribute;
 using training::OpDef;
 
 static bool IsErrorWithinTolerance(float error, float tolerance) {

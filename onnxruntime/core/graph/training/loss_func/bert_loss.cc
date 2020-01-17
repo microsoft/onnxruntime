@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include <vector>
-#include "core/graph/training/attr_proto_util.h"
 #include "core/graph/training/loss_func/bert_loss.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -79,14 +79,14 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
     new_nodes.emplace_back(NodeDef("Unsqueeze",
                                    {ArgDef(masked_lm_positions, masked_lm_int64_type_proto)},
                                    {ArgDef("masked_lm_positions_unsqueezed")},
-                                   {MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
+                                   {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(2)})},
                                    "Mask_LM_Positions_Unsqueezed"));
     TypeProto* gathered_prediction_type_proto = GetGatheredPredictionTypeProto(prediction_arg,
                                                                                graph_defs);
     new_nodes.emplace_back(NodeDef("GatherND",
                                    {ArgDef(prediction_masked_lm), ArgDef("masked_lm_positions_unsqueezed")},
                                    {ArgDef("gathered_prediction", gathered_prediction_type_proto)},
-                                   {MakeAttribute("axis", static_cast<int64_t>(1))},
+                                   {ONNX_NAMESPACE::MakeAttribute("axis", static_cast<int64_t>(1))},
                                    "GATHERED_LM"));
 
     TypeProto* masked_lm_float_type_proto = GetMaskedLMTypeProto(prediction_arg,
@@ -98,7 +98,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                     ArgDef(masked_lm_weights, masked_lm_float_type_proto)},  // Inputs
                                    {ArgDef(mlm_loss, GetLossTypeProto(graph_defs)),          // Outputs
                                     ArgDef("probability_lm", gathered_prediction_type_proto)},
-                                   {MakeAttribute("reduction", "mean")},
+                                   {ONNX_NAMESPACE::MakeAttribute("reduction", "mean")},
                                    "Masked_LM_Loss"));
   }
 
@@ -116,7 +116,7 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
                                     ArgDef(next_sentence_labels, next_sentence_labels_type_proto)},  // Inputs
                                    {ArgDef(nsp_loss, GetLossTypeProto(graph_defs)),
                                     ArgDef("probability_ns", ns_prediction_arg->TypeAsProto())},  // Outputs
-                                   {MakeAttribute("reduction", "mean")},
+                                   {ONNX_NAMESPACE::MakeAttribute("reduction", "mean")},
                                    "Next_Sentence_Loss"));
   }
 
@@ -140,5 +140,6 @@ GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFun
 
   return graph_defs;
 }
+
 }  // namespace training
 }  // namespace onnxruntime

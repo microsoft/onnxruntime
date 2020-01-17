@@ -5,7 +5,9 @@
 #include "core/graph/training/gradient_builder.h"
 #include "core/graph/training/gradient_builder_registry.h"
 #include "core/graph/training/graph_augmenter.h"
-#include "core/graph/training/attr_proto_util.h"
+#include "onnx/defs/attr_proto_util.h"
+
+using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace training {

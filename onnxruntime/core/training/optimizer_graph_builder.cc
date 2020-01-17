@@ -15,6 +15,7 @@
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/graph/training/graph_augmenter.h"
 #include "core/graph/training/training_optimizer.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -77,7 +78,7 @@ NodeDef BuildGlobalHorovodBarrierNode(const std::vector<std::string>& ready_name
   std::string barrier_output_name = global_barrier_name + "/output";
 
   // Global horovod barrier no-op input.
-  ONNX_NAMESPACE::TensorProto tensor_proto;
+  TensorProto tensor_proto;
   tensor_proto.add_dims(0);
   tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   tensor_proto.set_name(barrier_input_name);
@@ -316,8 +317,8 @@ Status AddGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_genera
     graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
                                     inputs,
                                     {fused_gradient_argdef},
-                                    std::vector<AttributeProto>({MakeAttribute("to", static_cast<int64_t>(target_type)),
-                                                                 MakeAttribute("fuse_outputs", static_cast<int64_t>(true))}),
+                                    std::vector<AttributeProto>({ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type)),
+                                                                 ONNX_NAMESPACE::MakeAttribute("fuse_outputs", static_cast<int64_t>(true))}),
                                     pre_allreduce_scale.name)});
   } else {
     for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
@@ -331,7 +332,7 @@ Status AddGradientScalingNodes(const NodeArgNameGeneratorFn& nodearg_name_genera
       graph_defs.AddNodeDefs({NodeDef("MixedPrecisionScale",
                                       {pre_allreduce_scale, gradient_argdef},
                                       {scaled_gradient_argdef},
-                                      {MakeAttribute("to", static_cast<int64_t>(target_type))},
+                                      {ONNX_NAMESPACE::MakeAttribute("to", static_cast<int64_t>(target_type))},
                                       scaled_gradient_argdef.name)});
 
       gradient_argdef = scaled_gradient_argdef;
@@ -517,142 +518,6 @@ Status AddFiniteGradientCheck(
   return Status::OK();
 }
 
-using GraphInitFn = std::function<Status(Graph&)>;
-
-Status MakeGraphProto(GraphInitFn graph_init_fn, GraphProto& graph_proto) {
-  Model model{"model", false, logging::LoggingManager::DefaultLogger()};
-  Graph& graph = model.MainGraph();
-  ORT_RETURN_IF_ERROR(graph_init_fn(graph));
-  if (graph.GraphResolveNeeded()) {
-    ORT_RETURN_IF_ERROR(graph.Resolve());
-  }
-  graph_proto = graph.ToGraphProto();
-  return Status::OK();
-}
-
-Status AddConditionalWeightUpdate(
-    const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const ArgDef& condition_argdef,
-    const OptimizerBuilderRegistry& opt_builder_registry,
-    const std::vector<ArgDef>& weight_argdefs,
-    const std::vector<ArgDef>& gradient_argdefs,
-    const std::vector<OptimizerNodeConfig>& opt_configs,
-    ArgDef& conditional_node_output,
-    GraphAugmenter::GraphDefs& graph_defs,
-    std::unordered_set<std::string>& optimizer_state_initializer_names) {
-  assert(weight_argdefs.size() == gradient_argdefs.size() &&
-         weight_argdefs.size() == opt_configs.size());
-
-  GraphProto then_subgraph_proto, else_subgraph_proto;
-
-  // just use this same output ArgDef for parent graph and subgraphs
-  const ArgDef conditional_output_argdef{
-      nodearg_name_generator("conditional_output"),
-      graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_BOOL)};
-
-  std::unordered_set<std::string> all_new_optimizer_external_initializer_names{};
-
-  // condition == true
-  ORT_RETURN_IF_ERROR(MakeGraphProto(
-      [&opt_builder_registry, &weight_argdefs, &gradient_argdefs,
-       &opt_configs, &graph_defs, &conditional_output_argdef,
-       &all_new_optimizer_external_initializer_names](Graph& then_subgraph) {
-        /* subgraph structure:
-         * the idea is to minimize any copying incurred by subgraph outputs
-         *
-         * optimizer 1 ---|
-         * optimizer 2 ---|---> group ---> (subgraph output)
-         * ...            |
-         * optimizer N ---|
-         */
-
-        GraphAugmenter::GraphDefs then_subgraph_defs{};
-        std::vector<ArgDef> group_input_argdefs{};
-
-        auto opt_builder = opt_builder_registry.MakeUnique(opt_configs[0].name);
-        ORT_RETURN_IF_NOT(
-            opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
-
-        for (size_t i = 0; i < opt_configs.size(); ++i) {
-          ORT_RETURN_IF_NOT(
-              opt_configs[i].name == opt_configs[0].name,
-              "One graph can only contains one optimizer but ", opt_configs[0].name, " and ", opt_configs[i].name, " are found.");
-        }
-
-        std::vector<ArgDef> external_inputs_including_initializers;
-        std::vector<TensorProto> new_external_initializers;
-        std::vector<ArgDef> output_weight_argdefs;
-        std::vector<ArgDef> output_gradient_argdefs;
-
-        ORT_RETURN_IF_ERROR(opt_builder->Build(
-            weight_argdefs, gradient_argdefs,
-            /*do_update_argdef*/ nullptr, /* global_gradient_norm */ nullptr,
-            opt_configs, then_subgraph_defs,
-            external_inputs_including_initializers, new_external_initializers,
-            output_weight_argdefs, output_gradient_argdefs));
-
-        for (auto& arg : output_weight_argdefs) {
-          group_input_argdefs.emplace_back(arg);
-        }
-
-        for (const auto& external_input : external_inputs_including_initializers) {
-          then_subgraph.AddOuterScopeNodeArg(external_input.name);
-        }
-
-        graph_defs.AddInitializers(new_external_initializers);
-
-        std::transform(
-            new_external_initializers.begin(), new_external_initializers.end(),
-            std::inserter(
-                all_new_optimizer_external_initializer_names,
-                all_new_optimizer_external_initializer_names.end()),
-            [](const TensorProto& initializer) { return initializer.name(); });
-
-        then_subgraph_defs.AddNodeDefs({NodeDef{"Group", group_input_argdefs, {conditional_output_argdef}}});
-
-        then_subgraph_defs.AddGraphOutputs({conditional_output_argdef.name});
-
-        ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(then_subgraph, then_subgraph_defs));
-
-        return Status::OK();
-      },
-      then_subgraph_proto));
-
-  // condition == false
-  ORT_RETURN_IF_ERROR(MakeGraphProto(
-      [&conditional_output_argdef](Graph& else_subgraph) {
-        /* subgraph structure:
-         * output needs to match that of then_branch subgraph
-         *
-         * (local initializer) ---> (subgraph output)
-         */
-
-        GraphAugmenter::GraphDefs else_subgraph_defs{};
-
-        TensorProto local_initializer = CreateTensorProto<bool>(conditional_output_argdef.name, true, {});
-        else_subgraph.AddInitializedTensor(local_initializer);
-
-        else_subgraph_defs.AddGraphOutputs({conditional_output_argdef.name});
-
-        ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(else_subgraph, else_subgraph_defs));
-
-        return Status::OK();
-      },
-      else_subgraph_proto));
-
-  const std::vector<AttributeProto> conditional_attributes{
-      MakeAttribute("then_branch", then_subgraph_proto),
-      MakeAttribute("else_branch", else_subgraph_proto)};
-
-  graph_defs.AddNodeDefs({NodeDef{"If", {condition_argdef}, {conditional_output_argdef}, conditional_attributes}});
-
-  conditional_node_output = conditional_output_argdef;
-
-  optimizer_state_initializer_names = std::move(all_new_optimizer_external_initializer_names);
-
-  return Status::OK();
-}
-
 Status AddLearningRateGraphInputs(Graph& graph, const std::vector<OptimizerNodeConfig>& opt_configs) {
   auto graph_inputs = graph.GetInputsIncludingInitializers();
   std::vector<const NodeArg*> inputs_args_sets(graph_inputs.begin(), graph_inputs.end());
@@ -660,7 +525,7 @@ Status AddLearningRateGraphInputs(Graph& graph, const std::vector<OptimizerNodeC
   for (auto& cfg : opt_configs) {
     if (added_feed_names.find(cfg.lr_feed_name) == added_feed_names.end()) {
       TypeProto tensor_float;
-      tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+      tensor_float.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       tensor_float.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
       const auto& out_def = graph.GetOrCreateNodeArg(cfg.lr_feed_name, &tensor_float);
       inputs_args_sets.push_back(&out_def);
@@ -965,24 +830,12 @@ Status OptimizerGraphBuilder::Build(
   // add weight update
   std::unordered_set<std::string> optimizer_state_initializer_names_result{};
 
-  // TODO: enable conditional weight update for mixed precision when If op data copy issue is resolved
-  if (false) {
-    ArgDef conditional_weight_update_output{};
-    ORT_RETURN_IF_ERROR(AddConditionalWeightUpdate(
-        nodearg_name_generator, global_grad_norm_argdef, opt_builder_registry_,
-        weight_argdefs, gradient_argdefs, opt_configs_,
-        conditional_weight_update_output, graph_defs, optimizer_state_initializer_names_result));
-    // TODO not ideal to pass N copies of the same argdef as control signals
-    //      maybe update AddZeroGradientNodes() to accept 1 or N of them
-    weight_argdefs.assign(weight_argdefs.size(), conditional_weight_update_output);
-  } else {
-    ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
-        opt_builder_registry_, weight_argdefs, gradient_argdefs,
-        &global_grad_norm_argdef,
-        &global_grad_norm_finite_argdef,
-        opt_configs_, graph_defs,
-        optimizer_state_initializer_names_result));
-  }
+  ORT_RETURN_IF_ERROR(AddDirectWeightUpdate(
+      opt_builder_registry_, weight_argdefs, gradient_argdefs,
+      &global_grad_norm_argdef,
+      &global_grad_norm_finite_argdef,
+      opt_configs_, graph_defs,
+      optimizer_state_initializer_names_result));
 
   // add distributed ops
   if (is_distributed) {

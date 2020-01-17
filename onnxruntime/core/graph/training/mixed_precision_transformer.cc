@@ -4,11 +4,11 @@
 #include "core/graph/training/mixed_precision_transformer.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
-#include "core/graph/training/attr_proto_util.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/initializer.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -145,7 +145,7 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
 
   // Create Cast node
   NodeAttributes attrs;
-  attrs["to"] = MakeAttribute("to", int64_t(elem_type));
+  attrs["to"] = ONNX_NAMESPACE::MakeAttribute("to", int64_t(elem_type));
   Node& cast_node = graph.AddNode(cast_node_name, "Cast", "", {arg}, {&output}, &attrs);
 
   // Find node arg index in producer

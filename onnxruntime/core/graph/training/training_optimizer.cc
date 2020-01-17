@@ -6,6 +6,7 @@
 #include "core/graph/training/training_optimizer.h"
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/graph/training/graph_augmenter.h"
+#include "onnx/defs/attr_proto_util.h"
 
 // Provide template specializations for onnxruntime-specific types.
 namespace ONNX_NAMESPACE {
@@ -395,11 +396,11 @@ Status LambOptimizerBuilder::Build(
   }
 
   std::vector<AttributeProto> attribute_protos;
-  attribute_protos.emplace_back(MakeAttribute("alpha", alpha));
-  attribute_protos.emplace_back(MakeAttribute("beta", beta));
-  attribute_protos.emplace_back(MakeAttribute("lambda", lambda));
-  attribute_protos.emplace_back(MakeAttribute("epsilon", epsilon));
-  attribute_protos.emplace_back(MakeAttribute("threshold", threshold));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("alpha", alpha));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("beta", beta));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("lambda", lambda));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("epsilon", epsilon));
+  attribute_protos.emplace_back(ONNX_NAMESPACE::MakeAttribute("threshold", threshold));
 
   graph_defs.AddNodeDefs({NodeDef(OpType(),
                                   input_argdefs,

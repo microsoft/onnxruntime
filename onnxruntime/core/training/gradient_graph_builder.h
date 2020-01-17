@@ -18,7 +18,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/training/gradient_schema_defs.h"
 #include "core/graph/training/gradient_builder_base.h"
-#include "core/graph/training/training_optimizer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 
 namespace onnxruntime {

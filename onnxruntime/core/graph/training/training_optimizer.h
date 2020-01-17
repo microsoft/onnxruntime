@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/graph/training/attr_proto_util.h"
+
 #include "core/graph/training/generic_registry.h"
 #include "core/graph/training/graph_augmenter.h"
 #include "core/framework/data_types.h"
 #include "core/training/optimizer_config.h"
+#include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
@@ -15,26 +16,26 @@ namespace training {
 // Utils for Constant Node Creation
 
 template <class T>
-TensorProto CreateTensorProto(
+ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
     T val,
     const std::vector<int64_t>& dims = {1}) {
   size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
   std::vector<T> values(count, val);
-  TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
+  ONNX_NAMESPACE::TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
   tensor_proto.set_name(name);
   std::for_each(dims.begin(), dims.end(), [&](auto dim) { tensor_proto.add_dims(dim); });
   return tensor_proto;
 }
 
 template <class T>
-TensorProto CreateTensorProto(
+ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
     const std::vector<T>& values,
     const std::vector<int64_t>& dims = {1}) {
   size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
   ORT_ENFORCE(values.size() == count);
-  TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
+  ONNX_NAMESPACE::TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
   tensor_proto.set_name(name);
   std::for_each(dims.begin(), dims.end(), [&](auto dim) { tensor_proto.add_dims(dim); });
   return tensor_proto;
@@ -84,7 +85,7 @@ class OptimizerBuilder {
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<TensorProto>& new_external_initializers,
+      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const = 0;
 
@@ -95,11 +96,11 @@ class OptimizerBuilder {
     return name_ + "_" + weight_name;
   }
 
-  std::vector<AttributeProto> BuildAttributeProto(const OptimizerNodeConfig& opt_config) const {
-    std::vector<AttributeProto> attribute_protos;
+  std::vector<ONNX_NAMESPACE::AttributeProto> BuildAttributeProto(const OptimizerNodeConfig& opt_config) const {
+    std::vector<ONNX_NAMESPACE::AttributeProto> attribute_protos;
     for (auto attr_name : attr_names_) {
       if (opt_config.attributes.count(attr_name)) {
-        attribute_protos.push_back(MakeAttribute(attr_name, opt_config.attributes.at(attr_name)));
+        attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute(attr_name, opt_config.attributes.at(attr_name)));
       }
     }
     return attribute_protos;
@@ -122,7 +123,7 @@ class SGDOptimizerBuilder final : public OptimizerBuilder {
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<TensorProto>& new_external_initializers,
+      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const override;
 };
@@ -140,7 +141,7 @@ class AdamOptimizerBuilder final : public OptimizerBuilder {
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<TensorProto>& new_external_initializers,
+      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const override;
 };
@@ -158,7 +159,7 @@ class LambOptimizerBuilder final : public OptimizerBuilder {
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<TensorProto>& new_external_initializers,
+      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const override;
 };

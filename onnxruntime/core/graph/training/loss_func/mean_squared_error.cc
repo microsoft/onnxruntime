@@ -3,7 +3,7 @@
 
 #include <vector>
 #include "core/graph/training/loss_func/mean_squared_error.h"
-#include "core/graph/training/attr_proto_util.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -68,7 +68,7 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
                                    {
                                        ArgDef(loss_name), // Outputs
                                    },
-                                   {MakeAttribute("keepdims", int64_t(0))},
+                                   {ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))},
                                    "MeanSquaredError_reduce_mean"  // name
                                    ));
   }
@@ -77,5 +77,6 @@ GraphAugmenter::GraphDefs MeanSquaredError::operator()(const Graph& graph, const
 
   return graph_defs;
 }
+
 }  // namespace training
 }  // namespace onnxruntime

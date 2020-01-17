@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/graph/training/tensorboard_transformer.h"
-#include "core/graph/training/attr_proto_util.h"
 #include "core/graph/training/graph_augmenter.h"
+#include "onnx/defs/attr_proto_util.h"
 
 using namespace onnxruntime::common;
 
@@ -26,7 +26,7 @@ Status TransformGraphForTensorboard(Graph& graph,
     new_nodes.emplace_back(NodeDef("SummaryScalar",
                                    {ArgDef(scalar_input)},
                                    {ArgDef(scalar_output)},
-                                   {MakeAttribute("tags", std::vector<std::string>{scalar_output})},
+                                   {ONNX_NAMESPACE::MakeAttribute("tags", std::vector<std::string>{scalar_output})},
                                    graph.GenerateNodeName(scalar_output)));
   }
 
@@ -37,7 +37,7 @@ Status TransformGraphForTensorboard(Graph& graph,
     new_nodes.emplace_back(NodeDef("SummaryHistogram",
                                    {ArgDef(histogram_input)},
                                    {ArgDef(histogram_output)},
-                                   {MakeAttribute("tag", histogram_output)},
+                                   {ONNX_NAMESPACE::MakeAttribute("tag", histogram_output)},
                                    graph.GenerateNodeName(histogram_output)));
   }
 
@@ -53,9 +53,9 @@ Status TransformGraphForTensorboard(Graph& graph,
       axes.push_back(i);
     }
 
-    std::vector<AttributeProto> attribute_protos;
-    attribute_protos.push_back(MakeAttribute("keepdims", int64_t(0)));
-    attribute_protos.push_back(MakeAttribute("axes", axes));
+    std::vector<ONNX_NAMESPACE::AttributeProto> attribute_protos;
+    attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0)));
+    attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute("axes", axes));
 
     std::string norm_output = graph.GenerateNodeArgName(summary_name + "/L2-norm/" + norm_input);
     new_nodes.emplace_back(NodeDef("ReduceL2",
@@ -69,7 +69,7 @@ Status TransformGraphForTensorboard(Graph& graph,
     new_nodes.emplace_back(NodeDef("SummaryScalar",
                                    {ArgDef(norm_output)},
                                    {ArgDef(scalar_output)},
-                                   {MakeAttribute("tags", std::vector<std::string>{scalar_output})},
+                                   {ONNX_NAMESPACE::MakeAttribute("tags", std::vector<std::string>{scalar_output})},
                                    graph.GenerateNodeName(scalar_output)));
   }
 
@@ -90,9 +90,9 @@ Status TransformGraphForTensorboard(Graph& graph,
       for (int i = 0; i < grad_node->Shape()->dim_size(); ++i) {
         axes.push_back(i);
       }
-      std::vector<AttributeProto> attribute_protos;
-      attribute_protos.push_back(MakeAttribute("keepdims", int64_t(0)));
-      attribute_protos.push_back(MakeAttribute("axes", axes));
+      std::vector<ONNX_NAMESPACE::AttributeProto> attribute_protos;
+      attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0)));
+      attribute_protos.push_back(ONNX_NAMESPACE::MakeAttribute("axes", axes));
       std::string squared_sum_name = graph.GenerateNodeArgName(summary_name + grad_node->Name() + "/squared_sum");
       std::string squared_sum_node_name = graph.GenerateNodeName(squared_sum_name);
       squared_grad_sum_arg_defs.push_back(ArgDef(squared_sum_name)),
@@ -125,7 +125,7 @@ Status TransformGraphForTensorboard(Graph& graph,
     new_nodes.emplace_back(NodeDef("SummaryScalar",
                                    {ArgDef(total_gradient_norm)},
                                    {ArgDef(total_gradient_norm_scalar_output)},
-                                   {MakeAttribute("tags", std::vector<std::string>{total_gradient_norm_scalar_output})},
+                                   {ONNX_NAMESPACE::MakeAttribute("tags", std::vector<std::string>{total_gradient_norm_scalar_output})},
                                    summary_scalar_node_name));
   }
 

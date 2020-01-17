@@ -112,16 +112,16 @@ void GradientBuilderBase::HandleBroadcasting(const ArgDef& input_grad,
         NodeDef("ReduceSum",
                 {input_grad},
                 {output_grad},
-                {{"keepdims", MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))},
-                 {"axes", MakeAttribute("axes", reduce_axes)}}));
+                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))},
+                 {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
   } else {
     ArgDef reduce_grad_arg = IA("ReduceSum_" + input_grad.name + "_for_" + target.name);
     output.push_back(
         NodeDef("ReduceSum",
                 {input_grad},
                 {reduce_grad_arg},
-                {{"keepdims", MakeAttribute("keepdims", int64_t(1))},
-                 {"axes", MakeAttribute("axes", reduce_axes)}}));
+                {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(1))},
+                 {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
 
     ArgDef target_shape_arg = IA(target.name + "_shape");
     output.push_back(
