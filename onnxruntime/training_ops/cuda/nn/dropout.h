@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/nn/dropout_impl.h"
+#include "training_ops/cuda/nn/dropout_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

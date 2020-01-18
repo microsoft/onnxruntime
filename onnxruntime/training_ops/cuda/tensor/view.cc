@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "view.h"
+#include "training_ops/cuda/tensor/view.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -4,7 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/providers/cuda/tensor/thrustallocator.h"
+#include "training_ops/cuda/tensor/thrustallocator.h"
 
 namespace onnxruntime {
 namespace cuda {

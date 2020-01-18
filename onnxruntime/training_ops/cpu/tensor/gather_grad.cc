@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/tensor/gather_grad.h"
+#include "training_ops/cpu/tensor/gather_grad.h"
 #include "core/common/common.h"
 
 namespace onnxruntime {

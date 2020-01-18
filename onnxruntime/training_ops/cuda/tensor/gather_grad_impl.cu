@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "training_ops/cuda/tensor/gather_grad_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "gather_grad_impl.h"
+
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/unique.h>

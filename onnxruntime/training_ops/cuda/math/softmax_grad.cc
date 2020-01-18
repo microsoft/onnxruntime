@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "softmax.h"
-#include "softmax_grad.h"
+#include "training_ops/cuda/math/softmax_grad.h"
+#include "core/providers/cuda/math/softmax.h"
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 

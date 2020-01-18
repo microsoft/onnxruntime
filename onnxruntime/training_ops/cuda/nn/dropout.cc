@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "dropout.h"
+#include "training_ops/cuda/nn/dropout.h"
 
 #include "core/providers/common.h"
 

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/dropout.h"
+#include "training_ops/cpu/nn/dropout.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

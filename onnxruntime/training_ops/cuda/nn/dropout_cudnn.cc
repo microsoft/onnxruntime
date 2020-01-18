@@ -3,7 +3,7 @@
 
 #include <type_traits>
 
-#include "dropout_cudnn.h"
+#include "training_ops/cuda/nn/dropout_cudnn.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -75,7 +75,7 @@ Status TrainableDropoutCudnn<T>::ComputeInternal(OpKernelContext* context) const
   //Get mask_data
   auto mask = context->Output(1, shape);
   CudaT* mask_data = nullptr;
-  if (mask){
+  if (mask) {
     mask_data = reinterpret_cast<CudaT*>(mask->template MutableData<bool>());
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->SizeInBytes()));
   }

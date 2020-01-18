@@ -16,9 +16,11 @@
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
+#include "training_ops/cuda/math/softmax_grad.h"
+
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "softmax_impl.cuh"
-#include "softmax_grad.h"
+#include "core/providers/cuda/math/softmax_impl.cuh"
+
 
 namespace onnxruntime {
 namespace cuda {

@@ -1,7 +1,10 @@
-#include "core/providers/common.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-#include "layer_norm.h"
-#include "layer_norm_impl.h"
+#include "training_ops/cuda/nn/layer_norm.h"
+#include "training_ops/cuda/nn/layer_norm_impl.h"
+
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {

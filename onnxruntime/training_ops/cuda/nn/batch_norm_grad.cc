@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "batch_norm_grad.h"
+#include "training_ops/cuda/nn/batch_norm_grad.h"
 #include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/batch_norm_helper.h"
-//#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace std;
 namespace onnxruntime {

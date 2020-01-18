@@ -3,8 +3,8 @@
 
 #include "core/providers/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "layer_norm_cudnn.h"
-#include "layer_norm_impl_cudnn.h"
+#include "training_ops/cuda/nn/layer_norm_cudnn.h"
+#include "training_ops/cuda/nn/layer_norm_impl_cudnn.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -100,8 +100,8 @@ Status LayerNormCudnn<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) 
       one_scale.get(),
       zero_bias.get(),
       1.0f,
-      nullptr, //running_mean.get(),
-      nullptr, //running_variance.get(),
+      nullptr,  //running_mean.get(),
+      nullptr,  //running_variance.get(),
       epsilon_,
       mean_data,
       inv_std_var_data));

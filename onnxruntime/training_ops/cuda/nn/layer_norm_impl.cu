@@ -22,9 +22,8 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
+#include "training_ops/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-
-#include "layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

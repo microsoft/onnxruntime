@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -39,5 +40,6 @@ void LayerNormGradXKernel(
     const T* mean_C,
     const T* X_inv_std_var,
     T* X_grad);
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "dropout_impl.h"
+#include "training_ops/cuda/nn/dropout_impl.h"
 #include <curand_kernel.h>
 #include <algorithm>
 

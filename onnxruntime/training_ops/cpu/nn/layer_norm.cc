@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "training_ops/cpu/nn/layer_norm.h"
 #include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
-#include "layer_norm.h"
 
 namespace onnxruntime {
 
