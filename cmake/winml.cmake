@@ -258,7 +258,7 @@ add_dependencies(winml_lib_image winml_api_native)
 add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_image PRIVATE wil)
+target_link_libraries(winml_lib_image PRIVATE wil winml_lib_common)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_image)
 endif(onnxruntime_USE_DML)
@@ -360,11 +360,37 @@ add_dependencies(winml_lib_api winml_api_native)
 add_dependencies(winml_lib_api winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_api PRIVATE wil)
+target_link_libraries(winml_lib_api PRIVATE wil winml_lib_telemetry)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api)
 endif(onnxruntime_USE_DML)
 
+###########################
+# Add winml_lib_common
+###########################
+
+add_library(winml_lib_common STATIC
+  ${winml_lib_common_dir}/CommonDeviceHelpers.cpp
+)
+
+set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD 17)
+set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD_REQUIRED ON)
+target_compile_options(winml_lib_common PRIVATE /GR- /await /bigobj /wd4238)
+target_link_libraries(winml_lib_common PRIVATE wil)
+target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)
+target_compile_definitions(winml_lib_common PRIVATE
+  ONNX_NAMESPACE=onnx
+  ONNX_ML
+  LOTUS_LOG_THRESHOLD=2
+  LOTUS_ENABLE_STDERR_LOGGING
+  PLATFORM_WINDOWS
+  _SCL_SECURE_NO_WARNINGS)
+add_dependencies(winml_lib_common winml_sdk_cppwinrt)
+
+target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_common PRIVATE ${winml_lib_api_dir})
+target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 ###########################
 # Add winml_dll
