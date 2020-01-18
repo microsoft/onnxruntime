@@ -146,6 +146,18 @@ class TensorBuffer<std::string> {
     std::copy(pData, pData + size, m_buffer.begin());
   }
 
+  auto Set(uint32_t size, std::pair<const char*, size_t>* data) {
+    WINML_THROW_HR_IF_FALSE_MSG(
+        E_INVALIDARG,
+        size <= m_buffer.size(),
+        "Argument size (%d) exceeds the tensor size (%d).",
+        static_cast<int>(size),
+        static_cast<int>(m_buffer.size()));
+
+    // Copy
+    std::transform(data, data + size, m_buffer.begin(), [](auto pair) { return std::string(pair.first, pair.second); });
+  }
+
   auto Set(std::vector<std::string>&& other) {
     auto tensorSize = m_buffer.size();
 

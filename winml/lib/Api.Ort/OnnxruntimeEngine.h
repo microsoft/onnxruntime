@@ -36,7 +36,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
 
   STDMETHOD(IsEmpty)(bool* out) override;
   STDMETHOD(IsCpu)(bool* out) override;
-  STDMETHOD(GetResource)(void** resource) override;
+  STDMETHOD_(WinML::unique_void, GetResource)() override;
   STDMETHOD(IsTensor)(bool* out) override;
   STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) override;
   STDMETHOD(GetTensorShape)(std::vector<int64_t>& shape_vector) override;

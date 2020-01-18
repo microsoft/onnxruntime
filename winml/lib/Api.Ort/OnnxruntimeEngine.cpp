@@ -130,15 +130,16 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
 	  throw;
   }
 
-  auto length = shape.size();
+  auto length = shape[0];
 
   // make a big buffer to hold all the string data
   size_t buffer_length;
   ort_api->GetStringTensorDataLength(ort_value, &buffer_length);
 
-  std::unique_ptr<const char* []> strings(new const char*[shape[0]]);
+  std::vector<std::pair<const char*, size_t>> strings;
   std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_length]);
   std::vector<size_t> offsets(length);
+
   ort_api->GetStringTensorContent(ort_value, buffer.get(), buffer_length, offsets.data(), offsets.size());
 
   // now go build all the strings
@@ -150,12 +151,13 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
     } else {
       str_len = offsets[i + 1] - offsets[i];
     }
-    strings[i] = reinterpret_cast<const char*>(buffer.get() + offsets[i]);
+    strings.push_back(std::make_pair(reinterpret_cast<const char*>(buffer.get() + offsets[i]), str_len));
   }
-  return std::make_pair(std::move(strings), std::move(buffer));
+
+  return std::make_shared<std::pair<decltype(strings), decltype(buffer)>>(std::move(strings), std::move(buffer));
 }
 
-HRESULT OnnxruntimeValue::GetResource(void** resource) {
+WinML::unique_void OnnxruntimeValue::GetResource() {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
@@ -167,14 +169,16 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
 
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
+    void* resource;
     winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
-                                                         reinterpret_cast<ID3D12Resource**>(resource));
+                                                         reinterpret_cast<ID3D12Resource**>(&resource));
+    return WinML::unique_void(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
+
   } else {
     int is_tensor;
     ort_api->IsTensor(value_.get(), &is_tensor);
     if (is_tensor == 0) {
-      *resource = mutable_data;
-      return S_OK;
+      return WinML::unique_void(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
     } 
 
     OrtTensorTypeAndShapeInfo* info = nullptr;
@@ -186,13 +190,12 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
 
 	if (data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
       auto strings = GetStrings(ort_api, value_.get(), info);
-	  (void)strings.first.get();
-      return E_FAIL;
+	  auto string_data = strings->first.data();
+      return WinML::unique_void(string_data, [capture_strings = strings](void*) { /*This deleter does nothing but capture the strings, which extends the lifetime of the returned strings.*/ });
 	} else {
-      *resource = mutable_data;
+      return WinML::unique_void(mutable_data, [](void*){ /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
 	}
   }
-  return S_OK;
 }
 
 HRESULT OnnxruntimeValue::IsTensor(bool* out) {
