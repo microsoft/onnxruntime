@@ -274,9 +274,9 @@ struct TensorBase : TBase {
         std::back_inserter(raw_values),
         [&](auto& str) { return str.c_str(); });
 
-    RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
+    RETURN_IF_FAILED_MSG(engine->CreateStringTensorValueFromDataWithCopy(
                              raw_values.data(), raw_values.size(), GetCpuResource()->shape().data(),
-                             GetCpuResource()->shape().size(), TensorKind(), value),
+                             GetCpuResource()->shape().size(), value),
                          "Failed to prepare buffer for copy back from device resource.");
     return S_OK;
   }

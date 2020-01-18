@@ -52,7 +52,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
   Microsoft::WRL::ComPtr<IUnknown> param_;
   UniqueOrtValue value_;
-  UniqueOrtAllocator allocator_; // Do we really need to cache this?
+  UniqueOrtAllocator allocator_;
 };
 
 class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
@@ -72,9 +72,10 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(TrimUploadHeap)() override;
   STDMETHOD(ReleaseCompletedReferences)() override;
   STDMETHOD(Sync)() override;
-  STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateTensorValue)(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateTensorValueFromExternalD3DResource)(ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateStringTensorValueFromDataWithCopy)(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) override;
   STDMETHOD(CreateNullValue)(_Out_ IValue** out) override;
   STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) override;

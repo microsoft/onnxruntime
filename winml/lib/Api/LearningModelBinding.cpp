@@ -140,7 +140,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   // Hold onto the input output providers so that our memory doesnt get destroyed!
   auto providerInfo = ProviderInfo{inspectable, spLotusValueProvider, context};
   CacheProvider(name, providerInfo);
-
+  
   return std::make_tuple(name, value, bindingType);
 }
 
