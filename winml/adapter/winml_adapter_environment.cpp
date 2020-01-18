@@ -49,6 +49,7 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
 ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
   std::string name = logid;
   std::unique_ptr<onnxruntime::logging::ISink> logger = onnxruntime::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
   
@@ -64,6 +65,7 @@ ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* en
   // Set a new default logging manager
   env->SetLoggingManager(std::move(winml_logging_manager));
   return nullptr;
+  API_IMPL_END
 }
 
 // Override select shape inference functions which are incomplete in ONNX with versions that are complete,
@@ -72,11 +74,13 @@ ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* en
 // registered schema are reachable only after upstream schema have been revised in a later OS release,
 // which would be a compatibility risk.
 ORT_API_STATUS_IMPL(winmla::OverrideSchema) {
+  API_IMPL_BEGIN
 #ifdef USE_DML
   static std::once_flag schema_override_once_flag;
   std::call_once(schema_override_once_flag, []() {
     SchemaInferenceOverrider::OverrideSchemaInferenceFunctions();
   });
+#endif USE_DML.
   return nullptr;
-#endif USE_DML
+  API_IMPL_END
 }

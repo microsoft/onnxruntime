@@ -49,6 +49,7 @@ void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProvi
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     ID3D12Device* d3d_device, ID3D12CommandQueue* queue) {
+  API_IMPL_BEGIN
   auto dml_device = CreateDmlDevice(d3d_device);
   if (auto status = OrtSessionOptionsAppendExecutionProviderEx_DML(options, dml_device.Get(), queue)) {
     return status;
@@ -61,6 +62,7 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled) {
