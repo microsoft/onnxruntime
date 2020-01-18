@@ -41,11 +41,13 @@ class TestNuphar(unittest.TestCase):
 
         # run onnx_test_runner to verify results
         # use -M to disable memory pattern
-        # use -j 1 -c 1 to run one model/session at a time when running multiple models
         onnx_test_runner = os.path.join(cwd, 'onnx_test_runner')
-        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-c', '1', '-j', '1', '-n', 'bidaf', cwd], check=True, cwd=cwd)
+        subprocess.run([onnx_test_runner, '-e', 'nuphar', '-M', '-n', 'bidaf', cwd], check=True, cwd=cwd)
 
         # test AOT on the quantized model
+        if os.name not in ['nt', 'posix']:
+            return # don't run the rest of test if AOT is not supported
+
         cache_dir = os.path.join(cwd, 'nuphar_cache')
         if os.path.exists(cache_dir):
             shutil.rmtree(cache_dir)
@@ -57,33 +59,28 @@ class TestNuphar(unittest.TestCase):
             tp = onnx.load_tensor(os.path.join(bidaf_dir, 'test_data_set_0', 'input_{}.pb'.format(i)))
             feed[tp.name] = numpy_helper.to_array(tp)
 
-        # force codegen_target to be avx
-        nuphar_settings = 'nuphar_codegen_target:avx'
-        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-        sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model)
-        assert 'NupharExecutionProvider' in sess.get_providers()
-        output = sess.run([], feed)
+        for model in [bidaf_opt_scan_model, bidaf_int8_scan_only_model]:
+            nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
+            for isa in ['avx', 'avx2', 'avx512']:
+                onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings + ', nuphar_codegen_target:' + isa)
+                sess = onnxrt.InferenceSession(model) # JIT cache happens when initializing session
 
-        nuphar_settings = 'nuphar_cache_path:{}'.format(cache_dir)
-        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-        sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
-        assert 'NupharExecutionProvider' in sess.get_providers()
-        output = sess.run([], feed)
-
-        cache_dir_content = os.listdir(cache_dir)
-        assert len(cache_dir_content) == 1
-        cache_versioned_dir = os.path.join(cache_dir, cache_dir_content[0])
-        so_name = 'bidaf.so'
-        if os.name in ['nt', 'posix'] : # Windows or Linux
+            cache_dir_content = os.listdir(cache_dir)
+            assert len(cache_dir_content) == 1
+            cache_versioned_dir = os.path.join(cache_dir, cache_dir_content[0])
+            so_name = os.path.basename(model) + '.so'
             subprocess.run([sys.executable, '-m', 'onnxruntime.nuphar.create_shared', '--input_dir', cache_versioned_dir, '--output_name', so_name], check=True)
-        else:
-            return # don't run the rest of test if AOT is not supported
 
-        nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}'.format(cache_dir, so_name, 'on')
-        onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
-        sess = onnxrt.InferenceSession(bidaf_int8_scan_only_model) # JIT cache happens when initializing session
-        assert 'NupharExecutionProvider' in sess.get_providers()
-        sess.run([], feed)
+            nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}'.format(cache_dir, so_name, 'on')
+            onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
+            sess = onnxrt.InferenceSession(model)
+            sess.run([], feed)
+
+            # test avx
+            nuphar_settings = 'nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}, nuphar_codegen_target:{}'.format(cache_dir, so_name, 'on', 'avx')
+            onnxrt.capi._pybind_state.set_nuphar_settings(nuphar_settings)
+            sess = onnxrt.InferenceSession(model)
+            sess.run([], feed)
 
 
     def test_bert_squad(self):

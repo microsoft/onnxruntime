@@ -24,6 +24,7 @@
 // IUnknown must be declared before winrt/base.h is included to light up support for native COM
 // interfaces with C++/WinRT types (e.g. winrt::com_ptr<ITensorNative>).
 #include <Unknwn.h>
+#include <wil/cppwinrt.h>
 #include "winrt/base.h"
 #include "winrt/Windows.Foundation.Collections.h"
 #include "comp_generated/winrt/windows.ai.machinelearning.h"

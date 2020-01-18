@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
+#include "Archive.h"
 #include "Featurizers/DateTimeFeaturizer.h"
 
 namespace dft = Microsoft::Featurizer::Featurizers;
@@ -13,12 +14,21 @@ using SysClock = std::chrono::system_clock;
 namespace onnxruntime {
 namespace test {
 
-TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_04) {
+std::vector<uint8_t> GetStream () {
+  dft::DateTimeTransformer dt("", "");
+  Microsoft::Featurizer::Archive ar;
+  dt.save(ar);
+  return ar.commit();
+}
+
+TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_04) {
   const time_t date = 217081624;
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 0, 0});
+  auto stream = GetStream();
+  auto dim = static_cast<int64_t>(stream.size());
+  test.AddInput<uint8_t>("State", {dim}, stream);
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Date", {1}, {date});
@@ -74,19 +84,22 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_04) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05) {
+TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_05) {
   const time_t date = 217081625;
+  const auto date_tp = SysClock::from_time_t(date);
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 0, 0});
+  auto stream = GetStream();
+  auto dim = static_cast<int64_t>(stream.size());
+  test.AddInput<uint8_t>("State", {dim}, stream);
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Date", {1}, {date});
 
   dft::DateTimeTransformer dt("", "");
-  dft::TimePoint tp(dt.execute(date));
+  dft::TimePoint tp(dt.execute(date_tp));
   ASSERT_EQ(tp.year, 1976);
   ASSERT_EQ(tp.month, dft::TimePoint::NOVEMBER);
   ASSERT_EQ(tp.day, 17);
@@ -135,21 +148,26 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05_and_Past_1976_Nov_17__12_27_04) {
+TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17__12_27_05_and_past_1976_nov_17_12_27_04) {
   const time_t date1 = 217081625;
+  const auto date1_tp = SysClock::from_time_t(date1);
   const time_t date2 = 217081624;
+  const auto date2_tp = SysClock::from_time_t(date2);
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 0, 0});
+  auto stream = GetStream();
+  auto dim = static_cast<int64_t>(stream.size());
+  test.AddInput<uint8_t>("State", {dim}, stream);
+
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Date", {2}, {date1, date2});
 
   dft::DateTimeTransformer dt("", "");
-  dft::TimePoint tp1(dt.execute(date1));
-  dft::TimePoint tp2(dt.execute(date2));
+  dft::TimePoint tp1(dt.execute(date1_tp));
+  dft::TimePoint tp2(dt.execute(date2_tp));
 
   // Date1
   ASSERT_EQ(tp1.year, 1976);
@@ -223,19 +241,22 @@ TEST(DateTimeTransformer, Past_1976_Nov_17__12_27_05_and_Past_1976_Nov_17__12_27
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(DateTimeTransformer, Future_2025_June_30) {
+TEST(FeaturizersTests, DateTimeTransformer_future_2025_june_30) {
   const time_t date = 1751241600;
+  const auto date_tp = std::chrono::system_clock::from_time_t(date);
 
   OpTester test("DateTimeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
-  test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 0, 0});
+  auto stream = GetStream();
+  auto dim = static_cast<int64_t>(stream.size());
+  test.AddInput<uint8_t>("State", {dim}, stream);
 
   // We are adding a scalar Tensor in this instance
   test.AddInput<int64_t>("Date", {1}, {date});
 
   dft::DateTimeTransformer dt("", "");
-  dft::TimePoint tp = dt.execute(date);
+  dft::TimePoint tp = dt.execute(date_tp);
   ASSERT_EQ(tp.year, 2025);
   ASSERT_EQ(tp.month, dft::TimePoint::JUNE);
   ASSERT_EQ(tp.day, 30);

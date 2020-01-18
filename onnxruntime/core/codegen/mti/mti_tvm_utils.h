@@ -51,7 +51,7 @@ tvm::Tensor Promote(const tvm::Expr& expr,
 
 tvm::Tensor MakeZeroTensor(const tvm::Array<tvm::Expr>& shape, HalideIR::Type type, const std::string& name);
 
-void DumpTVMModuleToFile(const std::string& filename_prefix, tvm::runtime::Module& module);
+void DumpTVMModuleToFile(const std::string& filename, tvm::runtime::Module& module);
 
 bool BroadcastDim(const tvm::Array<tvm::Expr>& shape, size_t i, size_t output_rank, tvm::Expr& dim);
 

@@ -284,6 +284,7 @@ Status RunTests(TestEnv& env, int p_models, int concurrent_runs, size_t repeat_c
 void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
                const std::function<void(ITestCase*)>& process_function) {
   std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
   while (!paths.empty()) {
@@ -302,10 +303,13 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
       std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
       if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
+
       if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(),
                                                        test_case_name) == whitelisted_test_cases.end()) {
         return true;
       }
+      if (disabled_tests.find(test_case_name) != disabled_tests.end()) return true;
+
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
 
       ITestCase* l = CreateOnnxTestCase(ToMBString(test_case_name), TestModelInfo::LoadOnnxModel(p.c_str()),

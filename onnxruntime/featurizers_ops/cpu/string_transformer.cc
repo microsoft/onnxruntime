@@ -3,6 +3,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/StringFeaturizer.h"
@@ -12,12 +13,8 @@ namespace onnxruntime {
 namespace featurizers {
 
 template <typename InputT>
-class StringTransformer final : public OpKernel {
- public:
-  explicit StringTransformer(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* ctx) const override {
+struct StringTransformerImpl {
+  void operator()(OpKernelContext* ctx) const {
     // Create the transformer
     Microsoft::Featurizer::Featurizers::StringTransformer<InputT> transformer(
         [ctx](void) {
@@ -42,130 +39,43 @@ class StringTransformer final : public OpKernel {
     for (int64_t i = 0; i < length; ++i) {
       output_data[i] = transformer.execute(input_data[i]);
     }
+  }
+};
 
+class StringTransformer final : public OpKernel {
+ public:
+  explicit StringTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* ctx) const override {
+    utils::MLTypeCallDispatcher<StringTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                                int64_t, uint64_t, float, double, bool, std::string>
+        t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke(ctx);
     return Status::OK();
   }
 };
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     StringTransformer,
     kMSFeaturizersDomain,
     1,
-    int8,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int8_t>()),
-    StringTransformer<int8_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    int16,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int16_t>()),
-    StringTransformer<int16_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    int32,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int32_t>()),
-    StringTransformer<int32_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    int64,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<int64_t>()),
-    StringTransformer<int64_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint8,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint8_t>()),
-    StringTransformer<uint8_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint16,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint16_t>()),
-    StringTransformer<uint16_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint32,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint32_t>()),
-    StringTransformer<uint32_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    uint64,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<uint64_t>()),
-    StringTransformer<uint64_t>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    float,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<float>()),
-    StringTransformer<float>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    double,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<double>()),
-    StringTransformer<double>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    bool,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<bool>()),
-    StringTransformer<bool>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    StringTransformer,
-    kMSFeaturizersDomain,
-    1,
-    string,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("InputT", DataTypeImpl::GetTensorType<std::string>()),
-    StringTransformer<std::string>);
+        .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("InputT", {DataTypeImpl::GetTensorType<int8_t>(),
+                                   DataTypeImpl::GetTensorType<uint8_t>(),
+                                   DataTypeImpl::GetTensorType<int16_t>(),
+                                   DataTypeImpl::GetTensorType<uint16_t>(),
+                                   DataTypeImpl::GetTensorType<int32_t>(),
+                                   DataTypeImpl::GetTensorType<uint32_t>(),
+                                   DataTypeImpl::GetTensorType<int64_t>(),
+                                   DataTypeImpl::GetTensorType<uint64_t>(),
+                                   DataTypeImpl::GetTensorType<float>(),
+                                   DataTypeImpl::GetTensorType<double>(),
+                                   DataTypeImpl::GetTensorType<bool>(),
+                                   DataTypeImpl::GetTensorType<std::string>()}),
+    StringTransformer);
 
 }  // namespace featurizers
 }  // namespace onnxruntime
