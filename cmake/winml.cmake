@@ -132,7 +132,7 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/WinMLAdapter.cpp
     ${winml_adapter_dir}/WinMLAdapter.h
     ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
-    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h    
+    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
     )
 
 if (onnxruntime_USE_DML)
@@ -159,6 +159,7 @@ add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_precompiled_header(winml_adapter pch.h)
 
 # Includes
+target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
 target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
 target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
@@ -181,11 +182,11 @@ add_dependencies(winml_adapter winml_api_native_internal)
 # Link libraries
 target_link_libraries(winml_adapter PRIVATE wil)
 if (onnxruntime_USE_DML)
-  target_link_libraries(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_add_dml(winml_adapter)
 endif(onnxruntime_USE_DML)
 
 # add it to the onnxruntime shared library
-set(onnxruntime_winml windowsapp.lib winml_adapter)
+set(onnxruntime_winml winml_adapter)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES winml_adapter)
 
 ###########################
@@ -230,6 +231,7 @@ target_compile_definitions(winml_lib_image PRIVATE _SCL_SECURE_NO_WARNINGS)     
 target_precompiled_header(winml_lib_image pch.h)
 
 # Includes
+target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                                                               # windows machine learning generated component headers
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                                                     # windows machine learning generated component headers
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)                                      # windows machine learning generated component headers
 target_include_directories(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)                                    # sdk cppwinrt headers
@@ -258,7 +260,7 @@ add_dependencies(winml_lib_image winml_api_native_internal)
 # Link libraries
 target_link_libraries(winml_lib_image PRIVATE wil)
 if (onnxruntime_USE_DML)
-  target_link_libraries(winml_lib_image PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_add_dml(winml_lib_image)
 endif(onnxruntime_USE_DML)
 
 
@@ -360,7 +362,7 @@ add_dependencies(winml_lib_api winml_api_native_internal)
 # Link libraries
 target_link_libraries(winml_lib_api PRIVATE wil)
 if (onnxruntime_USE_DML)
-  target_link_libraries(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+  target_add_dml(winml_lib_api)
 endif(onnxruntime_USE_DML)
 
 
@@ -438,6 +440,13 @@ if (onnxruntime_USE_DML)
   set(delayload_dml "/DELAYLOAD:directml.dll")
 endif(onnxruntime_USE_DML)
 
+# The default libraries to link with in Windows are kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib
+# Remove them and use the onecore umbrella library instead
+foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdgl32.lib advapi32.lib)
+  set(removed_libs "${removed_libs} /NODEFAULTLIB:${default_lib}")
+endforeach()
+set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
+set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
 set_target_properties(winml_dll
     PROPERTIES
     LINK_FLAGS
@@ -467,11 +476,10 @@ endif("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 target_link_libraries(winml_dll PRIVATE onnxruntime)
 target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
-#target_link_libraries(winml_dll PRIVATE windowsapp.lib)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
-target_link_libraries(winml_dll PRIVATE onecoreuap_apiset.lib)
+target_link_libraries(winml_dll PRIVATE delayimp.lib)
 target_link_libraries(winml_dll PRIVATE ${DBGHELP})
 
 # 1 of 3 projects that fail in link with 'failed to do memory mapped file I/O' (Only release)
@@ -483,6 +491,7 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
   set_target_properties(winml_dll PROPERTIES VS_GLOBAL_PreferredToolArchitecture "x64")
 endif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
 
+option(onnxruntime_BUILD_WINML_TESTS "Build WinML tests" ON)
 if (onnxruntime_BUILD_WINML_TESTS)
   include(winml_unittests.cmake)
 endif()
