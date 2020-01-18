@@ -48,6 +48,8 @@ See below for description of all the options:
 
 - **input**: input model path
 - **output**: output model path
+- **framework**:
+    Original framework. Only support TensorFlow and PyTorch
 - **num_heads**: (*default: 12*)
     Number of attention heads, like 24 for BERT-large model.
 - **hidden_size**: (*default: 768*)
@@ -57,8 +59,6 @@ See below for description of all the options:
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
 - **gpu_only**: (*optional*)
     Specify the option if running on GPU only.
-- **tensor_flow**: (*optional*)
-    Model converted from tensor_flow. Specify this option if model is converted from Tensorflow.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)
