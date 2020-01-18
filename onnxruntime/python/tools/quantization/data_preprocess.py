@@ -52,18 +52,18 @@ def preprocess_method2(image_filepath, height, width):
     return nchw_data
 
 
-def load_batch(images_folder, height, width, size_limit=30, preprocess_func_name='preprocess_method1'):
+def load_batch(images_folder, height, width, preprocess_func_name, size_limit=0):
     '''
     Loads a batch of images
     parameter images_folder: path to folder storing images
     parameter height: image height in pixels
     parameter width: image width in pixels
-    parameter size_limit: number of images used to run inference
+    parameter size_limit: number of images to load. Default is 0 which means all images are picked.
     parameter preprocess_func_name: name of the preprocess function
     return: list of matrices characterizing multiple images
     '''
     image_names = os.listdir(images_folder)
-    if len(image_names) >= size_limit:
+    if size_limit > 0 and len(image_names) >= size_limit:
         batch_filenames = [image_names[i] for i in range(size_limit)]
     else:
         batch_filenames = image_names

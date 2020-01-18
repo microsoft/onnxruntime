@@ -175,9 +175,10 @@ See below for a description of all the options to calibrate():
     * A filepath for a directory, containing images or
     * A protobuf file, encoding a set of images using the `TensorProto` schema,
 Whether a set of files or a collected bundles of tensors, `calibrate.py` assumes that the images in the representative dataset are suitable for immediate consumption by the original fp32 model, i.e., that they have been adequately pre-processed.
-- **data_preprocess**: Currently there are 2 pre-processing methods available ->
+- **data_preprocess**:
 *preprocess_method1*: reshapes an image into NCHW format and scales the pixel values to the[-1, 1] range.  This method mirrors [the treatment for mobilenet models available in version 0.5 of mlperf](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L226)
 *preprocess_method2*: resizes and normalizes image to NCHW format, in a [technique used by mlperf 0.5](https://github.com/mlperf/inference/blob/master/v0.5/classification_and_detection/python/dataset.py#L250) for variants of ResNet.
+*None*: use this when providing tensorproto as input to the calibration script.
 For maximum flexibility, it is recommended that the user carries out the necessary preprocessing as a separate stage in the quantization pipeline, and provides the already-preprocessed dataset to `calibrate.py`.  Alternatively, we welcome contributions of preprocessing techniques (see below).
 
 ### Adding preprocessing options

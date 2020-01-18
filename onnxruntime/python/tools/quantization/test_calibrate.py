@@ -13,6 +13,8 @@ import onnxruntime
 from onnx import helper, TensorProto
 from onnx.helper import make_node, make_tensor_value_info
 import calibrate
+import numpy as np
+from onnx import numpy_helper
 
 class TestCalibrate(unittest.TestCase):
 
@@ -74,12 +76,53 @@ class TestCalibrate(unittest.TestCase):
         images_folder = 'test_images'
         session = onnxruntime.InferenceSession('augmented_test_model.onnx')
         (samples, channels, height, width) = session.get_inputs()[0].shape
-        batch_data = calibrate.load_batch(images_folder, height, width)
+        batch_data = calibrate.load_batch(images_folder, height, width, preprocess_func_name="preprocess_method1")
         self.assertEqual(len(batch_data.shape), 5) # for 2D images like the ones in test_images
         self.assertEqual(batch_data.shape[0], len(os.listdir(images_folder)))
         self.assertEqual(batch_data.shape[2], 3) # checking for 3 channels for colored image
         self.assertEqual(batch_data.shape[3], height) # checking if resized height is correct
         self.assertEqual(batch_data.shape[4], width) # checking if resized width is correct
+    
+    def test_load_pb(self):
+        numpy_array = np.random.randn(3, 1, 3, 5, 5).astype(np.float32)
+        tensor = numpy_helper.from_array(numpy_array)
+        test_file_name = 'test_tensor.pb'
+        with open(test_file_name, 'wb') as f:
+            f.write(tensor.SerializeToString())
+        
+        # test size_limit < than number of samples in data set
+        # expecting to load size_limit number of samples
+        batch_data = calibrate.load_pb_file('test_tensor.pb', 2, 1, 3, 5, 5)
+        self.assertEqual(len(batch_data.shape), 5)
+        self.assertEqual(batch_data.shape[0], 2)
+        self.assertEqual(batch_data.shape[2], 3)
+        self.assertEqual(batch_data.shape[3], 5)
+        self.assertEqual(batch_data.shape[4], 5) 
+
+        # test size_limit == 0 
+        # expecting to load all samples
+        batch_data = calibrate.load_pb_file('test_tensor.pb', 0, 1, 3, 5, 5)
+        self.assertEqual(len(batch_data.shape), 5)
+        self.assertEqual(batch_data.shape[0], 3)
+        self.assertEqual(batch_data.shape[2], 3)
+        self.assertEqual(batch_data.shape[3], 5)
+        self.assertEqual(batch_data.shape[4], 5)
+
+        # test size_limit > than number of samples in data set
+        # expecting to load all samples
+        batch_data = calibrate.load_pb_file('test_tensor.pb', 6, 1, 3, 5, 5)
+        self.assertEqual(len(batch_data.shape), 5)
+        self.assertEqual(batch_data.shape[0], 3)
+        self.assertEqual(batch_data.shape[2], 3)
+        self.assertEqual(batch_data.shape[3], 5)
+        self.assertEqual(batch_data.shape[4], 5)
+
+        try:
+            os.remove('test_tensor.pb')
+        except:
+            print("Warning: Trying to remove test file {} failed.".format(test_file_name))
+        
+
 
 if __name__ == '__main__':
     unittest.main()

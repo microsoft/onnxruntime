@@ -125,11 +125,10 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     zp_and_scale.append(scale)
     return zp_and_scale
 
-def calculate_quantization_params(model, nbits=8, quantization_thresholds=None):
+def calculate_quantization_params(model, quantization_thresholds):
     '''
         Given a model and quantization thresholds, calculates the quantization params.
     :param model: ModelProto to quantize
-    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
     :param quantization_thresholds:
         Dictionary specifying the min and max values for outputs of conv and matmul nodes.
         The quantization_thresholds should be specified in the following format:
@@ -146,12 +145,9 @@ def calculate_quantization_params(model, nbits=8, quantization_thresholds=None):
             {
                 "param_name": [zero_point, scale]
             }
-    '''
-    if nbits != 8:
-        raise ValueError('Unknown value for nbits. only 8 bit quantization is currently supported')
-
-    if quantization_thresholds == None:
-        raise ValueError('output quantization threshold is required to calculate quantization thresholds')
+    '''    
+    if quantization_thresholds is None:
+        raise ValueError('quantization thresholds is required to calculate quantization params (zero point and scale)')
 
     quantization_params = {}
     for index, node in enumerate(model.graph.node):
@@ -164,11 +160,11 @@ def calculate_quantization_params(model, nbits=8, quantization_thresholds=None):
     return quantization_params
 
 
-def load_pb_file(data_file_name, dataset_size, samples, channels, height, width):
+def load_pb_file(data_file_name, size_limit, samples, channels, height, width):
     '''
     Load tensor data from pb files.
     :param data_file_name: path to the pb file
-    :param dataset_size: number of image-data in the pb file for data size check
+    :param dataset_size: number of image-data in the pb file. Default is 0 which means all samples from .pb file.
     :param samples: number of samples 'N'
     :param channels: number of channels in the image 'C'
     :param height: image height for data size check 'H'
@@ -182,6 +178,13 @@ def load_pb_file(data_file_name, dataset_size, samples, channels, height, width)
         inputs = numpy_helper.to_array(tensor)
         try:
             shape = inputs.shape
+            dataset_size = 1
+            if len(shape) == 5 and (shape[0] <= size_limit or size_limit == 0):
+                dataset_size = shape[0]
+            elif len(shape) == 5 and shape[0] > size_limit:
+                inputs = inputs[:size_limit]
+                dataset_size = size_limit
+
             inputs = inputs.reshape(dataset_size, samples, channels, height, width)
         except:
             sys.exit("Input .pb file contains incorrect input size. \nThe required size is: (%s). The real size is: (%s)"
@@ -195,14 +198,13 @@ def main():
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--dataset_path', required=True)
     parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
-    parser.add_argument('--calib_mode', default='naive')
-    parser.add_argument('--dataset_size', type=int, default=30)
-    parser.add_argument('--data_preprocess', type=str, required=True)
+    parser.add_argument('--dataset_size', type=int, default=0, help="Number of images or tensors to load. Default is 0 which means all samples")
+    parser.add_argument('--data_preprocess', type=str, required=True, choices=['preprocess_method1', 'preprocess_method2', 'None'], help="Refer to Readme.md for guidance on choosing this option.")
     args = parser.parse_args()
     model_path = args.model_path
     output_model_path = args.output_model_path
     images_folder = args.dataset_path
-    calib_mode = args.calib_mode
+    calib_mode = "naive"
     size_limit = args.dataset_size
 
     # Generating augmented ONNX model
@@ -216,10 +218,10 @@ def main():
     (samples, channels, height, width) = session.get_inputs()[0].shape
 
     # Generating inputs for quantization
-    if args.data_preprocess:
-        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)
-    else:
+    if args.data_preprocess == "None":
         inputs = load_pb_file(images_folder, args.dataset_size, samples, channels, height, width)
+    else:
+        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)        
     print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
