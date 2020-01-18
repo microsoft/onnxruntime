@@ -170,7 +170,7 @@ jobs:
     msbuildArch: amd64
     msbuildPlatform: x64
     CUDA_VERSION: '10.0'
-    buildparameter: --msvc_toolset 14.16 --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.3.1.20\cuda"
+    buildparameter: --msvc_toolset 14.16 --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
   steps:
     - task: UsePythonVersion@0
       inputs: 

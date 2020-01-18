@@ -90,6 +90,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
                           output_shape.GetDims().end());
 
   const size_t kernel_rank = kernel_shape.size();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
@@ -139,7 +140,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
                     input_offset,
                     Ydata + group_id * Y_offset,
                     static_cast<int>(output_image_size),
-                    nullptr);
+                    thread_pool);
     }
 
     Xdata += X_offset * conv_attrs_.group;

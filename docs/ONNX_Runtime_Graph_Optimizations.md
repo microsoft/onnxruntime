@@ -34,15 +34,26 @@ These are semantics-preserving graph rewrites which remove redundant nodes and r
   * Conv Mul Fusion
   * Conv BatchNorm Fusion
   * Relu Clip Fusion
+  * Reshape Fusion
 
 ### Extended Graph Optimizations
 
-These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU execution provider. Available extended graph optimizations are as follows:
+These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU or CUDA execution provider. Available extended graph optimizations are as follows:
 
-* GEMM Activation Fusion
-* Matmul Add Fusion
-* Conv Activation Fusion
-* GELU Fusion
+| Optimization                    | Execution Provider | Comment                                                                     |
+|---------------------------------|--------------------|-----------------------------------------------------------------------------|
+| GEMM Activation Fusion          | cpu                |                                                                             |
+| Matmul Add Fusion               | cpu                |                                                                             |
+| Conv Activation Fusion          | cpu                |                                                                             |
+| GELU Fusion                     | cpu or cuda        |                                                                             |
+| Layer Normalization Fusion      | cpu or cuda        |                                                                             |
+| BERT Embedding Layer Fusion     | cpu or cuda        | Fuse BERT embedding layer, layer normalization and attention mask length    |
+| Attention Fusion                | cpu or cuda        | Attention mask has approximation in cuda execution provider                 |
+| Skip Layer Normalization Fusion | cpu or cuda        | Fuse bias of fully connected layer, skip connection and layer normalization |
+| Bias GELU Fusion                | cpu or cuda        | Fuse bias of fully connected layer and GELU activation                      |
+| GELU Approximation              | cuda               | Erf is approximated by a formula using tanh function                        |
+
+To optimize inference performance of BERT model, approximation is used in GELU approximation and Attention fusion for cuda execution provider. There might be slight difference in result. The impact on accuracy could be neglected based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
 
 ### Layout Optimizations
 
