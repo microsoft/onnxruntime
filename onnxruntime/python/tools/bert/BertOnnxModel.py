@@ -937,6 +937,9 @@ class BertOnnxModel(OnnxModel):
         # Fuse SkipLayerNormalization and Add Bias before it.
         self.fuse_add_bias_skip_layer_norm()
 
+        if self.float16:
+            self.convert_model_float32_to_float16()
+
         self.remove_unused_constant()
 
         # Use symbolic batch dimension in input and output.
