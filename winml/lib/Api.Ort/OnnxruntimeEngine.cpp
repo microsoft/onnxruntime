@@ -115,6 +115,46 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   return S_OK;
 }
 
+static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
+	OrtTensorTypeAndShapeInfo* type_and_shape_info) {
+  std::vector<std::string> out;
+
+  size_t size;
+  ort_api->GetDimensionsCount(type_and_shape_info, &size);
+
+  std::vector<int64_t> shape(size);
+  ort_api->GetDimensions(type_and_shape_info, &shape[0], size);
+
+  // there needs to be only one dimension
+  if (shape.size() != 1) {
+	  throw;
+  }
+
+  auto length = shape.size();
+
+  // make a big buffer to hold all the string data
+  size_t buffer_length;
+  ort_api->GetStringTensorDataLength(ort_value, &buffer_length);
+
+  std::unique_ptr<const char* []> strings(new const char*[shape[0]]);
+  std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_length]);
+  std::vector<size_t> offsets(length);
+  ort_api->GetStringTensorContent(ort_value, buffer.get(), buffer_length, offsets.data(), offsets.size());
+
+  // now go build all the strings
+  for (auto i = 0; i < length; ++i) {
+    size_t str_len = 0;
+    // are we on the last one?
+    if (i == (length - 1)) {
+      str_len = buffer_length - offsets[i];
+    } else {
+      str_len = offsets[i + 1] - offsets[i];
+    }
+    strings[i] = reinterpret_cast<const char*>(buffer.get() + offsets[i]);
+  }
+  return std::make_pair(std::move(strings), std::move(buffer));
+}
+
 HRESULT OnnxruntimeValue::GetResource(void** resource) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -130,7 +170,27 @@ HRESULT OnnxruntimeValue::GetResource(void** resource) {
     winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
                                                          reinterpret_cast<ID3D12Resource**>(resource));
   } else {
-    *resource = mutable_data;
+    int is_tensor;
+    ort_api->IsTensor(value_.get(), &is_tensor);
+    if (is_tensor == 0) {
+      *resource = mutable_data;
+      return S_OK;
+    } 
+
+    OrtTensorTypeAndShapeInfo* info = nullptr;
+    ort_api->GetTensorTypeAndShape(value_.get(), &info);
+    auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
+	
+	ONNXTensorElementDataType data_type;
+    ort_api->GetTensorElementType(type_and_shape_info.get(), &data_type);
+
+	if (data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+      auto strings = GetStrings(ort_api, value_.get(), info);
+	  (void)strings.first.get();
+      return E_FAIL;
+	} else {
+      *resource = mutable_data;
+	}
   }
   return S_OK;
 }
@@ -361,7 +421,7 @@ OrtSession* OnnxruntimeEngine::UseOrtSession() {
 HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-
+  
   OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
 
@@ -439,13 +499,35 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
 
 HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
-
-  // TODO:  what is the difference between the device allocator and the arena allocator?
-  OrtMemoryInfo* cpu_memory;
-  ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory);
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   OrtValue* ort_value;
-  ort_api->CreateTensorWithDataAsOrtValue(
+  UniqueOrtValue unique_value(nullptr, nullptr);
+  if (kind == winml::TensorKind::String) {
+	// For string types, ANOTHER COPY (Ahhhh!!!) into the ort value is required, as there is no way to share the raw buffer
+
+    OrtExecutionProvider* ort_provider;
+    winml_adapter_api->SessionGetExecutionProvider(session_.get(), 0, &ort_provider);
+
+    OrtAllocator* ort_allocator;
+    winml_adapter_api->GetProviderAllocator(ort_provider, &ort_allocator);
+    auto unique_allocator = UniqueOrtAllocator(ort_allocator, winml_adapter_api->FreeProviderAllocator);  // the release here should probably not return anything
+
+    ort_api->CreateTensorAsOrtValue(unique_allocator.get(),
+        shape,
+        count,
+        ONNXTensorElementDataTypeFromTensorKind(kind),
+		&ort_value);
+    unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
+
+	size_t num_elements = size_in_bytes; /*For string tensors the size_in_bytes corresponds to the length*/
+	ort_api->FillStringTensor(unique_value.get(), reinterpret_cast<const char* const*>(data), num_elements);
+  } else {
+    // TODO:  what is the difference between the device allocator and the arena allocator?
+    OrtMemoryInfo* cpu_memory;
+    ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory);
+
+    ort_api->CreateTensorWithDataAsOrtValue(
       cpu_memory,
       data,
       size_in_bytes,
@@ -453,7 +535,8 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_
       count,
       ONNXTensorElementDataTypeFromTensorKind(kind),
       &ort_value);
-  auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
+    unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
+  }
 
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
   return S_OK;
@@ -472,16 +555,28 @@ HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue*
 
   auto src_value = static_cast<OnnxruntimeValue*>(src);
 
-  bool is_empty;
-  if (SUCCEEDED(src_value->IsEmpty(&is_empty)) && !is_empty) {
-    OrtValue* dest_ort_value = nullptr;
-    winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value);
-    auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+  bool is_set;
+  auto is_empty = SUCCEEDED(src_value->IsEmpty(&is_set)) && is_set;
+  auto is_tensor = SUCCEEDED(src_value->IsTensor(&is_set)) && is_set;
 
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
-  } else {
-    *out = src;
+  if (is_tensor && !is_empty) {
+    int16_t source_location;
+    int16_t input_required_location;
+    winml_adapter_api->ValueGetDeviceId(src_value->UseOrtValue(), &source_location);
+    winml_adapter_api->SessionGetInputRequiredDeviceId(session_.get(), name, &input_required_location);
+
+	if (source_location != input_required_location) {	
+      OrtValue* dest_ort_value = nullptr;
+      winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value);
+      auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+
+      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
+      return S_OK;
+	}
   }
+  
+  *out = src;
+  (*out)->AddRef();
   return S_OK;
 }
 

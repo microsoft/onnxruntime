@@ -68,7 +68,7 @@ ORT_API_STATUS(SessionStartProfiling, _In_ OrtEnv* env, _In_ OrtSession* session
 ORT_API_STATUS(SessionEndProfiling, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterGraphTransformers, _In_ OrtSession* session);
 ORT_API_STATUS(SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry);
-ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value);
+ORT_API_STATUS(SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name, _In_ OrtValue* orig_value, _Outptr_ OrtValue** new_value);
 
 // Dml methods (TODO need to figure out how these need to move to session somehow...)
 ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
@@ -91,8 +91,8 @@ ORT_API_STATUS(ExecutionProviderSync, _In_ OrtExecutionProvider* provider);
 ORT_API_STATUS(DmlCopyTensor, _In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst);
 ORT_API_STATUS(CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry);
 
-
-
+ORT_API_STATUS(ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device_id);
+ORT_API_STATUS(SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id);
 
 }  // namespace Adapter
 }  // namespace MachineLearning

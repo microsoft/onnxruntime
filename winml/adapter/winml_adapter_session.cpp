@@ -15,7 +15,6 @@
 #include "winml_adapter_model.h"
 #include "core/framework/utils.h"
 
-
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 #include "AbiCustomRegistryImpl.h"
 
@@ -76,7 +75,7 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
         return onnxruntime::ToOrtStatus(status);
     }
   }
-  
+
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
@@ -203,22 +202,47 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* sess
 ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry) {
   API_IMPL_BEGIN
   auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
-  *registry = impl.Detach();  
+  *registry = impl.Detach();
   return nullptr;
   API_IMPL_END
 }
 
+static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const char* const input_name) {
+  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  auto session_protected_load_accessor =
+      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
+  const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
+
+  std::vector<onnxruntime::SessionState::NodeInfo> node_info_vec;
+  session_state.GetInputNodeInfo(input_name, node_info_vec);
+  const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
+  return *node_info.device;
+}
+
+ORT_API_STATUS_IMPL(winmla::SessionGetInputRequiredDeviceId, _In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id) {
+  auto device = GetSessionGetInputDevice(session, input_name);
+  *device_id = device.Id();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(winmla::ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ int16_t* device_id) {
+  auto device = ort_value->Get<onnxruntime::Tensor>().Location().device;
+  *device_id = device.Id();
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* session, _In_ const char* const input_name,
-    _In_ const OrtValue* orig_value, _Outptr_ OrtValue** new_value) {
+                    _In_ OrtValue* orig_value, _Outptr_ OrtValue** new_value) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_protected_load_accessor =
       static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
-    const onnxruntime::SessionState& sessionState = session_protected_load_accessor->GetSessionState();
+  const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
+
   auto ort_value = std::make_unique<OrtValue>();
-  auto status = onnxruntime::utils::CopyOneInputAcrossDevices(sessionState, input_name, *orig_value, *ort_value.get());
+  auto status = onnxruntime::utils::CopyOneInputAcrossDevices(session_state, input_name, *orig_value, *ort_value.get());
   if (!status.IsOK()) {
-    return onnxruntime::ToOrtStatus(status);
+      return onnxruntime::ToOrtStatus(status);
   }
 
   *new_value = ort_value.release();

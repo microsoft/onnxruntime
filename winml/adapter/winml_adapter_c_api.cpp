@@ -19,7 +19,6 @@ const OrtApi* GetVersion1Api();
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
-
 static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   // Schema override
   &winmla::OverrideSchema,
@@ -94,15 +93,19 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ExecutionProviderSync,
   
   &winmla::CreateCustomRegistry,
-  // Release
-  &winmla::ReleaseModel,
-  &winmla::ReleaseMapTypeInfo,
-  &winmla::ReleaseSequenceTypeInfo
-};
+
+  &winmla::ValueGetDeviceId,
+  &winmla::SessionGetInputRequiredDeviceId,
+
+// Release
+&winmla::ReleaseModel,
+    &winmla::ReleaseMapTypeInfo,
+    &winmla::ReleaseSequenceTypeInfo
+}
+;
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
-  if (GetVersion1Api() == ort_api)
-  {
+  if (GetVersion1Api() == ort_api) {
     return &winml_adapter_api_1;
   }
 
