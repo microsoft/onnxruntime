@@ -281,7 +281,7 @@ struct TensorBase : TBase {
           GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
           GetCpuResource()->shape().size(), TensorKind(), dest.put()),
           "Failed to prepare buffer for copy back from device resource.");
-      //RETURN_IF_FAILED(engine->CopyTensor(value, dest.get()));
+      RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
     }
 
     return S_OK;
