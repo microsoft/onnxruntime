@@ -8,6 +8,7 @@
 
 #include "OnnxruntimeDescriptorConverter.h"
 #include "OnnxruntimeEngine.h"
+#include "OnnxruntimeErrors.h"
 
 using namespace Windows::AI::MachineLearning;
 
@@ -25,25 +26,22 @@ HRESULT CreateFeatureDescriptors(
     std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
   const auto ort_api = engine_factory->UseOrtApi();
   size_t count;
-  if (auto status = feature_helpers->GetCount(ort_model, &count)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(feature_helpers->GetCount(ort_model, &count),
+                                   engine_factory->UseOrtApi());
 
   for (size_t i = 0; i < count; i++) {
     OnnxruntimeValueInfoWrapper descriptor;
-    if (auto status = feature_helpers->GetName(ort_model, i, &descriptor.name_, &descriptor.name_length_)) {
-      return E_FAIL;
-    }
-    if (auto status = feature_helpers->GetDescription(ort_model, i, &descriptor.description_, &descriptor.description_length_)) {
-      return E_FAIL;
-    }
+    RETURN_HR_IF_WINMLA_API_FAIL_MSG(feature_helpers->GetName(ort_model, i, &descriptor.name_, &descriptor.name_length_),
+                                     engine_factory->UseOrtApi());
+    RETURN_HR_IF_WINMLA_API_FAIL_MSG(feature_helpers->GetDescription(ort_model, i, &descriptor.description_, &descriptor.description_length_),
+                                     engine_factory->UseOrtApi());
 
     OrtTypeInfo* type_info;
-    if (auto status = feature_helpers->GetTypeInfo(ort_model, i, &type_info)) {
-      return E_FAIL;
-    }
+    RETURN_HR_IF_WINMLA_API_FAIL_MSG(feature_helpers->GetTypeInfo(ort_model, i, &type_info),
+                                     engine_factory->UseOrtApi());
+
     descriptor.type_info_ = UniqueOrtTypeInfo(type_info, ort_api->ReleaseTypeInfo);
-    
+
     descriptors.push_back(std::move(descriptor));
   }
   return S_OK;
@@ -56,18 +54,16 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
 
   // Get Metadata
   size_t count;
-  if (auto status = winml_adapter_api->ModelGetMetadataCount(ort_model, &count)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetMetadataCount(ort_model, &count),
+                                   engine_factory->UseOrtApi());
 
   const char* metadata_key;
   size_t metadata_key_len;
   const char* metadata_value;
   size_t metadata_value_len;
   for (size_t i = 0; i < count; i++) {
-    if (auto status = winml_adapter_api->ModelGetMetadata(ort_model, i, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len)) {
-      return E_FAIL;
-    }
+    RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetMetadata(ort_model, i, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len),
+                                     engine_factory->UseOrtApi());
 
     model_metadata_.insert_or_assign(
         std::string(metadata_key, metadata_key_len),
@@ -101,29 +97,24 @@ HRESULT ModelInfo::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_facto
   const char* out;
   size_t len;
 
-  if (auto status = winml_adapter_api->ModelGetAuthor(ort_model, &out, &len)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetAuthor(ort_model, &out, &len),
+                                   engine_factory->UseOrtApi());
   author_ = std::string(out, len);
 
-  if (auto status = winml_adapter_api->ModelGetName(ort_model, &out, &len)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetName(ort_model, &out, &len),
+                                   engine_factory->UseOrtApi());
   name_ = std::string(out, len);
 
-  if (auto status = winml_adapter_api->ModelGetDomain(ort_model, &out, &len)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetDomain(ort_model, &out, &len),
+                                   engine_factory->UseOrtApi());
   domain_ = std::string(out, len);
 
-  if (auto status = winml_adapter_api->ModelGetDescription(ort_model, &out, &len)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetDescription(ort_model, &out, &len),
+                                   engine_factory->UseOrtApi());
   description_ = std::string(out, len);
 
-  if (auto status = winml_adapter_api->ModelGetVersion(ort_model, &version_)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelGetVersion(ort_model, &version_),
+                                   engine_factory->UseOrtApi());
 
   return S_OK;
 }
@@ -205,9 +196,8 @@ STDMETHODIMP OnnruntimeModel::GetModelInfo(IModelInfo** info) {
 
 STDMETHODIMP OnnruntimeModel::ModelEnsureNoFloat16() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->ModelEnsureNoFloat16(ort_model_.get())) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->ModelEnsureNoFloat16(ort_model_.get()),
+                                   engine_factory_->UseOrtApi());
   return S_OK;
 }
 
@@ -215,16 +205,14 @@ STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   OrtModel* ort_model_copy;
-  if (auto status = winml_adapter_api->CloneModel(ort_model_.get(), &ort_model_copy)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->CloneModel(ort_model_.get(), &ort_model_copy),
+                                   engine_factory_->UseOrtApi());
 
   auto model = UniqueOrtModel(ort_model_copy, winml_adapter_api->ReleaseModel);
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnruntimeModel>(copy, engine_factory_.Get(), std::move(model)));
 
   return S_OK;
 }
-
 
 STDMETHODIMP OnnruntimeModel::DetachOrtModel(OrtModel** model) {
   *model = ort_model_.release();

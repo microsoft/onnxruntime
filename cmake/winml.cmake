@@ -139,6 +139,7 @@ add_library(winml_lib_ort STATIC
    ${winml_lib_api_ort_dir}/OnnxruntimeModel.h
    ${winml_lib_api_ort_dir}/OnnxruntimeModel.cpp
    ${winml_lib_api_ort_dir}/OnnxruntimeSessionBuilder.h
+   ${winml_lib_api_ort_dir}/OnnxruntimeErrors.h
    ${winml_lib_api_ort_dir}/pch.h
   )
 

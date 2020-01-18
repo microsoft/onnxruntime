@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "OnnxruntimeEnvironment.h"
+#include "OnnxruntimeErrors.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 
@@ -132,11 +133,9 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
   auto status = winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
                                                                        &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
                                                                        OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
-  if (status) {
-    throw;
-  }
+  THROW_IF_WINMLA_API_FAIL_MSG(status, ort_api);
 
-  winml_adapter_api->OverrideSchema();
+  THROW_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->OverrideSchema(), ort_api);
 }
 
 HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {

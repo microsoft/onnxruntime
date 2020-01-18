@@ -7,6 +7,7 @@
 
 #include "OnnxruntimeDmlSessionBuilder.h"
 #include "OnnxruntimeEngine.h"
+#include "OnnxruntimeErrors.h"
 #include "LearningModelDevice.h"
 
 using namespace Windows::AI::MachineLearning;
@@ -38,11 +39,12 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
   ort_api->DisableMemPattern(session_options.get());
 
   // Request the dml ep
-  winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get());
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get()),
+                                   ort_api);
 
   // Request the cpu ep as well.... todo check if we need this
   // winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true);
-  
+
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
 
@@ -61,7 +63,8 @@ HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
   RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
 
   OrtSession* ort_session_raw;
-  winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw),
+                                   engine_factory_->UseOrtApi());
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
 
   *session = ort_session.release();
@@ -75,25 +78,28 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   size_t num_providers;
-  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers),
+                                   engine_factory_->UseOrtApi());
   RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
 
   OrtExecutionProvider* ort_provider;
-  winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider),
+                                   engine_factory_->UseOrtApi());
 
   // OnnxRuntime uses the default rounding mode when calling the session's allocator.
   // During initialization, OnnxRuntime allocates weights, which are permanent across session
   // lifetime and can be large, so shouldn't be rounded.
-  winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false),
+                                   engine_factory_->UseOrtApi());
 
-  if (auto status = winml_adapter_api->SessionInitialize(session)) {
-    return E_FAIL;
-  }
-
-  winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionInitialize(session),
+                                   engine_factory_->UseOrtApi());
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true),
+                                   engine_factory_->UseOrtApi());
 
   // Flush the D3D12 work from the DML execution provider
-  winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider),
+                                   engine_factory_->UseOrtApi());
 
   return S_OK;
 }

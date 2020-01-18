@@ -5,6 +5,7 @@
 
 #include "OnnxruntimeCpuSessionBuilder.h"
 #include "OnnxruntimeEngine.h"
+#include "OnnxruntimeErrors.h"
 
 using namespace Windows::AI::MachineLearning;
 
@@ -40,14 +41,14 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
 #else
   auto use_arena = true;
 #endif
-  winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena),
+                                   ort_api);
 
   // call release() so the underlying OrtSessionOptions object isn't freed
   *options = session_options.release();
 
   return S_OK;
 }
-
 
 HRESULT
 OnnxruntimeCpuSessionBuilder::CreateSession(
@@ -62,11 +63,13 @@ OnnxruntimeCpuSessionBuilder::CreateSession(
   RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
 
   OrtSession* ort_session_raw;
-  winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw),
+                                   engine_factory_->UseOrtApi());
+
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
-    
+
   *session = ort_session.release();
-  
+
   return S_OK;
 }
 
@@ -76,12 +79,13 @@ OnnxruntimeCpuSessionBuilder::Initialize(
   RETURN_HR_IF_NULL(E_INVALIDARG, session);
 
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  if (auto status = winml_adapter_api->SessionInitialize(session)) {
-    return E_FAIL;
-  }
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionInitialize(session),
+                                   engine_factory_->UseOrtApi());
 
   size_t num_providers;
-  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
+  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers),
+                                   engine_factory_->UseOrtApi());
+
   RETURN_HR_IF(E_UNEXPECTED, num_providers != 1);
   return S_OK;
 }
