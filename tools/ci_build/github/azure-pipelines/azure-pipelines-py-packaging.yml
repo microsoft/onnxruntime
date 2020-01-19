@@ -62,8 +62,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -130,8 +129,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -205,9 +203,9 @@ jobs:
     inputs:
       ArtifactName: onnxruntime
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: succeeded()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
 
@@ -274,8 +272,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
     
@@ -318,5 +315,4 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
