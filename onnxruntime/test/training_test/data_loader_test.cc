@@ -42,7 +42,7 @@ Status WriteInputDataFile(
     samples.emplace_back(features);
   }
 
-  const uint32_t feature_size = samples[0][0].ByteSize();  // they're all the same size
+  const uint32_t feature_size = static_cast<uint32_t>(samples[0][0].ByteSize());  // they're all the same size
   const uint32_t sample_size = (feature_size + sizeof(uint32_t)) * num_features;
 
   int fd;
