@@ -203,8 +203,9 @@ std::unique_ptr<Tensor> CreateTensor(AllocatorPtr alloc, const std::string& name
   return p_tensor;
 }
 
-void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
-                             const InputDefList* input_def_list, PyObject* pylist_obj, OrtValue* p_mlvalue) {
+bool CheckIfInputIsSequenceType(const std::string& name_input,
+                                const InputDefList* input_def_list,
+                                /*out*/ onnx::TypeProto& type_proto) {
   // get sequence type from the model
   const auto& def_list = *input_def_list;
   auto ret_it = std::find_if(std::begin(def_list), std::end(def_list),
@@ -212,9 +213,21 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
   if (ret_it == std::end(def_list)) {
     throw std::runtime_error("Failed to find input with name: " + name_input + " in the model input def list");
   }
-  const auto* type_proto = (*ret_it)->TypeAsProto();
-  if (!type_proto || !(type_proto->has_sequence_type())) {
-    throw std::runtime_error("Either type_proto was null or it was not of sequence type");
+  const auto* temp = (*ret_it)->TypeAsProto();
+  if (!temp) {
+    throw std::runtime_error("Corresponding type_proto is null");
+  } else {
+    type_proto = *temp;
+  }
+
+  return type_proto.has_sequence_type();
+}
+
+void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
+                             const InputDefList* input_def_list, PyObject* pylist_obj, OrtValue* p_mlvalue) {
+  onnx::TypeProto type_proto;
+  if (!CheckIfInputIsSequenceType(name_input, input_def_list, type_proto)) {
+    throw std::runtime_error("Input is not of sequence type");
   }
 
   // populate the seq
@@ -232,9 +245,9 @@ void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_input,
     }
   }
 
-    // set the seq type
+  // set the seq type
   MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
-      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto->sequence_type().elem_type().tensor_type().elem_type()));
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
   auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>(seq_dtype);
   p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
@@ -460,9 +473,30 @@ void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const 
 
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, AllocatorPtr alloc, const std::string& name_input,
                           py::object& value, OrtValue* p_mlvalue) {
+  onnx::TypeProto type_proto;
   if (PyObjectCheck_Array(value.ptr())) {
     // The most frequent case: input comes as an array.
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(value.ptr());
+    CreateTensorMLValue(alloc, name_input, arr, p_mlvalue);
+  } else if (PyList_Check(value.ptr()) &&
+             !CheckIfInputIsSequenceType(name_input, input_def_list, type_proto)) {
+    // This is not a sequence tensor. This is just a regular tensor fed through as a list.
+    if (!type_proto.tensor_type().has_elem_type()) {
+      std::runtime_error("The graph is missing type information needed to construct the ORT tensor");
+    }
+
+    MLDataType dtype = OrtTypeInfo::ElementTypeFromProto(
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.tensor_type().elem_type()));
+
+    int numpy_dtype = OnnxRuntimeTensorToNumpyType(dtype);
+
+    PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(
+        PyArray_FromAny(value.ptr(), PyArray_DescrFromType(numpy_dtype), 0, 0, 0, nullptr));
+
+    if (!arr) {
+      throw std::runtime_error("Could not create tensor from given input list");
+    }
+
     CreateTensorMLValue(alloc, name_input, arr, p_mlvalue);
   } else if (PyList_Check(value.ptr())) {
     auto* seq_tensors = reinterpret_cast<PyObject*>(value.ptr());
