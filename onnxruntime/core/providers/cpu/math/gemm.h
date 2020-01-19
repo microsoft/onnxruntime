@@ -8,7 +8,6 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 
@@ -28,7 +27,7 @@ class Gemm : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override {
-    concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+    concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
     const auto* X = context->Input<Tensor>(0);
     const auto* W = context->Input<Tensor>(1);
@@ -82,7 +81,7 @@ class Gemm : public OpKernel {
         // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
         B != nullptr ? beta_ : 0,
         y_data,
-        tp);
+        thread_pool);
 
     FuseActivation<T>(activation_, y_data, M * N, leaky_relu_alpha_);
 

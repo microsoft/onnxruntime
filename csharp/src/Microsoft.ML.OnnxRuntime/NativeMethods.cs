@@ -591,7 +591,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// \param len total data length, not including the trailing '\0' chars.
         public delegate IntPtr /*(OrtStatus*)*/ DOrtFillStringTensor(
                                                         IntPtr /* OrtValue */ value,
-                                                        string[] /* const char* const* */s,
+                                                        IntPtr[] /* const char* const* */s,
                                                         UIntPtr /* size_t */ s_len);
         public static DOrtFillStringTensor OrtFillStringTensor;
 

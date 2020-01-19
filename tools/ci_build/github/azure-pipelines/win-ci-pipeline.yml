@@ -42,7 +42,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_automl --use_dnnl --use_openmp --build_shared_lib --enable_onnx_tests --build_java'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --use_featurizers --use_dnnl --use_openmp --build_shared_lib --enable_onnx_tests --build_java'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1

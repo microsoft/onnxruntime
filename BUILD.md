@@ -1,5 +1,5 @@
 # Building ONNX Runtime
-*Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.*
+*Dockerfiles are available [here](./dockerfiles) to help you get started.*
 
 *Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
@@ -61,8 +61,6 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 
-* Red Hat Enterprise Linux and CentOS are not supported.
-* Other version of Ubuntu might work but we don't support them officially.
 * GCC 4.x and below are not supported.
 
 ### OS/Compiler Matrix:
@@ -70,7 +68,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 | OS/Compiler | Supports VC  | Supports GCC     |
 |-------------|:------------:|:----------------:|
 |Windows 10   | YES          | Not tested       |
-|Linux        | NO           | YES(gcc>=5.0)    |
+|Linux        | NO           | YES(gcc>=4.8)    |
 
 ## System Requirements
 For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
@@ -86,6 +84,7 @@ For other system requirements and other dependencies, please see [this section](
 |**Build Shared Library**|--build_shared_lib||
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
+|**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
 
 
 # Additional Build Instructions
@@ -102,6 +101,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 * [Android NNAPI](#Android-NNAPI)
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
+* [ARM Compute Library](#ARM-Compute-Library)
 
 **Options**
 * [OpenMP](#OpenMP)
@@ -116,7 +116,7 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 ---
 
 ## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
+Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
 
 ### Pre-Requisites
 * ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
@@ -159,7 +159,7 @@ Build command:
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu).
+A Dockerfile is available [here](./dockerfiles#cuda).
 
 
 #### Notes
@@ -209,7 +209,9 @@ See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-E
 
 #### Build Instructions
 ##### Linux
-DNNL: `./build.sh --use_dnnl`
+```
+./build.sh --use_dnnl
+```
 ---
 
 
@@ -279,7 +281,27 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 ### Android NNAPI
 
-See information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
+See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
+
+#### Pre-Requisites
+
+To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
+
+#### Build Instructions
+
+The basic build commands are below. There are also some other parameters for building the Android version under See [Android Build instructions](#android) for more details.
+
+##### Cross compiling on Windows
+
+```bash
+./build.bat --android --android_ndk_path <android ndk path> --dnnlibrary
+```
+
+##### Cross compiling on Linux
+
+```bash
+./build.sh --android --android_ndk_path <android ndk path> --dnnlibrary
+```
 
 ---
 
@@ -354,7 +376,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
+Dockerfile instructions are available [here](./dockerfiles#nuphar-public-preview)
 
 ---
 
@@ -366,6 +388,41 @@ See more information on the DirectML execution provider [here](./docs/execution_
 ```
 #### Notes
 The DirectML execution provider supports building for both x64 and x86 architectures. DirectML is only supported on Windows.
+
+---
+
+### ARM Compute Library 
+See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
+
+#### Prerequisites
+* Supported backend: i.MX8QM Armv8 CPUs
+* Supported BSP: i.MX8QM BSP
+  * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
+* Set up the build environment
+```
+source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
+alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
+```
+* See [Build ARM](#ARM) below for information on building for ARM devices
+
+#### Build Instructions
+
+1. Configure ONNX Runtime with ACL support:
+```
+cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+```
+
+2. Build ONNX Runtime library, test and performance application:
+```
+make -j 6
+```
+
+3. Deploy ONNX runtime on the i.MX 8QM board
+```
+libonnxruntime.so.0.5.0
+onnxruntime_perf_test
+onnxruntime_test_all
+```
 
 ---
 
