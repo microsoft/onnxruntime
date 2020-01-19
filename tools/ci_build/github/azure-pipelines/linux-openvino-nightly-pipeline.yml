@@ -24,8 +24,8 @@ jobs:
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu16.04 -d openvino -r $(Build.BinariesDirectory) -x "--use_openvino GPU_FP32 --build_wheel"'
       displayName: 'Command Line Script'
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'ci_only'
 
     - template: templates/clean-agent-build-directory-step.yml
