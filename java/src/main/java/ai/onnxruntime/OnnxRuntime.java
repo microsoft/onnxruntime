@@ -48,6 +48,14 @@ final class OnnxRuntime {
    * @throws IOException If the file failed to read or write.
    */
   private static void load(String library) throws IOException {
+    try {
+      logger.log(Level.FINE, "Attempting to load native library '" + library + "' from lib path");
+      System.load(library);
+      logger.log(Level.FINE, "Loaded native library '" + library + "' from lib path");
+      return;
+    } catch (Exception | Error e) {
+      logger.log(Level.FINE, "Native library '" + library + "' failed to load from lib path", e);
+    }
     // generate a platform specific library name
     // replace Mac's jnilib extension to dylib
     String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
@@ -71,7 +79,7 @@ final class OnnxRuntime {
         }
       }
       System.load(temp.getAbsolutePath());
-      logger.log(Level.FINE, "Loaded native library '" + library + "'");
+      logger.log(Level.FINE, "Loaded native library '" + library + "' from resources");
     } finally {
       temp.delete();
     }
