@@ -12,6 +12,7 @@ include_directories(${JNI_INCLUDE_DIRS})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
+set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
 if (onnxruntime_RUN_ONNX_TESTS)
   set(JAVA_DEPENDS onnxruntime ${test_data_target})
 else()
@@ -20,7 +21,12 @@ endif()
 
 # Specify the Java source files
 file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
-add_custom_target(onnxruntime4j SOURCES ${onnxruntime4j_src})
+set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
+# this jar is solely used to signalling mechanism for dependency management in CMake
+# if any of the Java sources change, the jar (and generated headers) will be regenerated and the onnxruntime4j_jni target will be rebuilt
+add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ./gradlew clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_src})
+add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
+set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 
 # Specify the native sources
 file(GLOB onnxruntime4j_native_src 
@@ -30,13 +36,14 @@ file(GLOB onnxruntime4j_native_src
     )
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+# depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
-target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/src/main/native)
+# the JNI headers are generated in the onnxruntime4j target
+target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers)
 target_link_libraries(onnxruntime4j_jni PUBLIC ${JNI_LIBRARIES} onnxruntime)
 
 # expose native libraries to the gradle build process
-set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
 file(MAKE_DIRECTORY ${JAVA_OUTPUT_DIR}/build)
 set(JAVA_PACKAGE_DIR ai/onnxruntime/native/)
 set(JAVA_NATIVE_LIB_DIR ${JAVA_OUTPUT_DIR}/native-lib)

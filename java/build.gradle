@@ -36,7 +36,7 @@ def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
 compileJava {
-	options.compilerArgs += ["-h", "${projectDir}/src/main/native/"]
+	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
 }
 
 sourceSets.test {
