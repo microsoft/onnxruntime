@@ -21,8 +21,7 @@
       inputs:
         ArtifactName: onnxruntime4j
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -49,8 +48,7 @@
       inputs:
         ArtifactName: onnxruntime4j_gpu
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -106,8 +104,7 @@
       inputs:
         ArtifactName: onnxruntime4j
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -162,8 +159,7 @@
       inputs:
         ArtifactName: onnxruntime4j_gpu
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -196,7 +192,6 @@
       inputs:
         ArtifactName: onnxruntime4j
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
