@@ -13,8 +13,6 @@
 namespace onnxruntime {
 namespace training {
 
-// Utils for Constant Node Creation
-
 template <class T>
 ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
@@ -63,9 +61,6 @@ class OptimizerBuilder {
    * @param opt_config The optimizer configuration.
    * @param[out] graph_defs The GraphDefs corresponding to the graph (possibly
    *             a subgraph) that the component is to be added to.
-   * @param[out] external_inputs_including_initializers Any inputs that should
-   *             come from the parent graph, if there is one.
-   *             Other inputs are treated as local to the current (sub)graph.
    * @param[out] new_external_initializers Any initializers that should be
    *             placed in the parent graph, if there is one.
    *             Other initializers are treated as local to the current
@@ -84,7 +79,6 @@ class OptimizerBuilder {
       const ArgDef* gradient_norm_finite_argdef,
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ArgDef>& external_inputs_including_initializers,
       std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
       std::vector<ArgDef>& output_weight_argdefs,
       std::vector<ArgDef>& output_gradient_argdefs) const = 0;
@@ -109,59 +103,6 @@ class OptimizerBuilder {
  private:
   std::string name_;
   std::vector<std::string> attr_names_;
-};
-
-class SGDOptimizerBuilder final : public OptimizerBuilder {
- public:
-  SGDOptimizerBuilder() : OptimizerBuilder("SGDOptimizer") {}
-
-  virtual Status Build(
-      const std::vector<ArgDef>& weight_argdefs,
-      const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* gradient_norm_argdef,
-      const ArgDef* gradient_norm_finite_argdef,
-      const std::vector<OptimizerNodeConfig>& opt_configs,
-      GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs,
-      std::vector<ArgDef>& output_gradient_argdefs) const override;
-};
-
-class AdamOptimizerBuilder final : public OptimizerBuilder {
- public:
-  AdamOptimizerBuilder() : OptimizerBuilder("AdamOptimizer",
-                                            {"alpha", "beta", "lambda", "epsilon"}) {}
-
-  virtual Status Build(
-      const std::vector<ArgDef>& weight_argdefs,
-      const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* gradient_norm_argdef,
-      const ArgDef* gradient_norm_finite_argdef,
-      const std::vector<OptimizerNodeConfig>& opt_configs,
-      GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs,
-      std::vector<ArgDef>& output_gradient_argdefs) const override;
-};
-
-class LambOptimizerBuilder final : public OptimizerBuilder {
- public:
-  LambOptimizerBuilder() : OptimizerBuilder("LambOptimizer",
-                                            {"alpha", "beta", "lambda", "epsilon"}) {}
-
-  virtual Status Build(
-      const std::vector<ArgDef>& weight_argdefs,
-      const std::vector<ArgDef>& gradient_argdefs,
-      const ArgDef* gradient_norm_argdef,
-      const ArgDef* gradient_norm_finite_argdef,
-      const std::vector<OptimizerNodeConfig>& opt_configs,
-      GraphAugmenter::GraphDefs& graph_defs,
-      std::vector<ArgDef>& external_inputs_including_initializers,
-      std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
-      std::vector<ArgDef>& output_weight_argdefs,
-      std::vector<ArgDef>& output_gradient_argdefs) const override;
 };
 
 class OptimizerBuilderRegistry : public GenericRegistry<OptimizerBuilder> {

@@ -5,9 +5,9 @@
 #include <memory>
 #include "core/graph/training/loss_func/loss_func_common.h"
 #include "core/graph/training/loss_function_registry.h"
-#include "core/graph/training/training_optimizer.h"
 #include "core/platform/path_string.h"
 #include "core/session/inference_session.h"
+#include "core/training/optimizer_config.h"
 
 namespace onnxruntime {
 namespace training {

@@ -27,7 +27,7 @@
 #include "core/graph/training/gradient_schema_defs.h"
 #include "core/graph/training/gradient_builder_registry.h"
 #include "core/graph/training/loss_function_registry.h"
-#include "core/graph/training/training_optimizer.h"
+#include "core/graph/training/optimizer_builder.h"
 #endif
 
 namespace onnxruntime {

@@ -9,7 +9,7 @@
 
 #include "core/common/common.h"
 #include "core/graph/graph.h"
-#include "core/graph/training/training_optimizer.h"
+#include "core/graph/training/optimizer_builder.h"
 #include "core/training/optimizer_config.h"
 
 namespace onnxruntime {

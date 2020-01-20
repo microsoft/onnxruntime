@@ -14,7 +14,7 @@
 #include "core/graph/model.h"
 #include "core/graph/training/gradient_builder_base.h"
 #include "core/graph/training/graph_augmenter.h"
-#include "core/graph/training/training_optimizer.h"
+#include "core/graph/training/optimizer_builder.h"
 #include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
@@ -404,7 +404,6 @@ Status AddDirectWeightUpdate(
   assert(weight_argdefs.size() == gradient_argdefs.size() &&
          weight_argdefs.size() == opt_configs.size());
 
-  std::vector<ArgDef> inputs_including_initializers;
   std::vector<TensorProto> new_initializers;
   std::vector<ArgDef> output_weight_argdefs;
   std::vector<ArgDef> output_gradient_argdefs;
@@ -424,7 +423,7 @@ Status AddDirectWeightUpdate(
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
       opt_configs, graph_defs,
-      inputs_including_initializers, new_initializers,
+      new_initializers,
       output_weight_argdefs, output_gradient_argdefs));
 
   graph_defs.AddInitializers(new_initializers);

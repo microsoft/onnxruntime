@@ -5,7 +5,7 @@
 
 #include "core/graph/model.h"
 #include "core/graph/training/loss_function_builder.h"
-#include "core/graph/training/training_optimizer.h"
+#include "core/graph/training/optimizer_builder.h"
 #include "core/training/checkpointing.h"
 #include "core/training/data_transfer_utils.h"
 #include "core/training/gradient_graph_builder.h"

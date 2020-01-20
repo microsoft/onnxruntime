@@ -14,7 +14,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 #include "core/graph/training/gradient_builder_base.h"
-#include "core/graph/training/training_optimizer.h"
+#include "core/graph/training/optimizer_builder.h"
 #include "core/training/optimizer_graph_builder.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/gtest_utils.h"

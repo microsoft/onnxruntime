@@ -19,9 +19,32 @@
 #include "core/framework/data_types.h"
 #include "core/framework/path_lib.h"
 #include "core/session/ort_apis.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
+
+// Provide template specializations for onnxruntime-specific types.
+namespace ONNX_NAMESPACE {
+template <>
+TensorProto ToTensor<onnxruntime::MLFloat16>(const onnxruntime::MLFloat16& value) {
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_FLOAT16);
+  t.add_int32_data(value.val);
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFloat16>& values) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(TensorProto_DataType_FLOAT16);
+  for (const onnxruntime::MLFloat16& val : values) {
+    t.add_int32_data(val.val);
+  }
+  return t;
+}
+}  // namespace ONNX_NAMESPACE
 
 namespace {
 
