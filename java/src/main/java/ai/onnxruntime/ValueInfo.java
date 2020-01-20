@@ -6,8 +6,8 @@ package ai.onnxruntime;
 
 /**
  * Interface for info objects describing an {@link OnnxValue}.
- *
- * <p>Will be sealed to {@link MapInfo}, {@link TensorInfo} and {@link SequenceInfo} when Java
+ * <p>
+ * Will be sealed to {@link MapInfo}, {@link TensorInfo} and {@link SequenceInfo} when Java
  * supports sealed interfaces.
  */
-public interface ValueInfo {}
+public interface ValueInfo { }
