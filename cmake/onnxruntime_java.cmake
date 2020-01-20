@@ -19,12 +19,19 @@ else()
   set(JAVA_DEPENDS onnxruntime)
 endif()
 
+# use system gradle, falling back on gradle wrapper
+find_program(GRADLE_EXECUTABLE gradle)
+if(NOT GRADLE_EXECUTABLE)
+    set(GRADLE_EXECUTABLE ./gradlew)
+endif()
+message(STATUS "Using gradle: ${GRADLE_EXECUTABLE}")
+
 # Specify the Java source files
 file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
 set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
 # this jar is solely used to signalling mechanism for dependency management in CMake
 # if any of the Java sources change, the jar (and generated headers) will be regenerated and the onnxruntime4j_jni target will be rebuilt
-add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ./gradlew clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_src})
+add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_src})
 add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
 set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 
@@ -55,4 +62,4 @@ file(MAKE_DIRECTORY ${JAVA_PACKAGE_JNI_DIR})
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
 # run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ./gradlew cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
