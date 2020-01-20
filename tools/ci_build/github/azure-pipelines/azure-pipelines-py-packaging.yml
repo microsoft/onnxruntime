@@ -8,12 +8,19 @@ jobs:
       Python35:
         python.version: '3.5'
         python.dir: '/opt/python/cp35-cp35m'
+        python.include.dir: '/opt/python/cp35-cp35m/include/python3.5m'
       Python36:
         python.version: '3.6'
         python.dir: '/opt/python/cp36-cp36m'
+        python.include.dir: '/opt/python/cp36-cp36m/include/python3.6m'
       Python37:
         python.version: '3.7'
         python.dir: '/opt/python/cp37-cp37m'
+        python.include.dir: '/opt/python/cp37-cp37m/include/python3.7m'
+      Python38:
+        python.version: '3.8'
+        python.dir: '/opt/python/cp38-cp38'
+        python.include.dir: '/opt/python/cp38-cp38/include/python3.8'
   steps:
     - template: templates/set-test-data-variables-step.yml
 
@@ -40,7 +47,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest  --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -69,12 +76,19 @@ jobs:
       Python35:
         python.version: '3.5'
         python.dir: '/opt/python/cp35-cp35m'
+        python.include.dir: '/opt/python/cp35-cp35m/include/python3.5m'
       Python36:
         python.version: '3.6'
         python.dir: '/opt/python/cp36-cp36m'
+        python.include.dir: '/opt/python/cp36-cp36m/include/python3.6m'
       Python37:
         python.version: '3.7'
         python.dir: '/opt/python/cp37-cp37m'
+        python.include.dir: '/opt/python/cp37-cp37m/include/python3.7m'
+      Python38:
+        python.version: '3.8'
+        python.dir: '/opt/python/cp38-cp38'
+        python.include.dir: '/opt/python/cp38-cp38/include/python3.8'
   steps:
     - template: templates/set-test-data-variables-step.yml
 
@@ -101,7 +115,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.dir)/include/python$(python.version)m PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest  --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
@@ -131,6 +145,8 @@ jobs:
         python.version: '3.6'
       Python37:
         python.version: '3.7'
+      Python38:
+        python.version: '3.8'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-maxcpucount'
@@ -158,7 +174,7 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)'
 
   - script: |
-     python -m pip install -q pyopenssl setuptools wheel numpy     
+     python -m pip install -q pyopenssl setuptools wheel numpy==1.18
    
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'        
@@ -174,13 +190,13 @@ jobs:
     displayName: 'BUILD'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_automl --enable_onnx_tests --parallel'
+      arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel  --enable_onnx_tests --parallel'
       workingDirectory: '$(Build.BinariesDirectory)'     
   
   - task: CopyFiles@2
     displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
       Contents: '**\dist\*.whl'
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
@@ -198,11 +214,11 @@ jobs:
 - job:  Windows_py_GPU_Wheels
   workspace:
     clean: all
-  pool: Win-GPU-CUDA10
-  timeoutInMinutes:  120  
+  pool: 'Win-GPU-2019'
+  timeoutInMinutes:  60  
   variables:
-    buildDirectory: '$(Build.SourcesDirectory)\build'
     CUDA_VERSION: '10.0'
+    EnvSetupScript: setup_env.bat
   strategy:
     matrix:
       Python35:
@@ -217,30 +233,39 @@ jobs:
         versionSpec: $(python.version) 
         addToPath: true 
         architecture: 'x64'
-    - task: BatchScript@1
-      displayName: 'Setup VS2017 env vars'
-      inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
-        arguments: 'amd64'
-        modifyEnvironment: true
-    - task: PowerShell@1
-      displayName: 'Set CUDA path'
-      inputs:
-        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
-        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
 
     - task: BatchScript@1
-      displayName: 'Run build script'
+      displayName: 'setup env'
       inputs:
-        filename: 'build.bat'
-        arguments: ' --use_cuda --cuda_home="C:\local\cuda_10.0.130_win10"
-      --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --build_dir $(buildDirectory) --config Release --build_wheel'
-        workingFolder: "$(Build.SourcesDirectory)"
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy==1.18
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
+
+    - template: templates/set-test-data-variables-step.yml
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory)
+
+    - task: PythonScript@0
+      displayName: 'build'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --enable_onnx_tests --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.3.1.20\cuda"
+        workingDirectory: '$(Build.BinariesDirectory)'   
 
     - task: CopyFiles@2
       displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
       inputs:
-        SourceFolder: '$(buildDirectory)'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         Contents: '**\dist\*.whl'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
@@ -249,11 +274,6 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - task: PowerShell@1
-      displayName: 'Clean up CUDA props files'
-      inputs:
-        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
-        arguments: '-CudaVersion 10.0'
     - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
       displayName: 'Component Detection'
 
@@ -272,6 +292,8 @@ jobs:
         python.version: '3.6'
       Python37:
         python.version: '3.7'
+      Python38:
+        python.version: '3.8'
   steps:
     - task: UsePythonVersion@0
       displayName: 'Use Python'

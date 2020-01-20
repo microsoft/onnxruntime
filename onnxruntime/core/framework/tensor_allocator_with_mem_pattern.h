@@ -32,7 +32,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
 
       if (mem_patterns_.patterns[i].PeakSize() > 0) {
         void* buffer;
-        if (alloc->Info().type == OrtArenaAllocator) {
+        if (alloc->Info().alloc_type == OrtArenaAllocator) {
           buffer = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_patterns_.patterns[i].PeakSize());
         }
         else {

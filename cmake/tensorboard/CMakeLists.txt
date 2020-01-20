@@ -48,9 +48,14 @@ if(NOT WIN32)
     target_compile_options(tensorboard PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()
+if(UNIX)
+  target_compile_options(tensorboard PRIVATE "-Wno-unused-variable")
+  target_compile_options(tensorboard PRIVATE "-Wno-deprecated-declarations")
+endif()
 
 if(WIN32)
-  target_compile_options(tensorboard PRIVATE /wd4100)
+  target_compile_options(tensorboard PRIVATE /wd4100 /wd4996 /wd4244 /wd4267 /wd4309)
 endif()
+
 
 set_target_properties(tensorboard PROPERTIES FOLDER "External/tensorboard")

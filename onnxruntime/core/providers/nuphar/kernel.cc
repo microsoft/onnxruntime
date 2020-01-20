@@ -180,7 +180,7 @@ ONNX_OPERATOR_KERNEL_EX(
     9,
     kNupharExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T1", DataTypeImpl::AllFixedSizeTensorExceptHalfTypes())
         .TypeConstraint("T2", DataTypeImpl::AllFixedSizeTensorExceptHalfTypes()),
     nuphar::NupharKernel);
 

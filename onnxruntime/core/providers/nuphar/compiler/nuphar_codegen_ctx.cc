@@ -56,13 +56,16 @@ static tvm::runtime::PackedFunc LowerLayoutFunc(const tvm_codegen::WeightLayout*
 
   std::string func_name = layout->Name() + "_marshall";
 
-  tvm::runtime::PackedFunc cached_func = nuphar::LoadTVMPackedFuncFromCache(func_name);
-
-  if (cached_func == nullptr) {
+  tvm::runtime::PackedFunc cached_func;
+  auto cache_status = nuphar::LoadTVMPackedFuncFromCache(func_name, cached_func);
+  if (cache_status != nuphar::CacheStatus::Found) {
+    ORT_ENFORCE(cached_func == nullptr);
     auto lowered = tvm::lower(S, {inputs[0], outputs[0]}, func_name, {}, config);
     auto module = tvm::build(lowered, tvm::target::llvm(), tvm::Target(), config);
     tvm_codegen::DumpTVMModuleToFile(func_name, module);
-    nuphar::SaveTVMModuleToCache(func_name, module);
+    if (cache_status == nuphar::CacheStatus::Missing) {
+      nuphar::SaveTVMModuleToCache(func_name, module);
+    }
     cached_func = module.GetFunction(func_name);
   }
   return cached_func;

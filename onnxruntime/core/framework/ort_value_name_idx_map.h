@@ -22,8 +22,7 @@ class OrtValueNameIdxMap {
   int Add(const std::string& name) {
     auto it = map_.find(name);
     if (it == map_.end()) {
-      int idx;
-      idx = ort_value_max_idx_++;
+      int idx = next_idx_++;
       map_.insert(it, {name, idx});
       idx_name_map_[idx] = name;
       return idx;
@@ -54,7 +53,7 @@ class OrtValueNameIdxMap {
   }
 
   size_t Size() const { return map_.size(); };
-  int MaxIdx() const { return ort_value_max_idx_; }
+  int MaxIdx() const { return next_idx_ - 1; }
 
   const_iterator begin() const noexcept { return map_.cbegin(); }
   const_iterator end() const noexcept { return map_.cend(); }
@@ -62,9 +61,8 @@ class OrtValueNameIdxMap {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueNameIdxMap);
 
-  int ort_value_max_idx_ = 0;
+  int next_idx_ = 0;
   std::unordered_map<std::string, int> map_;
   std::unordered_map<int, std::string> idx_name_map_;
 };
-using OrtValueNameIdxMap = OrtValueNameIdxMap;
 }  // namespace onnxruntime

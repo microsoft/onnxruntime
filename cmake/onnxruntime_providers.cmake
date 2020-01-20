@@ -25,14 +25,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
-file(GLOB onnxruntime_cpu_automl_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu_automl_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_types.cc"
-  "${ONNXRUNTIME_ROOT}/automl_ops/automl_featurizers.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/automl_ops/cpu/*.cc"
+file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu_featurizers_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
+  "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
@@ -112,9 +109,9 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_USE_AUTOML)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_automl_cc_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_automl_cc_srcs})
+if (onnxruntime_USE_FEATURIZERS)
+  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_featurizers_cc_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_featurizers_cc_srcs})
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -125,10 +122,10 @@ endif()
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto tensorboard protobuf::libprotobuf)
 
-if (onnxruntime_USE_AUTOML)
-  add_dependencies(onnxruntime_providers automl_featurizers)
-  onnxruntime_add_include_to_target(onnxruntime_providers automl_featurizers)
-  target_link_libraries(onnxruntime_providers automl_featurizers)
+if (onnxruntime_USE_FEATURIZERS)
+  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
+  onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
+  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
 if(HAS_DEPRECATED_COPY)
