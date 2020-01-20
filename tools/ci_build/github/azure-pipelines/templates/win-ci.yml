@@ -213,8 +213,8 @@ jobs:
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
     - template: clean-agent-build-directory-step.yml

@@ -13,7 +13,7 @@ jobs:
     AgentPool : 'Win-GPU-2019'
     ArtifactName: 'drop-nuget'    
     JobName: 'Windows_CI_GPU_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.6.5.32\cuda"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'    
@@ -59,9 +59,9 @@ jobs:
       inputs:
         artifactName: 'drop-linux'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
