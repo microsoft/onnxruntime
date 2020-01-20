@@ -386,9 +386,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       nchwc_conv_W_tensor_proto.add_dims(conv_W->dims()[i]);
     }
 
-    graph_.AddInitializedTensor(nchwc_conv_W_tensor_proto);
-
-    nchwc_conv_W_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_W_tensor_proto.name(), nullptr);
+    nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
     filters_map->emplace(input_defs[1], nchwc_conv_W_arg);
   }
 
@@ -413,9 +411,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
       nchwc_conv_B_tensor_proto.add_dims(nchwc_output_channels);
 
-      graph_.AddInitializedTensor(nchwc_conv_B_tensor_proto);
-
-      nchwc_conv_B_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_B_tensor_proto.name(), nullptr);
+      nchwc_conv_B_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_B_tensor_proto);
       aligned_biases_.emplace(input_defs[2], nchwc_conv_B_arg);
     }
   }
@@ -751,9 +747,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   nchwc_conv_W_tensor_proto.add_dims(1);
   nchwc_conv_W_tensor_proto.add_dims(1);
 
-  graph_.AddInitializedTensor(nchwc_conv_W_tensor_proto);
-
-  auto* nchwc_conv_W_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_W_tensor_proto.name(), nullptr);
+  auto* nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
 
   std::copy_n(bn_B->data<float>(), channels, padded_buffer.data());
 
@@ -763,9 +757,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   nchwc_conv_B_tensor_proto.set_raw_data(padded_buffer.data(), nchwc_channels * sizeof(float));
   nchwc_conv_B_tensor_proto.add_dims(nchwc_channels);
 
-  graph_.AddInitializedTensor(nchwc_conv_B_tensor_proto);
-
-  auto* nchwc_conv_B_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_B_tensor_proto.name(), nullptr);
+  auto* nchwc_conv_B_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_B_tensor_proto);
 
   // Create the replacement node.
   std::string nchwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_bn_nchwc");
