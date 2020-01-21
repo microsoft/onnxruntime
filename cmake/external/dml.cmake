@@ -29,6 +29,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
     VERBATIM)
 
+  include_directories(BEFORE "${DML_PACKAGE_DIR}/include")
   add_custom_target(RESTORE_PACKAGES ALL DEPENDS ${DML_PACKAGE_DIR}/bin/x64/DirectML.lib ${DML_PACKAGE_DIR}/bin/x86/DirectML.lib)
   add_dependencies(RESTORE_PACKAGES nuget)
 else()
