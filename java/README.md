@@ -33,8 +33,8 @@ The reason the shared libraries are split out like that is that users can mix an
 #### Build System Overview 
 
 The Gradle build system is used here to manage the Java project's dependency management, compilation, testing, and assembly.
-Specifically, the Gradle wrapper `./gradlew` (for *nix) or `gradlew.bat` (for Windows) is used.
 The main CMake build system delegates building and testing to Gradle.
+CMake will try to find a system Gradle installation to use. If that is not present, then the gradle wrapper will be used.
 This allows the CMake system to ensure all of the C/C++ compilation is achieved prior to the Java build.
 The Java build depends on C/C++ onnxruntime shared library and a C JNI shared library (source located in the `src/main/native` directory).
 The JNI shared library is the glue that allows for Java to call functions in onnxruntime shared library.
@@ -52,9 +52,9 @@ Gradle's `spotlessCheck` will show any misformatted code.
 Gradle's `spotlessApply` will try to fix the formatting.
 Misformatted code will raise failures when checks are ran during test run.
 
-### Updating JNI Headers
+###  JNI Headers
 
-When adding or updating native methods in the Java files, it is necessary to update the relevant JNI headers `src/main/native/ai_onnxruntime*.h`.
-This can be done by executing Gradle's `compileJava` which will compile the Java and update the header files accordingly.
-Then the corresponding C files may be updated and the build can be ran.
+When adding or updating native methods in the Java files, it may be necessary to examine the relevant JNI headers in `./build/headers/ai_onnxruntime*.h`.
+These files can be manually generated using Gradle's `compileJava` task which will compile the Java and update the header files accordingly.
+Then the corresponding C files in `./src/main/native/ai_onnxruntime*.c` may be updated and the build can be ran.
 
