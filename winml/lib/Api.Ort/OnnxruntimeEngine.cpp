@@ -566,22 +566,34 @@ template <typename TAbiType>
 struct AbiTypeInfo {
   using CppWinRTType = TAbiType;
   using OrtType = TAbiType;
+  using ResourceType = TAbiType;
 };
 
 template <>
 struct AbiTypeInfo<HSTRING> {
   using CppWinRTType = winrt::hstring;
   using OrtType = const char*;
+  using ResourceType = std::pair<const char*, size_t>;
 };
 
-template <typename TRawType>
-typename auto CppwinrtTypeToOrtType(TRawType raw) {
+template <typename TCppwinrtType>
+typename auto CppwinrtTypeToOrtType(TCppwinrtType raw) {
   return raw;
 }
 
 template <>
 typename auto CppwinrtTypeToOrtType<winrt::hstring>(winrt::hstring raw) {
   return WinML::Strings::UTF8FromHString(raw);
+}
+
+template <typename TAbiType>
+typename auto ResourceTypeToCppwinrtType(typename AbiTypeInfo<TAbiType>::ResourceType value) {
+  return value;
+}
+
+template <>
+typename auto ResourceTypeToCppwinrtType<HSTRING>(typename AbiTypeInfo<HSTRING>::ResourceType value) {
+  return WinML::Strings::HStringFromUTF8(value.first, value.second);
 }
 
 template <typename TAbiKey, typename TAbiValue>
@@ -594,56 +606,59 @@ auto CastToWinrtMap(IInspectable* map_insp) {
   return map;
 }
 
-template <typename TAbiKey, typename TAbiValue> struct FillMapTensors {
-  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
-	  AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
-	  ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(&keys_mutable_data));
-
-	  AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
-	  ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data));
-
-	  auto map = CastToWinrtMap<TAbiKey, TAbiValue>(map_insp);
-	  size_t index = 0;
-	  for (const auto& pair : map) {
-		keys_mutable_data[index] = CppwinrtTypeToOrtType(pair.Key());
-		values_mutable_data[index] = CppwinrtTypeToOrtType(pair.Value());
-		index++;
-	  }
-	  return S_OK;
-	}
-};
-
-template <typename TAbiValue> struct FillMapTensors<HSTRING, TAbiValue> {
-  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
-	  AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
-	  ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data));
-
-	  auto map = CastToWinrtMap<HSTRING, TAbiValue>(map_insp);
-	  size_t index = 0;
-	  std::vector<std::string> keys;
-	  for (const auto& pair : map) {
-		keys.push_back(CppwinrtTypeToOrtType(pair.Key()));
-        values_mutable_data[index] = CppwinrtTypeToOrtType(pair.Value());
-		index++;
-	  }
-
-	  std::vector<const char*> raw_values;
-	  std::transform(
-		  keys.begin(),
-		  keys.end(),
-		  std::back_inserter(raw_values),
-		  [&](auto& str) { return str.c_str(); });
-  
-	  ort_api->FillStringTensor(keys_ort_value, raw_values.data(), raw_values.size());
-
-	  return S_OK;
-	}
-};
-
-template <typename TAbiKey> struct FillMapTensors<TAbiKey, HSTRING> {
+template <typename TAbiKey, typename TAbiValue>
+struct FillMapTensors {
   static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
     AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
-    ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(& keys_mutable_data));
+    ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(&keys_mutable_data));
+
+    AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
+    ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data));
+
+    auto map = CastToWinrtMap<TAbiKey, TAbiValue>(map_insp);
+    size_t index = 0;
+    for (const auto& pair : map) {
+      keys_mutable_data[index] = CppwinrtTypeToOrtType(pair.Key());
+      values_mutable_data[index] = CppwinrtTypeToOrtType(pair.Value());
+      index++;
+    }
+    return S_OK;
+  }
+};
+
+template <typename TAbiValue>
+struct FillMapTensors<HSTRING, TAbiValue> {
+  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
+    AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
+    ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data));
+
+    auto map = CastToWinrtMap<HSTRING, TAbiValue>(map_insp);
+    size_t index = 0;
+    std::vector<std::string> keys;
+    for (const auto& pair : map) {
+      keys.push_back(CppwinrtTypeToOrtType(pair.Key()));
+      values_mutable_data[index] = CppwinrtTypeToOrtType(pair.Value());
+      index++;
+    }
+
+    std::vector<const char*> raw_values;
+    std::transform(
+        keys.begin(),
+        keys.end(),
+        std::back_inserter(raw_values),
+        [&](auto& str) { return str.c_str(); });
+
+    ort_api->FillStringTensor(keys_ort_value, raw_values.data(), raw_values.size());
+
+    return S_OK;
+  }
+};
+
+template <typename TAbiKey>
+struct FillMapTensors<TAbiKey, HSTRING> {
+  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
+    AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
+    ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(&keys_mutable_data));
 
     auto map = CastToWinrtMap<TAbiKey, HSTRING>(map_insp);
     size_t index = 0;
@@ -662,7 +677,7 @@ template <typename TAbiKey> struct FillMapTensors<TAbiKey, HSTRING> {
         [&](auto& str) { return str.c_str(); });
 
     ort_api->FillStringTensor(keys_ort_value, raw_values.data(), raw_values.size());
-	return S_OK;
+    return S_OK;
   }
 };
 
@@ -835,6 +850,89 @@ HRESULT OnnxruntimeEngine::Run(const char** input_names, IValue** inputs, size_t
   }
 
   return S_OK;
+}
+
+template <typename TAbiKey, typename TAbiValue>
+HRESULT FillAbiMap(IInspectable* map_insp, size_t num_elements, void* keys_data, void* values_data) {
+  auto map = CastToWinrtMap<TAbiKey, TAbiValue>(map_insp);
+
+  auto keys = reinterpret_cast<typename AbiTypeInfo<TAbiKey>::ResourceType*>(keys_data);
+  auto values = reinterpret_cast<typename AbiTypeInfo<TAbiValue>::ResourceType*>(values_data);
+
+  for (auto i = 0; i < num_elements; ++i) {
+    map.Insert(
+        ResourceTypeToCppwinrtType<TAbiKey>(keys[i]),
+        ResourceTypeToCppwinrtType<TAbiValue>(values[i]));
+  }
+  return S_OK;	
+}
+
+static auto GetMapFiller(winml::TensorKind key_kind, winml::TensorKind value_kind) {
+  using namespace std::placeholders;
+  if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Int64) {
+    return std::bind(&FillAbiMap<int64_t, int64_t>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Float) {
+    return std::bind(&FillAbiMap<int64_t, float>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Double) {
+    return std::bind(&FillAbiMap<int64_t, double>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::String) {
+    return std::bind(&FillAbiMap<int64_t, HSTRING>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Int64) {
+    return std::bind(&FillAbiMap<HSTRING, int64_t>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Float) {
+    return std::bind(&FillAbiMap<HSTRING, float>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Double) {
+    return std::bind(&FillAbiMap<HSTRING, double>, _1, _2, _3, _4);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::String) {
+    return std::bind(&FillAbiMap<HSTRING, HSTRING>, _1, _2, _3, _4);
+  }
+
+  THROW_HR(E_NOTIMPL);
+}
+
+HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* map_value) {
+  auto ort_api = engine_factory_->UseOrtApi();  
+  auto onnxruntime_map_value = static_cast<OnnxruntimeValue*>(map_value);
+  auto ort_map_value = onnxruntime_map_value->UseOrtValue();
+  
+  OrtAllocator* ort_allocator;
+  ort_api->GetAllocatorWithDefaultOptions(&ort_allocator); // This should not be freed as this owned by ort
+
+  // get the keys
+  OrtValue* keys_ort_value = nullptr;
+  ort_api->GetValue(ort_map_value, 0, ort_allocator, &keys_ort_value);
+  auto unique_keys_value = UniqueOrtValue(keys_ort_value, ort_api->ReleaseValue);
+  winrt::com_ptr<IValue> keys_value;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(keys_value.put(), this, std::move(unique_keys_value), UniqueOrtAllocator(nullptr, nullptr)));
+
+  // get the keys
+  OrtValue* values_ort_value = nullptr;
+  ort_api->GetValue(ort_map_value, 0, ort_allocator, &values_ort_value);
+  auto unique_values_value = UniqueOrtValue(values_ort_value, ort_api->ReleaseValue);
+  winrt::com_ptr<IValue> values_value;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(values_value.put(), this, std::move(unique_values_value), UniqueOrtAllocator(nullptr, nullptr)));
+  
+  std::vector<int64_t> keys_shape;
+  keys_value->GetTensorShape(keys_shape);
+
+  std::vector<int64_t> values_shape;
+  values_value->GetTensorShape(values_shape);
+
+  auto keys_data = keys_value->GetResource();
+  auto values_data = keys_value->GetResource();
+
+  auto num_elements = ShapeSize(keys_shape.data(), keys_shape.size());
+  GetMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());
+
+  return S_OK;
+
+  // TODO: code this
+  //const LotusMap& map = *static_cast<LotusMap*>(pResource);
+  //for (const auto& pair : map) {
+  //  auto key = ConvertToABIType<TKey>(pair.first);
+  //  auto value = ConvertToABIType<TValue>(pair.second);
+  //  data_.Insert(key, value);
+  //}
 }
 
 // TODO supposedly this doesnt work if it is not static

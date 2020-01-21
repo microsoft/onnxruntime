@@ -149,6 +149,8 @@ TEST_F(LearningModelBindingAPITest, DictionaryVectorizerMapString)
     EXPECT_TRUE(first.Current().Key() == mapInputName);
     EXPECT_TRUE(first.Current().Value() == mapInputInspectable);
     EXPECT_TRUE(binding.Lookup(mapInputName) == mapInputInspectable);
+
+	modelSession.Evaluate(binding, L"");
 }
 
 static void RunZipMapInt64(

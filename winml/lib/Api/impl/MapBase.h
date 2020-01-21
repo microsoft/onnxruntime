@@ -51,32 +51,6 @@ struct MapBase : winrt::implements<
   using ABIMap = ::winrt::Windows::Foundation::Collections::IMap<TKey, TValue>;
   using ABIMapView = ::winrt::Windows::Foundation::Collections::IMapView<TKey, TValue>;
 
-  //template <typename TRawType>
-  //static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
-  //  // make sure this is an array of these types
-  //  auto shape = ort_value.GetTensorTypeAndShapeInfo().GetShape();
-  //  // there needs to be only one dimension
-  //  THROW_HR_IF(E_INVALIDARG, shape.size() != 1);
-  //  auto lotus_value = ort_value.GetTensorMutableData<typename ValidLotusType<TRawType>::Type>();
-  //  // now go through all the entries
-  //  std::vector<TRawType> out;
-  //  for (auto i = 0; i < shape[0]; i++) {
-  //    out.push_back(lotus_value[i]);
-  //  }
-  //  // retun the vector
-  //  return out;
-  //}
-
-  //template <>
-  //static std::vector<winrt::hstring> ConvertToABIType<winrt::hstring>(Ort::Value& ort_value) {
-  //  auto strings = ort_value.GetStrings();
-  //  std::vector<winrt::hstring> out;
-  //  for (auto i = 0; i < strings.size(); ++i) {
-  //    out.push_back(WinML::Strings::HStringFromUTF8(strings[i].c_str()));
-  //  }
-  //  return out;
-  //}
-
   MapBase(ABIMap const& data) : data_(data) {}
 
   static winrt::Windows::AI::MachineLearning::ILearningModelFeatureValue Create() {
@@ -119,11 +93,6 @@ struct MapBase : winrt::implements<
     return S_OK;
   }
 
-  //template <typename TLotusKey, typename TLotusValue>
-  //static onnxruntime::MLDataType GetLotusType(winmla::IWinMLAdapter* adapter) {
-  //  return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
-  //}
-
   STDMETHOD(GetValue)
   (WinML::BindingContext& context, IValue** out) {
     ORT_UNUSED_PARAMETER(context);
@@ -147,44 +116,16 @@ struct MapBase : winrt::implements<
 
   STDMETHOD(UpdateSourceResourceData)
   (BindingContext& context, IValue* value) {
-    ORT_UNUSED_PARAMETER(context);
-    ORT_UNUSED_PARAMETER(value);
     data_.Clear();
-
-    //Ort::AllocatorWithDefaultOptions allocator;
-
-    //// get the keys
-    //OrtValue* ptr = nullptr;
-    //Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, 0, allocator, &ptr));
-    //Ort::Value keys{ptr};
-    //// get the values
-    //ptr = nullptr;
-    //Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, 1, allocator, &ptr));
-    //Ort::Value values{ptr};
-
-    //auto keys_vector = ConvertToABIType<TKey>(keys);
-    //auto values_vector = ConvertToABIType<TValue>(values);
-
-    //auto len = keys.GetCount();
-    //for (auto i = 0; i < len; ++i) {
-    //  data_.Insert(keys_vector[i], values_vector[i]);
-    //}
+    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto engine = session->GetEngine();
+    RETURN_IF_FAILED(engine->FillFromMapValue(reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)), TensorKindFrom<TKey>::Type, TensorKindFrom<TValue>::Type, value));
     return S_OK;
-
-    // TODO: code this
-    //const LotusMap& map = *static_cast<LotusMap*>(pResource);
-    //for (const auto& pair : map) {
-    //  auto key = ConvertToABIType<TKey>(pair.first);
-    //  auto value = ConvertToABIType<TValue>(pair.second);
-    //  data_.Insert(key, value);
-    //}
-
-    //return S_OK;
   }
 
   STDMETHOD(AbiRepresentation)
   (
-      winrt::Windows::Foundation::IInspectable& abiRepresentation) {
+    winrt::Windows::Foundation::IInspectable& abiRepresentation) {
     data_.as(abiRepresentation);
     return S_OK;
   }

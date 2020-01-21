@@ -81,6 +81,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) override;
   STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
+  STDMETHOD(FillFromMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
