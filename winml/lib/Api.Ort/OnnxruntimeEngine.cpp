@@ -235,52 +235,80 @@ HRESULT OnnxruntimeValue::GetTensorShape(std::vector<int64_t>& shape_vector) {
   return S_OK;
 }
 
+static bool EnsureMapTypeInfo(OnnxruntimeEngine* engine, OrtTypeInfo* type_info, winml::TensorKind key_kind, winml::TensorKind value_kind) {
+  auto ort_api = engine->GetEngineFactory()->UseOrtApi();
+  auto winml_adapter_api = engine->GetEngineFactory()->UseWinmlAdapterApi();
+
+  const OrtMapTypeInfo* map_info;
+  winml_adapter_api->CastTypeInfoToMapTypeInfo(type_info, &map_info);
+
+  ONNXTensorElementDataType map_key_type;
+  winml_adapter_api->GetMapKeyType(map_info, &map_key_type);
+
+  if (map_key_type == ONNXTensorElementDataTypeFromTensorKind(key_kind)) {
+    OrtTypeInfo* value_info;
+    winml_adapter_api->GetMapValueType(map_info, &value_info);
+    auto map_value_info = UniqueOrtTypeInfo(value_info, ort_api->ReleaseTypeInfo);
+
+    const OrtTensorTypeAndShapeInfo* value_tensor_info = nullptr;
+    ort_api->CastTypeInfoToTensorInfo(map_value_info.get(), &value_tensor_info);
+
+    if (value_tensor_info) {
+      ONNXTensorElementDataType map_value_tensor_type;
+      ort_api->GetTensorElementType(value_tensor_info, &map_value_tensor_type);
+
+      if (map_value_tensor_type == ONNXTensorElementDataTypeFromTensorKind(value_kind)) {
+        size_t num_dims;
+        ort_api->GetDimensionsCount(value_tensor_info, &num_dims);
+
+        return num_dims == 0;
+      }
+    }
+  }
+  return false;
+}
+
 HRESULT OnnxruntimeValue::IsOfMapType(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) {
-  /*
-    
-  bool LearningModelBinding::IsOfMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind) {
-    if (ort_value.GetTypeInfo().GetONNXType() != ONNX_TYPE_MAP)
-      return false;
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
 
-    ONNXTensorElementDataType onnx_key_type;
-    ONNXTensorElementDataType onnx_value_type;
+  OrtTypeInfo* info = nullptr;
+  ort_api->GetTypeInfo(value_.get(), &info);
+  auto unique_type_info = UniqueOrtTypeInfo(info, ort_api->ReleaseTypeInfo);
 
-    WINML_THROW_IF_FAILED(adapter_->GetMapType(ort_value, &onnx_key_type, &onnx_value_type));
+  ONNXType type;
+  ort_api->GetOnnxTypeFromTypeInfo(unique_type_info.get(), &type);
 
-    if (onnx_key_type != GetONNXTensorElementDataType(key_kind))
-      return false;
+  if (type == ONNXType::ONNX_TYPE_MAP) {
+    *out = EnsureMapTypeInfo(engine_.Get(), unique_type_info.get(), key_kind, value_kind);
+  }
 
-    if (onnx_value_type != GetONNXTensorElementDataType(value_kind))
-      return false;
+  *out = false;
 
-    return true;
-  };
-    */
-
-  return E_NOTIMPL;
+  return S_OK;
 }
 
 HRESULT OnnxruntimeValue::IsOfVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) {
-  /*
-  bool LearningModelBinding::IsOfVectorMapType(const Ort::Value& ort_value, TensorKind key_kind, TensorKind value_kind) {
-    if (ort_value.GetTypeInfo().GetONNXType() != ONNX_TYPE_SEQUENCE)
-      return false;
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
+  auto winml_adapter_api = engine_->GetEngineFactory()->UseWinmlAdapterApi();
 
-    ONNXTensorElementDataType onnx_key_type;
-    ONNXTensorElementDataType onnx_value_type;
+  OrtTypeInfo* info = nullptr;
+  ort_api->GetTypeInfo(value_.get(), &info);
+  auto unique_type_info = UniqueOrtTypeInfo(info, ort_api->ReleaseTypeInfo);
 
-    WINML_THROW_IF_FAILED(adapter_->GetVectorMapType(ort_value, &onnx_key_type, &onnx_value_type));
+  ONNXType type;
+  ort_api->GetOnnxTypeFromTypeInfo(unique_type_info.get(), &type);
 
-    if (onnx_key_type != GetONNXTensorElementDataType(key_kind))
-      return false;
+  if (type == ONNXType::ONNX_TYPE_SEQUENCE) {
+    const OrtSequenceTypeInfo* sequence_info;
+    winml_adapter_api->CastTypeInfoToSequenceTypeInfo(unique_type_info.get(), &sequence_info);
 
-    if (onnx_value_type != GetONNXTensorElementDataType(value_kind))
-      return false;
+    OrtTypeInfo* element_info;
+    winml_adapter_api->GetSequenceElementType(sequence_info, &element_info);
+    auto unique_element_info = UniqueOrtTypeInfo(element_info, ort_api->ReleaseTypeInfo);
 
-    return true;
-  };
-  */
-  return E_NOTIMPL;
+    *out = EnsureMapTypeInfo(engine_.Get(), unique_element_info.get(), key_kind, value_kind);
+  }
+  return S_OK;
 }
 
 HRESULT OnnxruntimeValue::SetParameter(IUnknown* param) {
@@ -864,10 +892,10 @@ HRESULT FillAbiMap(IInspectable* map_insp, size_t num_elements, void* keys_data,
         ResourceTypeToCppwinrtType<TAbiKey>(keys[i]),
         ResourceTypeToCppwinrtType<TAbiValue>(values[i]));
   }
-  return S_OK;	
+  return S_OK;
 }
 
-static auto GetMapFiller(winml::TensorKind key_kind, winml::TensorKind value_kind) {
+static auto GetAbiMapFiller(winml::TensorKind key_kind, winml::TensorKind value_kind) {
   using namespace std::placeholders;
   if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Int64) {
     return std::bind(&FillAbiMap<int64_t, int64_t>, _1, _2, _3, _4);
@@ -891,12 +919,12 @@ static auto GetMapFiller(winml::TensorKind key_kind, winml::TensorKind value_kin
 }
 
 HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* map_value) {
-  auto ort_api = engine_factory_->UseOrtApi();  
+  auto ort_api = engine_factory_->UseOrtApi();
   auto onnxruntime_map_value = static_cast<OnnxruntimeValue*>(map_value);
   auto ort_map_value = onnxruntime_map_value->UseOrtValue();
-  
+
   OrtAllocator* ort_allocator;
-  ort_api->GetAllocatorWithDefaultOptions(&ort_allocator); // This should not be freed as this owned by ort
+  ort_api->GetAllocatorWithDefaultOptions(&ort_allocator);  // This should not be freed as this owned by ort
 
   // get the keys
   OrtValue* keys_ort_value = nullptr;
@@ -911,7 +939,7 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
   auto unique_values_value = UniqueOrtValue(values_ort_value, ort_api->ReleaseValue);
   winrt::com_ptr<IValue> values_value;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(values_value.put(), this, std::move(unique_values_value), UniqueOrtAllocator(nullptr, nullptr)));
-  
+
   std::vector<int64_t> keys_shape;
   keys_value->GetTensorShape(keys_shape);
 
@@ -922,7 +950,7 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
   auto values_data = keys_value->GetResource();
 
   auto num_elements = ShapeSize(keys_shape.data(), keys_shape.size());
-  GetMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());
+  GetAbiMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());
 
   return S_OK;
 
