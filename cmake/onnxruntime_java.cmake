@@ -27,11 +27,12 @@ endif()
 message(STATUS "Using gradle: ${GRADLE_EXECUTABLE}")
 
 # Specify the Java source files
+file(GLOB_RECURSE onnxruntime4j_gradle_files "${JAVA_ROOT}/*.gradle")
 file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
 set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
 # this jar is solely used to signalling mechanism for dependency management in CMake
 # if any of the Java sources change, the jar (and generated headers) will be regenerated and the onnxruntime4j_jni target will be rebuilt
-add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_src})
+add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} clean jar WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
 add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
 set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 
