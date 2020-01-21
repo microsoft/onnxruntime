@@ -77,12 +77,14 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateStringTensorValueFromDataWithCopy)(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) override;
   STDMETHOD(CreateNullValue)(_Out_ IValue** out) override;
+  STDMETHOD(CreateMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateSequenceValue)(IInspectable* map, winml::TensorKind element_kind, _Out_ IValue** out) override;
   STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) override;
   STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
 
   OrtSession* UseOrtSession();
-  
+
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> session_builder_;

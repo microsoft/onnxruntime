@@ -51,16 +51,6 @@ struct MapBase : winrt::implements<
   using ABIMap = ::winrt::Windows::Foundation::Collections::IMap<TKey, TValue>;
   using ABIMapView = ::winrt::Windows::Foundation::Collections::IMapView<TKey, TValue>;
 
-  template <typename TRawType>
-  static typename ValidLotusType<TRawType>::Type ConvertToValidLotusType(TRawType raw) {
-    return raw;
-  }
-
-  template <>
-  static typename ValidLotusType<winrt::hstring>::Type ConvertToValidLotusType(winrt::hstring raw) {
-    return WinML::Strings::UTF8FromHString(raw);
-  }
-
   //template <typename TRawType>
   //static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
   //  // make sure this is an array of these types
@@ -129,49 +119,32 @@ struct MapBase : winrt::implements<
     return S_OK;
   }
 
-  void ConvertToLotusMap(const ABIMap& map) {
-    std::vector<LotusKey> keys;
-    std::vector<LotusValue> values;
-    for (const auto& pair : map) {
-      auto key = ConvertToValidLotusType(pair.Key());
-      auto value = ConvertToValidLotusType(pair.Value());
-      keys.push_back(key);
-      values.push_back(value);
-    }
-    lotus_data_ = std::make_unique<LotusMap>(std::make_pair(keys, values));
-  }
-
   //template <typename TLotusKey, typename TLotusValue>
   //static onnxruntime::MLDataType GetLotusType(winmla::IWinMLAdapter* adapter) {
   //  return adapter->GetMapType(TensorKindFrom<TLotusKey>::Type, TensorKindFrom<TLotusValue>::Type);
   //}
 
-  template <typename TLotusKey, typename TLotusValue>
-  static HRESULT CreateOrtMap(TLotusKey* keys, TLotusValue* values, size_t len, IValue** out) {
-    // now create OrtValue wrappers over the buffers
-    auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-    std::vector<int64_t> shape = {static_cast<int64_t>(len)};
-    auto keys_ort_value = Ort::Value::CreateTensor<TLotusKey>(cpu_memory, keys, len, shape.data(), shape.size());
-    auto values_ort_value = Ort::Value::CreateTensor<TLotusValue>(cpu_memory, values, len, shape.data(), shape.size());
-    // make the map
-    return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
-  }
-
-  STDMETHOD(GetValue)(WinML::BindingContext& context, IValue** out) {
+  STDMETHOD(GetValue)
+  (WinML::BindingContext& context, IValue** out) {
     ORT_UNUSED_PARAMETER(context);
-    // TODO: Tensorized data should be cached so multiple bindings work more efficiently
+    auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
+    auto engine = session->GetEngine();
 
-    // TODO : we need to handle inputs.   for now only handle outputs and don't pre allocate anything
-    if (context.type == WinML::BindingType::kOutput) {
-      *out = nullptr;
-      return S_OK;
+    if (context.type == WinML::BindingType::kInput) {
+      auto map = FillLotusMapFromAbiMap(data_);
+      RETURN_IF_FAILED(engine->CreateMapValue(winrt::get_abi(data_), TensorKindFrom<TKey>::Type, TensorKindFrom<TValue>::Type, out));
+      RETURN_IF_FAILED(engine->CreateMapValue(map->first.data(), map->second.data(), map->first.size(), out));
+
+      // now create OrtValue wrappers over the buffers
+      auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+      std::vector<int64_t> shape = {static_cast<int64_t>(len)};
+      auto keys_ort_value = Ort::Value::CreateTensor<TLotusKey>(cpu_memory, keys, len, shape.data(), shape.size());
+      auto values_ort_value = Ort::Value::CreateTensor<TLotusValue>(cpu_memory, values, len, shape.data(), shape.size());
+      // make the map
+      return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
+    } else {
+      engine->CreateNullValue(out);
     }
-
-    // handle inputs, create and store a copy of the map
-    ConvertToLotusMap(data_);
-
-    // and make the map
-    //RETURN_IF_FAILED(CreateOrtMap(lotus_data_->first.data(), lotus_data_->second.data(), lotus_data_->first.size(), out));
     return S_OK;
   }
 
@@ -228,7 +201,6 @@ struct MapBase : winrt::implements<
 
  private:
   ABIMap data_;
-  std::unique_ptr<LotusMap> lotus_data_;
 };
 
 }  // namespace Windows::AI::MachineLearning

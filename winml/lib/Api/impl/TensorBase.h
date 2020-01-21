@@ -15,6 +15,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace Windows::AI::MachineLearning {
+
 // TensorBase
 //
 // This is the base class for all data based Tensor types. It exposes array and IVectorView
@@ -531,7 +532,7 @@ struct TensorBase : TBase {
     // This Api is not supported for TensorString
     RETURN_HR_IF_MSG(
         ERROR_INVALID_FUNCTION,
-        (std::is_same<T, std::string>::value),
+        (std::is_same_v<T, std::string>),
         "TensorString objects cannot return byte buffers!");
 
     RETURN_HR_IF_NULL_MSG(
