@@ -41,8 +41,8 @@ final class OnnxRuntime {
   }
 
   /**
-   * Finds a named library in classpath resources, copies to temporary file on the filesystem to be
-   * loaded using {@link System#load}.
+   * Finds a named library in lib path. Falls back to classpath resources. In that case, it copies resource
+   * to temporary file on the filesystem to be loaded using {@link System#load}.
    *
    * @param library The bare name of the library.
    * @throws IOException If the file failed to read or write.
@@ -50,7 +50,7 @@ final class OnnxRuntime {
   private static void load(String library) throws IOException {
     try {
       logger.log(Level.FINE, "Attempting to load native library '" + library + "' from lib path");
-      System.load(library);
+      System.loadLibrary(library);
       logger.log(Level.FINE, "Loaded native library '" + library + "' from lib path");
       return;
     } catch (Exception | Error e) {
