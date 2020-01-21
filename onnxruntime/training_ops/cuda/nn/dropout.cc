@@ -11,8 +11,8 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       TrainableDropout,                                               \
-      kOnnxDomain,                                                    \
-      9,                                                              \
+      kMSDomain,                                                    \
+      1,                                                              \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       KernelDefBuilder()                                              \
@@ -67,8 +67,8 @@ Status TrainableDropout<T>::ComputeInternal(OpKernelContext* context) const {
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                             \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       TrainableDropoutGrad,                                           \
-      kOnnxDomain,                                                    \
-      9,                                                              \
+      kMSDomain,                                                    \
+      1,                                                              \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       KernelDefBuilder()                                              \

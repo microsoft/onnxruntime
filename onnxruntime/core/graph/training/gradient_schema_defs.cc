@@ -543,8 +543,8 @@ void RegisterGradientSchemas() {
       "'mean': the sum of the output will be divided by the batch_size.";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropy)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr("reduction",
             reduction_doc,
             AttributeProto::STRING,
@@ -560,8 +560,8 @@ void RegisterGradientSchemas() {
       .SetDoc(R"DOC(SoftmaxCrossEntropy)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Attr("reduction",
             reduction_doc,
             AttributeProto::STRING,
@@ -694,8 +694,8 @@ void RegisterGradientSchemas() {
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TrainableDropout")
       .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL)
@@ -733,8 +733,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropoutGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TrainableDropoutGrad")
       .AllowUncheckedAttributes()
@@ -766,8 +766,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeEncoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
       .Output(0, "Y", "uncompressed output", "T")
       .Output(1, "Y1", "compressed output", "T1")
@@ -781,8 +781,8 @@ void RegisterGradientSchemas() {
           "Binarize tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "X1", "dummy input for late decoding", "T")
       .Input(1, "X", "compresssed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
@@ -915,8 +915,8 @@ void RegisterGradientSchemas() {
            {{"dX"}, "Mul", {"a_X_Pow_p_minus_one", "dY"}}}));
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("SummaryScalar")
       .Attr("tags", "The tags corresponding to each input scalar.", AttributeProto::STRINGS)
@@ -936,8 +936,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryHistogram)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("SummaryHistogram")
       .Attr("tag", "The tag corresponding to the histogram data.", AttributeProto::STRING)
@@ -957,8 +957,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryMerge)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("SummaryMerge")
       .Input(0, "input", "One or more serialized Tensorboard Summary tensors to merge into a single Summary.", "S", OpSchema::Variadic)
@@ -973,8 +973,8 @@ void RegisterGradientSchemas() {
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryText)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("SummaryText")
       .Attr("tag", "The tag corresponding to the text data.", AttributeProto::STRING)
@@ -1159,8 +1159,8 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TransposeMatMul)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TransposeMatMul")
       .Input(0, "A", "N-dimensional matrix A", "T")

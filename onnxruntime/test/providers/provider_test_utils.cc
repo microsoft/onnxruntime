@@ -386,7 +386,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   }
 }
 
-std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(std::unordered_map<std::string, int> extra_domain_to_version) {
+std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -404,7 +404,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(std::unordered_map<std:
   if (domain_to_version.count(domain_) == 0) {
     domain_to_version.insert({domain_, opset_version_});
   } else {
-    ORT_ENFORCE(extra_domain_to_version[domain_] == opset_version_);
+    ORT_ENFORCE(extra_domain_to_version.find(domain_)->second == opset_version_);
   }
 
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>("test", false, ModelMetaData(),

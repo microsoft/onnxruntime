@@ -33,9 +33,11 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
 
 // TrainableDropout
 
-ONNX_CPU_OPERATOR_KERNEL(
-    TrainableDropout,
-    9,
+ONNX_OPERATOR_KERNEL_EX(
+    TrainableDropout,	
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint(
             "T",
@@ -117,9 +119,11 @@ Status TrainableDropout::ComputeImpl(OpKernelContext* context) const {
 
 // TrainableDropoutGrad
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     TrainableDropoutGrad,
-    9,
+    kMSDomain,
+	1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint(
             "T",

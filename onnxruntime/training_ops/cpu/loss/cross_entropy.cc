@@ -48,8 +48,8 @@ void ComputeShareSoftmaxCrossEntropyCPU(const int n,
 
 ONNX_OPERATOR_KERNEL_EX(
     SoftmaxCrossEntropy,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SoftmaxCrossEntropy<float>);
@@ -110,8 +110,8 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_KERNEL_EX(
     SoftmaxCrossEntropyGrad,
-    kOnnxDomain,
-    9,
+    kMSDomain,
+    1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     SoftmaxCrossEntropyGrad<float>);

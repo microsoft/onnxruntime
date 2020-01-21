@@ -488,7 +488,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
   return std::vector<NodeDef>{
-      NodeDef("TrainableDropoutGrad",
+      NodeDef(OpDef{"TrainableDropoutGrad", kMSDomain, 1},
               {GO(0), O(1), I(1)},
               {GI(0)},
               {SrcNodeAttributes()})};
@@ -774,7 +774,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef{"SoftmaxCrossEntropyGrad"},
+      NodeDef(OpDef{"SoftmaxCrossEntropyGrad", kMSDomain, 1},
               {GO(0), O(1), I(1)},
               {GI(0)},
               SrcNodeAttributes())};

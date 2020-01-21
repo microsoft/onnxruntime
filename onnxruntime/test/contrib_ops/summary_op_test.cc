@@ -21,7 +21,7 @@ static tensorboard::Summary CreateSummary(const std::vector<std::string>& tags, 
 }
 
 TEST(SummaryOpTest, SummaryScalarOp_Tags_Missing) {
-  OpTester test("SummaryScalar", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryScalar", 1, onnxruntime::kMSDomain);
 
   std::vector<float> X = {0.85f, 0.13f};
   const int64_t N = static_cast<int64_t>(X.size());
@@ -34,7 +34,7 @@ TEST(SummaryOpTest, SummaryScalarOp_Tags_Missing) {
 }
 
 TEST(SummaryOpTest, SummaryScalarOp_Input_Incorrect_Shape) {
-  OpTester test("SummaryScalar", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryScalar", 1, onnxruntime::kMSDomain);
 
   std::vector<std::string> tags = {"precision", "loss"};
   std::vector<float> X = {0.85f, 0.13f, 1.0f}; // input size doesn't match tags size
@@ -48,7 +48,7 @@ TEST(SummaryOpTest, SummaryScalarOp_Input_Incorrect_Shape) {
 }
 
 TEST(SummaryOpTest, SummaryScalarOp_Valid) {
-  OpTester test("SummaryScalar", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryScalar", 1, onnxruntime::kMSDomain);
 
   std::vector<std::string> tags = {"precision", "loss"};
   std::vector<float> X = {0.85f, 0.13f};
@@ -62,7 +62,7 @@ TEST(SummaryOpTest, SummaryScalarOp_Valid) {
 }
 
 TEST(SummaryOpTest, SummaryHistogramOp_Tag_Missing) {
-  OpTester test("SummaryHistogram", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryHistogram", 1, onnxruntime::kMSDomain);
 
   std::vector<double> X = {-9.0, -2.0, 0.0, 2.0, 3.0, 9.0};
   const int64_t N = static_cast<int64_t>(X.size());
@@ -75,7 +75,7 @@ TEST(SummaryOpTest, SummaryHistogramOp_Tag_Missing) {
 }
 
 TEST(SummaryOpTest, SummaryHistogramOp_Valid) {
-  OpTester test("SummaryHistogram", 9, onnxruntime::kOnnxDomain, /*verify_output:*/ false);
+  OpTester test("SummaryHistogram", 1, onnxruntime::kMSDomain, /*verify_output:*/ false);
 
   const std::string tag = "histogram";
   std::vector<double> X = {-9.0, -2.0, 0.0, 2.0, 3.0, 9.0};
@@ -89,7 +89,7 @@ TEST(SummaryOpTest, SummaryHistogramOp_Valid) {
 }
 
 TEST(SummaryOpTest, SummaryMergeOp_SingleInput) {
-  OpTester test("SummaryMerge", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryMerge", 1, onnxruntime::kMSDomain);
 
   tensorboard::Summary summary = CreateSummary({"tag"}, {1.0f});
 
@@ -99,7 +99,7 @@ TEST(SummaryOpTest, SummaryMergeOp_SingleInput) {
 }
 
 TEST(SummaryOpTest, SummaryMergeOp_MultipleInput) {
-  OpTester test("SummaryMerge", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryMerge", 1, onnxruntime::kMSDomain);
 
   tensorboard::Summary summary0 = CreateSummary({"tag0"}, {0.0f});
   tensorboard::Summary summary1 = CreateSummary({"tag1"}, {1.0f});
@@ -114,7 +114,7 @@ TEST(SummaryOpTest, SummaryMergeOp_MultipleInput) {
 }
 
 TEST(SummaryOpTest, SummaryMergeOp_DuplicateTag) {
-  OpTester test("SummaryMerge", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryMerge", 1, onnxruntime::kMSDomain);
 
   tensorboard::Summary summary0 = CreateSummary({"tag"}, {0.0f});
   tensorboard::Summary summary1 = CreateSummary({"tag"}, {1.0f});
@@ -127,7 +127,7 @@ TEST(SummaryOpTest, SummaryMergeOp_DuplicateTag) {
 }
 
 TEST(SummaryOpTest, SummaryTextOp_Tag_Missing) {
-  OpTester test("SummaryText", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryText", 1, onnxruntime::kMSDomain);
 
   std::vector<std::string> X = {"text 0", "text 1", "text 2", "text 3"};
   const int64_t N = static_cast<int64_t>(X.size());
@@ -140,7 +140,7 @@ TEST(SummaryOpTest, SummaryTextOp_Tag_Missing) {
 }
 
 TEST(SummaryOpTest, SummaryTextOp_1D_Tensor) {
-  OpTester test("SummaryText", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryText", 1, onnxruntime::kMSDomain);
 
   const std::string tag = "text";
   std::vector<std::string> X = {"text 0", "text 1", "text 2", "text 3"};
@@ -162,7 +162,7 @@ TEST(SummaryOpTest, SummaryTextOp_1D_Tensor) {
 }
 
 TEST(SummaryOpTest, SummaryTextOp_2D_Tensor) {
-  OpTester test("SummaryText", 9, onnxruntime::kOnnxDomain);
+  OpTester test("SummaryText", 1, onnxruntime::kMSDomain);
 
   const std::string tag = "text";
   std::vector<std::string> X = {"text 0", "text 1", "text 2", "text 3"};

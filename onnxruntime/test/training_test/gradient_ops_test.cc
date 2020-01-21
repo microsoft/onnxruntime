@@ -1064,7 +1064,7 @@ TEST(OptimizerTest, SGDOptimizerTest_Gradient) {
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"SoftmaxCrossEntropy"};
+  OpDef op_def{"SoftmaxCrossEntropy", kMSDomain, 1};
 
   std::vector<std::vector<float>> x_datas(2);
   GenerateRandomDataWithOneHot<float>(x_datas, {input_shape, input_shape}, {1});
@@ -1286,7 +1286,7 @@ TEST(GradientCheckerTest, GatherGrad) {
 }
 
 void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
-  OpTester test("TrainableDropout", 9, kOnnxDomain, false);
+  OpTester test("TrainableDropout", 1, kMSDomain, false);
   if (default_ratio)
     ratio = 0.5f;
   float input_constant = 3.0f;
@@ -1325,7 +1325,7 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
 }
 
 void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
-  OpTester test("TrainableDropoutGrad", 9, kOnnxDomain, true);
+  OpTester test("TrainableDropoutGrad", 1, kMSDomain, true);
   if (default_ratio)
     ratio = 0.5;
   float input_constant = 3;

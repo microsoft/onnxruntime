@@ -127,7 +127,7 @@ template <typename T>
 void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool transb = false) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateSimpleTestCases<T>()) {
-    OpTester test("TransposeMatMul", opset_version, onnxruntime::kOnnxDomain);
+    OpTester test("TransposeMatMul", opset_version, onnxruntime::kMSDomain);
 
     std::vector<int64_t> input0_dims(t.input0_dims);
     std::vector<T> input0_vals;
@@ -152,25 +152,25 @@ void RunTransposeMatMulTest(int32_t opset_version = 7, bool transa = false, bool
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeNoTranspose) {
-  RunTransposeMatMulTest<float>(9);
+  RunTransposeMatMulTest<float>(1);
 }
 
 #ifdef USE_CUDA  // double support only implemented in CUDA kernel
 TEST(TransposeMatMulOpTest, DoubleTypeNoTranspose) {
-  RunTransposeMatMulTest<double>(9);
+  RunTransposeMatMulTest<double>(1);
 }
 #endif
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeA) {
-  RunTransposeMatMulTest<float>(9, true, false);
+  RunTransposeMatMulTest<float>(1, true, false);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeB) {
-  RunTransposeMatMulTest<float>(9, false, true);
+  RunTransposeMatMulTest<float>(1, false, true);
 }
 
 TEST(TransposeMatMulOpTest, FloatTypeTransposeAB) {
-  RunTransposeMatMulTest<float>(9, true, true);
+  RunTransposeMatMulTest<float>(1, true, true);
 }
 
 }  // namespace transpose_matmul

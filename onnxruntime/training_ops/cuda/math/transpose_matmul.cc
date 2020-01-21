@@ -11,8 +11,8 @@ using namespace onnxruntime::cuda;
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       TransposeMatMul,                                            \
-      kOnnxDomain,                                                \
-      9,                                                          \
+      kMSDomain,                                                \
+      1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \

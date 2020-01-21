@@ -5,9 +5,11 @@
 
 namespace onnxruntime {
 namespace contrib {
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     GistBinarizeDecoder,
-    9,
+	kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     GistBinarizeDecoderOp);
 

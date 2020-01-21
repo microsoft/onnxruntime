@@ -102,7 +102,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
                                       "TransposeMatMul",
                                       "fused MatMul and Transpose ",
                                       input_defs,
-                                      output_defs, {}, kOnnxDomain);
+                                      output_defs, {}, kMSDomain);
     bool transpose_left = left.first;
     if (node.OpType() == "TransposeMatMul") {
       transpose_left ^= static_cast<bool>(node.GetAttributes().at("transA").i());

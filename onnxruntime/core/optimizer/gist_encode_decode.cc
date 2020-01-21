@@ -72,12 +72,12 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
   }
   auto& encode_output_def_compressed_arg = graph.GetOrCreateNodeArg(encode_node_name, &bool_tensor);
   auto& encode_output_def_uncompressed_arg = graph.GetOrCreateNodeArg(encode_node_name + "_identity", curr_node_output_arg->TypeAsProto());
-  auto& encode = graph.AddNode(encode_node_name, compression_type + "Encoder", "Encode", {curr_node_output_arg}, {&encode_output_def_uncompressed_arg, &encode_output_def_compressed_arg});
+  auto& encode = graph.AddNode(encode_node_name, compression_type + "Encoder", "Encode", {curr_node_output_arg}, {&encode_output_def_uncompressed_arg, &encode_output_def_compressed_arg}, {}, kMSDomain);
 
   std::string decode_arg_name = graph.GenerateNodeName(GIST_DECODER_NODE_NAME_BASE);
   auto& decode_output_def_uncompressed_arg = graph.GetOrCreateNodeArg(decode_arg_name, curr_node_output_arg->TypeAsProto());
   auto& decode_output_def_dummy_arg = graph.GetOrCreateNodeArg(decode_arg_name + "_late_dec", curr_node_output_arg->TypeAsProto());
-  auto& decode = graph.AddNode(decode_arg_name, compression_type + "Decoder", "Decode", {&decode_output_def_dummy_arg, &encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg});
+  auto& decode = graph.AddNode(decode_arg_name, compression_type + "Decoder", "Decode", {&decode_output_def_dummy_arg, &encode_output_def_compressed_arg}, {&decode_output_def_uncompressed_arg}, {}, kMSDomain);
 
   bool early_encoding = false;
   bool late_decoding = false;

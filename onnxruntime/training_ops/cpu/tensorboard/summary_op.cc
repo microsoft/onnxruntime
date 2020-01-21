@@ -10,9 +10,11 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     SummaryScalar,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
@@ -20,25 +22,31 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryScalarOp);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     SummaryHistogram,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>()})
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryHistogramOp);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     SummaryMerge,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryMergeOp);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_OPERATOR_KERNEL_EX(
     SummaryText,
-    9,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("S", DataTypeImpl::GetTensorType<std::string>()),
     SummaryTextOp);
