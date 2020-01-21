@@ -69,7 +69,7 @@ final class OnnxRuntime {
       return;
     }
 
-    File temp = File.createTempFile(library, "lib");
+    File temp = File.createTempFile("javaload_", libraryFileName);
     try {
       byte[] buffer = new byte[1024];
       int readBytes;
