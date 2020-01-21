@@ -84,8 +84,7 @@ OnnxruntimeValue::~OnnxruntimeValue() {
   allocator_.reset(nullptr);
 }
 
-HRESULT OnnxruntimeValue::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& ort_value, UniqueOrtAllocator&& allocator) {
-  engine_factory_ = engine_factory;
+HRESULT OnnxruntimeValue::RuntimeClassInitialize(OnnxruntimeEngine* engine, UniqueOrtValue&& ort_value, UniqueOrtAllocator&& allocator) {
   engine_ = engine;
   value_ = std::move(ort_value);
   allocator_ = std::move(allocator);
@@ -99,8 +98,8 @@ HRESULT OnnxruntimeValue::IsEmpty(bool* out) {
 }
 
 HRESULT OnnxruntimeValue::IsCpu(bool* out) {
-  auto ort_api = engine_factory_->UseOrtApi();
-  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
+  auto winml_adapter_api = engine_->GetEngineFactory()->UseWinmlAdapterApi();
 
   OrtMemoryInfo* ort_memory_info;
   RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->GetValueMemoryInfo(value_.get(), &ort_memory_info),
@@ -119,30 +118,92 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   return S_OK;
 }
 
-HRESULT OnnxruntimeValue::GetResource(void** resource) {
-  auto ort_api = engine_factory_->UseOrtApi();
-  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
+                       OrtTensorTypeAndShapeInfo* type_and_shape_info) {
+  std::vector<std::string> out;
+
+  size_t size;
+  ort_api->GetDimensionsCount(type_and_shape_info, &size);
+
+  std::vector<int64_t> shape(size);
+  ort_api->GetDimensions(type_and_shape_info, &shape[0], size);
+
+  // there needs to be only one dimension
+  if (shape.size() != 1) {
+    throw;
+  }
+
+  auto length = shape[0];
+
+  // make a big buffer to hold all the string data
+  size_t buffer_length;
+  ort_api->GetStringTensorDataLength(ort_value, &buffer_length);
+
+  std::vector<std::pair<const char*, size_t>> strings;
+  std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_length]);
+  std::vector<size_t> offsets(length);
+
+  ort_api->GetStringTensorContent(ort_value, buffer.get(), buffer_length, offsets.data(), offsets.size());
+
+  // now go build all the strings
+  for (auto i = 0; i < length; ++i) {
+    size_t str_len = 0;
+    // are we on the last one?
+    if (i == (length - 1)) {
+      str_len = buffer_length - offsets[i];
+    } else {
+      str_len = offsets[i + 1] - offsets[i];
+    }
+    strings.push_back(std::make_pair(reinterpret_cast<const char*>(buffer.get() + offsets[i]), str_len));
+  }
+
+  return std::make_shared<std::pair<decltype(strings), decltype(buffer)>>(std::move(strings), std::move(buffer));
+}
+
+WinML::unique_void OnnxruntimeValue::GetResource() {
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
+  auto winml_adapter_api = engine_->GetEngineFactory()->UseWinmlAdapterApi();
 
   void* mutable_data = nullptr;
   ort_api->GetTensorMutableData(value_.get(), &mutable_data);
 
   OrtExecutionProvider* ort_provider;
-  RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider),
-                                   engine_factory_->UseOrtApi());
+  THROW_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider),
+                               engine_factory_->UseOrtApi());
 
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
-    RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
-                                                                                          reinterpret_cast<ID3D12Resource**>(resource)),
-                                     engine_factory_->UseOrtApi());
+    void* resource;
+    THROW_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
+                                                         reinterpret_cast<ID3D12Resource**>(&resource),
+                                 engine_factory_->UseOrtApi());
+    return WinML::unique_void(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
-    *resource = mutable_data;
+    int is_tensor;
+    ort_api->IsTensor(value_.get(), &is_tensor);
+    if (is_tensor == 0) {
+      return WinML::unique_void(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
+    }
+
+    OrtTensorTypeAndShapeInfo* info = nullptr;
+    ort_api->GetTensorTypeAndShape(value_.get(), &info);
+    auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
+
+    ONNXTensorElementDataType data_type;
+    ort_api->GetTensorElementType(type_and_shape_info.get(), &data_type);
+
+    if (data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+      auto strings = GetStrings(ort_api, value_.get(), info);
+      auto string_data = strings->first.data();
+      return WinML::unique_void(string_data, [capture_strings = strings](void*) { /*This deleter does nothing but capture the strings, which extends the lifetime of the returned strings.*/ });
+    } else {
+      return WinML::unique_void(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
+    }
   }
-  return S_OK;
 }
 
 HRESULT OnnxruntimeValue::IsTensor(bool* out) {
-  auto ort_api = engine_factory_->UseOrtApi();
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
 
   ONNXType type = ONNXType::ONNX_TYPE_UNKNOWN;
   ort_api->GetValueType(value_.get(), &type);
@@ -151,7 +212,7 @@ HRESULT OnnxruntimeValue::IsTensor(bool* out) {
 }
 
 HRESULT OnnxruntimeValue::IsOfTensorType(winml::TensorKind kind, bool* out) {
-  auto ort_api = engine_factory_->UseOrtApi();
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
   OrtTensorTypeAndShapeInfo* info = nullptr;
   ort_api->GetTensorTypeAndShape(value_.get(), &info);
   auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
@@ -164,7 +225,7 @@ HRESULT OnnxruntimeValue::IsOfTensorType(winml::TensorKind kind, bool* out) {
 }
 
 HRESULT OnnxruntimeValue::GetTensorShape(std::vector<int64_t>& shape_vector) {
-  auto ort_api = engine_factory_->UseOrtApi();
+  auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
   OrtTensorTypeAndShapeInfo* info = nullptr;
   ort_api->GetTensorTypeAndShape(value_.get(), &info);
   auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
@@ -379,7 +440,15 @@ OrtSession* OnnxruntimeEngine::UseOrtSession() {
   return session_.get();
 }
 
-HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
+const OrtApi* OnnxruntimeEngine::UseOrtApi() {
+  return engine_factory_->UseOrtApi();
+}
+
+OnnxruntimeEngineFactory* OnnxruntimeEngine::GetEngineFactory() {
+  return engine_factory_.Get();
+}
+
+HRESULT OnnxruntimeEngine::CreateTensorValue(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
@@ -396,8 +465,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(int64_t* shape, size_t count, winml
   OrtValue* ort_value;
   ort_api->CreateTensorAsOrtValue(unique_allocator.get(), shape, count, ONNXTensorElementDataTypeFromTensorKind(kind), &ort_value);
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
-
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_value), std::move(unique_allocator)));
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_value), std::move(unique_allocator)));
   return S_OK;
 }
 
@@ -453,7 +521,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
 
   Microsoft::WRL::ComPtr<OnnxruntimeValue> out_value;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(&out_value, engine_factory_.Get(), this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(&out_value, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
 
   // Cache the allocator on the value so it destructs appropriately when the value is dropped
   Microsoft::WRL::ComPtr<DmlAllocatorWrapper> dml_allocator_resource_wrapper;
@@ -466,8 +534,34 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   return S_OK;
 }
 
+static int64_t ShapeSize(const int64_t* shape, size_t count) {
+  // for each dim
+  int64_t size = 1;
+  for (int i = 0; i < count; i++) {
+    // find out it's total size
+    size *= shape[i];
+    // make sure there are no invalid dimensions (-1 or any invalid shape)
+    THROW_HR_IF(E_INVALIDARG, shape[i] <= 0);
+  }
+  return size;
+}
+
+HRESULT OnnxruntimeEngine::CreateStringTensorValueFromDataWithCopy(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) {
+  auto ort_api = engine_factory_->UseOrtApi();
+  RETURN_IF_FAILED(CreateTensorValue(shape, count, winml::TensorKind::String, out));
+
+  auto ort_value = reinterpret_cast<WinML::OnnxruntimeValue*>(*out)->UseOrtValue();
+  ort_api->FillStringTensor(ort_value, reinterpret_cast<const char* const*>(data), num_elements);
+  return S_OK;
+}
+
 HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
+
+  if (kind == winml::TensorKind::String) {
+    // String buffers cannot be passed into the ort api directly because ort c-api tensor strings cannot be backed by external memory
+    return E_NOTIMPL;
+  }
 
   // TODO:  what is the difference between the device allocator and the arena allocator?
   OrtMemoryInfo* cpu_memory;
@@ -484,15 +578,214 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_
       &ort_value);
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
 
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
   return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::CreateNullValue(_Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto unique_value = UniqueOrtValue(nullptr, ort_api->ReleaseValue);
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
   return S_OK;
+}
+#include "winrt/windows.foundation.collections.h"
+
+template <typename TAbiType>
+struct AbiTypeInfo {
+  using CppWinRTType = TAbiType;
+  using OrtType = TAbiType;
+};
+
+template <>
+struct AbiTypeInfo<HSTRING> {
+  using CppWinRTType = winrt::hstring;
+  using OrtType = const char*;
+};
+
+template <typename TRawType>
+typename auto CppwinrtTypeToOrtType(TRawType raw) {
+  return raw;
+}
+
+template <>
+typename auto CppwinrtTypeToOrtType<winrt::hstring>(winrt::hstring raw) {
+  return WinML::Strings::UTF8FromHString(raw);
+}
+
+template <typename TAbiKey, typename TAbiValue>
+auto CastToWinrtMap(IInspectable* map_insp) {
+  using cppwinrt_key_type = typename AbiTypeInfo<TAbiKey>::CppWinRTType;
+  using cppwinrt_value_type = typename AbiTypeInfo<TAbiValue>::CppWinRTType;
+
+  ::winrt::Windows::Foundation::Collections::IMap<cppwinrt_key_type, cppwinrt_value_type> map;
+  winrt::copy_from_abi(map, map_insp);
+  return map;
+}
+
+template <typename TAbiKey, typename TAbiValue> struct FillMapTensors {
+  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
+	  AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
+	  ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(&keys_mutable_data));
+
+	  AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
+	  ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data));
+
+	  auto map = CastToWinrtMap<TAbiKey, TAbiValue>(map_insp);
+	  size_t index = 0;
+	  for (const auto& pair : map) {
+		keys_mutable_data[index] = CppwinrtTypeToOrtType(pair.Key());
+		values_mutable_data[index] = CppwinrtTypeToOrtType(pair.Value());
+		index++;
+	  }
+	  return S_OK;
+	}
+};
+
+template <typename TAbiValue> struct FillMapTensors<HSTRING, TAbiValue> {
+  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
+	  AbiTypeInfo<TAbiValue>::OrtType* values_mutable_data;
+	  ort_api->GetTensorMutableData(values_ort_value, reinterpret_cast<void**>(&values_mutable_data));
+
+	  auto map = CastToWinrtMap<HSTRING, TAbiValue>(map_insp);
+	  size_t index = 0;
+	  std::vector<std::string> keys;
+	  for (const auto& pair : map) {
+		keys.push_back(CppwinrtTypeToOrtType(pair.Key()));
+        values_mutable_data[index] = CppwinrtTypeToOrtType(pair.Value());
+		index++;
+	  }
+
+	  std::vector<const char*> raw_values;
+	  std::transform(
+		  keys.begin(),
+		  keys.end(),
+		  std::back_inserter(raw_values),
+		  [&](auto& str) { return str.c_str(); });
+  
+	  ort_api->FillStringTensor(keys_ort_value, raw_values.data(), raw_values.size());
+
+	  return S_OK;
+	}
+};
+
+template <typename TAbiKey> struct FillMapTensors<TAbiKey, HSTRING> {
+  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
+    AbiTypeInfo<TAbiKey>::OrtType* keys_mutable_data;
+    ort_api->GetTensorMutableData(keys_ort_value, reinterpret_cast<void**>(& keys_mutable_data));
+
+    auto map = CastToWinrtMap<TAbiKey, HSTRING>(map_insp);
+    size_t index = 0;
+    std::vector<std::string> values;
+    for (const auto& pair : map) {
+      keys_mutable_data[index] = CppwinrtTypeToOrtType(pair.Key());
+      values.push_back(CppwinrtTypeToOrtType(pair.Value()));
+      index++;
+    }
+
+    std::vector<const char*> raw_values;
+    std::transform(
+        values.begin(),
+        values.end(),
+        std::back_inserter(raw_values),
+        [&](auto& str) { return str.c_str(); });
+
+    ort_api->FillStringTensor(keys_ort_value, raw_values.data(), raw_values.size());
+	return S_OK;
+  }
+};
+
+template <>
+struct FillMapTensors<HSTRING, HSTRING> {
+  static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
+    auto map = CastToWinrtMap<HSTRING, HSTRING>(map_insp);
+    size_t index = 0;
+    std::vector<std::string> keys;
+    std::vector<std::string> values;
+    for (const auto& pair : map) {
+      keys.push_back(CppwinrtTypeToOrtType(pair.Key()));
+      values.push_back(CppwinrtTypeToOrtType(pair.Value()));
+      index++;
+    }
+
+    std::vector<const char*> raw_keys;
+    std::transform(
+        keys.begin(),
+        keys.end(),
+        std::back_inserter(raw_keys),
+        [&](auto& str) { return str.c_str(); });
+
+    std::vector<const char*> raw_values;
+    std::transform(
+        values.begin(),
+        values.end(),
+        std::back_inserter(raw_values),
+        [&](auto& str) { return str.c_str(); });
+
+    ort_api->FillStringTensor(keys_ort_value, raw_keys.data(), raw_keys.size());
+    ort_api->FillStringTensor(values_ort_value, raw_values.data(), raw_values.size());
+    return S_OK;
+  }
+};
+
+template <typename TAbiKey, typename TAbiValue>
+HRESULT CreateMapValue(OnnxruntimeEngine* engine, IInspectable* map_insp, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) {
+  auto ort_api = engine->UseOrtApi();
+  auto map = CastToWinrtMap<TAbiKey, TAbiValue>(map_insp);
+  std::vector<int64_t> shape = {static_cast<int64_t>(map.Size())};
+
+  winrt::com_ptr<WinML::IValue> key_value;
+  RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), key_kind, key_value.put()));
+  auto keys_ort_value = static_cast<OnnxruntimeValue*>(key_value.get())->UseOrtValue();
+
+  winrt::com_ptr<WinML::IValue> value_value;
+  RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), value_kind, value_value.put()));
+  auto values_ort_value = static_cast<OnnxruntimeValue*>(value_value.get())->UseOrtValue();
+
+  auto hr = FillMapTensors<TAbiKey, TAbiValue>::Run(ort_api, map_insp, keys_ort_value, values_ort_value);
+  RETURN_IF_FAILED(hr);
+
+  OrtValue* inputs[2] = {keys_ort_value, values_ort_value};
+
+  OrtValue* map_value;
+  ort_api->CreateValue(inputs, 2, ONNXType::ONNX_TYPE_MAP, &map_value);
+  auto unique_map_ort_value = UniqueOrtValue(map_value, ort_api->ReleaseValue);
+
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine, std::move(unique_map_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
+  return S_OK;
+}
+
+static auto GetMapValueCreator(OnnxruntimeEngine* engine, winml::TensorKind key_kind, winml::TensorKind value_kind) {
+  using namespace std::placeholders;
+  if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Int64) {
+    return std::bind(&CreateMapValue<int64_t, int64_t>, engine, _1, winml::TensorKind::Int64, winml::TensorKind::Int64, _2);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Float) {
+    return std::bind(&CreateMapValue<int64_t, float>, engine, _1, winml::TensorKind::Int64, winml::TensorKind::Float, _2);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Double) {
+    return std::bind(&CreateMapValue<int64_t, double>, engine, _1, winml::TensorKind::Int64, winml::TensorKind::Double, _2);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::String) {
+    return std::bind(&CreateMapValue<int64_t, HSTRING>, engine, _1, winml::TensorKind::Int64, winml::TensorKind::String, _2);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Int64) {
+    return std::bind(&CreateMapValue<HSTRING, int64_t>, engine, _1, winml::TensorKind::String, winml::TensorKind::Int64, _2);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Float) {
+    return std::bind(&CreateMapValue<HSTRING, float>, engine, _1, winml::TensorKind::String, winml::TensorKind::Float, _2);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Double) {
+    return std::bind(&CreateMapValue<HSTRING, double>, engine, _1, winml::TensorKind::String, winml::TensorKind::Double, _2);
+  } else if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::String) {
+    return std::bind(&CreateMapValue<HSTRING, HSTRING>, engine, _1, winml::TensorKind::String, winml::TensorKind::String, _2);
+  }
+
+  THROW_HR(E_NOTIMPL);
+}
+
+HRESULT OnnxruntimeEngine::CreateMapValue(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) {
+  return GetMapValueCreator(this, key_kind, value_kind)(map, out);
+}
+
+HRESULT OnnxruntimeEngine::CreateSequenceValue(IInspectable* map, winml::TensorKind element_kind, _Out_ IValue** out) {
+  UNREFERENCED_PARAMETER(map);
+  UNREFERENCED_PARAMETER(element_kind);
+  UNREFERENCED_PARAMETER(out);
+  return E_NOTIMPL;
 }
 
 HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
@@ -501,17 +794,28 @@ HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue*
 
   auto src_value = static_cast<OnnxruntimeValue*>(src);
 
-  bool is_empty;
-  if (SUCCEEDED(src_value->IsEmpty(&is_empty)) && !is_empty) {
-    OrtValue* dest_ort_value = nullptr;
-    RETURN_HR_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value),
-                                     ort_api);
-    auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+  bool is_set;
+  auto is_empty = SUCCEEDED(src_value->IsEmpty(&is_set)) && is_set;
+  auto is_tensor = SUCCEEDED(src_value->IsTensor(&is_set)) && is_set;
 
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine_factory_.Get(), this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
-  } else {
-    *out = src;
+  if (is_tensor && !is_empty) {
+    int16_t source_location;
+    int16_t input_required_location;
+    winml_adapter_api->ValueGetDeviceId(src_value->UseOrtValue(), &source_location);
+    winml_adapter_api->SessionGetInputRequiredDeviceId(session_.get(), name, &input_required_location);
+
+    if (source_location != input_required_location) {
+      OrtValue* dest_ort_value = nullptr;
+      winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name, src_value->UseOrtValue(), &dest_ort_value);
+      auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
+
+      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
+      return S_OK;
+    }
   }
+
+  *out = src;
+  (*out)->AddRef();
   return S_OK;
 }
 

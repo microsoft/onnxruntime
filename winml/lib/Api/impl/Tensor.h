@@ -92,5 +92,9 @@ class Tensor {
   const std::vector<int64_t>& shape() const {
     return shape_;
   }
+
+  auto get_tensor_buffer() {
+    return m_buffer;
+  }
 };
 }  // namespace Windows::AI::MachineLearning

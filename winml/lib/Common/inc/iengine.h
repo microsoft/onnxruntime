@@ -23,10 +23,11 @@ MIDL_INTERFACE("1b198b76-5c44-480d-837c-8433ca6eaf99") IModel : IUnknown {
     STDMETHOD(CloneModel)(IModel** copy) PURE;
 };
 
+using unique_void = std::unique_ptr<void, std::function<void(void*)>>;
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
     STDMETHOD(IsEmpty)(bool* out) PURE;
     STDMETHOD(IsCpu)(bool* out) PURE;
-    STDMETHOD(GetResource)(void** resource) PURE;
+    STDMETHOD_(unique_void, GetResource)() PURE;
 
     STDMETHOD(IsTensor)(bool* out) PURE;
     STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) PURE;
@@ -47,10 +48,13 @@ MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
     STDMETHOD(TrimUploadHeap)() PURE;
     STDMETHOD(ReleaseCompletedReferences)() PURE;
     STDMETHOD(Sync)() PURE;
-    STDMETHOD(CreateTensorValue)(int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CreateTensorValue)(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
     STDMETHOD(CreateTensorValueFromExternalD3DResource)(ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
     STDMETHOD(CreateTensorValueFromExternalBuffer)(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CreateStringTensorValueFromDataWithCopy)(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) PURE;
     STDMETHOD(CreateNullValue)(_Out_ IValue** out) PURE;
+    STDMETHOD(CreateMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CreateSequenceValue)(IInspectable* map, winml::TensorKind element_kind, _Out_ IValue** out) PURE;
     STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) PURE;
     STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) PURE;
     STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) PURE;

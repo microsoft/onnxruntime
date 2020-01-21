@@ -15,6 +15,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace Windows::AI::MachineLearning {
+
 // TensorBase
 //
 // This is the base class for all data based Tensor types. It exposes array and IVectorView
@@ -111,9 +112,7 @@ struct TensorBase : TBase {
     auto engine = session->GetEngine();
 
     if (GetCpuResource() != nullptr) {
-      return engine->CreateTensorValueFromExternalBuffer(
-          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
-          GetCpuResource()->shape().size(), TensorKind(), out);
+      return CreateTensorValueFromExternalBuffer(engine, out);
     }
 
     // If there is no matching cpu resource, then fallback to a gpu resource
@@ -135,18 +134,14 @@ struct TensorBase : TBase {
 
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (GetCpuResource() != nullptr) {
-      return engine->CreateTensorValueFromExternalBuffer(
-          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
-          GetCpuResource()->shape().size(), TensorKind(), out);
+      return CreateTensorValueFromExternalBuffer(engine, out);
     }
 
     if (TensorKind() == winrt::Windows::AI::MachineLearning::TensorKind::String) {
       // Lazily allocate the cpu TensorString resource
       // TensorStrings are CPU only, and so a gpu resource cannot be allocated for them.
       GetCpuResource() = std::make_shared<WinML::Tensor<T>>(shape_);
-      return engine->CreateTensorValueFromExternalBuffer(
-          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
-          GetCpuResource()->shape().size(), TensorKind(), out);
+      return CreateTensorValueFromExternalBuffer(engine, out);
     } else {
       // Try to allocate the backing memory for the caller
       auto bufferSize = std::accumulate(std::begin(shape_), std::end(shape_), static_cast<int64_t>(1), std::multiplies<int64_t>());
@@ -237,15 +232,65 @@ struct TensorBase : TBase {
     return size;
   }
 
+  template <typename ElementType = T, typename ElementViewType = ViewT>
+  void SetBufferFromValueResourceBuffer(uint32_t size, void* data) {
+    // This adds compile time checks that ensure that the API can only be called when
+    // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
+    ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
+
+    GetCpuResource()->set(size, reinterpret_cast<ElementType*>(data));
+  }
+
+  template <>
+  void SetBufferFromValueResourceBuffer<std::string, winrt::hstring>(uint32_t size, void* data) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
+
+    GetCpuResource()->get_tensor_buffer()->Set(size, reinterpret_cast<std::pair<const char*, size_t>*>(data));
+  }
+
+  template <typename ElementType = T, typename ElementViewType = ViewT>
+  HRESULT CreateTensorValueFromExternalBuffer(WinML::IEngine* engine, IValue** value) {
+    // This adds compile time checks that ensure that the API can only be called when
+    // the conditions of ASSERT_TEMPLATE_PARAMETERS_EXACT() are met.
+    ASSERT_TEMPLATE_PARAMETERS<ElementType, ElementViewType>();
+
+    RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
+                             GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
+                             GetCpuResource()->shape().size(), TensorKind(), value),
+                         "Failed to prepare buffer for copy back from device resource.");
+    return S_OK;
+  }
+
+  template <>
+  HRESULT CreateTensorValueFromExternalBuffer<std::string, winrt::hstring>(WinML::IEngine* engine, IValue** value) {
+    // Ensure that this call is being called with the correct template parameters
+    ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
+
+    std::vector<const char*> raw_values;
+    auto string_array = GetCpuResource()->buffer().second;
+    std::transform(
+        string_array,
+        string_array + GetCpuResource()->size_in_bytes(),
+        std::back_inserter(raw_values),
+        [&](auto& str) { return str.c_str(); });
+
+    RETURN_IF_FAILED_MSG(engine->CreateStringTensorValueFromDataWithCopy(
+                             raw_values.data(), raw_values.size(), GetCpuResource()->shape().data(),
+                             GetCpuResource()->shape().size(), value),
+                         "Failed to prepare buffer for copy back from device resource.");
+    return S_OK;
+  }
+
   // ILotusValueProviderPrivate::UpdateSourceResourceData
-  STDMETHOD(UpdateSourceResourceData)(BindingContext& context, IValue* value) {
+  STDMETHOD(UpdateSourceResourceData)
+  (BindingContext& context, IValue* value) {
     RETURN_HR_IF_NULL_MSG(
         E_ILLEGAL_METHOD_CALL,
         m_resources,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
-    void* updated_resource = nullptr;
-    RETURN_IF_FAILED_MSG(value->GetResource(&updated_resource), "Failed to get the tensor backing resource!");
+    auto updated_resource = value->GetResource();
 
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
@@ -262,11 +307,12 @@ struct TensorBase : TBase {
       uint32_t size;
       std::tie(size, data) = GetCpuResource()->buffer();
 
-      if (updated_resource != reinterpret_cast<void*>(data)) {
+      if (updated_resource.get() != reinterpret_cast<void*>(data)) {
         // Only copy the data if the source and destination are not the same!
         // The engine provided buffer will not match the tensor buffer when
         // the tensor is created as a placeholder output, or as an unbound output.
-        GetCpuResource()->set(static_cast<uint32_t>(ShapeSize(shape_)), reinterpret_cast<T*>(updated_resource));
+        auto shape_size = static_cast<uint32_t>(ShapeSize(shape_));
+        SetBufferFromValueResourceBuffer(shape_size, updated_resource.get());
       }
     } else {
       // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
@@ -277,10 +323,8 @@ struct TensorBase : TBase {
       auto engine = spSession->GetEngine();
 
       winrt::com_ptr<IValue> dest;
-      RETURN_IF_FAILED_MSG(engine->CreateTensorValueFromExternalBuffer(
-          GetCpuResource()->buffer().second, GetCpuResource()->size_in_bytes(), GetCpuResource()->shape().data(),
-          GetCpuResource()->shape().size(), TensorKind(), dest.put()),
-          "Failed to prepare buffer for copy back from device resource.");
+      RETURN_IF_FAILED_MSG(CreateTensorValueFromExternalBuffer(engine, dest.put()),
+                           "Failed to prepare buffer for copy back from device resource.");
       RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
     }
 
@@ -488,7 +532,7 @@ struct TensorBase : TBase {
     // This Api is not supported for TensorString
     RETURN_HR_IF_MSG(
         ERROR_INVALID_FUNCTION,
-        (std::is_same<T, std::string>::value),
+        (std::is_same_v<T, std::string>),
         "TensorString objects cannot return byte buffers!");
 
     RETURN_HR_IF_NULL_MSG(

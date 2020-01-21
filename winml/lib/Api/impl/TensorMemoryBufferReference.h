@@ -18,38 +18,28 @@ struct TensorResources {
     RETURN_HR_IF_NULL(E_POINTER, value);
     RETURN_HR_IF_NULL(E_POINTER, capacity);
 
-    *value = nullptr;
-    *capacity = 0;
-
-    // This Api is not supported for TensorString
-    auto isTensorString = std::is_same<T, std::string>::value;
-    RETURN_HR_IF(ERROR_INVALID_FUNCTION, isTensorString);
+    RETURN_HR_IF_MSG(
+        ERROR_INVALID_FUNCTION,
+        (std::is_same_v<T, std::string>),
+        "TensorString objects cannot return byte buffers!");
 
     try {
+      *value = nullptr;
+      *capacity = 0;
+
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
         CpuResource = std::make_shared<WinML::Tensor<T>>(shape);
       }
 
-      if constexpr (std::is_same_v<T, std::string>) {
-        std::string* pData;
-        uint32_t pSize;
-        std::tie(pSize, pData) = CpuResource->buffer();
+      // Get the data pointer and size
+      T* data;
+      uint32_t size;
+      std::tie(size, data) = CpuResource->buffer();
 
-        // Set out parameters
-        *capacity = static_cast<UINT32>(pSize * sizeof(T));
-        *value = (BYTE*)pData;
-      } else {
-        // Get the data pointer and size
-        T* pData;
-        uint32_t pSize;
-        std::tie(pSize, pData) = CpuResource->buffer();
-
-        // Set out parameters
-        *capacity = static_cast<UINT32>(pSize * sizeof(T));
-        *value = (BYTE*)pData;
-      }
-
+      // Set out parameters
+      *capacity = static_cast<UINT32>(size * sizeof(T));
+      *value = (BYTE*)data;
       return S_OK;
     }
     WINML_CATCH_ALL_COM

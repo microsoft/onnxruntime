@@ -424,8 +424,7 @@ HRESULT ImageFeatureValue::GetValue(WinML::BindingContext& context, IValue** out
 	  value.put()));
 
   // Get the tensor raw data
-  void* allocated_resource = nullptr;
-  value->GetResource(&allocated_resource);
+  auto allocated_resource = value->GetResource();
 
   if (context.type == BindingType::kInput) {
     // Only tensorize inputs
@@ -433,10 +432,10 @@ HRESULT ImageFeatureValue::GetValue(WinML::BindingContext& context, IValue** out
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize;
     auto singleFrameBufferSize = bufferByteSize / m_batchSize;
     if (spDevice->IsCpuDevice()) {
-      auto resource = reinterpret_cast<BYTE*>(allocated_resource);
+      auto resource = reinterpret_cast<BYTE*>(allocated_resource.get());
       CPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, static_cast<unsigned int>(singleFrameBufferSize));
     } else {
-      auto resource = reinterpret_cast<ID3D12Resource*>(allocated_resource);
+      auto resource = reinterpret_cast<ID3D12Resource*>(allocated_resource.get());
       GPUTensorize(m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, context);
     }
   }
@@ -458,8 +457,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
   // Get the output tensor raw data
-  void* allocated_resource = nullptr;
-  value->GetResource(&allocated_resource);
+  auto allocated_resource = value->GetResource();
 
   // Get the run context
   auto metadata = GetInputMetadata(context);
@@ -479,7 +477,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
     auto bufferSize = std::accumulate(std::begin(resourceMetadata.TensorDescriptor.sizes), std::end(resourceMetadata.TensorDescriptor.sizes), static_cast<int64_t>(1), std::multiplies<int64_t>());
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize / m_batchSize;
 
-    BYTE* resource = reinterpret_cast<BYTE*>(allocated_resource);
+    BYTE* resource = reinterpret_cast<BYTE*>(allocated_resource.get());
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       // Convert Software Tensor to VideoFrame one by one based on the buffer size.
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
@@ -492,7 +490,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
 
     auto pooledConverter = PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
-    auto d3dResource = reinterpret_cast<ID3D12Resource*>(allocated_resource);
+    auto d3dResource = reinterpret_cast<ID3D12Resource*>(allocated_resource.get());
 
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
