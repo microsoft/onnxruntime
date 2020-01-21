@@ -131,8 +131,7 @@ struct MapBase : winrt::implements<
     auto engine = session->GetEngine();
 
     if (context.type == WinML::BindingType::kInput) {
-      //auto map_insp = winrt::get_abi(data_);
-      RETURN_IF_FAILED(engine->CreateMapValue(nullptr, TensorKindFrom<TKey>::Type, TensorKindFrom<TValue>::Type, out));
+      RETURN_IF_FAILED(engine->CreateMapValue(reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)), TensorKindFrom<TKey>::Type, TensorKindFrom<TValue>::Type, out));
     } else {
       RETURN_IF_FAILED(engine->CreateNullValue(out));
     }
