@@ -168,15 +168,13 @@ WinML::unique_void OnnxruntimeValue::GetResource() {
   ort_api->GetTensorMutableData(value_.get(), &mutable_data);
 
   OrtExecutionProvider* ort_provider;
-  THROW_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider),
-                               engine_factory_->UseOrtApi());
+  winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider);
 
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
     void* resource;
-    THROW_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
-                                                         reinterpret_cast<ID3D12Resource**>(&resource),
-                                 engine_factory_->UseOrtApi());
+    winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
+                                                         reinterpret_cast<ID3D12Resource**>(&resource));
     return WinML::unique_void(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
     int is_tensor;
