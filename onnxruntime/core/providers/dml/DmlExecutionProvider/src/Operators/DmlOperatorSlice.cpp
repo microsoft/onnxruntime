@@ -6,16 +6,22 @@
 namespace Dml
 {
 
-class DmlOperatorSlice : public DmlOperator, public SliceHelper
+class DmlOperatorSlice : public DmlOperator, public SliceHelperBase
 {
 public:
-    DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo)
+    DmlOperatorSlice(const MLOperatorKernelCreationContext& kernelInfo, uint32_t opsetVersion)
     :   DmlOperator(kernelInfo),
-        SliceHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
+        SliceHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), opsetVersion)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        uint32_t minInputCount = (opsetVersion < 10) ? 1 : 3;
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= minInputCount);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
-        DmlOperator::Initialize(kernelInfo);
+
+        // TODO (23108599): Slice V10 introduces an optional "Steps" input which the kernel does not yet support.
+        THROW_HR_IF(E_NOTIMPL, kernelInfo.GetInputCount() > 4);
+
+        std::vector<std::optional<uint32_t>> kernelInputIndices = { 0 };
+        DmlOperator::Initialize(kernelInfo, kernelInputIndices);
 
         assert(m_inputTensorDescs[0].GetDimensionCount() >= gsl::narrow_cast<uint32_t>(m_offsets.size()));
         assert(m_inputTensorDescs[0].GetDimensionCount() >= gsl::narrow_cast<uint32_t>(m_sizes.size()));
@@ -54,6 +60,22 @@ public:
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(Slice, DmlOperatorSlice);
+// A specific type of operation for registration.
+template <uint32_t opsetVersion>
+class DmlOperatorSliceTemplate : public DmlOperatorSlice
+{
+public:
+    DmlOperatorSliceTemplate(const MLOperatorKernelCreationContext& kernelInfo)
+    :   DmlOperatorSlice(kernelInfo, opsetVersion)
+    {
+    }
+};
 
+void QuerySlice(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
+{
+    *isSupported = (context->GetInputCount() <= 4);
+}
+
+DML_OP_DEFINE_CREATION_FUNCTION(Slice7,  DmlOperatorSliceTemplate<7>);
+DML_OP_DEFINE_CREATION_FUNCTION(Slice10, DmlOperatorSliceTemplate<10>);
 } // namespace Dml

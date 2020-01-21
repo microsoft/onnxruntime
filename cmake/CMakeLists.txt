@@ -222,12 +222,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()
-  if(onnxruntime_BUILD_x86)
-    set (CMAKE_SYSTEM_PROCESSOR "x86")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-  endif()
+  endif()  
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -279,10 +274,14 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 
 # use protobuf as a submodule
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
+endif()
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")	
 set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
@@ -295,7 +294,6 @@ if(UNIX AND onnxruntime_ENABLE_LTO)
   #https://github.com/protocolbuffers/protobuf/issues/5923
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
-
 include(protobuf_function.cmake)
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
@@ -422,6 +420,14 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
+if (APPLE)
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
+  #TODO: fix the warning in ONNX and re-enable this flag
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
+  string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
+endif()
 # ONNX
 add_subdirectory(onnx)
 
@@ -498,6 +504,7 @@ else()
   endif()
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
+  check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)

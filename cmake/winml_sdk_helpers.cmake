@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 
-# utility 
+# utility
 function(convert_forward_slashes_to_back input output)
     string(REGEX REPLACE "/" "\\\\" backwards ${input})
     set(${output} ${backwards} PARENT_SCOPE)
@@ -16,7 +16,23 @@ function(get_installed_sdk
     set(${sdk_folder} ${win10_sdk_root} PARENT_SCOPE)
 
     # return the sdk version
-    set(${output_sdk_version} ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION} PARENT_SCOPE)
+    if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+        set(${output_sdk_version} ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION} PARENT_SCOPE)
+    else()
+        # choose the SDK matching the system version, or fallback to the latest
+        file(GLOB win10_sdks RELATIVE "${win10_sdk_root}/UnionMetadata" "${win10_sdk_root}/UnionMetadata/*.*.*.*")
+        list(GET win10_sdks 0 latest_sdk)
+        foreach(sdk IN LISTS win10_sdks)
+            string(FIND ${sdk} ${CMAKE_SYSTEM_VERSION} is_system_version)
+            if(NOT ${is_system_version} EQUAL -1)
+                set(${output_sdk_version} ${sdk} PARENT_SCOPE)
+                return()
+            elseif(sdk VERSION_GREATER latest_sdk)
+                set(latest_sdk ${sdk})
+            endif()
+        endforeach()
+        set(${output_sdk_version} ${latest_sdk} PARENT_SCOPE)
+    endif()
 endfunction()
 
 # current sdk binary directory
@@ -95,7 +111,7 @@ function(get_sdk
     set(${output_sdk_version} ${winml_WINDOWS_SDK_VERSION_OVERRIDE} PARENT_SCOPE)
   else()
     message(
-      FATAL_ERROR 
+      FATAL_ERROR
       "Options winml_WINDOWS_SDK_DIR_OVERRIDE and winml_WINDOWS_SDK_VERSION_OVERRIDE must be defined together, or not at all.")
   endif()
 endfunction()

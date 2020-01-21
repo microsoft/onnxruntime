@@ -109,24 +109,24 @@ namespace Onnx {
             "EhAKDEVYUEVSSU1FTlRBTBAAEgoKBlNUQUJMRRABYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ValueInfoProto), global::Onnx.ValueInfoProto.Parser, new[]{ "Name", "Type", "DocString" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorAnnotation), global::Onnx.TensorAnnotation.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "SparseInitializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.SparseTensorProto), global::Onnx.SparseTensorProto.Parser, new[]{ "Values", "Indices", "Dims" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "SparseTensorType", "OpaqueType", "Denotation" }, new[]{ "Value" }, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Sequence), global::Onnx.TypeProto.Types.Sequence.Parser, new[]{ "ElemType" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Map), global::Onnx.TypeProto.Types.Map.Parser, new[]{ "KeyType", "ValueType" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null)}),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString" }, null, null, null)
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, null, new pbr::GeneratedClrTypeInfo[] {
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.AttributeProto), global::Onnx.AttributeProto.Parser, new[]{ "Name", "RefAttrName", "DocString", "Type", "F", "I", "S", "T", "G", "SparseTensor", "Floats", "Ints", "Strings", "Tensors", "Graphs", "SparseTensors" }, null, new[]{ typeof(global::Onnx.AttributeProto.Types.AttributeType) }, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ValueInfoProto), global::Onnx.ValueInfoProto.Parser, new[]{ "Name", "Type", "DocString" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.NodeProto), global::Onnx.NodeProto.Parser, new[]{ "Input", "Output", "Name", "OpType", "Domain", "Attribute", "DocString" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.ModelProto), global::Onnx.ModelProto.Parser, new[]{ "IrVersion", "OpsetImport", "ProducerName", "ProducerVersion", "Domain", "ModelVersion", "DocString", "Graph", "Functions", "MetadataProps" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.StringStringEntryProto), global::Onnx.StringStringEntryProto.Parser, new[]{ "Key", "Value" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorAnnotation), global::Onnx.TensorAnnotation.Parser, new[]{ "TensorName", "QuantParameterTensorNames" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.GraphProto), global::Onnx.GraphProto.Parser, new[]{ "Node", "Name", "Initializer", "SparseInitializer", "DocString", "Input", "Output", "ValueInfo", "QuantizationAnnotation" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto), global::Onnx.TensorProto.Parser, new[]{ "Dims", "DataType", "Segment", "FloatData", "Int32Data", "StringData", "Int64Data", "Name", "DocString", "RawData", "ExternalData", "DataLocation", "DoubleData", "Uint64Data" }, null, new[]{ typeof(global::Onnx.TensorProto.Types.DataType), typeof(global::Onnx.TensorProto.Types.DataLocation) }, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorProto.Types.Segment), global::Onnx.TensorProto.Types.Segment.Parser, new[]{ "Begin", "End" }, null, null, null, null)}),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.SparseTensorProto), global::Onnx.SparseTensorProto.Parser, new[]{ "Values", "Indices", "Dims" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto), global::Onnx.TensorShapeProto.Parser, new[]{ "Dim" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TensorShapeProto.Types.Dimension), global::Onnx.TensorShapeProto.Types.Dimension.Parser, new[]{ "DimValue", "DimParam", "Denotation" }, new[]{ "Value" }, null, null, null)}),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto), global::Onnx.TypeProto.Parser, new[]{ "TensorType", "SequenceType", "MapType", "SparseTensorType", "OpaqueType", "Denotation" }, new[]{ "Value" }, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Tensor), global::Onnx.TypeProto.Types.Tensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Sequence), global::Onnx.TypeProto.Types.Sequence.Parser, new[]{ "ElemType" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Map), global::Onnx.TypeProto.Types.Map.Parser, new[]{ "KeyType", "ValueType" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.SparseTensor), global::Onnx.TypeProto.Types.SparseTensor.Parser, new[]{ "ElemType", "Shape" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.TypeProto.Types.Opaque), global::Onnx.TypeProto.Types.Opaque.Parser, new[]{ "Domain", "Name" }, null, null, null, null)}),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.OperatorSetIdProto), global::Onnx.OperatorSetIdProto.Parser, new[]{ "Domain", "Version" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Onnx.FunctionProto), global::Onnx.FunctionProto.Parser, new[]{ "Name", "SinceVersion", "Status", "Input", "Output", "Attribute", "Node", "DocString" }, null, null, null, null)
           }));
     }
     #endregion
@@ -304,7 +304,7 @@ namespace Onnx {
 
     /// <summary>Field number for the "type" field.</summary>
     public const int TypeFieldNumber = 20;
-    private global::Onnx.AttributeProto.Types.AttributeType type_ = 0;
+    private global::Onnx.AttributeProto.Types.AttributeType type_ = global::Onnx.AttributeProto.Types.AttributeType.Undefined;
     /// <summary>
     /// The type field MUST be present for this version of the IR.
     /// For 0.0.1 versions of the IR, this field was not defined, and
@@ -521,7 +521,7 @@ namespace Onnx {
       if (Name.Length != 0) hash ^= Name.GetHashCode();
       if (RefAttrName.Length != 0) hash ^= RefAttrName.GetHashCode();
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
-      if (Type != 0) hash ^= Type.GetHashCode();
+      if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) hash ^= Type.GetHashCode();
       if (F != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(F);
       if (I != 0L) hash ^= I.GetHashCode();
       if (S.Length != 0) hash ^= S.GetHashCode();
@@ -580,7 +580,7 @@ namespace Onnx {
         output.WriteRawTag(106);
         output.WriteString(DocString);
       }
-      if (Type != 0) {
+      if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
         output.WriteRawTag(160, 1);
         output.WriteEnum((int) Type);
       }
@@ -610,7 +610,7 @@ namespace Onnx {
       if (DocString.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(DocString);
       }
-      if (Type != 0) {
+      if (Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
         size += 2 + pb::CodedOutputStream.ComputeEnumSize((int) Type);
       }
       if (F != 0F) {
@@ -657,7 +657,7 @@ namespace Onnx {
       if (other.DocString.Length != 0) {
         DocString = other.DocString;
       }
-      if (other.Type != 0) {
+      if (other.Type != global::Onnx.AttributeProto.Types.AttributeType.Undefined) {
         Type = other.Type;
       }
       if (other.F != 0F) {
@@ -671,19 +671,19 @@ namespace Onnx {
       }
       if (other.t_ != null) {
         if (t_ == null) {
-          t_ = new global::Onnx.TensorProto();
+          T = new global::Onnx.TensorProto();
         }
         T.MergeFrom(other.T);
       }
       if (other.g_ != null) {
         if (g_ == null) {
-          g_ = new global::Onnx.GraphProto();
+          G = new global::Onnx.GraphProto();
         }
         G.MergeFrom(other.G);
       }
       if (other.sparseTensor_ != null) {
         if (sparseTensor_ == null) {
-          sparseTensor_ = new global::Onnx.SparseTensorProto();
+          SparseTensor = new global::Onnx.SparseTensorProto();
         }
         SparseTensor.MergeFrom(other.SparseTensor);
       }
@@ -722,16 +722,16 @@ namespace Onnx {
           }
           case 42: {
             if (t_ == null) {
-              t_ = new global::Onnx.TensorProto();
+              T = new global::Onnx.TensorProto();
             }
-            input.ReadMessage(t_);
+            input.ReadMessage(T);
             break;
           }
           case 50: {
             if (g_ == null) {
-              g_ = new global::Onnx.GraphProto();
+              G = new global::Onnx.GraphProto();
             }
-            input.ReadMessage(g_);
+            input.ReadMessage(G);
             break;
           }
           case 58:
@@ -761,7 +761,7 @@ namespace Onnx {
             break;
           }
           case 160: {
-            type_ = (global::Onnx.AttributeProto.Types.AttributeType) input.ReadEnum();
+            Type = (global::Onnx.AttributeProto.Types.AttributeType) input.ReadEnum();
             break;
           }
           case 170: {
@@ -770,9 +770,9 @@ namespace Onnx {
           }
           case 178: {
             if (sparseTensor_ == null) {
-              sparseTensor_ = new global::Onnx.SparseTensorProto();
+              SparseTensor = new global::Onnx.SparseTensorProto();
             }
-            input.ReadMessage(sparseTensor_);
+            input.ReadMessage(SparseTensor);
             break;
           }
           case 186: {
@@ -978,7 +978,7 @@ namespace Onnx {
       }
       if (other.type_ != null) {
         if (type_ == null) {
-          type_ = new global::Onnx.TypeProto();
+          Type = new global::Onnx.TypeProto();
         }
         Type.MergeFrom(other.Type);
       }
@@ -1002,9 +1002,9 @@ namespace Onnx {
           }
           case 18: {
             if (type_ == null) {
-              type_ = new global::Onnx.TypeProto();
+              Type = new global::Onnx.TypeProto();
             }
-            input.ReadMessage(type_);
+            input.ReadMessage(Type);
             break;
           }
           case 26: {
@@ -1673,7 +1673,7 @@ namespace Onnx {
       }
       if (other.graph_ != null) {
         if (graph_ == null) {
-          graph_ = new global::Onnx.GraphProto();
+          Graph = new global::Onnx.GraphProto();
         }
         Graph.MergeFrom(other.Graph);
       }
@@ -1716,9 +1716,9 @@ namespace Onnx {
           }
           case 58: {
             if (graph_ == null) {
-              graph_ = new global::Onnx.GraphProto();
+              Graph = new global::Onnx.GraphProto();
             }
-            input.ReadMessage(graph_);
+            input.ReadMessage(Graph);
             break;
           }
           case 66: {
@@ -2627,7 +2627,7 @@ namespace Onnx {
 
     /// <summary>Field number for the "data_location" field.</summary>
     public const int DataLocationFieldNumber = 14;
-    private global::Onnx.TensorProto.Types.DataLocation dataLocation_ = 0;
+    private global::Onnx.TensorProto.Types.DataLocation dataLocation_ = global::Onnx.TensorProto.Types.DataLocation.Default;
     /// <summary>
     /// If value not set, data is stored in raw_data (if set) otherwise in type-specified field.
     /// </summary>
@@ -2717,7 +2717,7 @@ namespace Onnx {
       if (DocString.Length != 0) hash ^= DocString.GetHashCode();
       if (RawData.Length != 0) hash ^= RawData.GetHashCode();
       hash ^= externalData_.GetHashCode();
-      if (DataLocation != 0) hash ^= DataLocation.GetHashCode();
+      if (DataLocation != global::Onnx.TensorProto.Types.DataLocation.Default) hash ^= DataLocation.GetHashCode();
       hash ^= doubleData_.GetHashCode();
       hash ^= uint64Data_.GetHashCode();
       if (_unknownFields != null) {
@@ -2761,7 +2761,7 @@ namespace Onnx {
         output.WriteString(DocString);
       }
       externalData_.WriteTo(output, _repeated_externalData_codec);
-      if (DataLocation != 0) {
+      if (DataLocation != global::Onnx.TensorProto.Types.DataLocation.Default) {
         output.WriteRawTag(112);
         output.WriteEnum((int) DataLocation);
       }
@@ -2794,7 +2794,7 @@ namespace Onnx {
         size += 1 + pb::CodedOutputStream.ComputeBytesSize(RawData);
       }
       size += externalData_.CalculateSize(_repeated_externalData_codec);
-      if (DataLocation != 0) {
+      if (DataLocation != global::Onnx.TensorProto.Types.DataLocation.Default) {
         size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) DataLocation);
       }
       size += doubleData_.CalculateSize(_repeated_doubleData_codec);
@@ -2816,7 +2816,7 @@ namespace Onnx {
       }
       if (other.segment_ != null) {
         if (segment_ == null) {
-          segment_ = new global::Onnx.TensorProto.Types.Segment();
+          Segment = new global::Onnx.TensorProto.Types.Segment();
         }
         Segment.MergeFrom(other.Segment);
       }
@@ -2834,7 +2834,7 @@ namespace Onnx {
         RawData = other.RawData;
       }
       externalData_.Add(other.externalData_);
-      if (other.DataLocation != 0) {
+      if (other.DataLocation != global::Onnx.TensorProto.Types.DataLocation.Default) {
         DataLocation = other.DataLocation;
       }
       doubleData_.Add(other.doubleData_);
@@ -2861,9 +2861,9 @@ namespace Onnx {
           }
           case 26: {
             if (segment_ == null) {
-              segment_ = new global::Onnx.TensorProto.Types.Segment();
+              Segment = new global::Onnx.TensorProto.Types.Segment();
             }
-            input.ReadMessage(segment_);
+            input.ReadMessage(Segment);
             break;
           }
           case 34:
@@ -2912,7 +2912,7 @@ namespace Onnx {
             break;
           }
           case 112: {
-            dataLocation_ = (global::Onnx.TensorProto.Types.DataLocation) input.ReadEnum();
+            DataLocation = (global::Onnx.TensorProto.Types.DataLocation) input.ReadEnum();
             break;
           }
         }
@@ -3327,13 +3327,13 @@ namespace Onnx {
       }
       if (other.values_ != null) {
         if (values_ == null) {
-          values_ = new global::Onnx.TensorProto();
+          Values = new global::Onnx.TensorProto();
         }
         Values.MergeFrom(other.Values);
       }
       if (other.indices_ != null) {
         if (indices_ == null) {
-          indices_ = new global::Onnx.TensorProto();
+          Indices = new global::Onnx.TensorProto();
         }
         Indices.MergeFrom(other.Indices);
       }
@@ -3351,16 +3351,16 @@ namespace Onnx {
             break;
           case 10: {
             if (values_ == null) {
-              values_ = new global::Onnx.TensorProto();
+              Values = new global::Onnx.TensorProto();
             }
-            input.ReadMessage(values_);
+            input.ReadMessage(Values);
             break;
           }
           case 18: {
             if (indices_ == null) {
-              indices_ = new global::Onnx.TensorProto();
+              Indices = new global::Onnx.TensorProto();
             }
-            input.ReadMessage(indices_);
+            input.ReadMessage(Indices);
             break;
           }
           case 26:
@@ -4240,7 +4240,7 @@ namespace Onnx {
           }
           if (other.shape_ != null) {
             if (shape_ == null) {
-              shape_ = new global::Onnx.TensorShapeProto();
+              Shape = new global::Onnx.TensorShapeProto();
             }
             Shape.MergeFrom(other.Shape);
           }
@@ -4261,9 +4261,9 @@ namespace Onnx {
               }
               case 18: {
                 if (shape_ == null) {
-                  shape_ = new global::Onnx.TensorShapeProto();
+                  Shape = new global::Onnx.TensorShapeProto();
                 }
-                input.ReadMessage(shape_);
+                input.ReadMessage(Shape);
                 break;
               }
             }
@@ -4386,7 +4386,7 @@ namespace Onnx {
           }
           if (other.elemType_ != null) {
             if (elemType_ == null) {
-              elemType_ = new global::Onnx.TypeProto();
+              ElemType = new global::Onnx.TypeProto();
             }
             ElemType.MergeFrom(other.ElemType);
           }
@@ -4403,9 +4403,9 @@ namespace Onnx {
                 break;
               case 10: {
                 if (elemType_ == null) {
-                  elemType_ = new global::Onnx.TypeProto();
+                  ElemType = new global::Onnx.TypeProto();
                 }
-                input.ReadMessage(elemType_);
+                input.ReadMessage(ElemType);
                 break;
               }
             }
@@ -4556,7 +4556,7 @@ namespace Onnx {
           }
           if (other.valueType_ != null) {
             if (valueType_ == null) {
-              valueType_ = new global::Onnx.TypeProto();
+              ValueType = new global::Onnx.TypeProto();
             }
             ValueType.MergeFrom(other.ValueType);
           }
@@ -4577,9 +4577,9 @@ namespace Onnx {
               }
               case 18: {
                 if (valueType_ == null) {
-                  valueType_ = new global::Onnx.TypeProto();
+                  ValueType = new global::Onnx.TypeProto();
                 }
-                input.ReadMessage(valueType_);
+                input.ReadMessage(ValueType);
                 break;
               }
             }
@@ -4724,7 +4724,7 @@ namespace Onnx {
           }
           if (other.shape_ != null) {
             if (shape_ == null) {
-              shape_ = new global::Onnx.TensorShapeProto();
+              Shape = new global::Onnx.TensorShapeProto();
             }
             Shape.MergeFrom(other.Shape);
           }
@@ -4745,9 +4745,9 @@ namespace Onnx {
               }
               case 18: {
                 if (shape_ == null) {
-                  shape_ = new global::Onnx.TensorShapeProto();
+                  Shape = new global::Onnx.TensorShapeProto();
                 }
-                input.ReadMessage(shape_);
+                input.ReadMessage(Shape);
                 break;
               }
             }
@@ -5170,7 +5170,7 @@ namespace Onnx {
 
     /// <summary>Field number for the "status" field.</summary>
     public const int StatusFieldNumber = 3;
-    private global::Onnx.OperatorStatus status_ = 0;
+    private global::Onnx.OperatorStatus status_ = global::Onnx.OperatorStatus.Experimental;
     /// <summary>
     /// This field indicates whether the syntax, semantics, or presence
     /// of this function is in an experimental or stable stage. Once an
@@ -5281,7 +5281,7 @@ namespace Onnx {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
       if (SinceVersion != 0L) hash ^= SinceVersion.GetHashCode();
-      if (Status != 0) hash ^= Status.GetHashCode();
+      if (Status != global::Onnx.OperatorStatus.Experimental) hash ^= Status.GetHashCode();
       hash ^= input_.GetHashCode();
       hash ^= output_.GetHashCode();
       hash ^= attribute_.GetHashCode();
@@ -5308,7 +5308,7 @@ namespace Onnx {
         output.WriteRawTag(16);
         output.WriteInt64(SinceVersion);
       }
-      if (Status != 0) {
+      if (Status != global::Onnx.OperatorStatus.Experimental) {
         output.WriteRawTag(24);
         output.WriteEnum((int) Status);
       }
@@ -5334,7 +5334,7 @@ namespace Onnx {
       if (SinceVersion != 0L) {
         size += 1 + pb::CodedOutputStream.ComputeInt64Size(SinceVersion);
       }
-      if (Status != 0) {
+      if (Status != global::Onnx.OperatorStatus.Experimental) {
         size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Status);
       }
       size += input_.CalculateSize(_repeated_input_codec);
@@ -5361,7 +5361,7 @@ namespace Onnx {
       if (other.SinceVersion != 0L) {
         SinceVersion = other.SinceVersion;
       }
-      if (other.Status != 0) {
+      if (other.Status != global::Onnx.OperatorStatus.Experimental) {
         Status = other.Status;
       }
       input_.Add(other.input_);
@@ -5391,7 +5391,7 @@ namespace Onnx {
             break;
           }
           case 24: {
-            status_ = (global::Onnx.OperatorStatus) input.ReadEnum();
+            Status = (global::Onnx.OperatorStatus) input.ReadEnum();
             break;
           }
           case 34: {
