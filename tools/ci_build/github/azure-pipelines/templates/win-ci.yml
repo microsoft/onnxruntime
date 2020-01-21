@@ -34,12 +34,14 @@ jobs:
 
   steps:
     - powershell: |
+        Write-Host $env:TELEMETRYGUID
         if($env:TELEMETRYGUID)
         {
           $length = $env:TELEMETRYGUID.length
           $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
             TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
-          New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force       
+          New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+          cat "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h"       
         }
         cat "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h"
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
