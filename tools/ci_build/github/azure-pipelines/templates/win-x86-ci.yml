@@ -42,6 +42,8 @@ jobs:
           New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
         }
       displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+      env:
+        TELEMETRYGUID: $(TELEMETRYGUID)
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
