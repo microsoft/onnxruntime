@@ -386,12 +386,16 @@ target_compile_definitions(winml_lib_common PRIVATE
   PLATFORM_WINDOWS
   _SCL_SECURE_NO_WARNINGS)
 add_dependencies(winml_lib_common winml_sdk_cppwinrt)
+add_dependencies(winml_lib_common winml_api)
+add_dependencies(winml_lib_common winml_api_native)
+add_dependencies(winml_lib_common winml_api_native_internal)
 
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 target_include_directories(winml_lib_common PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
+target_include_directories(winml_lib_common PRIVATE ${winml_lib_common_dir}/inc)
 ###########################
 # Add winml_dll
 ###########################
