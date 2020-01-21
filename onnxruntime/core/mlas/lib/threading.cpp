@@ -46,7 +46,6 @@ MlasExecuteThreaded(
     }
 #endif
 
-
     //
     // Fallback to OpenMP or a serialized implementation.
     //
