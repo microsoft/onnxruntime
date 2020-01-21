@@ -32,7 +32,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   OnnxruntimeValue();
   ~OnnxruntimeValue();
 
-  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, OnnxruntimeEngine* engine, UniqueOrtValue&& value, UniqueOrtAllocator&& allocator);
+  HRESULT RuntimeClassInitialize(OnnxruntimeEngine* engine, UniqueOrtValue&& value, UniqueOrtAllocator&& allocator);
 
   STDMETHOD(IsEmpty)(bool* out) override;
   STDMETHOD(IsCpu)(bool* out) override;
@@ -48,7 +48,6 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   HRESULT AssignOrtValue(OrtValue* ptr);
 
  private:
-  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> engine_;
   Microsoft::WRL::ComPtr<IUnknown> param_;
   UniqueOrtValue value_;
@@ -84,6 +83,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
 
   OrtSession* UseOrtSession();
+  const OrtApi* UseOrtApi();
+  OnnxruntimeEngineFactory* GetEngineFactory();
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

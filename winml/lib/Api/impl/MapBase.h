@@ -131,19 +131,10 @@ struct MapBase : winrt::implements<
     auto engine = session->GetEngine();
 
     if (context.type == WinML::BindingType::kInput) {
-      auto map = FillLotusMapFromAbiMap(data_);
-      RETURN_IF_FAILED(engine->CreateMapValue(winrt::get_abi(data_), TensorKindFrom<TKey>::Type, TensorKindFrom<TValue>::Type, out));
-      RETURN_IF_FAILED(engine->CreateMapValue(map->first.data(), map->second.data(), map->first.size(), out));
-
-      // now create OrtValue wrappers over the buffers
-      auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-      std::vector<int64_t> shape = {static_cast<int64_t>(len)};
-      auto keys_ort_value = Ort::Value::CreateTensor<TLotusKey>(cpu_memory, keys, len, shape.data(), shape.size());
-      auto values_ort_value = Ort::Value::CreateTensor<TLotusValue>(cpu_memory, values, len, shape.data(), shape.size());
-      // make the map
-      return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
+      //auto map_insp = winrt::get_abi(data_);
+      RETURN_IF_FAILED(engine->CreateMapValue(nullptr, TensorKindFrom<TKey>::Type, TensorKindFrom<TValue>::Type, out));
     } else {
-      engine->CreateNullValue(out);
+      RETURN_IF_FAILED(engine->CreateNullValue(out));
     }
     return S_OK;
   }
