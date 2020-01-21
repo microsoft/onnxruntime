@@ -3,6 +3,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/CatImputerFeaturizer.h"
@@ -27,12 +28,8 @@ inline nonstd::optional<std::string> PreprocessOptional(std::string value) {
 }
 
 template <typename T>
-class CatImputerTransformer final : public OpKernel {
- public:
-  explicit CatImputerTransformer(const OpKernelInfo& info) : OpKernel(info) {
-  }
-
-  Status Compute(OpKernelContext* ctx) const override {
+struct CatImputerTransformerImpl {
+  void operator()(OpKernelContext* ctx) const {
     // Create the transformer
     Microsoft::Featurizer::Featurizers::CatImputerTransformer<T> transformer(
         [ctx](void) {
@@ -57,40 +54,32 @@ class CatImputerTransformer final : public OpKernel {
     for (int64_t i = 0; i < length; ++i) {
       output_data[i] = transformer.execute(PreprocessOptional(input_data[i]));
     }
+  }
+};
 
+class CatImputerTransformer final : public OpKernel {
+ public:
+  explicit CatImputerTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* ctx) const override {
+    utils::MLTypeCallDispatcher<CatImputerTransformerImpl, float, double, std::string> t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke(ctx);
     return Status::OK();
   }
 };
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     CatImputerTransformer,
     kMSFeaturizersDomain,
     1,
-    float,
     kCpuExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    CatImputerTransformer<float>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    CatImputerTransformer,
-    kMSFeaturizersDomain,
-    1,
-    double,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
-    CatImputerTransformer<double>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    CatImputerTransformer,
-    kMSFeaturizersDomain,
-    1,
-    string,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>()),
-    CatImputerTransformer<std::string>);
+        .TypeConstraint("T0", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<std::string>()}),
+    CatImputerTransformer);
 
 }  // namespace featurizers
 }  // namespace onnxruntime

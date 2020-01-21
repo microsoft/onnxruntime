@@ -19,5 +19,5 @@ variables:
 jobs: 
 - template: templates/gpu.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-GPU-2019'
     DoEsrp: 'true'

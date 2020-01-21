@@ -24,10 +24,7 @@ public:
         // element counts are the same. All this operator does is copy the resource and
         // rearrange the dimensions, so we tell DML that the output dimensions are the
         // same as the input dimensions.
-        m_outputTensorDescs.front() = TensorDesc(
-            m_outputTensorDescs.front().GetDmlDataType(), 
-            m_inputTensorDescs.front().GetSizes()
-            );
+        m_outputTensorDescs.front() = m_inputTensorDescs.front();
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));

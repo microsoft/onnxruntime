@@ -43,13 +43,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     const MLOperatorKernelDescription* opKernel,
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept {
-  return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, false, false, false);
+  return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
 }
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     const MLOperatorKernelDescription* opKernel,
     IMLOperatorKernelFactory* operatorKernelFactory,
     _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
+    _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
     bool isInternalOperator,
     bool canAliasFirstInput,
     bool supportsGraph,
@@ -72,6 +73,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
       opKernel,
       operatorKernelFactory,
       shapeInferrer,
+      supportQuery,
       isInternalOperator,
       canAliasFirstInput,
       supportsGraph,

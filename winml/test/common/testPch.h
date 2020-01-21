@@ -3,7 +3,9 @@
 //  Copyright (c) Microsoft Corporation. All rights reserved.
 //
 //-----------------------------------------------------------------------------
+#ifndef _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+#endif
 #include "std.h"
 
 #include <wrl/client.h>

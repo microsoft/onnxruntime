@@ -93,9 +93,6 @@ jobs:
         msbuildArch: amd64
         msbuildPlatform: x64
         buildparameter:
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildArch: 'x64'
 
   steps:
     - task: UsePythonVersion@0
@@ -161,49 +158,78 @@ jobs:
         commitId: $(OnnxRuntimeGitCommitHash)
     - template: templates/clean-agent-build-directory-step.yml
 
-- job: Windows_Packaging_GPU_x64
+
+- job: Windows_Packaging_GPU
   workspace:
     clean: all
-  timeoutInMinutes:  120    
-  pool: 'Win-GPU-CUDA10'
+  pool: 'Win-GPU-2019'
+  timeoutInMinutes:  120
   variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildConfig: 'RelWithDebInfo'
-    buildArch: 'x64'
-
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildArch: amd64
+    msbuildPlatform: x64
+    CUDA_VERSION: '10.0'
+    buildparameter: --msvc_toolset 14.16 --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.3.1.20\cuda"
   steps:
+    - task: UsePythonVersion@0
+      inputs: 
+        versionSpec: '3.7' 
+        addToPath: true 
+        architecture: $(buildArch)
+
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy     
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules' 
+    
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
-
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch
-        setVcvars: true
-
-    - task: PowerShell@1
-      displayName: 'Set CUDA path'
+    - task: PythonScript@0
+      displayName: 'Download test data'
       inputs:
-        scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
-        arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory) 
 
-    - task: CmdLine@2
-      displayName: 'Build and Test OnnxRuntime'
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
       inputs:
-        script: |
-          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_cuda --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+ 
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: $(msbuildPlatform)
+        configuration: RelWithDebInfo
+        msbuildArchitecture: $(buildArch)
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
+
+    - task: PythonScript@0
+      displayName: 'test'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
-        buildConfig: $(buildConfig)
+        buildConfig: RelWithDebInfo
         artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
-
-    - task: PowerShell@1
-      displayName: 'Clean up CUDA props files'
-      inputs:
-        scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
-        arguments: '-CudaVersion 10.0'
-
     - template: templates/clean-agent-build-directory-step.yml

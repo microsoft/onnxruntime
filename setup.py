@@ -34,6 +34,10 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
+    
+elif '--use_dnnl' in sys.argv:
+    package_name = 'onnxruntime-dnnl'
+    sys.argv.remove('--use_dnnl')
 
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'
@@ -119,7 +123,7 @@ except ImportError as error:
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
-  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libdnnl.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
+  libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   # Openvino Libs
@@ -183,7 +187,13 @@ version_number = ''
 with open('VERSION_NUMBER') as f:
     version_number = f.readline().strip()
 if nightly_build:
-    date_suffix = str(datetime.datetime.now().date().strftime("%m%d"))
+    #https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
+    date_suffix = environ.get('BUILD_BUILDNUMBER')
+    if date_suffix is None:
+      #The following line is only for local testing
+      date_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
+    else:
+      date_suffix = date_suffix.replace('.','')
     version_number = version_number + ".dev" + date_suffix
 
 cmd_classes = {}
@@ -212,19 +222,20 @@ setup(
         'onnxruntime': data + examples + extra,
     },
     py_modules=python_modules_list,
-    extras_require={
-        'backend': ['onnx>=1.2.3'],
-        'numpy': ['numpy>=1.15.0']
-    },
+    install_requires=[
+        'onnx>=1.2.3',
+        'numpy>=1.18.0'
+    ],
     entry_points= {
         'console_scripts': [
             'onnxruntime_test = onnxruntime.tools.onnxruntime_test:main',
         ]
     },
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3 :: Only',

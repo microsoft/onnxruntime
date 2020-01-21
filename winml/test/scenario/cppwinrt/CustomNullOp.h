@@ -4,14 +4,14 @@
 
 #pragma once
 
-#include <gtest/gtest.h>
+#include "test.h"
 
 template <typename T>
 struct NullShapeInferrer : winrt::implements<NullShapeInferrer<T>, IMLOperatorShapeInferrer>
 {
     STDMETHOD(InferOutputShapes)(IMLOperatorShapeInferenceContext* context) noexcept
     {
-        EXPECT_NO_THROW(OperatorHelper::ShapeInferenceFunction<T>(context));
+        WINML_EXPECT_NO_THROW(OperatorHelper::ShapeInferenceFunction<T>(context));
         return S_OK;
     }
 };
@@ -23,7 +23,7 @@ struct NullOperator : winrt::implements<NullOperator, IMLOperatorKernel>
     STDMETHOD(Compute)(IMLOperatorKernelContext* context)
     {
         winrt::com_ptr<IMLOperatorTensor> outputTensor;
-        EXPECT_HRESULT_SUCCEEDED(context->GetOutputTensor(0, outputTensor.put()));
+        WINML_EXPECT_HRESULT_SUCCEEDED(context->GetOutputTensor(0, outputTensor.put()));
 
         ++(*m_callCount);
         return S_OK;
@@ -92,7 +92,7 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
 
         auto factory = winrt::make<NullOperatorFactory>(callCount);
 
-        EXPECT_HRESULT_SUCCEEDED(registry->RegisterOperatorKernel(
+        WINML_EXPECT_HRESULT_SUCCEEDED(registry->RegisterOperatorKernel(
             &kernelDescription,
             factory.get(),
             shapeInferrer.get()
