@@ -48,8 +48,8 @@ jobs:
     inputs:
       command: 'restore'
       feedsToUse: 'config'
-      restoreSolution: '(Build.SourcesDirectory)\packages.config'
-      nugetConfigPath: '(Build.SourcesDirectory)\NuGet.config'
+      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
+      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
 
   - task: PythonScript@0
