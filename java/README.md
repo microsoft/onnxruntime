@@ -9,7 +9,7 @@ TBD: maven distribution
 
 Java 8 is the minimum supported version.
 
-The `sample` directory contains an example evaluator implementation.
+An example implementation is located in `src/test/java/sample/ScoreMNIST.java`
 
 This project can be built manually using the instructions below.
 
