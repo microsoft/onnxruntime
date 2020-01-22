@@ -43,6 +43,11 @@ Given the fact that CMake injects native dependencies during CMake builds, some 
 When running the build script, CMake will compile the `onnxruntime` target and the JNI glue `onnxruntime4j_jni` target and expose the resulting libraries in a place where Gradle can ingest them.
 Upon successful compilation of those targets, a special Gradle task to build will be executed. The results will be placed in the `java/build` directory mentioned above.
 
+### Advanced Loading
+
+The default behavior is to load the shared libraries using classpath resources.
+If your use case requires custom loading of the shared libraries, please consult the javadoc in the `OnnxRuntime` class.
+
 ## Development
 
 ### Code Formatting
