@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "core/optimizer/gist_encode_decode.h"
-#include "test/providers/gradient_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "models/runner/training_runner.h"
 

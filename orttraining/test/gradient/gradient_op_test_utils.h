@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "provider_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 #include "gradient_checker.h"
 
 namespace onnxruntime {

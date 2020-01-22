@@ -29,7 +29,7 @@ function(AddTest)
 
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
 
-  source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
+  source_group(TREE ${REPO_ROOT} FILES ${_UT_SOURCES})
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
   if (_UT_DEPENDS)
@@ -109,7 +109,11 @@ set(onnxruntime_test_framework_src_patterns
   )
 
 file(GLOB onnxruntime_test_training_src
-  "${TEST_SRC_DIR}/training_test/*.cc"
+  "${ORTTRAINING_ROOT}/test/model/*.cc"
+  "${ORTTRAINING_ROOT}/test/gradient/*.cc"
+  "${ORTTRAINING_ROOT}/test/graph/*.cc"
+  "${ORTTRAINING_ROOT}/test/optimizer/*.cc"
+  "${ORTTRAINING_ROOT}/test/framework/*.cc"
   )
 
 if(WIN32)
@@ -154,6 +158,22 @@ if (onnxruntime_USE_CUDA)
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
+    "${ORTTRAINING_ROOT}/test/training_ops/compare_provider_test_utils.cc"
+    "${ORTTRAINING_ROOT}/test/training_ops/function_op_test_utils.cc"
+    "${ORTTRAINING_ROOT}/test/training_ops/cpu/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+
+  if (onnxruntime_USE_CUDA)
+    file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_ROOT}/test/training_ops/cuda/*"
+      )
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_NGRAPH)
@@ -502,7 +522,7 @@ add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")  
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")
 else()
   if(HAS_UNUSED_PARAMETER)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
@@ -510,7 +530,7 @@ else()
   if(HAS_UNUSED_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
   endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)    
+  if(HAS_UNUSED_BUT_SET_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()

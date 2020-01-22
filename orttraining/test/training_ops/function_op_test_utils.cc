@@ -5,7 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "core/session/inference_session.h"
 #include "core/graph/graph.h"
-#include "function_op_utils.h"
+#include "test/training_ops/function_op_test_utils.h"
 #include "core/graph/training/graph_augmenter.h"
 
 namespace onnxruntime {

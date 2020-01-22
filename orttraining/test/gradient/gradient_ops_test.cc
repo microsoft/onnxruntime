@@ -9,8 +9,8 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/gradient_checker.h"
-#include "test/providers/gradient_op_test_utils.h"
+#include "test/gradient/gradient_checker.h"
+#include "test/gradient/gradient_op_test_utils.h"
 #include "test/random_seed.h"
 
 #include "onnx/defs/attr_proto_util.h"

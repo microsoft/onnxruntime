@@ -3,7 +3,7 @@
 
 #include "Eigen/Core"
 
-#include "test/providers/compare_provider_test_utils.h"
+#include "test/training_ops/compare_provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

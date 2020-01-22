@@ -3,7 +3,7 @@
 
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
-#include "test/providers/compare_provider_test_utils.h"
+#include "test/training_ops/compare_provider_test_utils.h"
 
 #include "test/compare_ortvalue.h"
 
