@@ -9,6 +9,7 @@ class MLOperatorKernelCreationContext;
 
 // Forward declares an external creation function.
 #define DML_OP_EXTERN_CREATION_FUNCTION(operatorName) extern void Create##operatorName(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
+#define DML_OP_EXTERN_QUERY_FUNCTION(operatorName) extern void Query##operatorName(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported);
 
 // Declares a callback creation function of the given operator class.
 // This does not register it, just declares it for usage by registration later.

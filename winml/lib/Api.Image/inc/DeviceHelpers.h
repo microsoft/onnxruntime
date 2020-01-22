@@ -14,24 +14,7 @@
 #include <dxcore.h>
 #endif
 
-//
-// Exception information
-//
-#ifndef FACILITY_VISUALCPP
-#define FACILITY_VISUALCPP ((LONG)0x6d)
-#endif
-
-#define VcppException(sev, err) ((sev) | (FACILITY_VISUALCPP << 16) | err)
-
 namespace DeviceHelpers {
-struct AdapterEnumerationSupport {
-  bool has_dxgi;
-  bool has_dxcore;
-};
-
-HRESULT GetAdapterEnumerationSupport(AdapterEnumerationSupport* support);
-bool IsFloat16Supported(ID3D12Device* device);
-bool IsFloat16Supported(const winrt::Windows::AI::MachineLearning::LearningModelDevice& device);
 HRESULT CreateD3D11On12Device(ID3D12Device* device12, ID3D11Device** device11);
 #ifdef ENABLE_DXCORE
 HRESULT GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXCoreAdapter** ppAdapter);

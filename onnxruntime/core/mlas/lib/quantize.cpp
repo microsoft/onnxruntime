@@ -176,7 +176,7 @@ MlasQuantizeLinearKernel(
             MinimumValueVector, MaximumValueVector, ZeroPointVector);
 
 #if defined(MLAS_NEON64_INTRINSICS)
-        vst1q_lane_u8((uint8_t*)Output + n, vreinterpretq_s32_u8(IntegerVector), 0);
+        vst1q_lane_u8((uint8_t*)Output + n, vreinterpretq_u8_s32(IntegerVector), 0);
 #else
         *((uint8_t*)Output + n) = (uint8_t)_mm_cvtsi128_si32(IntegerVector);
 #endif

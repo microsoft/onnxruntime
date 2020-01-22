@@ -128,7 +128,7 @@ Routine Description:
 
 Arguments:
 
-    WorkBlock - Supplies the structure that contains the commong convolution
+    WorkBlock - Supplies the structure that contains the common convolution
         and pooling parameters.
 
     Dimensions - Supplies the number of dimensions.
@@ -344,28 +344,6 @@ struct MLAS_NCHWC_NN_ALGORITHM
         OutputCountRightPadX(WorkBlock->OutputCountRightPad[WidthShapeIndex])
     {
     }
-
-    static
-    void
-    PartitionWork(
-        int32_t Index,
-        const MLAS_NCHWC_WORK_BLOCK* WorkBlock,
-        size_t TotalWork,
-        size_t* WorkIndex,
-        size_t* WorkRemaining
-        )
-    {
-        const size_t WorkPerThread = TotalWork / WorkBlock->tids;
-        const size_t WorkPerThreadExtra = TotalWork % WorkBlock->tids;
-
-        if (uint32_t(Index) < WorkPerThreadExtra) {
-            *WorkIndex = (WorkPerThread + 1) * Index;
-            *WorkRemaining = WorkPerThread + 1;
-        } else {
-            *WorkIndex = WorkPerThread * Index + WorkPerThreadExtra;
-            *WorkRemaining = WorkPerThread;
-        }
-    }
 };
 
 constexpr size_t MLAS_NCHWC_NN_ALGORITHM::HeightShapeIndex;
@@ -573,7 +551,7 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
         size_t WorkIndex;
 
-        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         //
         // Extract the current batch, group, filter cluster, and output line
@@ -1004,7 +982,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         size_t WorkIndex;
         size_t WorkRemaining;
 
-        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         //
         // Extract the current batch, group block, and output line from the
@@ -1138,7 +1116,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         size_t WorkIndex;
         size_t WorkRemaining;
 
-        PartitionWork(Index, WorkBlock, TotalWork, &WorkIndex, &WorkRemaining);
+        MlasPartitionWork(Index, WorkBlock->tids, TotalWork, &WorkIndex, &WorkRemaining);
 
         size_t ph = WorkIndex % OutputHeight;
         const size_t BatchChannel = WorkIndex / OutputHeight;

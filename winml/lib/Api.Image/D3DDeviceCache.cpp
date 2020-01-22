@@ -6,6 +6,7 @@
 #include <directxmath.h>
 #include <d3d11on12.h>
 #include "inc/DeviceHelpers.h"
+#include "CommonDeviceHelpers.h"
 
 namespace float32 {
 #include "shaders\SurfaceToTensor-SurfaceToTensorBGR8.h"
@@ -50,8 +51,8 @@ D3DDeviceCache::D3DDeviceCache(Windows::AI::MachineLearning::LearningModelDevice
   DXGI_GPU_PREFERENCE preference;
   WINML_THROW_IF_FAILED(DeviceHelpers::GetGPUPreference(deviceKind, &preference));
 
-  DeviceHelpers::AdapterEnumerationSupport support;
-  WINML_THROW_IF_FAILED(DeviceHelpers::GetAdapterEnumerationSupport(&support));
+  CommonDeviceHelpers::AdapterEnumerationSupport support;
+  WINML_THROW_IF_FAILED(CommonDeviceHelpers::GetAdapterEnumerationSupport(&support));
 
   const char errStr[] = "No hardware adapters available";
   if (support.has_dxgi) {
@@ -130,7 +131,7 @@ D3DDeviceCache::~D3DDeviceCache() {
 
 bool D3DDeviceCache::IsFloat16Supported() {
   if (device_ != nullptr) {
-    return DeviceHelpers::IsFloat16Supported(device_.get());
+    return CommonDeviceHelpers::IsFloat16Supported(device_.get());
   }
 
   return true;
