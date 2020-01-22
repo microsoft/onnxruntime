@@ -16,12 +16,6 @@ jobs:
 
   steps:
   - template: set-test-data-variables-step.yml
-  - template: ../../templates/windows-build-tools-setup-steps.yml
-    parameters:
-      EnvSetupScript: 'setup_env.bat'
-      buildArch: 'x64'
-      setVcvars: true
-      DoDataDownload: false
   - template: win-download-test-data.yml
 
   - task: BatchScript@1

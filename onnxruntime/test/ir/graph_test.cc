@@ -207,7 +207,7 @@ TEST(GraphTraversalTest, ReverseDFS) {
       },
       NodeCompareName());
 
-  EXPECT_EQ(enter_leave_sequence.size(), 8);
+  EXPECT_EQ(enter_leave_sequence.size(), 8u);
   EXPECT_EQ("enter:node_4", enter_leave_sequence.at(0));
   EXPECT_EQ("enter:node_3", enter_leave_sequence.at(1));
   EXPECT_EQ("enter:node_2", enter_leave_sequence.at(2));
@@ -269,7 +269,7 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
   graph.AddNode("node_1", "OpNotExist", "node 1", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ(0, status.ErrorMessage().find_first_of("This is an invalid model. No Schema registered for OpNotExist"));
+  EXPECT_EQ(0u, status.ErrorMessage().find_first_of("This is an invalid model. No Schema registered for OpNotExist"));
 }
 
 TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
@@ -715,18 +715,18 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   std::unordered_set<std::string> expected_graph_inputs = {"node_1_in_1", "node_3_in_1"};
-  EXPECT_EQ(2, graph.GetInputs().size());
+  EXPECT_EQ(2u, graph.GetInputs().size());
   for (auto& graph_input : graph.GetInputs()) {
     EXPECT_TRUE(expected_graph_inputs.find(graph_input->Name()) != expected_graph_inputs.end());
   }
-  EXPECT_EQ(1, graph.GetOutputs().size());
+  EXPECT_EQ(1u, graph.GetOutputs().size());
   EXPECT_EQ("node_4_out_1", graph.GetOutputs()[0]->Name());
-  EXPECT_EQ(2, graph.GetInputs().size());
+  EXPECT_EQ(2u, graph.GetInputs().size());
 
   EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
   std::shared_ptr<Model> loaded_model;
   EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
-  EXPECT_EQ(2, loaded_model->MainGraph().GetInputs().size());
+  EXPECT_EQ(2u, loaded_model->MainGraph().GetInputs().size());
 
   auto& graph_proto = graph.ToGraphProto();
   EXPECT_EQ(2, graph_proto.input_size());
@@ -1033,7 +1033,7 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
   graph.RemoveInitializedTensor(init.name());
   graph.AddInitializedTensor(init);
 
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 2);
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 2u);
 
   // check the values coming from name_to_initial_tensor_ are good;
   const TensorProto* i = nullptr;
@@ -1065,8 +1065,8 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
 
   // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused. 
   ASSERT_STATUS_OK(graph.Resolve());
-  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0);
-  
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0u);
+
   ONNX_NAMESPACE::GraphProto graph_proto_from_resolved_graph = graph.ToGraphProto();
   auto num_initializers = graph_proto_from_resolved_graph.initializer_size();
   ASSERT_EQ(num_initializers, 0) << "Expected unused initializers to be removed from proto. "

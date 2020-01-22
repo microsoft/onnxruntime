@@ -372,7 +372,7 @@ struct BroadcastIterator {
   std::vector<int64_t> counters_;
   std::vector<ptrdiff_t> deltas_;
   std::vector<int64_t> counts_;
-  size_t count_{1};  // Running total count of entries in tensor, used while building up the entries
+  ptrdiff_t count_{1};  // Running total count of entries in tensor, used while building up the entries
 
  private:
   size_t index_{};

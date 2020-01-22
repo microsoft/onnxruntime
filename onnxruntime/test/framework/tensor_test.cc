@@ -191,7 +191,7 @@ TEST(TensorTest, Int64PtrConstructor) {
   int64_t dimensions[] = {2, 3, 4};
   TensorShape shape(dimensions, 2);  // just use first 2
   EXPECT_EQ(shape.Size(), 6);
-  EXPECT_EQ(shape.NumDimensions(), 2);
+  EXPECT_EQ(shape.NumDimensions(), 2u);
   EXPECT_THAT(shape.GetDims(), testing::ElementsAre(2, 3));
 }
 

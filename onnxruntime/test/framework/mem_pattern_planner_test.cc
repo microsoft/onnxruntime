@@ -15,11 +15,11 @@ TEST(MemPatternPlannerTest, TraceAllocaitonTest) {
 
   auto pattern = planner.GenerateMemPattern();
 
-  EXPECT_EQ(pattern.PeakSize(), 1024 + 256 + 512 + 1024);
-  EXPECT_EQ(pattern.GetBlock(0)->offset_, 0);
-  EXPECT_EQ(pattern.GetBlock(1)->offset_, 1024);
-  EXPECT_EQ(pattern.GetBlock(2)->offset_, 1024 + 256);
-  EXPECT_EQ(pattern.GetBlock(3)->offset_, 1024 + 256 + 512);
+  EXPECT_EQ(pattern.PeakSize(), 1024u + 256u + 512u + 1024u);
+  EXPECT_EQ(pattern.GetBlock(0)->offset_, 0u);
+  EXPECT_EQ(pattern.GetBlock(1)->offset_, 1024u);
+  EXPECT_EQ(pattern.GetBlock(2)->offset_, 1024 + 256u);
+  EXPECT_EQ(pattern.GetBlock(3)->offset_, 1024u + 256u + 512u);
 
   planner.TraceFree(1);
   planner.TraceAllocation(4, 512);
@@ -29,10 +29,10 @@ TEST(MemPatternPlannerTest, TraceAllocaitonTest) {
 
   pattern = planner.GenerateMemPattern();
 
-  EXPECT_EQ(pattern.PeakSize(), 1024 + 256 + 512 + 1024 + 512);
-  EXPECT_EQ(pattern.GetBlock(4)->offset_, 1024 + 256 + 512 + 1024);
-  EXPECT_EQ(pattern.GetBlock(5)->offset_, 1024 + 256 + 512);
-  EXPECT_EQ(pattern.GetBlock(6)->offset_, 1024);
+  EXPECT_EQ(pattern.PeakSize(), 1024u + 256u + 512u + 1024u + 512u);
+  EXPECT_EQ(pattern.GetBlock(4)->offset_, 1024u + 256u + 512u + 1024u);
+  EXPECT_EQ(pattern.GetBlock(5)->offset_, 1024u + 256u + 512u);
+  EXPECT_EQ(pattern.GetBlock(6)->offset_, 1024u);
 }
 }  // namespace test
 }  // namespace onnxruntime

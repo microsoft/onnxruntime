@@ -41,7 +41,7 @@ jobs:
     sln_platform: 'Win32'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
-    DoCompliance: 'false'
+    DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage
