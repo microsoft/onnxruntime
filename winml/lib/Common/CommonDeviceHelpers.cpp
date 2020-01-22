@@ -3,7 +3,7 @@
 
 // #include "dx.h"
 // #include <D3dx12.h>
-
+#include "inc/pch.h"
 #if USE_DML
 #include <DirectML.h>
 #endif USE_DML
