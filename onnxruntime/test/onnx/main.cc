@@ -360,7 +360,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                                                 "test_resnet101v2", "test_vgg19", "tf_inception_resnet_v2", "tf_inception_v1", "tf_inception_v3", "tf_inception_v4", "tf_mobilenet_v1_1.0_224",
                                                 "tf_mobilenet_v2_1.0_224", "tf_mobilenet_v2_1.4_224", "tf_nasnet_large", "tf_pnasnet_large", "tf_resnet_v1_50", "tf_resnet_v1_101", "tf_resnet_v1_101",
                                                 "tf_resnet_v2_101", "tf_resnet_v2_152"};
-	
+
     std::unordered_set<std::string> all_disabled_tests;
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
@@ -376,7 +376,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #if defined(__amd64__) || defined(_M_AMD64)
 #else
     //out of memory
-    static const char* x86_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn", "vgg19"};
+    static const char* x86_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn", "vgg19", "zfnet512"};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
