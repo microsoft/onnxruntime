@@ -314,7 +314,8 @@ GetTensorType(
     throw;  //TODO fix throw here!;
   }
 
-  auto has_image_denotation = strncmp(denotation, "IMAGE", len) != 0;
+  constexpr char c_image[] = "IMAGE";
+  auto has_image_denotation = strncmp(denotation, c_image, _countof(c_image)) == 0;
   if (!has_image_denotation) {
     return TensorType::Tensor_Data;
   }

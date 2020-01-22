@@ -1135,7 +1135,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ const char* model_path, 
 STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) {
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModelFromData(data, size, &ort_model)) {
-    return E_FAIL;
+    return E_INVALIDARG;
   }
 
   auto model = UniqueOrtModel(ort_model, winml_adapter_api_->ReleaseModel);
