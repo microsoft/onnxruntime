@@ -3,11 +3,10 @@
 
 // #include "dx.h"
 // #include <D3dx12.h>
-
+#include "inc/pch.h"
 #if USE_DML
 #include <DirectML.h>
 #endif USE_DML
-#include "winrt_headers.h"
 #include "inc/CommonDeviceHelpers.h"
 #include <d3d11on12.h>
 #include <wil/winrt.h>
