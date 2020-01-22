@@ -611,7 +611,7 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   onnxruntime::RunOptions run_options;
   st = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(st.IsOK()) << st;
-  ASSERT_EQ(2, fetches.size());
+  ASSERT_EQ(2u, fetches.size());
 
   // prepare expected outputs
   float expected_value_b = 6.f;

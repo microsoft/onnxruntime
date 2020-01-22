@@ -19,7 +19,20 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#else
+#pragma warning(push)
+#pragma warning(disable : 4267)
+#pragma warning(disable : 4127)
+#endif
 #include "Eigen/src/Core/arch/Default/Half.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#else
+#pragma warning(pop)
+#endif
 using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {

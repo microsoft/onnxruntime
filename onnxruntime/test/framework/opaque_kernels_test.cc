@@ -390,10 +390,10 @@ TEST_F(OpaqueTypeTests, RunModel) {
   std::vector<OrtValue> fetches;
 
   EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   // Should get the original shape back in the form of a tensor
-  EXPECT_EQ(1, rtensor.Shape().NumDimensions());
+  EXPECT_EQ(1u, rtensor.Shape().NumDimensions());
   EXPECT_EQ(5, *rtensor.template Data<int64_t>());
 }
 
