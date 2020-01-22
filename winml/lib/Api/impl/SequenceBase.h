@@ -150,6 +150,9 @@ struct SequenceBase : public winrt::implements<
   STDMETHOD(UpdateSourceResourceData)(
       BindingContext& context,
       IValue* out) {
+    auto writable_vector = data_.as<wfc::IVector<T>>();
+    writable_vector.Clear();
+
     auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto engine = session->GetEngine();
     RETURN_IF_FAILED(engine->FillSequenceOfMapsValue(reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)), SequenceAbiTypeInfo<T>::Key, SequenceAbiTypeInfo<T>::Value, out));

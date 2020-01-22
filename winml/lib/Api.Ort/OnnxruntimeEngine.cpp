@@ -114,6 +114,18 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   return S_OK;
 }
 
+static int64_t ShapeSize(const int64_t* shape, size_t count) {
+  // for each dim
+  int64_t size = 1;
+  for (int i = 0; i < count; i++) {
+    // find out it's total size
+    size *= shape[i];
+    // make sure there are no invalid dimensions (-1 or any invalid shape)
+    THROW_HR_IF(E_INVALIDARG, shape[i] <= 0);
+  }
+  return size;
+}
+
 static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
                        OrtTensorTypeAndShapeInfo* type_and_shape_info) {
   std::vector<std::string> out;
@@ -124,12 +136,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
   std::vector<int64_t> shape(size);
   ort_api->GetDimensions(type_and_shape_info, &shape[0], size);
 
-  // there needs to be only one dimension
-  if (shape.size() != 1) {
-    throw;
-  }
-
-  auto length = shape[0];
+  auto length = ShapeSize(shape.data(), shape.size());
 
   // make a big buffer to hold all the string data
   size_t buffer_length;
@@ -534,18 +541,6 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   return S_OK;
 }
 
-static int64_t ShapeSize(const int64_t* shape, size_t count) {
-  // for each dim
-  int64_t size = 1;
-  for (int i = 0; i < count; i++) {
-    // find out it's total size
-    size *= shape[i];
-    // make sure there are no invalid dimensions (-1 or any invalid shape)
-    THROW_HR_IF(E_INVALIDARG, shape[i] <= 0);
-  }
-  return size;
-}
-
 HRESULT OnnxruntimeEngine::CreateStringTensorValueFromDataWithCopy(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   RETURN_IF_FAILED(CreateTensorValue(shape, count, winml::TensorKind::String, out));
@@ -641,13 +636,9 @@ auto CastToWinrtSequenceOfMaps(IInspectable* sequence_insp) {
   using cppwinrt_key_type = typename AbiTypeInfo<TAbiKey>::CppWinRTType;
   using cppwinrt_value_type = typename AbiTypeInfo<TAbiValue>::CppWinRTType;
 
-  using AbiMapStringToFloat = wfc::IMap<winrt::hstring, float>;
-  using AbiMapInt64BitToFloat = wfc::IMap<int64_t, float>;
-
   using cppwinrt_element_map_type = ::winrt::Windows::Foundation::Collections::IMap<cppwinrt_key_type, cppwinrt_value_type>;
-  using cppwinrt_sequence_type = ::winrt::Windows::Foundation::Collections::IIterable<cppwinrt_element_map_type>;
+  using cppwinrt_sequence_type = ::winrt::Windows::Foundation::Collections::IVector<cppwinrt_element_map_type>;
   cppwinrt_sequence_type sequence;
-
   ::winrt::Windows::Foundation::IInspectable sequence_inspectable;
   winrt::copy_from_abi(sequence_inspectable, sequence_insp);
   sequence_inspectable.as(sequence);
@@ -862,113 +853,29 @@ HRESULT OnnxruntimeEngine::CreateMapValue(IInspectable* map, winml::TensorKind k
 //  return out;
 //}
 
-/*auto writable_vector = data_.as<wfc::IVector<T>>();
-    writable_vector.Clear();
-
-    Ort::AllocatorWithDefaultOptions allocator;
-    size_t len;
-    Ort::ThrowOnError(Ort::GetApi().GetValueCount(ort_value, &len));
-    for (auto i = 0; i < len; ++i) {
-      OrtValue* out = nullptr;
-      Ort::ThrowOnError(Ort::GetApi().GetValue(ort_value, i, allocator, &out));
-      Ort::Value map{out};
-      auto keys = map.GetValue(0, allocator);
-      auto values = map.GetValue(1, allocator);
-
-      auto keys_vector = ConvertToABIType<typename ValidLotusType<T>::ABIKey>(keys);
-      auto values_vector = ConvertToABIType<typename ValidLotusType<T>::ABIValue>(values);
-
-      std::map<typename ValidLotusType<T>::ABIKey, typename ValidLotusType<T>::ABIValue> std_map;
-      for (auto j = 0; j < keys_vector.size(); ++j) {
-        std_map[keys_vector[j]] = values_vector[j];
-      }
-      auto abi_map = winrt::single_threaded_map<typename ValidLotusType<T>::ABIKey, typename ValidLotusType<T>::ABIValue>(
-        std::move(std_map));
-    
-      writable_vector.Append(abi_map);
-    }*/
-
-/*
-  template <>
-  static
-      typename ValidLotusType<AbiMapStringToFloat>::Type
-      ConvertToValidLotusType(
-          AbiMapStringToFloat raw) {
-    std::vector<ValidLotusType<AbiMapStringToFloat>::TKey> keys;
-    std::vector<ValidLotusType<AbiMapStringToFloat>::TValue> values;
-    for (auto pair : raw) {
-      auto key = WinML::Strings::UTF8FromHString(pair.Key());
-      keys.push_back(key);
-      values.push_back(pair.Value());
-    }
-    return std::make_pair(keys, values);
-  }
-
-  template <>
-  static
-      typename ValidLotusType<AbiMapInt64BitToFloat>::Type
-      ConvertToValidLotusType(
-          AbiMapInt64BitToFloat raw) {
-    std::vector<ValidLotusType<AbiMapInt64BitToFloat>::TKey> keys;
-    std::vector<ValidLotusType<AbiMapInt64BitToFloat>::TValue> values;
-    for (const auto& pair : raw) {
-      keys.push_back(pair.Key());
-      values.push_back(pair.Value());
-    }
-    return std::make_pair(keys, values);
-  }*/
-/*  ;
-
-  void
-  ConvertToLotusSequence(
-      const ABISequence& sequence) {
-    LotusSequence lotus_sequence;
-
-    std::transform(
-        begin(sequence),
-        end(sequence),
-        std::back_inserter(lotus_sequence),
-        [](const auto& value) {
-          return ConvertToValidLotusType(value);
-        });
-
-    lotus_data_ = std::make_unique<LotusSequence>(lotus_sequence);
-  }
-*/
-
 template <typename TAbiKey, typename TAbiValue>
 HRESULT CreateSequenceOfMapsValue(OnnxruntimeEngine* engine, IInspectable* sequence_insp, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) {
-  //auto ort_api = engine->UseOrtApi();
+  auto ort_api = engine->UseOrtApi();
   auto sequence = CastToWinrtSequenceOfMaps<TAbiKey, TAbiValue>(sequence_insp);
-  UNREFERENCED_PARAMETER(sequence);
 
   std::vector<winrt::com_ptr<WinML::IValue>> element_values;
   for (auto element : sequence) {
     winrt::com_ptr<WinML::IValue> element_value;
-    engine->CreateMapValue(element, key_kind, value_kind, element_value.put());
+    engine->CreateMapValue(reinterpret_cast<IInspectable*>(winrt::get_abi(element)), key_kind, value_kind, element_value.put());
     element_values.push_back(element_value);
   }
 
-  /*
-  winrt::com_ptr<WinML::IValue> key_value;
-  RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), key_kind, key_value.put()));
-  auto keys_ort_value = static_cast<OnnxruntimeValue*>(key_value.get())->UseOrtValue();
+  std::vector<OrtValue*> element_ort_values;
+  std::transform(element_values.begin(),
+                 element_values.end(),
+                 std::back_inserter(element_ort_values),
+                 [](auto value) { return static_cast<OnnxruntimeValue*>(value.get())->UseOrtValue(); });
 
-  winrt::com_ptr<WinML::IValue> value_value;
-  RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), value_kind, value_value.put()));
-  auto values_ort_value = static_cast<OnnxruntimeValue*>(value_value.get())->UseOrtValue();
+  OrtValue* sequence_value;
+  ort_api->CreateValue(element_ort_values.data(), element_ort_values.size(), ONNXType::ONNX_TYPE_SEQUENCE, &sequence_value);
+  auto unique_sequence_ort_value = UniqueOrtValue(sequence_value, ort_api->ReleaseValue);
 
-  auto hr = FillMapTensors<TAbiKey, TAbiValue>::Run(ort_api, map_insp, keys_ort_value, values_ort_value);
-  RETURN_IF_FAILED(hr);
-
-  OrtValue* inputs[2] = {keys_ort_value, values_ort_value};
-
-  OrtValue* map_value;
-  ort_api->CreateValue(inputs, 2, ONNXType::ONNX_TYPE_MAP, &map_value);
-  auto unique_map_ort_value = UniqueOrtValue(map_value, ort_api->ReleaseValue);
-
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine, std::move(unique_map_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
- */
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine, std::move(unique_sequence_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
   return S_OK;
 }
 
@@ -988,12 +895,70 @@ HRESULT OnnxruntimeEngine::CreateSequenceOfMapsValue(IInspectable* sequence, win
   return S_OK;
 }
 
+template <typename TAbiKey, typename TAbiValue>
+static HRESULT FillAbiSequence(IInspectable* sequence_insp, std::vector<::winrt::Windows::Foundation::IInspectable>& elements) {
+  using cppwinrt_key_type = typename AbiTypeInfo<TAbiKey>::CppWinRTType;
+  using cppwinrt_value_type = typename AbiTypeInfo<TAbiValue>::CppWinRTType;
+  auto sequence = CastToWinrtSequenceOfMaps<TAbiKey, TAbiValue>(sequence_insp);
+  for (auto element : elements) {
+    ::winrt::Windows::Foundation::Collections::IMap<cppwinrt_key_type, cppwinrt_value_type> map_element;
+    element.as(map_element);
+    sequence.Append(map_element);
+  }
+  return S_OK;
+}
+
+static auto GetAbiSequenceFiller(winml::TensorKind key_kind, winml::TensorKind value_kind) {
+  using namespace std::placeholders;
+  if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Float) {
+    return &FillAbiSequence<winrt::hstring, float>;
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Float) {
+    return &FillAbiSequence<int64_t, float>;
+  }
+  THROW_HR(E_NOTIMPL);
+}
+
+static winrt::Windows::Foundation::IInspectable CreateMap(winml::TensorKind key_kind, winml::TensorKind value_kind) {
+  winrt::Windows::Foundation::IInspectable map_insp;
+  if (key_kind == winml::TensorKind::String && value_kind == winml::TensorKind::Float) {
+    auto map = winrt::single_threaded_map<winrt::hstring, float>();
+    map.as(map_insp);
+  } else if (key_kind == winml::TensorKind::Int64 && value_kind == winml::TensorKind::Float) {
+    auto map = winrt::single_threaded_map<int64_t, float>();
+    map.as(map_insp);
+  }
+
+  return map_insp;
+}
+
 HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* sequence_value) {
-  UNREFERENCED_PARAMETER(sequence);
-  UNREFERENCED_PARAMETER(key_kind);
-  UNREFERENCED_PARAMETER(value_kind);
-  UNREFERENCED_PARAMETER(sequence_value);
-  return E_NOTIMPL;
+  auto ort_api = engine_factory_->UseOrtApi();
+  auto onnxruntime_squence_value = static_cast<OnnxruntimeValue*>(sequence_value);
+  auto ort_sequence_value = onnxruntime_squence_value->UseOrtValue();
+
+  OrtAllocator* ort_allocator;
+  ort_api->GetAllocatorWithDefaultOptions(&ort_allocator);  // This should not be freed as this owned by ort
+
+  size_t num_elements;
+  ort_api->GetValueCount(ort_sequence_value, &num_elements);
+
+  // get the elements
+  std::vector<::winrt::Windows::Foundation::IInspectable> element_map_inspectables;
+  for (int index = 0; index < num_elements; index++) {
+    OrtValue* elements_ort_value = nullptr;
+    ort_api->GetValue(ort_sequence_value, index, ort_allocator, &elements_ort_value);
+    auto unique_element_value = UniqueOrtValue(elements_ort_value, ort_api->ReleaseValue);
+
+    winrt::com_ptr<IValue> element_value;
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(element_value.put(), this, std::move(unique_element_value), UniqueOrtAllocator(nullptr, nullptr)));
+
+    ::winrt::Windows::Foundation::IInspectable map_inspectable = CreateMap(key_kind, value_kind);
+    RETURN_IF_FAILED(FillFromMapValue(reinterpret_cast<IInspectable*>(winrt::get_abi(map_inspectable)), key_kind, value_kind, element_value.get()));
+    element_map_inspectables.push_back(map_inspectable);
+  }
+
+  GetAbiSequenceFiller(key_kind, value_kind)(sequence, element_map_inspectables);
+  return S_OK;
 }
 
 HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue* src, IValue** out) {
@@ -1128,7 +1093,7 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
 
   // get the keys
   OrtValue* values_ort_value = nullptr;
-  ort_api->GetValue(ort_map_value, 0, ort_allocator, &values_ort_value);
+  ort_api->GetValue(ort_map_value, 1, ort_allocator, &values_ort_value);
   auto unique_values_value = UniqueOrtValue(values_ort_value, ort_api->ReleaseValue);
   winrt::com_ptr<IValue> values_value;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(values_value.put(), this, std::move(unique_values_value), UniqueOrtAllocator(nullptr, nullptr)));
@@ -1136,11 +1101,8 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
   std::vector<int64_t> keys_shape;
   keys_value->GetTensorShape(keys_shape);
 
-  std::vector<int64_t> values_shape;
-  values_value->GetTensorShape(values_shape);
-
   auto keys_data = keys_value->GetResource();
-  auto values_data = keys_value->GetResource();
+  auto values_data = values_value->GetResource();
 
   auto num_elements = ShapeSize(keys_shape.data(), keys_shape.size());
   GetAbiMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());

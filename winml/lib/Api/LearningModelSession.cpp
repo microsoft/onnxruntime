@@ -100,8 +100,10 @@ void LearningModelSession::Initialize() {
   auto device_impl = device_.as<winmlp::LearningModelDevice>();
   auto model_impl = model_.as<winmlp::LearningModel>();
 
+  engine_factory_.copy_from(model_impl->GetEngineFactory());
+
   com_ptr<WinML::IEngineBuilder> engine_builder;
-  model_impl->GetEngineFactory()->CreateEngineBuilder(engine_builder.put());
+  engine_factory_->CreateEngineBuilder(engine_builder.put());
 
   if (device_impl->IsCpuDevice() == false) {
     engine_builder->SetD3D12Device(device_impl->GetD3DDevice());
