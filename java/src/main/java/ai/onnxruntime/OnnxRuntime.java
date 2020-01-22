@@ -11,26 +11,17 @@ import java.io.InputStream;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
-   * Static loader for the JNI binding. No public API, but called from various classes in this package to ensure shared libraries are properly loaded.
-   * There are two shared libraries required: <code>onnxruntime</code> and <code>onnxruntime4j_jni</code>. This is the loading logic in order:
-   * <ol>
-   * <li>The user may signal to skip loading of a shared library using a property in the form <code>onnxruntime.native.LIB_NAME.skip</code> with a value of <code>true</code>. This means the user has decided to load the library by some other means.
-   * <li>The user may specify an explicit location of the shared library file using a property in the form <code>onnxruntime.native.LIB_NAME.path</code>. This uses {@link java.lang.System#load}.
-   * <li>The shared library is autodiscovered:<ol>
-   * <li>If the shared library is present in the classpath resources, load using {@link java.lang.System#load} via a temporary file.
-   * Ideally, this should be the default use case when adding JAR's/dependencies containing the shared libraries to your classpath.
-   * <li>If the shared library is not present in the classpath resources, then load using {@link java.lang.System#loadLibrary}, which usually looks elsewhere on the filesystem for the library.
-   * The semantics and behavior of that method are system/JVM dependent.
-   * Typically, the <code>java.library.path</code> property is used to specify the location of native libraries.
-   * </ol></ol>
-   * For troubleshooting, all loading events are reported to Java logging at the level FINE.
-*/
-public final class OnnxRuntime {
+/** Static loader for the JNI binding. No public API, but called from various classes in this package to ensure shared libraries are properly loaded. */
+final class OnnxRuntime {
   private static final Logger logger = Logger.getLogger(OnnxRuntime.class.getName());
 
   // The initial release of the ORT API.
   private static final int ORT_API_VERSION_1 = 1;
+
+  /** The short name of the ONNX runtime shared library */
+  static final String ONNXRUNTIME_LIBRARY_NAME = "onnxruntime";
+  /** The short name of the ONNX runtime JNI shared library */
+  static final String ONNXRUNTIME_JNI_LIBRARY_NAME = "onnxruntime4j_jni";
 
   private static boolean loaded = false;
 
@@ -48,8 +39,8 @@ public final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    load("onnxruntime");
-    load("onnxruntime4j_jni");
+    load(ONNXRUNTIME_LIBRARY_NAME);
+    load(ONNXRUNTIME_JNI_LIBRARY_NAME);
     ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
     loaded = true;
   }

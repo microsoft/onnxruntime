@@ -46,7 +46,7 @@ Upon successful compilation of those targets, a special Gradle task to build wil
 ### Advanced Loading
 
 The default behavior is to load the shared libraries using classpath resources.
-If your use case requires custom loading of the shared libraries, please consult the javadoc in the `OnnxRuntime` class.
+If your use case requires custom loading of the shared libraries, please consult the javadoc in the `package-info.java` or `OnnxRuntime.java` files.
 
 ## Development
 
