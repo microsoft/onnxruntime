@@ -11,7 +11,7 @@ static void TestModelInfo(const Ort::Session& session, bool is_input, const std:
   } else {
     input_count = session.GetOutputCount();
   }
-  ASSERT_EQ(1, input_count);
+  ASSERT_EQ(1u, input_count);
   Ort::TypeInfo input_type_info = is_input ? session.GetInputTypeInfo(0) : session.GetOutputTypeInfo(0);
   ASSERT_NE(nullptr, input_type_info);
 
