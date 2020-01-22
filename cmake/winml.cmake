@@ -166,6 +166,7 @@ target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/win
 target_include_directories(winml_adapter PRIVATE ${winml_lib_api_dir})                                    # needed for generated headers
 target_include_directories(winml_adapter PRIVATE ${winml_lib_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_adapter_dir})
+target_include_directories(winml_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
 set_target_properties(winml_adapter
   PROPERTIES
