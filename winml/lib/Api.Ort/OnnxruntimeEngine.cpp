@@ -941,6 +941,14 @@ HRESULT CreateSequenceOfMapsValue(OnnxruntimeEngine* engine, IInspectable* seque
   //auto ort_api = engine->UseOrtApi();
   auto sequence = CastToWinrtSequenceOfMaps<TAbiKey, TAbiValue>(sequence_insp);
   UNREFERENCED_PARAMETER(sequence);
+
+  std::vector<winrt::com_ptr<WinML::IValue>> element_values;
+  for (auto element : sequence) {
+    winrt::com_ptr<WinML::IValue> element_value;
+    engine->CreateMapValue(element, key_kind, value_kind, element_value.put());
+    element_values.push_back(element_value);
+  }
+
   /*
   winrt::com_ptr<WinML::IValue> key_value;
   RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), key_kind, key_value.put()));
