@@ -122,7 +122,7 @@ void LearningModelSession::Initialize() {
   operator_registry_ = MLOperatorRegistry(model_impl->GetOperatorRegistry(), [](auto registry) { registry->Release(); });
   WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));
 
-  // Register only the transformers not already in ORT
+  // Register transformers - this should probably not be exposed on IEngine, but an internal call as this configuration step is ort specific.
   engine->RegisterGraphTransformers();
 
   // Load the model into the session
@@ -302,7 +302,7 @@ LearningModelSession::EvaluateAsync(
   _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
   auto device = device_.as<LearningModelDevice>();
 
-  // Get the ORT binding collection
+  // Get the binding collection
   auto binding_impl = binding.as<winmlp::LearningModelBinding>();
 
   ApplyEvaluationProperties();
@@ -362,7 +362,7 @@ LearningModelSession::Evaluate(
     capture_interface->BeginCapturableWork(WINML_PIX_EVAL_CAPTURABLE_WORK_GUID);
   }
 
-  // Get the ORT binding collection
+  // Get the binding collection
   auto binding_impl = binding.as<implementation::LearningModelBinding>();
   uint64_t evaluation_complete_fence = Run(binding_impl);
 

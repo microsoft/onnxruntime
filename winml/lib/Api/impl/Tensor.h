@@ -5,14 +5,6 @@
 
 #include "TensorBuffer.h"
 
-// we further specialize these base types for a couple of extra tensor element types
-namespace Ort {
-template <>
-struct TypeToTensorType<std::string> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING; };
-template <>
-struct TypeToTensorType<onnxruntime::MLFloat16> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
-}
-
 //
 // the Tensor class is the actual object for CPU memory buffers.
 // TensorBase contains one of these to represent the raw memory

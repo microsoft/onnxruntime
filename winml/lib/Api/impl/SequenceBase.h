@@ -110,17 +110,6 @@ struct SequenceBase : public winrt::implements<
     return S_OK;
   }
 
-  template <typename TLotusKey, typename TLotusValue>
-  static Ort::Value CreateOrtMap(TLotusKey* keys, TLotusValue* values, size_t len) {
-    // now create OrtValue wrappers over the buffers
-    auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-    std::vector<int64_t> shape = {static_cast<int64_t>(len)};
-    auto keys_ort_value = Ort::Value::CreateTensor<TLotusKey>(cpu_memory, keys, len, shape.data(), shape.size());
-    auto values_ort_value = Ort::Value::CreateTensor<TLotusValue>(cpu_memory, values, len, shape.data(), shape.size());
-    // make the map
-    return Ort::Value::CreateMap(keys_ort_value, values_ort_value);
-  }
-
   STDMETHOD(GetValue)(
       WinML::BindingContext& context,
       IValue** out) {
