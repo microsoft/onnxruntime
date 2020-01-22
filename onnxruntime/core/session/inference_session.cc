@@ -1025,6 +1025,9 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
 #endif
   Status retval = Status::OK();
 
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
+
   try {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
@@ -1053,7 +1056,16 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // info all execution providers InferenceSession:Run started
     // TODO: only call OnRunStart for all providers in-use
     for (auto& xp : execution_providers_) {
-      ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
     if (run_options.only_execute_path_to_fetches) {
@@ -1073,8 +1085,9 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   }
 
   // info all execution providers InferenceSession:Run ended
-  for (auto& xp : execution_providers_) {
-    ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
   }
 
   --current_num_runs_;
