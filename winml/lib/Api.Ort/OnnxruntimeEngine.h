@@ -77,11 +77,12 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateStringTensorValueFromDataWithCopy)(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) override;
   STDMETHOD(CreateNullValue)(_Out_ IValue** out) override;
   STDMETHOD(CreateMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
-  STDMETHOD(CreateSequenceValue)(IInspectable* map, winml::TensorKind element_kind, _Out_ IValue** out) override;
+  STDMETHOD(CreateSequenceOfMapsValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
   STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) override;
   STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
   STDMETHOD(FillFromMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
+  STDMETHOD(FillSequenceOfMapsValue)(IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();

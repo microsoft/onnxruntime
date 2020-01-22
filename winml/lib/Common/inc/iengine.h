@@ -54,11 +54,12 @@ MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
     STDMETHOD(CreateStringTensorValueFromDataWithCopy)(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) PURE;
     STDMETHOD(CreateNullValue)(_Out_ IValue** out) PURE;
     STDMETHOD(CreateMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) PURE;
-    STDMETHOD(CreateSequenceValue)(IInspectable* sequence, winml::TensorKind element_kind, _Out_ IValue** out) PURE;
+    STDMETHOD(CreateSequenceOfMapsValue)(IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue * *out) PURE;
     STDMETHOD(CreateOneInputAcrossDevices)(const char* name, IValue* src, IValue** dest) PURE;
     STDMETHOD(CopyValueAcrossDevices)(IValue* src, IValue* dest) PURE;
     STDMETHOD(Run)(const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) PURE;
     STDMETHOD(FillFromMapValue)(IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) PURE;
+    STDMETHOD(FillSequenceOfMapsValue)(IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) PURE;
 };
 
 MIDL_INTERFACE("0452ef15-b66b-47ca-9eff-aedac571764e") IEngineBuilder : IUnknown {

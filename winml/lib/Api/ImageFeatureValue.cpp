@@ -20,10 +20,6 @@
 #include "D3DDeviceCache.h"
 #include "TensorFeatureDescriptor.h"
 
-// Uncomment to enable DEBUG_IMAGE_TENSOR_RESOURCE and
-// allow debugging the content of the resource
-//#define DEBUG_IMAGE_TENSOR_RESOURCE
-
 using namespace WinML;
 using namespace winrt::Windows::Graphics::Imaging;
 using namespace winrt::Windows::Graphics::DirectX::Direct3D11;

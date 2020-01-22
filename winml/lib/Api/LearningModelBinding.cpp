@@ -103,7 +103,7 @@ std::tuple<std::string, winrt::com_ptr<WinML::IValue>, BindingType> LearningMode
   // Get the bound tensor
   winrt::com_ptr<IValue> value;
 
-  // Get the native ORT interface for the given bind value
+  // Get the native interface for the given bind value
   auto spLotusValueProvider = featureValue.as<WinML::ILotusValueProviderPrivate>();
 
   auto spSession = m_session.as<LearningModelSession>();

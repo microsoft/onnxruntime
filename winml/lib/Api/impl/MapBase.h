@@ -95,7 +95,6 @@ struct MapBase : winrt::implements<
 
   STDMETHOD(GetValue)
   (WinML::BindingContext& context, IValue** out) {
-    ORT_UNUSED_PARAMETER(context);
     auto session = context.session.as<winrt::Windows::AI::MachineLearning::implementation::LearningModelSession>();
     auto engine = session->GetEngine();
 
