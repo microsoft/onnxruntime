@@ -389,6 +389,7 @@ add_dependencies(winml_lib_common winml_sdk_cppwinrt)
 
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 target_include_directories(winml_lib_common PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
