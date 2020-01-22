@@ -47,6 +47,11 @@ MPIContext setup_horovod() {
 void shutdown_horovod() {
   horovod::common::horovod_shutdown();
 
+  int is_mpi_initialized = 0;
+  MPI_Initialized(&is_mpi_initialized);
+  if (!is_mpi_initialized)
+    return;
+
   int is_mpi_finalized = 0;
   MPI_Finalized(&is_mpi_finalized);
   if (!is_mpi_finalized) {

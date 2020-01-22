@@ -204,19 +204,40 @@ class IOBinding:
                                     C.OrtDevice(getOrtDeviceType(device_type), C.OrtDevice.default_memory(), device_id),
                                     element_type, shape, buffer_ptr)
 
+    def clear_binding_inputs(self):
+        self._iobinding.clear_binding_inputs()
+
+    def clear_binding_outputs(self):
+        self._iobinding.clear_binding_outputs()
+
+
 class TrainingSession(InferenceSession):
     def __init__(self, path_or_bytes, parameters, sess_options=None):
         if sess_options:
-            sess = C.TrainingSession(
+            self._sess = C.TrainingSession(
                 sess_options, C.get_session_initializer())
         else:
-            sess = C.TrainingSession(
+            self._sess = C.TrainingSession(
                 C.get_session_initializer(), C.get_session_initializer())
 
         if isinstance(path_or_bytes, str):
-            sess.load_model(path_or_bytes, parameters)
+            self._sess.load_model(path_or_bytes, parameters)
         elif isinstance(path_or_bytes, bytes):
-            sess.read_bytes(path_or_bytes, parameters)
+            self._sess.read_bytes(path_or_bytes, parameters)
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
-        Session.__init__(self, sess);
+
+        self._inputs_meta = self._sess.inputs_meta
+        self._outputs_meta = self._sess.outputs_meta
+
+        Session.__init__(self, self._sess)
+
+    def __del__(self):
+        if self._sess:
+            self._sess.finalize()
+
+    def get_state(self):
+        return self._sess.get_state()
+
+    def load_state(self, dict, strict=False):
+        self._sess.load_state(dict, strict)
