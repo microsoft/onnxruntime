@@ -19,10 +19,12 @@ import java.util.logging.Logger;
    * <li>The user may specify an explicit location of the shared library file using a property in the form <code>onnxruntime.native.LIB_NAME.path</code>. This uses {@link java.lang.System#load}.
    * <li>The shared library is autodiscovered:<ol>
    * <li>If the shared library is present in the classpath resources, load using {@link java.lang.System#load} via a temporary file.
+   * Ideally, this should be the default use case when adding JAR's/dependencies containing the shared libraries to your classpath.
    * <li>If the shared library is not present in the classpath resources, then load using {@link java.lang.System#loadLibrary}, which usually looks elsewhere on the filesystem for the library.
    * The semantics and behavior of that method are system/JVM dependent.
    * Typically, the <code>java.library.path</code> property is used to specify the location of native libraries.
    * </ol></ol>
+   * For troubleshooting, all loading events are reported to Java logging at the level FINE.
 */
 public final class OnnxRuntime {
   private static final Logger logger = Logger.getLogger(OnnxRuntime.class.getName());
@@ -71,10 +73,11 @@ public final class OnnxRuntime {
     if (libraryPathProperty != null) {
       logger.log(Level.FINE, "Attempting to load native library '" + library + "' from specified path: " + libraryPathProperty);
       File libraryFile = new File(libraryPathProperty);
+      String libraryFilePath = libraryFile.getAbsolutePath();
       if (!libraryFile.exists()) {
-        throw new IOException("Native library '" + library + "' not found at "+ libraryPathProperty);
+        throw new IOException("Native library '" + library + "' not found at "+ libraryFilePath);
       }
-      System.load(libraryFile.getAbsolutePath());
+      System.load(libraryFilePath);
       logger.log(Level.FINE, "Loaded native library '" + library + "' from specified path");
       return;
     }
@@ -85,12 +88,11 @@ public final class OnnxRuntime {
     String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
     String resourcePath = "/ai/onnxruntime/native/" + libraryFileName;
     InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath);
-    // check resources for the library
     if (is == null) {
       // 3a) Not found in resources, load from library path
-      logger.log(Level.FINE, "Attempting to load native library '" + library + "' from lib path");
+      logger.log(Level.FINE, "Attempting to load native library '" + library + "' from library path");
       System.loadLibrary(library);
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from lib path");
+      logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
     } else {
       // 3b) Found in resources, load via temporary file
       logger.log(
