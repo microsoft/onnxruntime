@@ -697,13 +697,13 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBiBo) {
     const auto& graph = session.GetGraph();
     for (auto& node : graph.Nodes()) {
       if (node.Domain() == kMSNchwcDomain && node.OpType() == "Conv") {
-        EXPECT_EQ(node.InputDefs().size(), 3);
+        EXPECT_EQ(node.InputDefs().size(), 3u);
         weight_args.emplace(node.InputDefs()[1]);
         bias_args.emplace(node.InputDefs()[2]);
       }
     }
-    EXPECT_EQ(weight_args.size(), 1);
-    EXPECT_EQ(bias_args.size(), 1);
+    EXPECT_EQ(weight_args.size(), 1u);
+    EXPECT_EQ(bias_args.size(), 1u);
   };
 
   // Verify that a single weight tensor is reordered once.
@@ -747,13 +747,13 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBo) {
     const auto& graph = session.GetGraph();
     for (auto& node : graph.Nodes()) {
       if (node.Domain() == kMSNchwcDomain && node.OpType() == "Conv") {
-        EXPECT_EQ(node.InputDefs().size(), 3);
+        EXPECT_EQ(node.InputDefs().size(), 3u);
         weight_args.emplace(node.InputDefs()[1]);
         bias_args.emplace(node.InputDefs()[2]);
       }
     }
-    EXPECT_EQ(weight_args.size(), 1);
-    EXPECT_EQ(bias_args.size(), 1);
+    EXPECT_EQ(weight_args.size(), 1u);
+    EXPECT_EQ(bias_args.size(), 1u);
   };
 
   // Verify that a single weight tensor is reordered once.

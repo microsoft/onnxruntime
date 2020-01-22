@@ -336,7 +336,7 @@ static bool MatchPositionEmbeddingSubgraph2(
     return false;
   }
   for (size_t i = 0; i < edges.size(); i++) {
-    if (edges[i]->GetNode().GetOutputEdgesCount() != (i == 4 ? 2 : 1)) {
+    if (edges[i]->GetNode().GetOutputEdgesCount() != (i == 4 ? 2u : 1u)) {
       DEBUG_LOG("Output edge count not expected for nodes in path 1.");
       return false;
     }

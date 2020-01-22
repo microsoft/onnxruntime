@@ -16,7 +16,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
   workspace:
     clean: all
   steps:    

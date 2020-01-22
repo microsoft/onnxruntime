@@ -262,11 +262,11 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   EXPECT_EQ(pattern.patterns.size(), pattern.locations.size());
-  EXPECT_EQ(pattern.patterns.size(), 1);
+  EXPECT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  EXPECT_EQ(p->PeakSize(), 2 * 64);  // each allocation is 64-byte aligned
-  EXPECT_EQ(p->GetBlock(3)->offset_, 0);
-  EXPECT_EQ(p->GetBlock(4)->offset_, 64);
+  EXPECT_EQ(p->PeakSize(), 2u * 64u);  // each allocation is 64-byte aligned
+  EXPECT_EQ(p->GetBlock(3)->offset_, 0u);
+  EXPECT_EQ(p->GetBlock(4)->offset_, 64u);
 }
 
 TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
