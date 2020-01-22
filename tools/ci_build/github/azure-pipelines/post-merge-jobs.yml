@@ -1,35 +1,72 @@
 # Jobs to run on master after every successful merge is committed
 jobs:
 - job: Windows_Debug_CPU_x64
-  pool: 'Win-CPU'
+  pool: 'Win-CPU-2019'
   timeoutInMinutes: 120
   variables:
     - group: dashboard_mysql_secret
     - name: buildDirectory
       value: '$(Build.BinariesDirectory)'
-    - name: buildConfig
+    - name: BuildConfig
       value: 'Debug'
     - name: buildArch
       value: 'x64'
+    - name: EnvSetupScript
+      value: 'setup_env.bat'
 
   steps:
     - template: templates/set-test-data-variables-step.yml
     - template: templates/set-version-number-variables-step.yml
 
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
-        setVcvars: false
+    - task: UsePythonVersion@0
+      inputs: 
+        versionSpec: '3.7' 
+        addToPath: true 
+        architecture: $(buildArch)
 
-    - template: templates/windows-build-and-test-steps.yml
-      parameters:
-        buildAdditionalParams: ' --use_openmp '
-        # --use_openmp is added, similar to the build config of the C-api package distribution.
-        # MLAS(default) with OpenMP is known to produce better performance (latency) than without OpenMP. 
-        buildArch: $(buildArch)
-        msbuildPlatform: $(buildArch)
-        buildConfig: $(buildConfig)
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory)
+
+
+    - powershell: 'Start-Process -FilePath "$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe" -ArgumentList ''/SP-'', ''/VERYSILENT'', ''/SUPPRESSMSGBOXES'', ''/NORESTART'', ''/DIR="$(Build.BinariesDirectory)\OpenCppCoverage'' -NoNewWindow -Wait'
+      displayName: 'Run OpenCPPCoverage installer'
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+        platform: 'x64'
+        configuration: $(BuildConfig)
+        msbuildArchitecture: $(buildArch)
+        maximumCpuCount: true
+        logProjectEvents: false
+        workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+        createLogFile: true    
+
+    - task: PythonScript@0
+      displayName: 'test'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/windows-code-coverage-steps.yml
       parameters:
@@ -37,6 +74,4 @@ jobs:
         GitCommitHash: $(OnnxRuntimeGitCommitHash)    
         PublishReport: true
         PostToDashboard: true
-
-    - template: templates/clean-agent-build-directory-step.yml
 

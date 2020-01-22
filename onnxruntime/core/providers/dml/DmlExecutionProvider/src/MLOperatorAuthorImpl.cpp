@@ -1798,6 +1798,13 @@ HRESULT STDMETHODCALLTYPE MLKernelInferenceContext::SetOutputTensorShape(
 }
 CATCH_RETURN();
 
+MLSupportQueryContext::MLSupportQueryContext(
+        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+        const AttributeMap* defaultAttributes) : 
+    OpNodeInfoWrapper(info, nullptr, defaultAttributes, gsl::span<const uint32_t>(), MLOperatorTensorGetter())
+{
+}
+
 bool TryGetStaticShapeIfTensor(
     const onnx::TypeProto* inputProto,
     std::vector<uint32_t>& shapeDims) {

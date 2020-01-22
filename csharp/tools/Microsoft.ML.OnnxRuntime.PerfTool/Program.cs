@@ -32,8 +32,8 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
         [Option('p', Required = false, HelpText = "Run with parallel exection. Default is false")]
         public bool ParallelExecution { get; set; } = false;
 
-        [Option('o', "optimization_level", Required = false, HelpText = "Optimization Level. Default is 1, partial optimization.")]
-        public GraphOptimizationLevel OptimizationLevel { get; set; } = GraphOptimizationLevel.ORT_ENABLE_BASIC;
+        [Option('o', "optimization_level", Required = false, HelpText = "Optimization Level. Default is 99, all optimization.")]
+        public GraphOptimizationLevel OptimizationLevel { get; set; } = GraphOptimizationLevel.ORT_ENABLE_ALL;
     }
 
     class Program

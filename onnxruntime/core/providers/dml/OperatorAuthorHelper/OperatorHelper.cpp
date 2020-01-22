@@ -430,58 +430,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         return edgeShapes;
     }
 
-    void SliceHelper::Initialize(
-        const MLOperatorAttributes& operatorAttributes,
-        gsl::span<const DimensionType> inputDimensions
-        )
-    {
-        const uint32_t dimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
-
-        std::vector<int32_t> starts = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Starts);
-        std::vector<int32_t> ends = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Ends);
-        std::vector<int32_t> axes = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Axes);
-        HandleNegativeAxes(/*inout*/ axes, dimCount);
-
-        ML_CHECK_VALID_ARGUMENT(starts.size() == ends.size(), "'starts' must equal 'ends' in size.");
-        ML_CHECK_VALID_ARGUMENT(axes.empty() || starts.size() == axes.size(), "'axes' must equal 'starts' in size, or 'axes' must be empty.");
-
-        m_outputDimensions.assign(inputDimensions.begin(), inputDimensions.end());
-        m_offsets.resize(m_outputDimensions.size());
-        m_sizes.resize(m_outputDimensions.size());
-        m_strides.resize(m_outputDimensions.size(), 1); // Only a stride of 1 element is supported by ONNX 1.2.
-
-        // Set initial defaults lest 'starts' and 'ends' arrays are shorter than the dimension count.
-        std::copy(inputDimensions.begin(), inputDimensions.begin() + m_outputDimensions.size(), m_sizes.begin());
-
-        // Clamp selected dimensions to given 'starts' and 'ends'.
-        for (int i = 0, ci = gsl::narrow_cast<int>(starts.size()); i < ci; ++i)
-        {
-            int dimIndex = i;
-            if (!axes.empty())
-            {
-                dimIndex = axes[i];
-            }
-            ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
-
-            // Positive values are offsets from 0.
-            // Negative values are offsets from the dimension's size.
-            int dim   = gsl::narrow_cast<int>(inputDimensions[dimIndex]);
-            int start = (starts[i] < 0) ? (starts[i] + dim) : starts[i];
-            int end   = (ends[i]   < 0) ? (ends[i]   + dim) : ends[i];
-
-            // Clamp the dimensions to the slice extents.
-            // Clamp negative numbers to 0, per case test_slice_start_out_of_bounds.
-            start = std::max(start, 0);
-            end = std::min(end, dim);
-            int size = std::max(end - start, 0);
-
-            m_outputDimensions[dimIndex] = size;
-            m_offsets[dimIndex] = start;
-            m_sizes[dimIndex] = gsl::narrow_cast<uint32_t>(size);
-        }
-    }
-
-    std::vector<EdgeShapes> SliceHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> SliceHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const    
     {
         return { m_outputDimensions };
     }

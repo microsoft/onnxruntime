@@ -1,16 +1,106 @@
 jobs:
-- template: templates/win-ci.yml
-  parameters:
-    AgentPool : 'Win-GPU-CUDA10'
-    DoDebugBuild: 'true'
-    DoCompliance: 'false'
-    BuildCommand: '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --enable_pybind --use_dnnl --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --build_shared_lib --build_csharp --enable_onnx_tests --use_cuda --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --gen_doc'
-    JobName: 'Windows_CI_GPU_Dev'
-    DoNugetPack:  'false'
-    NuPackScript : ''
-    DoTestCoverage: 'false'
-    BuildArch: 'amd64'
-    SetVcvars: 'true'
-    MsbuildArguments: '/m /p:CudaToolkitDir=C:\local\cuda_10.0.130_win10\'
-    EnvSetupScript: 'setup_env_cuda.bat'
-    CudaVersion: '10.0'
+- job: 'build'
+  pool: 'Win-GPU-CUDA10'
+  strategy:
+    maxParallel: 2
+    matrix:
+      debug:
+        BuildConfig: 'Debug'
+      release:
+        BuildConfig: 'RelWithDebInfo'
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    setVcvars: true
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
+      architecture: $(buildArch)
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - task: PowerShell@1
+    displayName: 'Set CUDA path'
+    inputs:
+      scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+      arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion 10.0'
+
+  - task: PowerShell@2
+    displayName: 'Download AzCopy (used for download test data script)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        Invoke-WebRequest -OutFile $(Build.BinariesDirectory)\azcopy.exe https://onnxruntimetestdata.blob.core.windows.net/models/azcopy.exe
+
+  - script: |
+     python -m pip install -q pyopenssl setuptools wheel numpy
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --numpy_version=1.17.4 --build_wheel --use_tensorrt --tensorrt_home="C:\local\TensorRT-6.0.1.5" --enable_onnx_tests --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+      platform: 'x64'
+      configuration: $(BuildConfig)
+      msbuildArgs: $(MsbuildArguments)
+      msbuildArchitecture: $(buildArch)
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      createLogFile: true
+
+  - task: PythonScript@0
+    displayName: 'Build wheel'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\setup.py'
+      arguments: 'bdist_wheel'
+      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+
+  - template: templates/set-test-data-variables-step.yml
+
+  - task: PythonScript@0
+    displayName: 'Download test data'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+      arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
+     DIR dist\ /S /B > wheel_filename_file
+     set /p WHEEL_FILENAME=<wheel_filename_file
+     del wheel_filename_file
+     python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --numpy_version=1.17.4 --build_wheel --enable_onnx_tests --use_tensorrt --cuda_version=10.0 --tensorrt_home="C:\local\TensorRT-6.0.1.5" --cuda_home="C:\local\cuda_10.0.130_win10" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
+
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+    displayName: 'Run tests'
+
+
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+    condition: succeeded()
+
