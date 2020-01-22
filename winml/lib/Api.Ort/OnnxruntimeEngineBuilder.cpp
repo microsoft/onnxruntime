@@ -4,6 +4,7 @@
 #include "OnnxruntimeEngineBuilder.h"
 #include "OnnxruntimeCpuSessionBuilder.h"
 #include "OnnxruntimeDmlSessionBuilder.h"
+#include "OnnxruntimeErrors.h"
 
 #include "core/providers/winml/winml_provider_factory.h"
 
@@ -21,18 +22,18 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning
 
   if (device_ == nullptr) {
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
-  }
-  else {
+  } else {
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get()));
   }
 
   OrtSessionOptions* ort_options;
   RETURN_IF_FAILED(onnxruntime_session_builder->CreateSessionOptions(&ort_options));
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
-  
+
   if (batch_size_override_.has_value()) {
     constexpr const char* DATA_BATCH = "DATA_BATCH";
-    ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value());
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value()),
+                            ort_api);
   }
 
   OrtSession* ort_session = nullptr;
@@ -41,7 +42,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning
 
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(&onnxruntime_engine,
-	  engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()));
+                                                                        engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()));
   RETURN_IF_FAILED(onnxruntime_engine.CopyTo(out));
   return S_OK;
 }

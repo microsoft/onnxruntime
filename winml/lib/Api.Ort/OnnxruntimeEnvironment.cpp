@@ -123,9 +123,8 @@ static void WinmlOrtProfileEventCallback(const OrtProfilerEventRecord* profiler_
 
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {
   OrtEnv* ort_env = nullptr;
-  if (auto status = ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env)) {
-    throw;
-  }
+  THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
+                      ort_api);
   ort_env_ = UniqueOrtEnv(ort_env, ort_api->ReleaseEnv);
 
   // Configure the environment with the winml logger
@@ -133,9 +132,9 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
   auto status = winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
                                                                        &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
                                                                        OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
-  THROW_IF_WINMLA_API_FAIL_MSG(status, ort_api);
+  THROW_IF_NOT_OK_MSG(status, ort_api);
 
-  THROW_IF_WINMLA_API_FAIL_MSG(winml_adapter_api->OverrideSchema(), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
 }
 
 HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {

@@ -38,7 +38,7 @@ inline HRESULT OrtErrorCodeToHRESULT(OrtErrorCode status) noexcept {
 }
 #endif
 
-#define RETURN_HR_IF_WINMLA_API_FAIL_MSG(status, ort_api)                                                      \
+#define RETURN_HR_IF_NOT_OK_MSG(status, ort_api)                                                               \
   do {                                                                                                         \
     auto _status = status;                                                                                     \
     if (_status) {                                                                                             \
@@ -51,7 +51,7 @@ inline HRESULT OrtErrorCodeToHRESULT(OrtErrorCode status) noexcept {
     }                                                                                                          \
   } while (0)
 
-#define THROW_IF_WINMLA_API_FAIL_MSG(status, ort_api)                                                          \
+#define THROW_IF_NOT_OK_MSG(status, ort_api)                                                                   \
   do {                                                                                                         \
     auto _status = status;                                                                                     \
     if (_status) {                                                                                             \
