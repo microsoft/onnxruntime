@@ -33,22 +33,22 @@ file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/training_ops/cpu_training_kernels.h"
-  "${ONNXRUNTIME_ROOT}/training_ops/cpu_training_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/training_ops/cpu/*.h"
-  "${ONNXRUNTIME_ROOT}/training_ops/cpu/*.cc"
+  "${ORTTRAINING_ROOT}/training_ops/cpu_training_kernels.h"
+  "${ORTTRAINING_ROOT}/training_ops/cpu_training_kernels.cc"
+  "${ORTTRAINING_ROOT}/training_ops/cpu/*.h"
+  "${ORTTRAINING_ROOT}/training_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/training_ops/cuda_training_kernels.h"
-  "${ONNXRUNTIME_ROOT}/training_ops/cuda_training_kernels.cc"
-  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.h"
-  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.cc"
+  "${ORTTRAINING_ROOT}/training_ops/cuda_training_kernels.h"
+  "${ORTTRAINING_ROOT}/training_ops/cuda_training_kernels.cc"
+  "${ORTTRAINING_ROOT}/training_ops/cuda/*.h"
+  "${ORTTRAINING_ROOT}/training_ops/cuda/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.cu"
-  "${ONNXRUNTIME_ROOT}/training_ops/cuda/*.cuh"
+  "${ORTTRAINING_ROOT}/training_ops/cuda/*.cu"
+  "${ORTTRAINING_ROOT}/training_ops/cuda/*.cuh"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -58,7 +58,7 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
 
 if (NOT onnxruntime_USE_HOROVOD)
   list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
-  "${ONNXRUNTIME_ROOT}/training_ops/cpu/collective/horovod_kernels.cc"
+  "${ORTTRAINING_ROOT}/training_ops/cpu/collective/horovod_kernels.cc"
   )
 endif()
 
@@ -115,7 +115,7 @@ if (onnxruntime_USE_FEATURIZERS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
-  source_group(TREE ${ONNXRUNTIME_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
+  source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 endif()
 
@@ -142,6 +142,9 @@ endif()
 
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
+if (onnxruntime_ENABLE_TRAINING)
+  target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
+endif()
 add_dependencies(onnxruntime_providers onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
@@ -163,15 +166,15 @@ if (onnxruntime_USE_CUDA)
 
   if (NOT onnxruntime_USE_HOROVOD)
     list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/horovod_kernels.cc"
-    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/ready_event.cc"
+    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/horovod_kernels.cc"
+    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/ready_event.cc"
     )
   endif()
 
   if (NOT onnxruntime_USE_NCCL)
     list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/nccl_common.cc"
-    "${ONNXRUNTIME_ROOT}/training_ops/cuda/collective/nccl_kernels.cc"
+    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/nccl_common.cc"
+    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/nccl_kernels.cc"
     )
   endif()
 
@@ -193,7 +196,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING)
-    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
+    source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
   endif()
 
@@ -212,6 +215,9 @@ if (onnxruntime_USE_CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
 
+  if (onnxruntime_ENABLE_TRAINING)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT})
+  endif()
   if (onnxruntime_USE_HOROVOD)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
   endif()

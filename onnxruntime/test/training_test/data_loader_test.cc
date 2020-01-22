@@ -6,9 +6,9 @@
 #include "core/framework/callback.h"
 #include "core/platform/env.h"
 #include "core/util/protobuf_parsing_utils.h"
-#include "test/training/runner/training_util.h"
+#include "models/runner/training_util.h"
 #include "core/framework/path_lib.h"  // TODO fix include ordering dependency
-#include "test/training/runner/data_loader.h"
+#include "models/runner/data_loader.h"
 #include "test/util/include/gtest_utils.h"
 #include "test/util/include/temp_dir.h"
 

@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/training/runner/training_runner.h"
+#include "models/runner/training_runner.h"
 
 #include "gtest/gtest.h"
 
 #include "core/framework/path_lib.h"
 #include "core/platform/path_string.h"
-#include "test/training/runner/data_loader.h"
-#include "test/training/runner/training_util.h"
+#include "models/runner/data_loader.h"
+#include "models/runner/training_util.h"
 
 namespace onnxruntime {
 namespace training {

@@ -3,6 +3,9 @@
 
 set(TEST_SRC_DIR ${ONNXRUNTIME_ROOT}/test)
 set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
+endif()
 if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()

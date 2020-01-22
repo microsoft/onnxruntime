@@ -5,7 +5,7 @@
 #include "core/optimizer/gist_encode_decode.h"
 #include "test/providers/gradient_op_test_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "test/training/runner/training_runner.h"
+#include "models/runner/training_runner.h"
 
 #ifdef USE_CUDA
 #include "bert_toy_fetches.h"
@@ -511,8 +511,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
                                             /*nsp_loss*/ "nsp_loss",
                                             /*batch_size*/ std::to_string(13),
                                             /*max_sequence_len*/ std::to_string(7),
-                                            /*max_predictions_per_sequence*/ std::to_string(7)
-                                           });
+                                            /*max_predictions_per_sequence*/ std::to_string(7)});
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
       "op_min_ends_expand_10",  //op_min_ends_expand_10
@@ -526,10 +525,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_BertToy) {
   params.training_optimizer_name = "AdamOptimizer";
   params.optimizer_attributes = [](const std::string&) {
     return std::unordered_map<std::string, float>{
-      {"alpha", 0.9f},
-      {"beta", 0.999f},
-      {"lambda", 0.0f},
-      {"epsilon", 0.1f},
+        {"alpha", 0.9f},
+        {"beta", 0.999f},
+        {"lambda", 0.0f},
+        {"epsilon", 0.1f},
     };
   };
 

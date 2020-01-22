@@ -5,7 +5,7 @@
 #pragma warning(disable : 4389)
 #endif
 
-#include "contrib_ops/cpu/trainable_dropout_op.h"
+#include "training_ops/cpu/nn/trainable_dropout_op.h"
 
 #include <algorithm>
 #include <memory>
