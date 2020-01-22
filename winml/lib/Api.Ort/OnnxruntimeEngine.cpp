@@ -807,52 +807,6 @@ HRESULT OnnxruntimeEngine::CreateMapValue(IInspectable* map, winml::TensorKind k
   return GetMapValueCreator(this, key_kind, value_kind)(map, out);
 }
 
-// now create OrtValue wrappers over the buffers
-//std::vector<Ort::Value> sequence_values;
-//for (auto it = lotus_data_->begin(); it != lotus_data_->end(); ++it) {
-// make a ort value for this map
-//  auto map = *it;
-//sequence_values.emplace_back(CreateOrtMap(map.first.data(), map.second.data(), map.first.size()));
-//}
-//*ort_value = Ort::Value::CreateSequence(sequence_values).release();
-
-/*    winrt::com_ptr<winmla::IWinMLAdapter> adapter;
-    RETURN_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-    auto lotus_type = adapter->GetVectorMapType(
-        TensorKindFrom<ValidLotusType<T>::TKey>::Type, 
-        TensorKindFrom<ValidLotusType<T>::TValue>::Type);
-
-    winrt::com_ptr<winmla::IOrtValue> ml_value_out;
-    adapter->CreateOrtValue(lotus_data_.get(), lotus_type, ml_value_out.put());
-
-    *ml_value = ml_value_out.detach();*/
-
-//template <typename TRawType>
-//static std::vector<TRawType> ConvertToABIType(Ort::Value& ort_value) {
-//  // make sure this is an array of these types
-//  auto shape = ort_value.GetTensorTypeAndShapeInfo().GetShape();
-//  // there needs to be only one dimension
-//  THROW_HR_IF(E_INVALIDARG, shape.size() != 1);
-//  auto lotus_value = ort_value.GetTensorMutableData<typename ValidLotusType<TRawType>::Type>();
-//  // now go through all the entries
-//  std::vector<TRawType> out;
-//  for (auto i = 0; i < shape[0]; i++) {
-//    out.push_back(lotus_value[i]);
-//  }
-//  // return the vector
-//  return out;
-//}
-
-//template <>
-//static std::vector<winrt::hstring> ConvertToABIType<winrt::hstring>(Ort::Value& ort_value) {
-//  auto strings = ort_value.GetStrings();
-//  std::vector<winrt::hstring> out;
-//  for (auto i = 0; i < strings.size(); ++i) {
-//    out.push_back(WinML::Strings::HStringFromUTF8(strings[i].c_str()));
-//  }
-//  return out;
-//}
-
 template <typename TAbiKey, typename TAbiValue>
 HRESULT CreateSequenceOfMapsValue(OnnxruntimeEngine* engine, IInspectable* sequence_insp, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) {
   auto ort_api = engine->UseOrtApi();
