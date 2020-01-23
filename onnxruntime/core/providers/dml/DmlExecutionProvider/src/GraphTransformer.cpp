@@ -88,7 +88,7 @@ namespace Dml
                 node,
                 *registry,
                 m_providerImpl->GetSuppportedDeviceDataTypeMask(),
-                *m_providerImpl->GetInternalRegInfoMap().get(),
+                *m_providerImpl->GetInternalRegistrationInfoMap().get(),
                 allow64BitInputThroughStrides,
                 nullptr))
             {

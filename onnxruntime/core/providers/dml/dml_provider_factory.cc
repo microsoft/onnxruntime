@@ -53,14 +53,14 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
 
 bool IsSoftwareAdapter(IDXGIAdapter1* adapter)
 {
-    DXGI_ADAPTER_DESC1 pDesc;
-    adapter->GetDesc1(&pDesc);
+    DXGI_ADAPTER_DESC1 desc;
+    adapter->GetDesc1(&desc);
 
     // see here for documentation on filtering WARP adapter:
     // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
-    auto isBasicRenderDriverVendorId = pDesc.VendorId == 0x1414;
-    auto isBasicRenderDriverDeviceId = pDesc.DeviceId == 0x8c;
-    auto isSoftwareAdapter = pDesc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
+    auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
+    auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
+    auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
     
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }

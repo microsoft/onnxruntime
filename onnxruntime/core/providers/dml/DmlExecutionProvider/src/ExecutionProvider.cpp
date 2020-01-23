@@ -675,7 +675,7 @@ namespace Dml
     }
 
     std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
-    ExecutionProviderImpl::GetInternalRegInfoMap() const
+    ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
         return m_internalRegInfoMap;
     }

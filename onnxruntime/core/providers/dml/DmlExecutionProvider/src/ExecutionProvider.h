@@ -159,7 +159,7 @@ namespace Dml
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
         std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
-        GetInternalRegInfoMap() const;
+        GetInternalRegistrationInfoMap() const;
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
