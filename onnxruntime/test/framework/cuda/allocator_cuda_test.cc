@@ -6,13 +6,16 @@
 #include "gtest/gtest.h"
 #include "cuda_runtime.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   int cuda_device_id = 0;
-  DeviceAllocatorRegistrationInfo default_memory_info({OrtMemTypeDefault,
-                                                          [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo default_memory_info(
+      {OrtMemTypeDefault,
+       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       std::numeric_limits<size_t>::max()});
 
   auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
 
@@ -21,21 +24,23 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_STREQ(cuda_arena->Info().name, CUDA);
   EXPECT_EQ(cuda_arena->Info().id, cuda_device_id);
   EXPECT_EQ(cuda_arena->Info().mem_type, OrtMemTypeDefault);
-  EXPECT_EQ(cuda_arena->Info().type, OrtArenaAllocator);
+  EXPECT_EQ(cuda_arena->Info().alloc_type, OrtArenaAllocator);
 
   //test cuda allocation
   auto cuda_addr = cuda_arena->Alloc(size);
   EXPECT_TRUE(cuda_addr);
 
-  DeviceAllocatorRegistrationInfo pinned_memory_info({OrtMemTypeCPUOutput,
-                                                         [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo pinned_memory_info(
+      {OrtMemTypeCPUOutput,
+       [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); },
+       std::numeric_limits<size_t>::max()});
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
   EXPECT_STREQ(pinned_allocator->Info().name, CUDA_PINNED);
   EXPECT_EQ(pinned_allocator->Info().id, 0);
   EXPECT_EQ(pinned_allocator->Info().mem_type, OrtMemTypeCPUOutput);
-  EXPECT_EQ(pinned_allocator->Info().type, OrtArenaAllocator);
+  EXPECT_EQ(pinned_allocator->Info().alloc_type, OrtArenaAllocator);
 
   //test pinned allocation
   auto pinned_addr = pinned_allocator->Alloc(size);
@@ -45,7 +50,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);
   EXPECT_EQ(cpu_arena->Info().mem_type, OrtMemTypeDefault);
-  EXPECT_EQ(cpu_arena->Info().type, OrtArenaAllocator);
+  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtArenaAllocator);
 
   auto cpu_addr_a = cpu_arena->Alloc(size);
   EXPECT_TRUE(cpu_addr_a);
@@ -66,6 +71,45 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   cpu_arena->Free(cpu_addr_b);
   cuda_arena->Free(cuda_addr);
   pinned_allocator->Free(pinned_addr);
+}
+
+// test that we fallback to smaller allocations if the growth of the arena exceeds the available memory
+TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
+  int cuda_device_id = 0;
+
+  size_t free = 0;
+  size_t total = 0;
+
+  CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
+  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+
+  // need extra test logic if this ever happens.
+  EXPECT_NE(free, total) << "All memory is free. Test logic does not handle this.";
+
+  DeviceAllocatorRegistrationInfo default_memory_info(
+      {OrtMemTypeDefault,
+       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       std::numeric_limits<size_t>::max()});
+
+  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
+
+  // initial allocation that sets the growth size for the next allocation
+  size_t size = total / 2;
+  void* cuda_addr_0 = cuda_arena->Alloc(size);
+  EXPECT_TRUE(cuda_addr_0);
+
+  // this should trigger an allocation equal to the current total, which should fail initially and gradually fall back
+  // to a smaller block.
+  size_t next_size = 1024;
+
+  void* cuda_addr_1 = cuda_arena->Alloc(next_size);
+  EXPECT_TRUE(cuda_addr_1);
+  cuda_arena->Free(cuda_addr_0);
+  cuda_arena->Free(cuda_addr_1);
+  cuda_arena = nullptr;
+
+  auto last_error = cudaGetLastError();
+  EXPECT_EQ(last_error, cudaSuccess) << "Last error should be cleared if handled gracefully";
 }
 }  // namespace test
 }  // namespace onnxruntime

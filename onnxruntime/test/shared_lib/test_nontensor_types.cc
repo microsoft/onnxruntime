@@ -30,7 +30,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int N = 3;
+  const size_t N = 3;
   const int NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   std::vector<int64_t> keys{3, 1, 2, 0};
@@ -90,7 +90,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output t
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int N = 3;
+  const size_t N = 3;
   const int64_t NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};

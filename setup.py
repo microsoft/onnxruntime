@@ -34,6 +34,10 @@ elif '--use_cuda' in sys.argv:
 elif '--use_ngraph' in sys.argv:
     package_name = 'onnxruntime-ngraph'
     sys.argv.remove('--use_ngraph')
+    
+elif '--use_dnnl' in sys.argv:
+    package_name = 'onnxruntime-dnnl'
+    sys.argv.remove('--use_dnnl')
 
 elif '--use_openvino' in sys.argv:
     package_name = 'onnxruntime-openvino'

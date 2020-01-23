@@ -170,6 +170,8 @@ ProcessNextRowM4:
         vpxor   xmm1,xmm1,xmm1
         vpxor   xmm2,xmm2,xmm2
         vpxor   xmm3,xmm3,xmm3
+        lea     r13,[r8+r8*2]               ; compute ldb * 3
+        lea     rax,[r11+r11*2]             ; compute output stride * 3
         mov     rdx,rsi
         mov     rcx,rdi
         lea     rsi,[rsi+r8*4]              ; advance next matrix A by 4 rows
@@ -179,16 +181,14 @@ ProcessNextRowM4:
         jb      ProcessRemainingColumnsM4
 
 ProcessNextColumnLoopM4:
-        lea     rax,[rdx+r8*2]              ; compute matrix A plus 2 rows
         vmovdqu ymm4,YMMWORD PTR [rdx]
         vmovdqu ymm5,YMMWORD PTR [rdx+r8]
-        vmovdqu ymm6,YMMWORD PTR [rax]
-        vmovdqu ymm7,YMMWORD PTR [rax+r8]
-        lea     rax,[rcx+r11*2]             ; compute matrix D plus 2 rows
+        vmovdqu ymm6,YMMWORD PTR [rdx+r8*2]
+        vmovdqu ymm7,YMMWORD PTR [rdx+r13]
         vmovdqu YMMWORD PTR [rcx],ymm4
         vmovdqu YMMWORD PTR [rcx+r11],ymm5
-        vmovdqu YMMWORD PTR [rax],ymm6
-        vmovdqu YMMWORD PTR [rax+r11],ymm7
+        vmovdqu YMMWORD PTR [rcx+r11*2],ymm6
+        vmovdqu YMMWORD PTR [rcx+rax],ymm7
         vpmaddubsw ymm4,ymm4,ymm9           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
         vpmaddubsw ymm5,ymm5,ymm9
@@ -207,16 +207,14 @@ ProcessRemainingColumnsM4:
         jz      ReduceRowSumVectorM4
         test    bl,16                       ; (CountK & 16) != 0?
         jz      CopyRemainingCountKLessThan16M4
-        lea     rax,[rdx+r8*2]              ; compute matrix A plus 2 rows
         vmovdqu xmm4,XMMWORD PTR [rdx]
         vmovdqu xmm5,XMMWORD PTR [rdx+r8]
-        vmovdqu xmm6,XMMWORD PTR [rax]
-        vmovdqu xmm7,XMMWORD PTR [rax+r8]
-        lea     rax,[rcx+r11*2]             ; compute matrix D plus 2 rows
+        vmovdqu xmm6,XMMWORD PTR [rdx+r8*2]
+        vmovdqu xmm7,XMMWORD PTR [rdx+r13]
         vmovdqu XMMWORD PTR [rcx],xmm4
         vmovdqu XMMWORD PTR [rcx+r11],xmm5
-        vmovdqu XMMWORD PTR [rax],xmm6
-        vmovdqu XMMWORD PTR [rax+r11],xmm7
+        vmovdqu XMMWORD PTR [rcx+r11*2],xmm6
+        vmovdqu XMMWORD PTR [rcx+rax],xmm7
         vpmaddubsw xmm4,xmm4,xmm9           ; horizontal byte+byte=word per row
         vpaddw  ymm0,ymm0,ymm4              ; add words to row accumulators
         vpmaddubsw xmm5,xmm5,xmm9
@@ -239,14 +237,13 @@ CopyRemainingCountKLessThan16M4:
         mov     rbp,rsp                     ; GemmU8S8CopyPackAFrame.PaddedMatrixAData
         test    bl,8                        ; (CountK & 8) != 0?
         jz      CopyRemainingCountKLessThan8M4
-        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         mov     rax,QWORD PTR [rdx+r8]
         mov     QWORD PTR [rbp+16],rax
-        mov     rax,QWORD PTR [r13]
+        mov     rax,QWORD PTR [rdx+r8*2]
         mov     QWORD PTR [rbp+32],rax
-        mov     rax,QWORD PTR [r13+r8]
+        mov     rax,QWORD PTR [rdx+r13]
         mov     QWORD PTR [rbp+48],rax
         add     rdx,8
         add     rbp,8                       ; advance padded buffer destination
@@ -254,14 +251,13 @@ CopyRemainingCountKLessThan16M4:
 CopyRemainingCountKLessThan8M4:
         test    bl,4                        ; (CountK & 4) != 0?
         jz      CopyRemainingCountKLessThan4M4
-        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         mov     eax,DWORD PTR [rdx+r8]
         mov     DWORD PTR [rbp+16],eax
-        mov     eax,DWORD PTR [r13]
+        mov     eax,DWORD PTR [rdx+r8*2]
         mov     DWORD PTR [rbp+32],eax
-        mov     eax,DWORD PTR [r13+r8]
+        mov     eax,DWORD PTR [rdx+r13]
         mov     DWORD PTR [rbp+48],eax
         add     rdx,4
         add     rbp,4                       ; advance padded buffer destination
@@ -269,14 +265,13 @@ CopyRemainingCountKLessThan8M4:
 CopyRemainingCountKLessThan4M4:
         test    bl,2                        ; (CountK & 2) != 0?
         jz      CopyRemainingCountKLessThan2M4
-        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         movzx   eax,WORD PTR [rdx+r8]
         mov     WORD PTR [rbp+16],ax
-        movzx   eax,WORD PTR [r13]
+        movzx   eax,WORD PTR [rdx+r8*2]
         mov     WORD PTR [rbp+32],ax
-        movzx   eax,WORD PTR [r13+r8]
+        movzx   eax,WORD PTR [rdx+r13]
         mov     WORD PTR [rbp+48],ax
         add     rdx,2
         add     rbp,2                       ; advance padded buffer destination
@@ -284,14 +279,13 @@ CopyRemainingCountKLessThan4M4:
 CopyRemainingCountKLessThan2M4:
         test    bl,1                        ; (CountK & 1) != 0?
         jz      ProcessPaddedMatrixADataM4
-        lea     r13,[rdx+r8*2]              ; compute matrix A plus 2 rows
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
         movzx   eax,BYTE PTR [rdx+r8]
         mov     BYTE PTR [rbp+16],al
-        movzx   eax,BYTE PTR [r13]
+        movzx   eax,BYTE PTR [rdx+r8*2]
         mov     BYTE PTR [rbp+32],al
-        movzx   eax,BYTE PTR [r13+r8]
+        movzx   eax,BYTE PTR [rdx+r13]
         mov     BYTE PTR [rbp+48],al
 
 ;
@@ -507,6 +501,7 @@ ExitRoutine:
         END_PROLOGUE
 
         mov     rsi,rdx
+        lea     rdi,[r8+r8*2]               ; compute ldb * 3
         mov     r10,GemmU8S8CopyPackBFrame.CountK[rsp]
         mov     r11,GemmU8S8CopyPackBFrame.ColumnSumVector[rsp]
         vpbroadcastw ymm7,WORD PTR GemmU8S8CopyPackBFrame.offa[rsp]
@@ -532,11 +527,10 @@ ProcessNextColumnN16:
         jb      ProcessRemainingRowsN16
 
 ProcessNextRowLoopN16:
-        lea     rax,[rdx+r8*2]              ; compute matrix B plus 2 rows
         vmovdqu xmm2,XMMWORD PTR [rdx]      ; load 4 rows
         vmovdqu xmm3,XMMWORD PTR [rdx+r8]
-        vmovdqu xmm4,XMMWORD PTR [rax]
-        vmovdqu xmm5,XMMWORD PTR [rax+r8]
+        vmovdqu xmm4,XMMWORD PTR [rdx+r8*2]
+        vmovdqu xmm5,XMMWORD PTR [rdx+rdi]
         lea     rdx,[rdx+r8*4]              ; advance matrix B by 4 rows
 
 InterleaveRowDataN16:
@@ -630,14 +624,13 @@ ProcessNextRowLoopNUnaligned:
         mov     rbp,rsp                     ; GemmU8S8CopyPackBFrame.PaddedMatrixBData
         test    r9b,8                       ; (CountN & 8) != 0?
         jz      CopyRemainingCountNLessThan8K4
-        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         mov     rax,QWORD PTR [rdx+r8]
         mov     QWORD PTR [rbp+16],rax
-        mov     rax,QWORD PTR [rdi]
+        mov     rax,QWORD PTR [rdx+r8*2]
         mov     QWORD PTR [rbp+32],rax
-        mov     rax,QWORD PTR [rdi+r8]
+        mov     rax,QWORD PTR [rdx+rdi]
         mov     QWORD PTR [rbp+48],rax
         add     rdx,8                       ; advance matrix B
         add     rbp,8                       ; advance padded buffer destination
@@ -645,14 +638,13 @@ ProcessNextRowLoopNUnaligned:
 CopyRemainingCountNLessThan8K4:
         test    r9b,4                       ; (CountN & 4) != 0?
         jz      CopyRemainingCountNLessThan4K4
-        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         mov     eax,DWORD PTR [rdx+r8]
         mov     DWORD PTR [rbp+16],eax
-        mov     eax,DWORD PTR [rdi]
+        mov     eax,DWORD PTR [rdx+r8*2]
         mov     DWORD PTR [rbp+32],eax
-        mov     eax,DWORD PTR [rdi+r8]
+        mov     eax,DWORD PTR [rdx+rdi]
         mov     DWORD PTR [rbp+48],eax
         add     rdx,4                       ; advance matrix B
         add     rbp,4                       ; advance padded buffer destination
@@ -660,14 +652,13 @@ CopyRemainingCountNLessThan8K4:
 CopyRemainingCountNLessThan4K4:
         test    r9b,2                       ; (CountN & 2) != 0?
         jz      CopyRemainingCountNLessThan2K4
-        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         movzx   eax,WORD PTR [rdx+r8]
         mov     WORD PTR [rbp+16],ax
-        movzx   eax,WORD PTR [rdi]
+        movzx   eax,WORD PTR [rdx+r8*2]
         mov     WORD PTR [rbp+32],ax
-        movzx   eax,WORD PTR [rdi+r8]
+        movzx   eax,WORD PTR [rdx+rdi]
         mov     WORD PTR [rbp+48],ax
         add     rdx,2                       ; advance matrix B
         add     rbp,2                       ; advance padded buffer destination
@@ -675,14 +666,13 @@ CopyRemainingCountNLessThan4K4:
 CopyRemainingCountNLessThan2K4:
         test    r9b,1                       ; (CountN & 1) != 0?
         jz      ProcessPaddedMatrixBData
-        lea     rdi,[rdx+r8*2]              ; compute matrix B plus 2 rows
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
         movzx   eax,BYTE PTR [rdx+r8]
         mov     BYTE PTR [rbp+16],al
-        movzx   eax,BYTE PTR [rdi]
+        movzx   eax,BYTE PTR [rdx+r8*2]
         mov     BYTE PTR [rbp+32],al
-        movzx   eax,BYTE PTR [rdi+r8]
+        movzx   eax,BYTE PTR [rdx+rdi]
         mov     BYTE PTR [rbp+48],al
 
 ProcessPaddedMatrixBData:

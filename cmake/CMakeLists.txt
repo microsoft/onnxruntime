@@ -127,20 +127,20 @@ if(onnxruntime_USE_OPENMP)
     set(onnxruntime_USE_OPENMP OFF)
   endif()
 endif()
-if(onnxruntime_ENABLE_LTO)
-  #TODO: figure out why nsync doesn't work
 
+if(onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
     if(NOT ipo_enabled)
       message(WARNING "IPO is not supported by this compiler")
       set(onnxruntime_ENABLE_LTO OFF)
-    endif()
-    if(UNIX)
-      set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
-      set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
-      set (CMAKE_LDFLAGS "${CMAKE_CXX_FLAGS} -flto")
-      set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    else()
+      if(UNIX)
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
+        set (CMAKE_LDFLAGS "${CMAKE_CXX_FLAGS} -flto")
+        set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+      endif()
     endif()
 endif()
 
@@ -193,7 +193,8 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+  #TODO: the "/GL" switch should be controlled by onnxruntime_ENABLE_LTO
   if (NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -277,8 +278,12 @@ endif()
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")	
-set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+if(TARGET libprotoc)
+  set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+endif()
+if(TARGET protoc)
+  set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+endif()
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
 else()
@@ -443,11 +448,8 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
-    string(APPEND CMAKE_CXX_FLAGS
-      " /wd4503" # Decorated name length exceeded.
-      " /wd4127" # conditional expression is constant.
-      " /wd4146" # unary minus operator applied to unsigned type. Needed for Protobuf
-    )
+    #in order to fix this warning, we need C++17 so that we can use 'if constexpr'
+    string(APPEND CMAKE_CXX_FLAGS " /wd4127")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         string(APPEND CMAKE_CXX_FLAGS
             " /analyze:WX- "
@@ -463,11 +465,11 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W3")
     else()
         string(APPEND CMAKE_CXX_FLAGS " /W4")
-    endif()
+    endif()    
 
-    # treat warning as error only on x64 platform.
-    # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
+    # Treat warning as error if onnxruntime_DEV_MODE is ON
+    # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
+    if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
       foreach(type EXE STATIC SHARED)
@@ -480,6 +482,7 @@ if (WIN32)
       foreach(type EXE SHARED)
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+        #TODO: the "/LTCG" switch should be controlled by onnxruntime_ENABLE_LTO
         if (NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
@@ -509,6 +512,7 @@ else()
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
+  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -523,7 +527,6 @@ else()
   if(HAS_DEPRECATED_COPY)
     #too many such errors in eigen and gemmlowp
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-deprecated-copy")
-    string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-deprecated-copy")
   endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
@@ -588,29 +591,29 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
-	if(onnxruntime_USE_OPENVINO_MYRIAD)
-		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_GPU_FP32)
-		add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_GPU_FP16)
-		add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_CPU_FP32)
-		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_VAD_M)
-		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    if(onnxruntime_USE_OPENVINO_MYRIAD)
+        add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
     endif()
 
-	if(onnxruntime_USE_OPENVINO_VAD_F)
-		add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_GPU_FP32)
+        add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_GPU_FP16)
+        add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_CPU_FP32)
+        add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_VAD_M)
+        add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_VAD_F)
+        add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+    endif()
 
 endif()
 

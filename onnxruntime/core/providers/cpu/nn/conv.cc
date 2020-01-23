@@ -78,7 +78,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                           output_shape.GetDims().end());
 
   const size_t kernel_rank = kernel_shape.size();
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
@@ -125,7 +125,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
           col_buffer_data,
           0,
           Ydata + group_id * Y_offset,
-          tp);
+          thread_pool);
     }
 
     if (B != nullptr) {
@@ -186,7 +186,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   auto* Ydata = Y->template MutableData<float>();
 
   const size_t kernel_rank = kernel_shape.size();
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   if (kernel_rank == 2 || kernel_rank == 3) {
     MLAS_CONV_PARAMETERS Parameters;
@@ -205,7 +205,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
-                    tp);
+                    thread_pool);
 
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
@@ -216,7 +216,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              Bdata,
              static_cast<float*>(working_buffer.get()),
              Ydata,
-             tp);
+             thread_pool);
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -262,7 +262,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             0,
             Ydata + group_id * Y_offset,
-            tp);
+            thread_pool);
       }
 
       MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);
