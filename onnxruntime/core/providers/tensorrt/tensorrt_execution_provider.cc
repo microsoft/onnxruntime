@@ -124,7 +124,8 @@ std::unique_ptr<onnxruntime::IDataTransfer> TensorrtExecutionProvider::GetDataTr
   return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
-void ToGraphProtoInternal(const onnxruntime::GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {  //const
+// Convert GraphViewer graph to GraphProto
+void ToGraphProtoInternal(const onnxruntime::GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {
   for (const auto* input_arg : graph.GetInputs()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
@@ -149,6 +150,27 @@ void ToGraphProtoInternal(const onnxruntime::GraphViewer& graph, ONNX_NAMESPACE:
     const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
     p_node->ToProto(*node_proto);
   }
+}
+
+// Check if cycle exists in the graph after partitioning
+bool FindCycleHelper(int i, const std::list<int> *adjacency_map,
+                                                 bool visited[], bool *st, std::vector<int>& cycles) {
+  if (!visited[i]) {
+    visited[i] = true;
+    st[i] = true;
+    for (auto iter = adjacency_map[i].begin(); iter != adjacency_map[i].end(); ++iter) {
+      if (!visited[*iter] && FindCycleHelper(*iter, adjacency_map, visited, st, cycles)) {
+        cycles.push_back(*iter);
+        return true;
+      }
+      else if (st[*iter]) {
+        cycles.push_back(*iter);
+        return true;
+      }
+    }
+  }
+  st[i] =false;
+  return false;
 }
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::GraphViewer& graph) const {
@@ -371,46 +393,48 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  // Construct modelproto from graph
-  onnxruntime::Model model(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-  onnxruntime::Graph& graph_build = model.MainGraph();
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-
-  for (const auto& index : node_index) {
-    const auto& node = graph.GetNode(index);
-    std::vector<onnxruntime::NodeArg *> inputs, outputs;
-    for (auto input : node->InputDefs()) {
-      auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-      inputs.push_back(&n_input);
-    }
-    for (auto output : node->OutputDefs()) {
-      auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-      outputs.push_back(&n_output);
-    }
-    graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
-  }
-  graph_build.SetOutputs(graph.GetOutputs());
-
-  // Add initializer to graph
-  const auto& init_tensors = graph.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    graph_build.AddInitializedTensor(*(tensor.second));
-  }
-
-  auto status = graph_build.Resolve();
-  ORT_ENFORCE(status.IsOK(), status);
-  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  // Serialize modelproto to string
-  std::string string_buf;
-  model_proto.SerializeToString(&string_buf);
-
-  // Get supported node list
+                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {											 
+  // Remove nodes with empty shape (for example [1, 0]) because TensorRT 7 doens't support empty shape
+  // Here only NonZero and NonMaxSuppression related empty shape nodes are removed, particularly for Faster-rcnn and Mask-rcnn models.
+  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around  
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();  
+  const std::string exclude_dim_name1 = "NonZero";
+  const std::string exclude_dim_name2 = "NonMaxSuppression";
+  SubGraphCollection_t parser_nodes_vector = {{{}, false}};  
   std::vector<size_t> nodes_vector(node_index.size());
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  SubGraphCollection_t parser_nodes_vector = {{nodes_vector, false}};
+  for (const auto& index : nodes_vector) {
+    // Check if node has empty input shape
+    const auto& node = graph.GetNode(node_index[index]);
+    bool exclude_node = false;
+    for (const auto& input : node->InputDefs()) {
+      const auto& input_shape = input->Shape();
+      if (input_shape) {
+        for (const auto& dim : input_shape->dim()) {
+          std::string dim_name = dim.dim_param();
+          if (!dim_name.empty()) {
+            if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos)) {
+          	  exclude_node = true;
+          	  break;
+            }
+          }
+        }
+      }
+      
+      if (exclude_node) {
+        break;
+      }
+    }
+    
+    // Remove the node with empty input shape
+    if (!exclude_node) {
+  	  parser_nodes_vector.back().first.push_back(index);		
+    } else if (!parser_nodes_vector.back().first.empty()) {
+  	  parser_nodes_vector.push_back({{},false});  
+    }
+  }
+  
+  // Get supported node list from TensorRT parser
   SubGraphCollection_t supported_nodes_vector;
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
@@ -418,58 +442,123 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     supported_nodes_vector.clear();
   }
 
-  // Remove nodes with empty shape (for example [1, 0]) because TensorRT 6 doens't support empty shape
-  SubGraphCollection_t post_processed_supported_nodes_vector;
-  for (auto& group : supported_nodes_vector) {
-    // Right now only NonZero and NonMaxSuppression related empty shape nodes are removed.
-    // The typical cases are Faster-rcnn and Mask-rcnn
-    // TODO: Remove the code if TensorRT fixed the issue in future release, or find a better generic way here to work around
-    post_processed_supported_nodes_vector.push_back({});
-    for (const auto& index : group.first) {
-      const auto& node = graph.GetNode(node_index[index]);
-      bool exclude_node = false;
-      for (auto input : node->InputDefs()) {
-        auto input_shape = input->Shape();
-        if (input_shape) {
-          for (auto dim : input_shape->dim()) {
-            std::string dim_name = dim.dim_param();
-            std::string exclude_dim_name1 = "NonZero";
-            std::string exclude_dim_name2 = "NonMaxSuppression";
-            if (!dim_name.empty()) {
-              if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos)) {
-                exclude_node = true;
-                break;
-              }
-            }
-          }
-        }
-
-        if (exclude_node) {
-          break;
-        }
-      }
-      if (!exclude_node) {
-        post_processed_supported_nodes_vector.back().first.push_back(index);
-      }
-    }
-
-    // Remove subgraph if it is empty or its size is smaller than the predefined minimal subgraph size
-    const int subgraph_size = post_processed_supported_nodes_vector.back().first.size();
-    if (subgraph_size == 0 || subgraph_size < min_subgraph_size_) {
-      post_processed_supported_nodes_vector.pop_back();
-    } else {
-      post_processed_supported_nodes_vector.back().second = group.second;
+  // Remove subgraphs if its size is less than the predefined minimal size
+  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+    const int subgraph_size = it->first.size();	  
+    if (subgraph_size < min_subgraph_size_) {
+      supported_nodes_vector.erase(it--);
     }
   }
-
-  // Construct subgraph capability from node list
+  
+  //Iteratively detect and remove cycles in the partitioned graph
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  int counter = 0;
-  for (const auto& group : post_processed_supported_nodes_vector) {
-    if (!group.first.empty()) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
-      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+  bool trt_cycle = true;
+  while (trt_cycle) { 
+    trt_cycle = false;  
+    std::unordered_map<std::string, int> node_to_index_map;
+    std::unordered_map<int, std::string> index_to_node_map;
+    std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
+    std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
+	result.clear();
+	int counter = 0, id = 0;
+    for (const auto& group : supported_nodes_vector) {
+      if (!group.first.empty()) {
+		// Construct subgraph capability from node list 
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
+      
+        // Create node to inputs/outputs/index maps
+        const auto& meta_def = sub_graph->GetMetaDef();
+        const std::string node_name = meta_def->name;
+        if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
+          index_to_node_map[id] = node_name;
+          node_to_index_map[node_name] = id++;
+        }
+      
+        if (meta_def != nullptr) {
+          for (const auto& input: meta_def->inputs) {
+            input_to_nodes_map[input].insert(node_name);
+          }
+          for (const auto& output: meta_def->outputs) {
+            node_to_outputs_map[node_name].insert(output);
+          }
+        }
+    
+        // Remove TensorRT nodes from node index list
+        for (const auto& index: group.first) {
+          non_trt_node_index.erase(node_index[index]);
+        }
+      
+        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+      }
+    }    
+    
+    // Add non TensorRT nodes to the maps
+    for (const auto& index: non_trt_node_index) {
+      const auto& node = graph.GetNode(index);
+      std::string node_name = node->Name();
+      if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
+        index_to_node_map[id] = node_name;
+        node_to_index_map[node_name] = id++;
+      }
+	  
+      for (const auto& input : node->InputDefs()) {
+        input_to_nodes_map[input->Name()].insert(node_name);
+      }
+	  
+      for (const auto& output : node->OutputDefs()) {
+        node_to_outputs_map[node_name].insert(output->Name());
+      }
     }
+    
+    // Create adjacency list
+    int graph_size = node_to_index_map.size();
+    std::list<int> *adjacency_map = new std::list<int>[graph_size];
+    for (const auto& node: node_to_outputs_map) {
+      for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
+        const auto& loc = input_to_nodes_map.find(*iter);
+        if (loc != input_to_nodes_map.end()) {
+          int parent_node_index = node_to_index_map.find(node.first)->second;
+          for (auto child_node: loc->second) {
+            int child_node_index = node_to_index_map.find(child_node)->second;
+            adjacency_map[parent_node_index].push_back(child_node_index);
+          }
+        }
+      }
+    }
+   
+    // Check cycle in the graph
+    bool *visited = new bool[graph_size];
+    bool *st = new bool[graph_size];
+    for (int i = 0; i < graph_size; ++i) {
+      visited[i] = false;
+      st[i] = false;
+    }
+    
+    std::vector<int> cycles;
+    bool has_cycle = false;
+    for (int i = 0; i < graph_size; ++i) {
+      if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
+    	has_cycle = true;
+    	break;
+      }
+    }
+    
+	// Remove TensorRT subgraph if it's part of the cycle
+    if (has_cycle) {
+      for (int i = 0; i < static_cast<int>(cycles.size()); ++i) {
+        auto loc = index_to_node_map.find(cycles[i]);
+        if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
+          int trt_node_index = std::stoi(loc->second.substr(10));
+          supported_nodes_vector.erase(supported_nodes_vector.begin() + trt_node_index);
+	  	  trt_cycle = true;
+          break;	  
+        }
+      }
+    }  
+    
+    delete[] adjacency_map;
+    delete[] visited;
+    delete[] st;
   }
 
   return result;
@@ -791,6 +880,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           buffers[i] = const_cast<float*>(ort.GetTensorData<float>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
           buffers[i] = const_cast<MLFloat16*>(ort.GetTensorData<MLFloat16>(input_tensor));
+        } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL) {
+          buffers[i] = const_cast<bool*>(ort.GetTensorData<bool>(input_tensor));		  
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
           buffers[i] = const_cast<int8_t*>(ort.GetTensorData<int8_t>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
@@ -827,6 +918,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<float>(output_tensor[i]);
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<MLFloat16>(output_tensor[i]);
+        } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL) {
+          buffers[i + num_binding_inputs] = ort.GetTensorMutableData<bool>(output_tensor[i]);		  
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
