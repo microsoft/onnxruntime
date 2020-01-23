@@ -42,14 +42,6 @@
 
 namespace onnxruntime {
 
-#ifdef USE_MIMALLOC
-template <typename T>
-using FastAllocVector = std::vector<T,mi_stl_allocator<T>>;
-#else
-template <typename T>
-using FastAllocVector = std::vector<T>;
-#endif
-
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 
 // Using statements for common classes that we refer to in ONNXRuntime very often.

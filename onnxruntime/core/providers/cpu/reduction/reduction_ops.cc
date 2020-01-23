@@ -4,6 +4,7 @@
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
+#include "core/providers/cpu/containers.h"
 using namespace std;
 namespace onnxruntime {
 
