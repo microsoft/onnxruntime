@@ -112,7 +112,7 @@ The DirectML execution provider works most efficiently when tensor shapes are kn
 3) Weights may be pre-processed within DirectML, enabling more efficient algorithms to be used.
 4) Graph optimization occurs within DirectML. For example, Concat operators may be removed, and more optimal tensor layouts may be used for the input and output of operators.
 
-Normally when the shapes of model inputs are known during session creation, the shapes for the reset of the model are inferred by OnnxRuntime when a session is created.  However if a model input contains a free dimension (such as for batch size), steps must be taken to retain the above performance benefits.
+Normally when the shapes of model inputs are known during session creation, the shapes for the rest of the model are inferred by OnnxRuntime when a session is created.  However if a model input contains a free dimension (such as for batch size), steps must be taken to retain the above performance benefits.
 
 In this case, there are two options:
 - Edit the model to replace an input's free dimension (specified through ONNX using "dim_param") with a fixed size.
