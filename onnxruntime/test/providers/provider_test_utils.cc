@@ -422,7 +422,10 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
   if (!status.IsOK()) {
     if (expect_result == ExpectResult::kExpectFailure) {
       EXPECT_TRUE(!status.IsOK());
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      // Disable expected_failure_string checks for Intel EP's
+      if (provider_type != kIntelExecutionProvider) {
+        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+      }
     } else {
       LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
