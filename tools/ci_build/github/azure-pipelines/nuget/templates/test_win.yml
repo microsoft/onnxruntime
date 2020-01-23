@@ -19,7 +19,8 @@ jobs:
     inputs: 
       versionSpec: '3.7' 
       addToPath: true 
-      architecture: ${{ parameters.BuildArch }}  
+      architecture: x64
+
   - template: set-test-data-variables-step.yml
   - template: win-download-test-data.yml
 
