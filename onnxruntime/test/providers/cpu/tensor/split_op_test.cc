@@ -431,7 +431,7 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
                               5.f, 6.f,
                               7.f, 8.f}};
 
-  std::vector<int64_t> splits{1, 0, 3};  // 0 is not valid
+  std::vector<int64_t> splits{1, -1, 3};  // 0 is not valid
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
