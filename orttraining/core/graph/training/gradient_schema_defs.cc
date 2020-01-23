@@ -694,8 +694,8 @@ void RegisterGradientSchemas() {
       .SetDoc(R"DOC(SparseSoftmaxCrossEntropyGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TrainableDropout)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("TrainableDropout")
       .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL)

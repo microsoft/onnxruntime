@@ -35,8 +35,8 @@ float GetRatioOrDefault(const Tensor* ratio_tensor) {
 
 ONNX_OPERATOR_KERNEL_EX(
     TrainableDropout,	
-    kMSDomain,
-    1,
+    kOnnxDomain,
+    9,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint(

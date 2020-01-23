@@ -11,8 +11,8 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(T)                                      \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
       TrainableDropout,                                               \
-      kMSDomain,                                                    \
-      1,                                                              \
+      kOnnxDomain,                                                    \
+      9,                                                              \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       KernelDefBuilder()                                              \

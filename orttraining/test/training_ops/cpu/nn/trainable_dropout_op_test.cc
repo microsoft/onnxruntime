@@ -24,7 +24,7 @@ namespace test {
 using namespace onnxruntime::test;
 
 namespace {
-constexpr auto k_trainable_dropout_opset_version = 1;
+constexpr auto k_trainable_dropout_opset_version = 9;
 
 const Tensor& FetchTensor(const OrtValue& ort_value) {
   if (ort_value.Fence()) {
@@ -35,7 +35,7 @@ const Tensor& FetchTensor(const OrtValue& ort_value) {
 
 void RunTrainableDropoutTest(
     const float ratio, const bool use_mask, const std::vector<int64_t>& input_shape) {
-  OpTester t{"TrainableDropout", k_trainable_dropout_opset_version, kMSDomain};
+  OpTester t{"TrainableDropout", k_trainable_dropout_opset_version, kOnnxDomain};
 
   const auto input_size = std::accumulate(
       input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
@@ -117,7 +117,7 @@ TEST(TrainableDropoutTest, RatioLimit) {
 namespace {
 void RunTrainableDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, bool default_ratio = true) {
   const auto input_shape = TensorShape(input_dims);
-  OpTester test("TrainableDropoutGrad", k_trainable_dropout_opset_version, kMSDomain);
+  OpTester test("TrainableDropoutGrad", 1, kMSDomain);
   if (default_ratio) {
     ratio = 0.5f;
   }
