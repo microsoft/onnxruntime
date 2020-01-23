@@ -21,6 +21,11 @@ jobs:
       addToPath: true 
       architecture: x64
 
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
