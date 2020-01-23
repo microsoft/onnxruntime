@@ -85,24 +85,6 @@ bool IsDimensionSupported(const Node* node, std::string device) {
         return false;
     }
   }
-
-  if(node->OpType() == "BatchNormalization") {
-
-    auto scale_shape = node_inputs[1]->Shape();
-    auto b_shape = node_inputs[2]->Shape();
-    auto mean_shape = node_inputs[3]->Shape();
-    auto var_shape = node_inputs[4]->Shape();
-
-    //Scale, B, Mean and Var need to have same dims as number of channels
-    if(scale_shape != nullptr && scale_shape->dim_size() != 1)
-      return false;
-    if(b_shape != nullptr && b_shape->dim_size() != 1)
-      return false;
-    if(mean_shape != nullptr && mean_shape->dim_size() != 1)
-      return false;
-    if(var_shape != nullptr && var_shape->dim_size() != 1)
-      return false;
-  }
   return true;
 }
 
@@ -272,9 +254,6 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     const bool B_is_float = node->InputDefs()[1]->Type()->find("float") != std::string::npos;
     return (A_is_float && B_is_float) ? false : true;
 
-  } else if (optype == "BatchNormalization") {
-    if(!IsDimensionSupported(node,device_id))
-      return true;
   } else if (optype == "Softmax") {
     if (!IsDimensionSupported(node,device_id))
       return true;
