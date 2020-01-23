@@ -15,6 +15,11 @@ jobs:
     value: '$(Build.BinariesDirectory)'
 
   steps:
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      architecture: ${{ parameters.BuildArch }}  
   - template: set-test-data-variables-step.yml
   - template: win-download-test-data.yml
 
