@@ -1,5 +1,6 @@
 parameters:
   DoDebugBuild: 'true'
+  DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
@@ -7,6 +8,8 @@ parameters:
   ArtifactName: 'drop-nuget'
   DoEsrp: 'false'
   BuildArch: 'x64'
+  DoTestCoverage: 'false'
+  sln_platform: 'Arm64' # Options: Win32, x64,Arm64
   SetVcvars: 'false'
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
