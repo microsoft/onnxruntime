@@ -59,9 +59,16 @@ add_dependencies(winml_test_common
   winml_api
   winml_dll
 )
-target_compile_definitions(winml_test_common PRIVATE BUILD_GOOGLE_TEST)
-set_winml_target_properties(winml_test_common)
 
+# if using google test, include google test specific definitions
+if(NOT winml_NO_GOOGLE_TEST)
+  target_compile_definitions(winml_test_common PRIVATE BUILD_GOOGLE_TEST)
+  target_sources(winml_test_common PRIVATE ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+else()
+  target_compile_definitions(winml_test_common PRIVATE ${winml_TEST_TYPE})
+endif()
+
+set_winml_target_properties(winml_test_common)
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
 add_winml_test(
   TARGET winml_test_api
