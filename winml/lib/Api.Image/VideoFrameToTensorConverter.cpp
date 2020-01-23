@@ -437,24 +437,28 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 
   // TODO: Make an allocator for upload heaps
   if (!upload_heap_ || upload_heap_->GetDesc().Width < bufferSize) {
+    const auto heapType = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    const auto resourceDescription = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        &heapType,
         D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+        &resourceDescription,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&upload_heap_)));
   }
 
   void* pCPUTensorBuffer = nullptr;
-  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &CD3DX12_RANGE(0, 0), &pCPUTensorBuffer));
+  const auto mapRange = CD3DX12_RANGE(0, 0);
+  WINML_THROW_IF_FAILED(upload_heap_->Map(0, &mapRange, &pCPUTensorBuffer));
 
   // We avoid the Video Frame pipeline by manually sending the CPU data to the GPU, and we tensorize while we are filling the
   // upload heap. The image may already have been cropped/scaled by the video frame pipeline, so we send the scaled bounds
   // instead of the initial input bounds
   ConvertSoftwareBitmapToCPUTensor(convertedSoftwareBitmap, tensorDesc, scaledBounds, pCPUTensorBuffer);
 
-  upload_heap_->Unmap(0, &CD3DX12_RANGE(0, bufferSize));
+  const auto unmapRange = CD3DX12_RANGE(0, bufferSize);
+  upload_heap_->Unmap(0, &unmapRange);
 
   ResetCommandList(device_cache);
   command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);

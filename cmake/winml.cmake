@@ -416,7 +416,7 @@ set_target_properties(${winml_libs} PROPERTIES
   CXX_STANDARD 17
   CXX_STANDARD_REQUIRED ON)
 foreach(winml_lib ${winml_libs})
-  target_compile_options(${winml_lib} PRIVATE /GR- /await /wd4238 /bigobj)
+  target_compile_options(${winml_lib} PRIVATE /GR- /await /bigobj)
   target_compile_definitions(${winml_lib} PRIVATE
     PLATFORM_WINDOWS
     _SCL_SECURE_NO_WARNINGS  # Remove warnings about unchecked iterators
