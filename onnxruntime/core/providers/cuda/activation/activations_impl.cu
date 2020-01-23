@@ -4,7 +4,6 @@
 #include <cuda_runtime.h>
 #include "activations_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
