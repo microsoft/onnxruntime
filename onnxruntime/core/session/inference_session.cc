@@ -588,8 +588,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
   // registered (aside from the CPU EP, which is always registered by default.)
   if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
-    auto dml_registry = execution_providers_.Get(kDmlExecutionProvider)->GetKernelRegistry();
-    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
+    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, execution_providers_.Get(kDmlExecutionProvider));
 
     bool modified = false;
     dml_transformer.Apply(graph, modified, *session_logger_);
