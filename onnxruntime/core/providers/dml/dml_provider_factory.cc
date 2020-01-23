@@ -12,6 +12,8 @@ using Microsoft::WRL::ComPtr;
 
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ort_apis.h"
+#include "core/framework/error_code_helper.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 
 namespace onnxruntime {
@@ -49,12 +51,29 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
 }
 
+bool IsSoftwareAdapter(IDXGIAdapter1* adapter)
+{
+    DXGI_ADAPTER_DESC1 desc;
+    adapter->GetDesc1(&desc);
+
+    // see here for documentation on filtering WARP adapter:
+    // https://docs.microsoft.com/en-us/windows/desktop/direct3ddxgi/d3d10-graphics-programming-guide-dxgi#new-info-about-enumerating-adapters-for-windows-8
+    auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
+    auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
+    auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
+    
+    return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id) {
   ComPtr<IDXGIFactory4> dxgi_factory;
   THROW_IF_FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&dxgi_factory)));
 
   ComPtr<IDXGIAdapter1> adapter;
   THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
+
+  // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much faster
+  THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
 
   ComPtr<ID3D12Device> d3d12_device;
   THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3d12_device)));
@@ -91,13 +110,17 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
+API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id));
+API_IMPL_END
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     IDMLDevice* dml_device, ID3D12CommandQueue* cmd_queue) {
+API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(dml_device,
                                                                                         cmd_queue));
+API_IMPL_END
   return nullptr;
 }
