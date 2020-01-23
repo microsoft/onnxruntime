@@ -21,7 +21,14 @@ jobs:
       addToPath: true 
       architecture: x64
 
-  - template: set-test-data-variables-step.yml
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - template: set-test-data-variables-step.yml  
   - template: win-download-test-data.yml
 
   - task: BatchScript@1
