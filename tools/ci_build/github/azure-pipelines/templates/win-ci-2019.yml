@@ -156,7 +156,7 @@ jobs:
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
           arguments: ${{ parameters.BuildArch }}
-          modifyEnvironment: true    
+          modifyEnvironment: true
       # Esrp signing
       - template: esrp_dll.yml
         parameters:
