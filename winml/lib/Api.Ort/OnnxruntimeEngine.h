@@ -1,21 +1,9 @@
 #include "iengine.h"
 
-#include "adapter/winml_adapter_c_api.h"
-
 #include <memory>
 
 
 namespace Windows::AI::MachineLearning {
-
-using UniqueOrtSessionOptions = std::unique_ptr<OrtSessionOptions, void (*)(OrtSessionOptions*)>;
-using UniqueOrtSession = std::unique_ptr<OrtSession, void (*)(OrtSession*)>;
-using UniqueOrtExecutionProvider = std::unique_ptr<OrtExecutionProvider, void (*)(OrtExecutionProvider*)>;
-using UniqueOrtValue = std::unique_ptr<OrtValue, void (*)(OrtValue*)>;
-using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, void (*)(OrtMemoryInfo*)>;
-using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)>;
-using UniqueOrtTensorTypeAndShapeInfo = std::unique_ptr<OrtTensorTypeAndShapeInfo, void (*)(OrtTensorTypeAndShapeInfo*)>;
-using UniqueOrtAllocator = std::unique_ptr<OrtAllocator, OrtStatus* (*)(OrtAllocator*)>;
-using UniqueOrtRunOptions = std::unique_ptr<OrtRunOptions, void (*)(OrtRunOptions*)>;
 
 class OnnxruntimeEngineBuilder;
 class OnnxruntimeEngineFactory;
@@ -36,7 +24,7 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
 
   STDMETHOD(IsEmpty)(bool* out) override;
   STDMETHOD(IsCpu)(bool* out) override;
-  STDMETHOD_(WinML::unique_void, GetResource)() override;
+  STDMETHOD_(WinML::Resource, GetResource)() override;
   STDMETHOD(IsTensor)(bool* out) override;
   STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) override;
   STDMETHOD(GetTensorShape)(std::vector<int64_t>& shape_vector) override;

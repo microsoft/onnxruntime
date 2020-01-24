@@ -84,10 +84,6 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
 
   OrtExecutionProvider* ort_provider;
   winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider);
- 
-  size_t num_providers;
-  winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers);
-  RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
 
   winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true);
 

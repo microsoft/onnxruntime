@@ -9,9 +9,8 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_env.h"
 
-#include "AbiCustomRegistryImpl.h"
-
 #ifdef USE_DML
+#include "abi_custom_registry_impl.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
 #endif USE_DML
@@ -22,7 +21,6 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
  public:
   WinmlAdapterLoggingWrapper(OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, void* logger_param) : LoggingWrapper(logging_function, logger_param),
                                                                                                                                  profiling_function_(profiling_function) {
-    ;
   }
 
   void SendProfileEvent(onnxruntime::profiling::EventRecord& event_record) const override {

@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "core/providers/winml/winml_provider_factory.h"
-#include "adapter/winml_adapter_c_api.h"
-
 #pragma warning(push)
 #pragma warning(disable : 4505)
 

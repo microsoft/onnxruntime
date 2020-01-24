@@ -18,6 +18,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
 #include "core/session/environment.h"
+#include "core/session/onnxruntime_env.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -27,8 +28,6 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
-
-#include "core/session/onnxruntime_env.h"
 
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;

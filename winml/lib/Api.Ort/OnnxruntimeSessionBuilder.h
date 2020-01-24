@@ -3,12 +3,6 @@
 
 #pragma once
 
-#include "adapter/winml_adapter_c_api.h"
-
-using UniqueOrtSessionOptions = std::unique_ptr<OrtSessionOptions, void (*)(OrtSessionOptions*)>;
-using UniqueOrtSession = std::unique_ptr<OrtSession, void (*)(OrtSession*)>;
-using UniqueOrtExecutionProvider = std::unique_ptr<OrtExecutionProvider, void (*)(OrtExecutionProvider*)>;
-
 namespace Windows::AI::MachineLearning {
 
 // The IOrtSessionBuilder offers an abstraction over the creation of
