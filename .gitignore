@@ -43,6 +43,6 @@ cmake/external/FeaturizersLibrary/
 # Java specific ignores
 java/gradlew
 java/gradlew.bat
-java/gradle/wrapper
+java/gradle
 java/.gradle
 
