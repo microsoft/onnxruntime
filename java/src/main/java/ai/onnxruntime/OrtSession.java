@@ -251,9 +251,9 @@ public class OrtSession implements AutoCloseable {
               allocator.handle,
               inputNamesArray,
               inputHandles,
-              numInputs,
+              inputNamesArray.length,
               outputNamesArray,
-              numOutputs);
+              outputNamesArray.length);
       return new Result(outputNamesArray, outputValues);
     } else {
       throw new IllegalStateException("Trying to score a closed OrtSession.");
