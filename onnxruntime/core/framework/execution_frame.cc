@@ -217,13 +217,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         for (size_t i = 0; i < mem_patterns_->locations.size(); i++) {
           ORT_ENFORCE(buffers_.find(mem_patterns_->locations[i]) == buffers_.end());
           AllocatorPtr alloc = GetAllocator(mem_patterns_->locations[i]);
-
-          void* buffer = nullptr;
-          size_t peak_size = mem_patterns_->patterns[i].PeakSize();
-          if (peak_size > 0) {
-            buffer = utils::AllocateBlock(*alloc, peak_size);
-          }
-
+          void* buffer = mem_patterns_->patterns[i].PeakSize() > 0
+                             ? alloc->Alloc(mem_patterns_->patterns[i].PeakSize())
+                             : nullptr;
           buffers_[mem_patterns_->locations[i]] = BufferUniquePtr(buffer, alloc);
 
           // comment out following line to see the size of activation
@@ -385,7 +381,7 @@ static Status AllocateTraditionalMLValue(OrtValue& ort_value, const NonTensorTyp
   return Status::OK();
 }
 
-static Status AllocateTensorSequence(OrtValue& ort_value) {
+static Status AllocateTensorSequence (OrtValue& ort_value) {
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   auto p_tensor_sequence = onnxruntime::make_unique<TensorSeq>();
   ort_value.Init(p_tensor_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
