@@ -36,7 +36,7 @@ function(add_winml_test)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif()
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES})
+  add_executable(${_UT_TARGET} ${_UT_SOURCES} ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
 
@@ -60,16 +60,10 @@ add_dependencies(winml_test_common
   winml_dll
 )
 
-# if using google test, include google test specific definitions
-if(NOT winml_NO_GOOGLE_TEST)
-  target_compile_definitions(winml_test_common PRIVATE BUILD_GOOGLE_TEST)
-  target_sources(winml_test_common PRIVATE ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
-else()
-  target_compile_definitions(winml_test_common PRIVATE ${winml_TEST_TYPE})
-endif()
-
 set_winml_target_properties(winml_test_common)
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
+# set global variable for the scenario source list for other test cmake files to use
+set(winml_test_api_src_list ${winml_test_api_src} PARENT_SCOPE)
 add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
@@ -80,6 +74,8 @@ target_precompiled_header(winml_test_api testPch.h)
 
 if (onnxruntime_USE_DML)
   file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+  # set global variable for the scenario source list for other test cmake files to use
+  set(winml_test_scenario_src_list ${winml_test_scenario_src} PARENT_SCOPE)
   set(winml_test_scenario_libs "onnxruntime_providers_dml")
 else()
   set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")

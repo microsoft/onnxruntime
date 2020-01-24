@@ -34,12 +34,12 @@ static void BindImage(
 
     if (bindAsInspectable)
     {
-        WINML_EXPECT_NO_THROW(binding.Bind(name, frame));
+        binding.Bind(name, frame);
     }
     else
     {
         auto imagetensor = ImageFeatureValue::CreateFromVideoFrame(frame);
-        WINML_EXPECT_NO_THROW(binding.Bind(name, imagetensor));
+        binding.Bind(name, imagetensor);
     }
 }
 
@@ -49,15 +49,18 @@ static void BindTensor(
     ITensor inputTensor,
     bool bindAsInspectable = false)
 {
-    WINML_EXPECT_TRUE(inputTensor != nullptr);
+    if (inputTensor == nullptr)
+    {
+        throw winrt::hresult_invalid_argument(L"input tensor provided to squeezenet is null.");
+    }
 
     if (bindAsInspectable)
     {
-        WINML_EXPECT_NO_THROW(binding.Bind(name, inputTensor.as<TensorFloat>().GetAsVectorView()));
+        binding.Bind(name, inputTensor.as<TensorFloat>().GetAsVectorView());
     }
     else
     {
-        WINML_EXPECT_NO_THROW(binding.Bind(name, inputTensor));
+        binding.Bind(name, inputTensor);
     }
 }
 
@@ -74,11 +77,11 @@ ITensor BindOutput(
     {
     case OutputBindingStrategy::Bound:
         outputTensor = T::Create(shape);
-        WINML_EXPECT_NO_THROW(binding.Bind(name, outputTensor));
+        binding.Bind(name, outputTensor);
         break;
     case OutputBindingStrategy::Empty:
         outputTensor = T::Create();
-        WINML_EXPECT_NO_THROW(binding.Bind(name, outputTensor));
+        binding.Bind(name, outputTensor);
         break;
     case OutputBindingStrategy::Unbound:
         __fallthrough;
@@ -103,7 +106,7 @@ ImageFeatureValue BindImageOutput(
         SoftwareBitmap bitmap(BitmapPixelFormat::Bgra8, 720, 720);
         VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(bitmap);
         outputTensor = ImageFeatureValue::CreateFromVideoFrame(frame);
-        WINML_EXPECT_NO_THROW(binding.Bind(name, outputTensor));
+        binding.Bind(name, outputTensor);
         break;
     }
     case OutputBindingStrategy::Unbound:
@@ -135,10 +138,10 @@ void ModelValidator::FnsCandy16(
 
     // WinML model creation
     LearningModel model = nullptr;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
+    model = LearningModel::LoadFromFilePath(fullModelPath);
 
     LearningModelSession modelSession = nullptr;
-    WINML_EXPECT_NO_THROW(modelSession = LearningModelSession(model, LearningModelDevice(deviceKind)));
+    modelSession = LearningModelSession(model, LearningModelDevice(deviceKind));
 
     LearningModelBinding modelBinding(modelSession);
     auto fullImagePath = modulePath + inputDataImageFileName;
@@ -146,7 +149,10 @@ void ModelValidator::FnsCandy16(
 
     // create the tensor for the actual output
     auto output = model.OutputFeatures().First().Current();
-    WINML_EXPECT_TRUE(output.Kind() == LearningModelFeatureKind::Tensor);
+    if (output.Kind() != LearningModelFeatureKind::Tensor)
+    {
+      throw winrt::hresult_invalid_argument(L"Model output kind is not type Tensor");
+    }
 
     auto shape = winrt::single_threaded_vector(std::vector<int64_t> {1, 1});
     auto outputTensor = BindImageOutput(outputBindingStrategy, modelBinding, outputDataBindingName);
@@ -154,7 +160,7 @@ void ModelValidator::FnsCandy16(
     // Evaluate the model
     std::cout << "Calling EvaluateSync on instance" << instance << "\n";
     LearningModelEvaluationResult result = nullptr;
-    WINML_EXPECT_NO_THROW(result = modelSession.Evaluate(modelBinding, {}));
+    result = modelSession.Evaluate(modelBinding, {});
 
     // Get results
     if (outputBindingStrategy == OutputBindingStrategy::Unbound)
@@ -166,7 +172,10 @@ void ModelValidator::FnsCandy16(
     }
     else
     {
-        WINML_EXPECT_EQUAL(result.Outputs().Lookup(outputDataBindingName), outputTensor);
+        if (result.Outputs().Lookup(outputDataBindingName) != outputTensor)
+        {
+            throw winrt::hresult_invalid_argument(L"Evaluation Results lookup don't match LearningModelBinding Output Tensor.");
+        }
 
         auto softwareBitmap = outputTensor.VideoFrame().SoftwareBitmap();
 
@@ -202,10 +211,10 @@ void ModelValidator::SqueezeNet(
     
     // WinML model creation
     LearningModel model = nullptr;
-    WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
+    model = LearningModel::LoadFromFilePath(fullModelPath);
     
     LearningModelSession modelSession = nullptr;
-    WINML_EXPECT_NO_THROW(modelSession = LearningModelSession(model, LearningModelDevice(deviceKind)));
+    modelSession = LearningModelSession(model, LearningModelDevice(deviceKind));
 
     LearningModelBinding modelBinding(modelSession);
 
@@ -223,11 +232,17 @@ void ModelValidator::SqueezeNet(
 
     // load up the expected output
     auto expectedResultsTensor = ProtobufHelpers::LoadTensorFromProtobufFile(outputFileName, false);
-    WINML_EXPECT_TRUE(expectedResultsTensor != nullptr);
+    if (expectedResultsTensor == nullptr)
+    {
+      throw winrt::hresult_invalid_argument(L"Expected Results from protobuf file are null.");
+    }
 
     // create the tensor for the actual output
     auto output = model.OutputFeatures().First().Current();
-    WINML_EXPECT_TRUE(output.Kind() == LearningModelFeatureKind::Tensor);
+    if (output.Kind() != LearningModelFeatureKind::Tensor)
+    {
+        throw winrt::hresult_invalid_argument(L"Expected output feature kind of model to be Tensor");
+    }
 
     auto outputTensor = BindOutput<TensorFloat>(
         outputBindingStrategy, modelBinding, outputDataBindingName, expectedResultsTensor.Shape());
@@ -235,7 +250,7 @@ void ModelValidator::SqueezeNet(
     // Evaluate the model
     std::cout << "Calling EvaluateSync on instance" << instance << "\n";
     LearningModelEvaluationResult result = nullptr;
-    WINML_EXPECT_NO_THROW(result = modelSession.Evaluate(modelBinding, {}));
+    result = modelSession.Evaluate(modelBinding, {});
 
     // Get results
     if (outputBindingStrategy == OutputBindingStrategy::Unbound)
@@ -246,13 +261,19 @@ void ModelValidator::SqueezeNet(
     }
     else
     {
-        WINML_EXPECT_EQUAL(result.Outputs().Lookup(outputDataBindingName), outputTensor);
+        if (result.Outputs().Lookup(outputDataBindingName) != outputTensor)
+        {
+            throw winrt::hresult_invalid_argument(L"Evaluation Results lookup don't match LearningModelBinding output tensor.");
+        }
     }
 
     auto outDataExpected = expectedResultsTensor.as<TensorFloat>().GetAsVectorView();
     auto outDataActual = outputTensor.as<TensorFloat>().GetAsVectorView();
 
-    WINML_EXPECT_TRUE(outDataActual.Size() == outDataExpected.Size());
+    if (outDataActual.Size() != outDataExpected.Size())
+    {
+      throw winrt::hresult_invalid_argument(L"Actual tensor data size doesn't match expected tensor data size.");
+    }
     for (uint32_t i = 0; i < outDataActual.Size(); i++)
     {
         float delta = std::abs(outDataActual.GetAt(i) - outDataExpected.GetAt(i));
@@ -261,7 +282,7 @@ void ModelValidator::SqueezeNet(
           std::stringstream ss;
           ss << "EXPECTED: " << outDataExpected.GetAt(i) << " , ACTUAL: " << outDataActual.GetAt(i)
                 << "instance " << instance << ", element " << i;
-          WINML_LOG_ERROR(ss.str().c_str());
+          throw winrt::hresult_invalid_argument(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(ss.str()));
         }
     }
 }
