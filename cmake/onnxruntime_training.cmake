@@ -7,10 +7,12 @@ set (re2_INCLUDE_DIRS ${REPO_ROOT}/cmake/external/re2)
 
 # training lib
 file(GLOB_RECURSE onnxruntime_training_srcs
-    "${ORTTRAINING_ROOT}/core/training/*.h"
-    "${ORTTRAINING_ROOT}/core/training/*.cc"
-    "${ORTTRAINING_ROOT}/core/training/tensorboard/*.h"
-    "${ORTTRAINING_ROOT}/core/training/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/tensorboard/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/tensorboard/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/session/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/session/*.cc"
 )
 
 add_library(onnxruntime_training ${onnxruntime_training_srcs})
@@ -37,12 +39,12 @@ if (onnxruntime_USE_HOROVOD)
 endif()
 
 set_target_properties(onnxruntime_training PROPERTIES FOLDER "ONNXRuntime")
-source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_srcs})
+source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_training_srcs})
 
 # training runner lib
 file(GLOB_RECURSE onnxruntime_training_runner_srcs
-    "${ORTTRAINING_ROOT}/models/runner/*.h"
-    "${ORTTRAINING_ROOT}/models/runner/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/models/runner/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/runner/*.cc"
 )
 add_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs})
 add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
@@ -58,14 +60,14 @@ if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
 endif()
 set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
-source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_runner_srcs})
+source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_training_runner_srcs})
 
 
 # MNIST
 file(GLOB_RECURSE training_mnist_src
-    "${ORTTRAINING_ROOT}/models/mnist/*.h"
-    "${ORTTRAINING_ROOT}/models/mnist/mnist_data_provider.cc"
-    "${ORTTRAINING_ROOT}/models/mnist/main.cc"
+    "${ORTTRAINING_SOURCE_DIR}/models/mnist/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/mnist/mnist_data_provider.cc"
+    "${ORTTRAINING_SOURCE_DIR}/models/mnist/main.cc"
 )
 add_executable(onnxruntime_training_mnist ${training_mnist_src})
 onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
@@ -83,8 +85,8 @@ set_target_properties(onnxruntime_training_mnist PROPERTIES FOLDER "ONNXRuntimeT
 # Disabling build for squeezenet, as no one is using this
 #[[
 file(GLOB_RECURSE training_squeezene_src
-    "${ORTTRAINING_ROOT}/models/squeezenet/*.h"
-    "${ORTTRAINING_ROOT}/models/squeezenet/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/models/squeezenet/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/squeezenet/*.cc"
 )
 add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
 onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training)
@@ -98,8 +100,8 @@ set_target_properties(onnxruntime_training_squeezenet PROPERTIES FOLDER "ONNXRun
 
 # BERT
 file(GLOB_RECURSE training_bert_src
-    "${ORTTRAINING_ROOT}/models/bert/*.h"
-    "${ORTTRAINING_ROOT}/models/bert/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/models/bert/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/models/bert/*.cc"
 )
 add_executable(onnxruntime_training_bert ${training_bert_src})
 

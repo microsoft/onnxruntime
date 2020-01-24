@@ -109,11 +109,11 @@ set(onnxruntime_test_framework_src_patterns
   )
 
 file(GLOB onnxruntime_test_training_src
-  "${ORTTRAINING_ROOT}/test/model/*.cc"
-  "${ORTTRAINING_ROOT}/test/gradient/*.cc"
-  "${ORTTRAINING_ROOT}/test/graph/*.cc"
-  "${ORTTRAINING_ROOT}/test/optimizer/*.cc"
-  "${ORTTRAINING_ROOT}/test/framework/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
   )
 
 if(WIN32)
@@ -162,15 +162,15 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
-    "${ORTTRAINING_ROOT}/test/training_ops/compare_provider_test_utils.cc"
-    "${ORTTRAINING_ROOT}/test/training_ops/function_op_test_utils.cc"
-    "${ORTTRAINING_ROOT}/test/training_ops/cpu/*"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
     )
   list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
   if (onnxruntime_USE_CUDA)
     file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_ROOT}/test/training_ops/cuda/*"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
       )
     list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
   endif()

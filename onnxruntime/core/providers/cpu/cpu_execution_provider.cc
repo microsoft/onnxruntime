@@ -14,7 +14,7 @@
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "training_ops/cpu_training_kernels.h"
+#include "orttraining/training_ops/cpu_training_kernels.h"
 #endif
 
 #include "core/framework/compute_capability.h"
@@ -991,7 +991,6 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, double,
                                                                   RoiAlign)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, ReverseSequence)>,
-
 
       //opset 11
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, Clip)>,

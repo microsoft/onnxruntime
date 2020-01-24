@@ -12,7 +12,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
-#include "core/training/training_session.h"
+#include "orttraining/core/session/training_session.h"
 #include "test/util/include/default_providers.h"
 
 using namespace ::onnxruntime::logging;

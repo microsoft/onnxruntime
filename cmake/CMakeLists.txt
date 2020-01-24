@@ -153,6 +153,8 @@ endif()
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
+set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
+
 file (STRINGS "${REPO_ROOT}/VERSION_NUMBER" ORT_VERSION)
 
 # Guarantee that the Eigen code that you are #including is licensed
@@ -224,7 +226,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()  
+  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -283,7 +285,7 @@ endif()
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")	
+set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
@@ -424,8 +426,8 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (APPLE)
-  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
-  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored.
   #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
   #TODO: fix the warning in ONNX and re-enable this flag
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")

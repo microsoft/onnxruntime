@@ -24,10 +24,10 @@
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "core/graph/training/gradient_schema_defs.h"
-#include "core/graph/training/gradient_builder_registry.h"
-#include "core/graph/training/loss_function_registry.h"
-#include "core/graph/training/optimizer_builder.h"
+#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
+#include "orttraining/core/graph/optimizer_builder.h"
 #endif
 
 namespace onnxruntime {

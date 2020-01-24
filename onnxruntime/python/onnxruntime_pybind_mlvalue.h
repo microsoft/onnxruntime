@@ -15,7 +15,7 @@
 #include "core/framework/ml_value.h"
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
-#include "core/training/training_session.h"
+#include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
 namespace python {

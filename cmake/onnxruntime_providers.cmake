@@ -33,22 +33,22 @@ file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
 )
 
 file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_ROOT}/training_ops/cpu_training_kernels.h"
-  "${ORTTRAINING_ROOT}/training_ops/cpu_training_kernels.cc"
-  "${ORTTRAINING_ROOT}/training_ops/cpu/*.h"
-  "${ORTTRAINING_ROOT}/training_ops/cpu/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_ROOT}/training_ops/cuda_training_kernels.h"
-  "${ORTTRAINING_ROOT}/training_ops/cuda_training_kernels.cc"
-  "${ORTTRAINING_ROOT}/training_ops/cuda/*.h"
-  "${ORTTRAINING_ROOT}/training_ops/cuda/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
 )
 
 file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_ROOT}/training_ops/cuda/*.cu"
-  "${ORTTRAINING_ROOT}/training_ops/cuda/*.cuh"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cu"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cuh"
 )
 
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
@@ -58,7 +58,7 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
 
 if (NOT onnxruntime_USE_HOROVOD)
   list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
-  "${ORTTRAINING_ROOT}/training_ops/cpu/collective/horovod_kernels.cc"
+  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/horovod_kernels.cc"
   )
 endif()
 
@@ -166,15 +166,15 @@ if (onnxruntime_USE_CUDA)
 
   if (NOT onnxruntime_USE_HOROVOD)
     list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/horovod_kernels.cc"
-    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/ready_event.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/horovod_kernels.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/ready_event.cc"
     )
   endif()
 
   if (NOT onnxruntime_USE_NCCL)
     list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/nccl_common.cc"
-    "${ORTTRAINING_ROOT}/training_ops/cuda/collective/nccl_kernels.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
     )
   endif()
 

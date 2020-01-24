@@ -84,8 +84,8 @@
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
-#include "core/training/optimizer_config.h"
-#include "core/training/mpi_setup.h"
+#include "orttraining/core/framework/optimizer_config.h"
+#include "orttraining/core/framework/mpi_setup.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -110,7 +110,7 @@ std::string nuphar_settings;
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "core/training/data_transfer_utils.h"
+#include "orttraining/core/framework/data_transfer_utils.h"
 #endif
 
 namespace onnxruntime {

@@ -37,13 +37,13 @@ file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
 
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_ROOT}/core/graph/*.h"
-      "${ORTTRAINING_ROOT}/core/graph/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
       )
   if (NOT onnxruntime_USE_HOROVOD)
     list(REMOVE_ITEM orttraining_graph_src
-        "${ORTTRAINING_ROOT}/core/graph/training/horovod_adapters.h"
-        "${ORTTRAINING_ROOT}/core/graph/training/horovod_adapters.cc"
+        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.h"
+        "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.cc"
         )
   endif()
   set(onnxruntime_graph_src ${onnxruntime_graph_src} ${orttraining_graph_src})

@@ -9,8 +9,8 @@ file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS
 
 if (onnxruntime_ENABLE_TRAINING)
     file(GLOB orttraining_optimizer_srcs CONFIGURE_DEPENDS
-        "${ORTTRAINING_ROOT}/core/optimizer/*.h"
-        "${ORTTRAINING_ROOT}/core/optimizer/*.cc"
+        "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
         )
     set(onnxruntime_optimizer_srcs ${onnxruntime_optimizer_srcs} ${orttraining_optimizer_srcs})
 endif()
