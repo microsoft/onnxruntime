@@ -62,7 +62,7 @@ add_dependencies(winml_test_common
 
 set_winml_target_properties(winml_test_common)
 file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
-# set global variable for the scenario source list for other test cmake files to use
+# set global variable for the api test source list for other test cmake files to use
 set(winml_test_api_src_list ${winml_test_api_src} PARENT_SCOPE)
 add_winml_test(
   TARGET winml_test_api
@@ -74,7 +74,7 @@ target_precompiled_header(winml_test_api testPch.h)
 
 if (onnxruntime_USE_DML)
   file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
-  # set global variable for the scenario source list for other test cmake files to use
+  # set global variable for the scenario test source list for other test cmake files to use
   set(winml_test_scenario_src_list ${winml_test_scenario_src} PARENT_SCOPE)
   set(winml_test_scenario_libs "onnxruntime_providers_dml")
 else()
