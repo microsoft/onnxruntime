@@ -40,7 +40,7 @@ static void CpuSqueezeNetEmptyOutputs()
             /*dataTolerance*/ 0.00001f,
             false,
             OutputBindingStrategy::Empty);
-    )
+    );
 }
 
 static void CpuSqueezeNetUnboundOutputs()
@@ -53,7 +53,7 @@ static void CpuSqueezeNetUnboundOutputs()
             /*dataTolerance*/ 0.00001f,
             false,
             OutputBindingStrategy::Unbound);
-    )
+    );
 }
 
 static void CpuSqueezeNetBindInputTensorAsInspectable()
@@ -67,7 +67,7 @@ static void CpuSqueezeNetBindInputTensorAsInspectable()
             false,
             OutputBindingStrategy::Bound /* empty outputs */,
             true /* bind inputs as inspectables */);
-    )
+    );
 }
 
 static void CastMapInt64()
@@ -310,7 +310,7 @@ static void GpuSqueezeNet()
             gpuInstance,
             LearningModelDeviceKind::DirectX,
             /*dataTolerance*/ 0.00001f);
-    )
+    );
 }
 
 static void GpuSqueezeNetEmptyOutputs()
@@ -323,7 +323,7 @@ static void GpuSqueezeNetEmptyOutputs()
             /*dataTolerance*/ 0.00001f,
             false,
             OutputBindingStrategy::Empty);
-    )
+    );
 }
 
 static void GpuSqueezeNetUnboundOutputs()
@@ -336,7 +336,7 @@ static void GpuSqueezeNetUnboundOutputs()
             /*dataTolerance*/ 0.00001f,
             false,
             OutputBindingStrategy::Unbound);
-    )
+    );
 }
 
 // Validates that when the input image is the same as the model expects, the binding step is executed correctly.

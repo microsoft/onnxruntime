@@ -279,10 +279,10 @@ void ModelValidator::SqueezeNet(
         float delta = std::abs(outDataActual.GetAt(i) - outDataExpected.GetAt(i));
         if (delta > dataTolerance)
         {
-          std::stringstream ss;
+          std::wstringstream ss;
           ss << "EXPECTED: " << outDataExpected.GetAt(i) << " , ACTUAL: " << outDataActual.GetAt(i)
-                << "instance " << instance << ", element " << i;
-          throw winrt::hresult_error(E_UNEXPECTED, std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(ss.str()));
+                << "instance " << instance.c_str() << ", element " << i;
+          throw winrt::hresult_error(E_UNEXPECTED, ss.str());
         }
     }
 }

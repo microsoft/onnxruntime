@@ -31,7 +31,3 @@
 
 // WinML
 #include "Windows.AI.MachineLearning.Native.h"
-
-#ifndef _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
-#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
-#endif
