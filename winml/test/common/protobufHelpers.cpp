@@ -1,8 +1,4 @@
-﻿#ifndef _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
-#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
-#endif
-
-// LotusRT
+﻿// LotusRT
 #include "core/framework/allocatormgr.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
