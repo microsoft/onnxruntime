@@ -157,10 +157,7 @@ def create_backend_test(testname=None):
                                       '^test_scan_sum_cpu'] #sum_out output node not defined, temporarily disabling test
 
         if c2.supports_device('INTEL_CPU_FP32'):
-            current_failing_tests += ['^test_operator_index_cpu',
-                                      '^test_operator_permute2_cpu',
-                                      '^test_squeeze_cpu',
-                                      '^test_squeeze_negative_axes_cpu']
+            current_failing_tests += ['^test_operator_permute2_cpu']
 
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
