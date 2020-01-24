@@ -263,7 +263,7 @@ void ModelValidator::SqueezeNet(
     {
         if (result.Outputs().Lookup(outputDataBindingName) != outputTensor)
         {
-            throw winrt::hresult_invalid_argument(L"Evaluation Results lookup don't match LearningModelBinding output tensor.");
+          throw winrt::hresult_error(E_UNEXPECTED, L"Evaluation Results lookup don't match LearningModelBinding output tensor.");
         }
     }
 
@@ -272,7 +272,7 @@ void ModelValidator::SqueezeNet(
 
     if (outDataActual.Size() != outDataExpected.Size())
     {
-      throw winrt::hresult_invalid_argument(L"Actual tensor data size doesn't match expected tensor data size.");
+      throw winrt::hresult_error(E_UNEXPECTED, L"Actual tensor data size doesn't match expected tensor data size.");
     }
     for (uint32_t i = 0; i < outDataActual.Size(); i++)
     {
@@ -282,7 +282,7 @@ void ModelValidator::SqueezeNet(
           std::stringstream ss;
           ss << "EXPECTED: " << outDataExpected.GetAt(i) << " , ACTUAL: " << outDataActual.GetAt(i)
                 << "instance " << instance << ", element " << i;
-          throw winrt::hresult_invalid_argument(std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(ss.str()));
+          throw winrt::hresult_error(E_UNEXPECTED, std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(ss.str()));
         }
     }
 }

@@ -1,6 +1,6 @@
 #include <iostream>
 #include <unordered_map>
-#include "test.h"
+#include <gtest/gtest.h>
 
 #include "runtimeParameters.h"
 
