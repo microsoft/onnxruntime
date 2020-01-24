@@ -40,14 +40,6 @@ struct MapBase : winrt::implements<
           std::is_same<TValue, winrt::hstring>::value,
       "Map values must be int64_t, double, float, or winrt::hstring!");
 
-  template <typename T>
-  struct ValidLotusType { using Type = T; };
-  template <>
-  struct ValidLotusType<winrt::hstring> { using Type = std::string; };
-
-  using LotusKey = typename ValidLotusType<TKey>::Type;
-  using LotusValue = typename ValidLotusType<TValue>::Type;
-  using LotusMap = std::pair<std::vector<LotusKey>, std::vector<LotusValue>>;
   using ABIMap = ::winrt::Windows::Foundation::Collections::IMap<TKey, TValue>;
   using ABIMapView = ::winrt::Windows::Foundation::Collections::IMapView<TKey, TValue>;
 

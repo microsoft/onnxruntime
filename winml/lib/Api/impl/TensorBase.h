@@ -246,7 +246,7 @@ struct TensorBase : TBase {
     // Ensure that this call is being called with the correct template parameters
     ASSERT_TEMPLATE_PARAMETERS<std::string, winrt::hstring>();
 
-    GetCpuResource()->get_tensor_buffer()->Set(size, reinterpret_cast<std::pair<const char*, size_t>*>(data));
+    GetCpuResource()->get_tensor_buffer()->Set(size, reinterpret_cast<std::string_view*>(data));
   }
 
   template <typename ElementType = T, typename ElementViewType = ViewT>

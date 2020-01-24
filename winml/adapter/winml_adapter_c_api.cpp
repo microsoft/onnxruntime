@@ -65,7 +65,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
 
   // OrtSession methods
   &winmla::CreateSessionWithoutModel,
-  &winmla::SessionGetExecutionProvidersCount,
   &winmla::SessionGetExecutionProvider,
   &winmla::SessionInitialize,
   &winmla::SessionRegisterGraphTransformers,

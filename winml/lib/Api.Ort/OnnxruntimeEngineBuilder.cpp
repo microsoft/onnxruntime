@@ -3,11 +3,12 @@
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeEngineBuilder.h"
 #include "OnnxruntimeCpuSessionBuilder.h"
+
+#ifdef USE_DML
 #include "OnnxruntimeDmlSessionBuilder.h"
+#endif
+
 #include "OnnxruntimeErrors.h"
-
-#include "core/providers/winml/winml_provider_factory.h"
-
 using namespace WinML;
 
 HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
@@ -23,7 +24,9 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning
   if (device_ == nullptr) {
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
   } else {
+#ifdef USE_DML
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get()));
+#endif
   }
 
   OrtSessionOptions* ort_options;

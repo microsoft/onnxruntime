@@ -15,10 +15,9 @@
 #include "winml_adapter_model.h"
 #include "core/framework/utils.h"
 
-#include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
-#include "AbiCustomRegistryImpl.h"
-
 #ifdef USE_DML
+#include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
+#include "abi_custom_registry_impl.h"
 #include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
 #endif USE_DML
 
@@ -85,17 +84,6 @@ ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ co
 
   *session = reinterpret_cast<OrtSession*>(inference_session.release());
 
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::SessionGetExecutionProvidersCount, _In_ OrtSession* session, _Out_ size_t* count) {
-  API_IMPL_BEGIN
-  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_protected_load_accessor =
-      static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
-  auto& session_state = session_protected_load_accessor->GetSessionState();
-  *count = session_state.GetExecutionProviders().NumProviders();
   return nullptr;
   API_IMPL_END
 }

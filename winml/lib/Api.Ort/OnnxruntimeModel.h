@@ -4,14 +4,8 @@
 #pragma once
 
 #include "iengine.h"
-#include "adapter/winml_adapter_c_api.h"
 
 namespace Windows::AI::MachineLearning {
-
-using UniqueOrtModel = std::unique_ptr<OrtModel, void (*)(OrtModel*)>;
-using UniqueOrtSessionOptions = std::unique_ptr<OrtSessionOptions, void (*)(OrtSessionOptions*)>;
-using UniqueOrtSession = std::unique_ptr<OrtSession, void (*)(OrtSession*)>;
-using UniqueOrtExecutionProvider = std::unique_ptr<OrtExecutionProvider, void (*)(OrtExecutionProvider*)>;
 
 class OnnxruntimeEngineFactory;
 

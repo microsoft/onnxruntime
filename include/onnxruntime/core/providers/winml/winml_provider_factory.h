@@ -3,7 +3,6 @@
 
 #include "onnxruntime_c_api.h"
 
-struct OrtApi;
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
 

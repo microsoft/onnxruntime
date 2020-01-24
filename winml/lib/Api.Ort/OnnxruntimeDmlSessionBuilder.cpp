@@ -92,11 +92,6 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider),
                           engine_factory_->UseOrtApi());
 
-  size_t num_providers;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers),
-                          engine_factory_->UseOrtApi());
-  RETURN_HR_IF(E_UNEXPECTED, num_providers != 2);
-
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true),
                           engine_factory_->UseOrtApi());
 

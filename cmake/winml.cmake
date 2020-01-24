@@ -121,27 +121,33 @@ target_link_libraries(winml_lib_telemetry PRIVATE wil)
 # Add winml_lib_ort
 ###########################
 
+list(APPEND winml_lib_api_ort_files
+  ${winml_lib_api_ort_dir}/inc/OnnxruntimeProvider.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeCpuSessionBuilder.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeCpuSessionBuilder.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeDescriptorConverter.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeDescriptorConverter.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngine.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngine.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeModel.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeModel.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeSessionBuilder.h
+  ${winml_lib_api_ort_dir}/pch.h
+    )
+
+if (onnxruntime_USE_DML)
+  list(APPEND winml_lib_api_ort_files
+    ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
+    ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
+    )
+endif(onnxruntime_USE_DML)
+
 # Add static library that will be archived/linked for both static/dynamic library
-add_library(winml_lib_ort STATIC
-   ${winml_lib_api_ort_dir}/inc/OnnxruntimeProvider.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeCpuSessionBuilder.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeCpuSessionBuilder.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeDescriptorConverter.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeDescriptorConverter.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeEngine.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeEngine.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeModel.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeModel.cpp
-   ${winml_lib_api_ort_dir}/OnnxruntimeSessionBuilder.h
-   ${winml_lib_api_ort_dir}/OnnxruntimeErrors.h
-   ${winml_lib_api_ort_dir}/pch.h
-  )
+add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
 
 # Compiler options
 target_compile_features(winml_lib_ort PRIVATE cxx_std_17)
@@ -190,12 +196,7 @@ target_link_libraries(winml_lib_ort PRIVATE wil)
 ###########################
 
 list(APPEND winml_adapter_files
-    ${winml_adapter_dir}/AbiCustomRegistryImpl.cpp
-    ${winml_adapter_dir}/AbiCustomRegistryImpl.h
-    ${winml_adapter_dir}/CustomRegistryHelper.h
     ${winml_adapter_dir}/pch.h
-    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
-    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
     ${winml_adapter_dir}/winml_adapter_apis.h
     ${winml_adapter_dir}/winml_adapter_c_api.h
     ${winml_adapter_dir}/winml_adapter_c_api.cpp
@@ -210,6 +211,13 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/winml_adapter_sequence_type_info.h
     ${winml_adapter_dir}/winml_adapter_session.cpp
     )
+	
+if (onnxruntime_USE_DML)
+  list(APPEND winml_adapter_files
+    ${winml_adapter_dir}/abi_custom_registry_impl.cpp
+    ${winml_adapter_dir}/abi_custom_registry_impl.h
+    )
+endif(onnxruntime_USE_DML)
 
 add_library(winml_adapter ${winml_adapter_files})
 
@@ -438,6 +446,19 @@ endif(onnxruntime_USE_DML)
 ###########################
 
 add_library(winml_lib_common STATIC
+  ${winml_lib_common_dir}/inc/common.h
+  ${winml_lib_common_dir}/inc/CommonDeviceHelpers.h
+  ${winml_lib_common_dir}/inc/cppwinrt_onnx.h
+  ${winml_lib_common_dir}/inc/dx.h
+  ${winml_lib_common_dir}/inc/errors.h
+  ${winml_lib_common_dir}/inc/iengine.h
+  ${winml_lib_common_dir}/inc/NamespaceAliases.h
+  ${winml_lib_common_dir}/inc/onnx.h
+  ${winml_lib_common_dir}/inc/PheonixSingleton.h
+  ${winml_lib_common_dir}/inc/StringHelpers.h
+  ${winml_lib_common_dir}/inc/WinMLTelemetryHelper.h
+  ${winml_lib_common_dir}/inc/WinML_Lock.h
+  ${winml_lib_common_dir}/inc/winrt_headers.h
   ${winml_lib_common_dir}/CommonDeviceHelpers.cpp
 )
 

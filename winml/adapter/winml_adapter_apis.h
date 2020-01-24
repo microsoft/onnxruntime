@@ -58,7 +58,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOp
 // OrtSession methods
 ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
 
-ORT_API_STATUS(SessionGetExecutionProvidersCount, _In_ OrtSession* session, _Out_ size_t* count);
 //Do not release provider... as there is no release method available
 ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, size_t index, _Out_ OrtExecutionProvider** provider);
 ORT_API_STATUS(SessionInitialize, _In_ OrtSession* session);

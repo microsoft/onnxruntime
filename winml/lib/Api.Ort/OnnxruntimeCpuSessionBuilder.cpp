@@ -85,10 +85,5 @@ OnnxruntimeCpuSessionBuilder::Initialize(
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionInitialize(session),
                           engine_factory_->UseOrtApi());
 
-  size_t num_providers;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvidersCount(session, &num_providers),
-                          engine_factory_->UseOrtApi());
-
-  RETURN_HR_IF(E_UNEXPECTED, num_providers != 1);
   return S_OK;
 }

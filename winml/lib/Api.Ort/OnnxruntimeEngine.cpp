@@ -9,8 +9,6 @@
 #include "OnnxruntimeSessionBuilder.h"
 #include "OnnxruntimeErrors.h"
 
-#include "core/providers/winml/winml_provider_factory.h"
-
 using namespace WinML;
 
 static const OrtApi* GetVersionedOrtApi() {
@@ -151,7 +149,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
   THROW_IF_NOT_OK_MSG(ort_api->GetStringTensorDataLength(ort_value, &buffer_length),
                       ort_api);
 
-  std::vector<std::pair<const char*, size_t>> strings;
+  std::vector<std::string_view> strings;
   std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_length]);
   std::vector<size_t> offsets(length);
 
@@ -167,13 +165,13 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
     } else {
       str_len = offsets[i + 1] - offsets[i];
     }
-    strings.push_back(std::make_pair(reinterpret_cast<const char*>(buffer.get() + offsets[i]), str_len));
+    strings.push_back(std::string_view(reinterpret_cast<const char*>(buffer.get() + offsets[i]), str_len));
   }
 
   return std::make_shared<std::pair<decltype(strings), decltype(buffer)>>(std::move(strings), std::move(buffer));
 }
 
-WinML::unique_void OnnxruntimeValue::GetResource() {
+WinML::Resource OnnxruntimeValue::GetResource() {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
   auto winml_adapter_api = engine_->GetEngineFactory()->UseWinmlAdapterApi();
 
@@ -188,12 +186,12 @@ WinML::unique_void OnnxruntimeValue::GetResource() {
     void* resource;
     winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
                                                          reinterpret_cast<ID3D12Resource**>(&resource));
-    return WinML::unique_void(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
+    return WinML::Resource(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
     int is_tensor;
     ort_api->IsTensor(value_.get(), &is_tensor);
     if (is_tensor == 0) {
-      return WinML::unique_void(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
+      return WinML::Resource(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
     }
 
     OrtTensorTypeAndShapeInfo* info = nullptr;
@@ -206,9 +204,9 @@ WinML::unique_void OnnxruntimeValue::GetResource() {
     if (data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
       auto strings = GetStrings(ort_api, value_.get(), info);
       auto string_data = strings->first.data();
-      return WinML::unique_void(string_data, [capture_strings = strings](void*) { /*This deleter does nothing but capture the strings, which extends the lifetime of the returned strings.*/ });
+      return WinML::Resource(string_data, [capture_strings = strings](void*) { /*This deleter does nothing but capture the strings, which extends the lifetime of the returned strings.*/ });
     } else {
-      return WinML::unique_void(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
+      return WinML::Resource(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
     }
   }
 }
@@ -640,7 +638,6 @@ HRESULT OnnxruntimeEngine::CreateNullValue(_Out_ IValue** out) {
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
   return S_OK;
 }
-#include "winrt/windows.foundation.collections.h"
 
 template <typename TAbiType>
 struct AbiTypeInfo {
@@ -653,7 +650,7 @@ template <>
 struct AbiTypeInfo<HSTRING> {
   using CppWinRTType = winrt::hstring;
   using OrtType = const char*;
-  using ResourceType = std::pair<const char*, size_t>;
+  using ResourceType = std::string_view;
 };
 
 template <typename TCppwinrtType>
@@ -673,7 +670,7 @@ typename auto ResourceTypeToCppwinrtType(typename AbiTypeInfo<TAbiType>::Resourc
 
 template <>
 typename auto ResourceTypeToCppwinrtType<HSTRING>(typename AbiTypeInfo<HSTRING>::ResourceType value) {
-  return WinML::Strings::HStringFromUTF8(value.first, value.second);
+  return WinML::Strings::HStringFromUTF8(value.data(), value.size());
 }
 
 template <typename TAbiKey, typename TAbiValue>
