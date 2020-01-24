@@ -19,10 +19,15 @@ else()
   set(JAVA_DEPENDS onnxruntime)
 endif()
 
-# use system gradle, falling back on gradle wrapper
-find_program(GRADLE_EXECUTABLE gradle)
+if(EXISTS "${JAVA_ROOT}/gradlew")
+    # use gradle wrapper since it is present
+    set(GRADLE_EXECUTABLE "${JAVA_ROOT}/gradlew")
+else()
+    find_program(GRADLE_EXECUTABLE gradl)
+endif()
+
 if(NOT GRADLE_EXECUTABLE)
-    set(GRADLE_EXECUTABLE ./gradlew)
+    message(SEND_ERROR "Gradle installation not found")
 endif()
 message(STATUS "Using gradle: ${GRADLE_EXECUTABLE}")
 
