@@ -68,13 +68,13 @@ class Tensor final {
    * \param alloc Where the buffer('data') was allocated from
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-         int64_t offset = 0);
+         ptrdiff_t offset = 0);
 
   /**
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset = 0);
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, ptrdiff_t offset = 0);
 
   ~Tensor();
 
@@ -140,7 +140,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, shape_.Size());
+    return gsl::make_span(data, static_cast<size_t>(shape_.Size()));
   }
 
   template <typename T>
@@ -201,7 +201,7 @@ class Tensor final {
             const TensorShape& shape,
             void* p_raw_data,
             AllocatorPtr deleter,
-            int64_t offset = 0);
+            ptrdiff_t offset = 0);
 
   void ReleaseBuffer();
 
@@ -216,7 +216,7 @@ class Tensor final {
   TensorShape shape_;
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
-  int64_t byte_offset_;
+  ptrdiff_t byte_offset_;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

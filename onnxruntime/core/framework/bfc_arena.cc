@@ -56,7 +56,7 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
 }
 
 bool BFCArena::Extend(size_t rounded_bytes) {
-  size_t available_bytes = memory_limit_ - stats_.total_allocated_bytes;
+  size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
@@ -114,7 +114,7 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     ORT_THROW("Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
-  // if we didn't update already, default to growing by 2x next time
+  // we allocated the same number of bytes as the current region, so we have 2x that now
   if (!increased_allocation) {
     curr_region_allocation_bytes_ *= 2;
   }
@@ -193,8 +193,8 @@ void* BFCArena::Reserve(size_t size) {
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
   stats_.num_allocs += 1;
-  stats_.max_alloc_size = std::max<size_t>(stats_.max_alloc_size, size);
-  stats_.max_bytes_in_use = std::max<size_t>(stats_.max_bytes_in_use, stats_.bytes_in_use);
+  stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
+  stats_.max_bytes_in_use = std::max<int64_t>(static_cast<int64_t>(stats_.max_bytes_in_use), stats_.bytes_in_use);
   stats_.total_allocated_bytes += size;
   return ptr;
 }
@@ -304,8 +304,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         stats_.max_bytes_in_use =
             std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
         stats_.max_alloc_size =
-            std::max<std::size_t>(stats_.max_alloc_size, chunk->size);
-
+            std::max<int64_t>(stats_.max_alloc_size, static_cast<int64_t>(chunk->size));
         return chunk->ptr;
       }
     }

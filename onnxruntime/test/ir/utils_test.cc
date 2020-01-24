@@ -286,18 +286,18 @@ TEST(GraphUtils, TestMultiEdgeRemovalNodes) {
   ASSERT_EQ(graph.NumberOfNodes(), 5);
 
   // Check inputs/outputs of id_0 and id_2
-  ASSERT_EQ(nodes[0]->GetInputEdgesCount(), 0);
-  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 2);
-  ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1);
-  ASSERT_EQ(nodes[2]->GetOutputEdgesCount(), 2);
+  ASSERT_EQ(nodes[0]->GetInputEdgesCount(), 0u);
+  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 2u);
+  ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1u);
+  ASSERT_EQ(nodes[2]->GetOutputEdgesCount(), 2u);
 
   // Remove id_2. This leaves id_0 with 3 output edges. id_0 is now incoming node to id_3 and id_4.
   ASSERT_TRUE(graph_utils::RemoveNode(graph, *nodes[2]));
   ASSERT_EQ(graph.NumberOfNodes(), 4);
-  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 3);
-  ASSERT_EQ(nodes[3]->InputDefs().size(), 1);
+  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 3u);
+  ASSERT_EQ(nodes[3]->InputDefs().size(), 1u);
   ASSERT_TRUE(nodes[3]->InputDefs()[0]->Name() == "id_0_out");
-  ASSERT_EQ(nodes[4]->InputDefs().size(), 1);
+  ASSERT_EQ(nodes[4]->InputDefs().size(), 1u);
   ASSERT_TRUE(nodes[4]->InputDefs()[0]->Name() == "id_0_out");
 
   // Remove id_0
@@ -341,9 +341,9 @@ TEST(GraphUtils, TestMultiOutputRemoveNode) {
   ASSERT_EQ(graph.NumberOfNodes(), 3);
 
   // Check inputs/outputs of do_0, id_1, id_2
-  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 2);
-  ASSERT_EQ(nodes[1]->GetInputEdgesCount(), 1);
-  ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1);
+  ASSERT_EQ(nodes[0]->GetOutputEdgesCount(), 2u);
+  ASSERT_EQ(nodes[1]->GetInputEdgesCount(), 1u);
+  ASSERT_EQ(nodes[2]->GetInputEdgesCount(), 1u);
 
   // Try to remove do_0, which should return false
   // because both outputs are consumed by downstream Operators.

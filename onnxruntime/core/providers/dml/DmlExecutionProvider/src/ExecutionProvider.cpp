@@ -674,6 +674,12 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
+    std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
+    ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
+    {
+        return m_internalRegInfoMap;
+    }
+
     std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetGpuAllocator()
     {
         return m_allocator;
@@ -753,12 +759,6 @@ namespace Dml
     {
         ComPtr<AllocationInfo> allocInfo;
         allocInfo.Attach(static_cast<AllocationInfo*>(ptr));
-    }
-
-    onnxruntime::common::Status RegisterDmlGraphTransformer(onnxruntime::InferenceSession* session, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry)
-    {
-        auto graphTransformer = std::make_unique<Dml::GraphTransformer>(std::string(onnxruntime::kDmlExecutionProvider), dmlRegistry);
-        return session->RegisterGraphTransformer(std::move(graphTransformer), onnxruntime::TransformerLevel::Level1);
     }
 
 } // namespace Dml

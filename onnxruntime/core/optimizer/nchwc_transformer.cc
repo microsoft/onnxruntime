@@ -669,6 +669,11 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
+  // Bail out if the node has the optional training outputs specified.
+  if (output_defs.size() > 1) {
+    return;
+  }
+
   // Don't transform the node if the input is not already in NCHWc format.
   auto it = nchwc_args_.find(input_defs[0]);
   if (it == nchwc_args_.end()) {
