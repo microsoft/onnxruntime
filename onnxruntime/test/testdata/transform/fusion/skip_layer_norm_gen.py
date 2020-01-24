@@ -8,7 +8,7 @@ class Format(Enum):
     Format2=2,
     Format3=3
 
-def GenerateModel(format, model_name):
+def GenerateModel(format, model_name, multi_output_add = False):
     nodes = [        # LayerNorm subgraph
         helper.make_node("ReduceMean", ["ln_in"], ["rd1_out"], "reduce1", axes=[-1], keepdims=1),
         helper.make_node("Sub", ["ln_in", "rd1_out"], ["sb1_out"], "sub1"),
@@ -42,6 +42,10 @@ def GenerateModel(format, model_name):
     elif format is Format.Format3:
         nodes.extend([helper.make_node("Add", ["A", "B"], ["ln_in"], "add2"),])
 
+    if multi_output_add:
+        neg_input = "ln_in" if format is Format.Format3 else "add3_out"
+        nodes.extend([helper.make_node("Neg", [neg_input], ["neg_out"], "neg")])
+
     graph = helper.make_graph(
         nodes,
         "SkipLayerNorm_format3",  #name
@@ -61,3 +65,6 @@ def GenerateModel(format, model_name):
 GenerateModel(Format.Format1, 'skip_layer_norm_format1.onnx')
 GenerateModel(Format.Format2, 'skip_layer_norm_format2.onnx')
 GenerateModel(Format.Format3, 'skip_layer_norm_format3.onnx')
+GenerateModel(Format.Format1, 'skip_layer_norm_format1_partial.onnx', True)
+GenerateModel(Format.Format2, 'skip_layer_norm_format2_partial.onnx', True)
+GenerateModel(Format.Format3, 'skip_layer_norm_format3_no_fusion.onnx', True)
