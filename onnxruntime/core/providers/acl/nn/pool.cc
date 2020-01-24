@@ -115,7 +115,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
       layer->configure(tpool.in.get(), tpool.out.get(), pool_info);
     }
 
-    // allocate space for input tensor to accommodate paddings and strides
+    // allocate space for input tensor to accomodate paddings and strides
     tpool.in->allocator()->allocate();
 
     tpool.layer = std::move(layer);
