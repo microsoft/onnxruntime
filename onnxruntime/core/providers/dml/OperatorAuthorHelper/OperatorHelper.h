@@ -584,6 +584,9 @@ public:
                 ReadIndexTensors<Info_t, int64_t>(operatorInfo, starts, ends, axes, steps);
             }
         }
+        
+        const uint32_t dimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
+        HandleNegativeAxes(/*inout*/ axes, dimCount); 
          
         ML_CHECK_VALID_ARGUMENT(starts.size() == ends.size(), "'starts' must equal 'ends' in size.");
         ML_CHECK_VALID_ARGUMENT(axes.empty() || starts.size() == axes.size(), "'axes' must equal 'starts' in size, or 'axes' must be empty.");
