@@ -789,6 +789,13 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     for (const auto& this_cluster : ng_clusters) {
       std::vector<std::string> cluster_inputs, cluster_outputs;
+
+      //If subgraph only has Identity node, Intel EP doesn't support it.
+      if(this_cluster.size() == 1){
+        const auto& node = graph_viewer.GetNode(this_cluster[0]);
+        if(node->OpType() == "Identity")
+          continue;
+      }
       GetInputsOutputsOfCluster(graph_viewer, this_cluster, ng_required_initializers, cluster_inputs, cluster_outputs);
 
       if (!cluster_inputs.empty()) {
