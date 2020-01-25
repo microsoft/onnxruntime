@@ -584,7 +584,10 @@ public:
                 ReadIndexTensors<Info_t, int64_t>(operatorInfo, starts, ends, axes, steps);
             }
         }
-         
+        
+        const uint32_t dimCount = gsl::narrow_cast<int32_t>(inputDimensions.size());
+        HandleNegativeAxes(/*inout*/ axes, dimCount); 
+
         ML_CHECK_VALID_ARGUMENT(starts.size() == ends.size(), "'starts' must equal 'ends' in size.");
         ML_CHECK_VALID_ARGUMENT(axes.empty() || starts.size() == axes.size(), "'axes' must equal 'starts' in size, or 'axes' must be empty.");
 
@@ -602,9 +605,9 @@ public:
             int dimIndex = i;
             if (!axes.empty())
             {
-                dimIndex = axes[i];
+                dimIndex = (axes[i] < 0) ? gsl::narrow_cast<int>(axes[i] + starts.size()) : axes[i];
             }
-            ML_CHECK_VALID_ARGUMENT(dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
+            ML_CHECK_VALID_ARGUMENT(dimIndex >= 0 && dimIndex < inputDimensions.size(), "'axes' must be valid with within actual input dimensions.");
 
             // Positive values are offsets from 0.
             // Negative values are offsets from the dimension's size.
