@@ -74,6 +74,10 @@ bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, 
     return false;
   }
 
+  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    return false;
+  }
+
   return true;
 }
 

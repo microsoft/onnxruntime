@@ -43,6 +43,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         // such as If/Loop/Scan, fall into this category). individual nodes in the subgraph will be processed
         // by the Recurse call above
         node->ContainsSubgraph() ||
+        !graph.GetNodeOutputsInGraphOutputs(*node).empty() ||
         !graph_utils::AllNodeInputsAreConstant(graph, *node, constant_inputs)) {
       continue;
     }
