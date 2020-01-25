@@ -23,7 +23,7 @@ Status TransformGraphForTensorboard(Graph& graph,
   for (const std::string& scalar_input : scalar_nodes) {
     std::string scalar_output = summary_name + "/scalar/" + scalar_input;
     summary_args.push_back(ArgDef(scalar_output));
-    new_nodes.emplace_back(NodeDef("SummaryScalar",
+    new_nodes.emplace_back(NodeDef(OpDef{"SummaryScalar", kMSDomain, 1},
                                    {ArgDef(scalar_input)},
                                    {ArgDef(scalar_output)},
                                    {ONNX_NAMESPACE::MakeAttribute("tags", std::vector<std::string>{scalar_output})},
@@ -34,7 +34,7 @@ Status TransformGraphForTensorboard(Graph& graph,
   for (const std::string& histogram_input : histogram_nodes) {
     std::string histogram_output = summary_name + "/histogram/" + histogram_input;
     summary_args.push_back(ArgDef(histogram_output));
-    new_nodes.emplace_back(NodeDef("SummaryHistogram",
+    new_nodes.emplace_back(NodeDef(OpDef("SummaryHistogram", kMSDomain, 1),
                                    {ArgDef(histogram_input)},
                                    {ArgDef(histogram_output)},
                                    {ONNX_NAMESPACE::MakeAttribute("tag", histogram_output)},
@@ -66,7 +66,7 @@ Status TransformGraphForTensorboard(Graph& graph,
 
     std::string scalar_output = graph.GenerateNodeArgName(summary_name + "/scalar/L2-norm/" + norm_input);
     summary_args.push_back(ArgDef(scalar_output));
-    new_nodes.emplace_back(NodeDef("SummaryScalar",
+    new_nodes.emplace_back(NodeDef(OpDef("SummaryScalar", kMSDomain, 1),
                                    {ArgDef(norm_output)},
                                    {ArgDef(scalar_output)},
                                    {ONNX_NAMESPACE::MakeAttribute("tags", std::vector<std::string>{scalar_output})},
@@ -122,7 +122,7 @@ Status TransformGraphForTensorboard(Graph& graph,
     std::string total_gradient_norm_scalar_output = graph.GenerateNodeArgName(summary_name + "/tb_total_gradient_norm");
     std::string summary_scalar_node_name = graph.GenerateNodeName(total_gradient_norm_scalar_output);
     summary_args.push_back(ArgDef(total_gradient_norm_scalar_output));
-    new_nodes.emplace_back(NodeDef("SummaryScalar",
+    new_nodes.emplace_back(NodeDef(OpDef("SummaryScalar", kMSDomain, 1),
                                    {ArgDef(total_gradient_norm)},
                                    {ArgDef(total_gradient_norm_scalar_output)},
                                    {ONNX_NAMESPACE::MakeAttribute("tags", std::vector<std::string>{total_gradient_norm_scalar_output})},
@@ -131,7 +131,7 @@ Status TransformGraphForTensorboard(Graph& graph,
 
   // SummaryMerge (if any tensorboard nodes exist).
   if (summary_args.size() > 0) {
-    new_nodes.emplace_back(NodeDef("SummaryMerge",
+    new_nodes.emplace_back(NodeDef(OpDef("SummaryMerge", kMSDomain, 1),
                                     summary_args,             // Inputs
                                     {ArgDef(summary_name)}, // Outputs
                                     NodeAttributes(),

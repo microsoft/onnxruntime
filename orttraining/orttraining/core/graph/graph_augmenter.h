@@ -60,6 +60,20 @@ struct NodeDef {
                                           attributes(attributes),
                                           name(name){};
 
+  NodeDef(const OpDef& op_def,
+          const std::vector<ArgDef>& input_args,
+          const std::vector<ArgDef>& output_args,
+          const std::vector<AttributeProto>& attribute_protos,
+          const std::string& name = "") : op_type(op_def.type),
+                                          domain(op_def.domain),
+                                          input_args(input_args),
+                                          output_args(output_args),
+                                          name(name) {
+    for (const AttributeProto& a : attribute_protos) {
+      attributes.insert({a.name(), a});
+    }
+  }
+
   NodeDef(const std::string& op_type,
           const std::vector<ArgDef>& input_args,
           const std::vector<ArgDef>& output_args,
