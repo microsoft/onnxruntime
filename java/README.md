@@ -65,9 +65,9 @@ If your use case requires custom loading of the shared libraries, please consult
 
 ### Code Formatting
 
-Spotless is used to keep the code properly formatted.
-Gradle's `spotlessCheck` will show any misformatted code.
-Gradle's `spotlessApply` will try to fix the formatting.
+[Spotless](https://github.com/diffplug/spotless/tree/master/plugin-gradle) is used to keep the code properly formatted.
+Gradle's `spotlessCheck` task will show any misformatted code.
+Gradle's `spotlessApply` task will try to fix the formatting.
 Misformatted code will raise failures when checks are ran during test run.
 
 ###  JNI Headers
