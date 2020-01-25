@@ -16,6 +16,10 @@ java {
 	withSourcesJar()
 }
 
+wrapper {
+	gradleVersion = '6.1'
+}
+
 spotless {
 	//java {
 	//	removeUnusedImports()
