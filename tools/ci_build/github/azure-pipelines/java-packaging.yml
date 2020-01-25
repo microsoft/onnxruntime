@@ -46,7 +46,7 @@
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
       inputs:
-        ArtifactName: onnxruntime4j_gpu
+        ArtifactName: onnxruntime4j
 
     - template: templates/component-governance-component-detection-steps.yml
 
@@ -157,7 +157,7 @@
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Java output'
       inputs:
-        ArtifactName: onnxruntime4j_gpu
+        ArtifactName: onnxruntime4j
 
     - template: templates/component-governance-component-detection-steps.yml
 
