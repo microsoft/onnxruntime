@@ -257,7 +257,6 @@ void IntelGraph::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* conte
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> IntelGraph::CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
-  std::cout << "In CreateNgraphFunc" << std::endl;
   std::istringstream model_stream{model_proto.SerializeAsString()};
   std::shared_ptr<ngraph::Function> ng_function;
   try {
@@ -366,7 +365,6 @@ void IntelGraph::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
   }
 
-  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
