@@ -58,6 +58,7 @@ function(get_winml_test_scenario_src
   set(WINML_TEST_SRC_DIR ${lotus_root_dir}/winml/test)
   if (onnxruntime_USE_DML)
     file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+    set(winml_test_scenario_libs "onnxruntime_providers_dml" PARENT_SCOPE)
   else()
     set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
   endif()
