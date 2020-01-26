@@ -84,7 +84,7 @@
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
-#include "orttraining/core/framework/optimizer_config.h"
+#include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
 
 #ifdef USE_CUDA

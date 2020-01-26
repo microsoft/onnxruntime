@@ -28,6 +28,7 @@
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #endif
 
 namespace onnxruntime {
@@ -76,6 +77,7 @@ Status Environment::Initialize() {
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
+      training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
 #endif
     });
 

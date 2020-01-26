@@ -12,7 +12,7 @@
 #include "core/framework/path_lib.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
-#include "orttraining/core/framework/optimizer_graph_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
 
 #ifdef USE_CUDA
@@ -159,7 +159,6 @@ Status TrainingRunner::Initialize() {
       ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
   }
 #endif
-  ORT_RETURN_IF_ERROR(session_.UpdateTrainableWeightsInfoInGraph());
 
   // Checkpointing initialization
   if (!params_.checkpoints_dir.empty()) {

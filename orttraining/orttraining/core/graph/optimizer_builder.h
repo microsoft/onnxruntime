@@ -6,7 +6,7 @@
 #include "orttraining/core/graph/generic_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "core/framework/data_types.h"
-#include "orttraining/core/framework/optimizer_config.h"
+#include "orttraining/core/graph/optimizer_config.h"
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
 

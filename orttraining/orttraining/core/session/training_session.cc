@@ -9,7 +9,7 @@
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/framework/data_transfer_utils.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
-#include "orttraining/core/framework/optimizer_graph_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
@@ -72,10 +72,12 @@ static Status BuildOptimizerInternal(Graph& graph,
                                      const unordered_map<string, OptimizerNodeConfig>& opt_configs,
                                      std::unordered_set<std::string>& opt_state_initializer_names,
                                      std::unordered_map<std::string, std::string>& opt_graph_outputs) {
-  OptimizerGraphBuilder optimizer_graph_builder{
-      OptimizerBuilderRegistry::GetInstance(), opt_graph_config, opt_configs};
-
-  ORT_RETURN_IF_ERROR(optimizer_graph_builder.Build(
+  OptimizerBuilderRegistry& optimizer_registry = OptimizerBuilderRegistry::GetInstance();
+  OptimizerGraphBuilderRegistry& optimizer_graph_registry = OptimizerGraphBuilderRegistry::GetInstance();
+  std::string graph_builder_name = optimizer_graph_registry.GetNameFromConfig(opt_graph_config);
+  auto optimizer_graph_builder = optimizer_graph_registry.MakeUnique(
+      graph_builder_name, optimizer_registry, opt_graph_config, opt_configs);
+  ORT_RETURN_IF_ERROR(optimizer_graph_builder->Build(
       graph, opt_state_initializer_names, opt_graph_outputs));
 
   return Status::OK();
@@ -83,11 +85,9 @@ static Status BuildOptimizerInternal(Graph& graph,
 
 static Status AddGradientAccumulationNodes(Graph& graph,
                                            const NodeArgNameGeneratorFn& nodearg_name_generator,
-                                           const std::vector<std::string> gradient_names,
-                                           bool add_accumulate_as_graph_output) {
-  GraphAugmenter::GraphDefs graph_defs{};
-
-  std::vector<ArgDef> gradient_argdefs{};
+                                           const std::vector<std::string> gradient_names) {
+  GraphAugmenter::GraphDefs graph_defs;
+  std::vector<ArgDef> gradient_argdefs;
   ORT_RETURN_IF_ERROR(GetArgDefsFromGraph(graph, gradient_names, gradient_argdefs));
   std::vector<ArgDef> gradient_accumulation_buffers;
   gradient_accumulation_buffers.resize(gradient_argdefs.size());
@@ -97,8 +97,6 @@ static Status AddGradientAccumulationNodes(Graph& graph,
                                    nodearg_name_generator, gradient_argdefs[i], gradient_accumulation_buffers[i], graph_defs, false)
                                    .name);
   }
-  if (add_accumulate_as_graph_output)
-    graph_defs.AddGraphOutputs(grad_acc_outputs);
   return GraphAugmenter::AugmentGraph(graph, graph_defs);
 }
 
@@ -211,7 +209,7 @@ Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_
 }
 
 Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::string>& weights_to_train) {
-  std::vector<std::string> gradient_names{};
+  std::vector<std::string> gradient_names;
   gradient_names.reserve(weights_to_train.size());
   std::transform(
       weights_to_train.begin(), weights_to_train.end(), std::back_inserter(gradient_names),
@@ -219,7 +217,7 @@ Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::stri
   auto nodearg_name_generator = [](const std::string& base_name) {
     return base_name;
   };
-  ORT_RETURN_IF_ERROR(AddGradientAccumulationNodes(model_->MainGraph(), nodearg_name_generator, gradient_names, false));
+  ORT_RETURN_IF_ERROR(AddGradientAccumulationNodes(model_->MainGraph(), nodearg_name_generator, gradient_names));
   return DoPostLoadProcessing(*model_);
 }
 
@@ -514,24 +512,6 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   }
 
   return trainable_initializers;
-}
-
-Status TrainingSession::UpdateTrainableWeightsInfoInGraph() {
-  Graph& graph = model_->MainGraph();
-  const auto& graph_inputs = graph.GetInputsIncludingInitializers();
-  std::unordered_set<const NodeArg*> inputs_to_add{};
-  std::transform(
-      weights_to_train_.begin(), weights_to_train_.end(), std::inserter(inputs_to_add, inputs_to_add.end()),
-      [&graph](const std::string& node_name) {
-        return graph.GetNodeArg(node_name);
-      });
-  for (const NodeArg* graph_input : graph_inputs) {
-    inputs_to_add.erase(graph_input);
-  }
-  std::vector<const NodeArg*> new_graph_inputs(graph_inputs);
-  new_graph_inputs.insert(new_graph_inputs.end(), inputs_to_add.begin(), inputs_to_add.end());
-  graph.SetInputs(new_graph_inputs);
-  return Status::OK();
 }
 
 }  // namespace training

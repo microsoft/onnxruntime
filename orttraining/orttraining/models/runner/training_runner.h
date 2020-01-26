@@ -10,7 +10,7 @@
 #include "core/platform/path_string.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
 #include "orttraining/core/framework/mpi_setup.h"
-#include "orttraining/core/framework/optimizer_config.h"
+#include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/data_loader.h"
 

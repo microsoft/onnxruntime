@@ -7,7 +7,7 @@
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "core/platform/path_string.h"
 #include "core/session/inference_session.h"
-#include "orttraining/core/framework/optimizer_config.h"
+#include "orttraining/core/graph/optimizer_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -145,8 +145,6 @@ class TrainingSession : public InferenceSession {
 
   // TODO: remove or refine below temp interfaces.
   NameMLValMap GetWeights() const;
-
-  common::Status UpdateTrainableWeightsInfoInGraph();
 
   common::Status GetStateTensors(NameMLValMap& state_tensors);
 

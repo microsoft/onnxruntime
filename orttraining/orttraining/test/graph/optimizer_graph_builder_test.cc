@@ -15,7 +15,9 @@
 #include "core/graph/model.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/graph/optimizer_builder.h"
-#include "orttraining/core/framework/optimizer_graph_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder.h"
+#include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
+#include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/gtest_utils.h"
 #include "test/test_environment.h"
@@ -26,11 +28,16 @@ namespace onnxruntime {
 namespace training {
 namespace test {
 namespace {
+
 const std::vector<const char*> k_weight_names{"weight_1", "weight_2"};
 constexpr const char* const k_loss_scaling_factor_name = "loss_scaling_factor";
-constexpr const char* const k_optimizer_op_name = "SGDOptimizer";
-constexpr const char* const k_all_reduce_op_name = "HorovodAllReduce";
+constexpr const char* const k_optimizer_op_name = "AdamOptimizer";
+constexpr const char* const k_horovod_all_reduce_op_name = "HorovodAllReduce";
+constexpr const char* const k_all_reduce_op_name = "NcclAllReduce";
+constexpr const char* const k_all_gather_op_name = "NcclAllGather";
+constexpr const char* const k_reduce_scatter_op_name = "NcclReduceScatter";
 constexpr const char* const k_is_all_finite_op_name = "IsAllFinite";
+constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
 constexpr const char* const k_gradient_accumulator_op_name = "GradientAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
@@ -117,13 +124,11 @@ int GetOpCount(const std::map<std::string, int>& op_counts, const std::string& o
   return op_count_it != op_counts.end() ? op_count_it->second : 0;
 }
 
-void TestOptimizersAndMixedPrecision(bool use_mixed_precision, bool use_loss_scaling_factor, Graph& graph) {
-  OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.use_mixed_precision = use_mixed_precision;
-  opt_graph_config.loss_scale_input_name = use_loss_scaling_factor ? k_loss_scaling_factor_name : "";
+}  // namespace
 
-  OptimizerGraphBuilder optimizer_graph_builder{
-      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
+static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  OptimizerGraphBuilder optimizer_graph_builder(
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
 
   std::unordered_map<std::string, std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
@@ -131,133 +136,254 @@ void TestOptimizersAndMixedPrecision(bool use_mixed_precision, bool use_loss_sca
 
   auto op_counts = CountOpsInGraph(graph, false);
 
-  if (use_mixed_precision) {
-    // verify that optimizers are in the If then_branch subgraph
-    // verify that nothing is in the If else_branch subgraph
-    // verify that finite gradient checks are in the main graph
-    // verify that gradient unscaling is in the main graph if using a loss scaling factor
-    ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
-    //TODO: enable this when AllIsFinite is introduced
-    //ASSERT_EQ(GetOpCount(op_counts, k_is_finite_op_name), k_weight_names.size());
-
-    // the scale for mixed precision is moved to optimizer, so this check is not needed.
-    //ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), use_loss_scaling_factor ? k_weight_names.size() : 0);
-
-    // TODO: Re-enable following code when condtional weight update is handeled by If Node
-    /*
-    ASSERT_EQ(GetOpCount(op_counts, "If"), 1);
-    auto if_node_it = std::find_if(
-        graph.Nodes().begin(), graph.Nodes().end(),
-        [](Node& node) {
-          return node.OpType() == "If";
-        });
-    ASSERT_NE(if_node_it, graph.Nodes().end());
-
-    Graph* then_subgraph = if_node_it->GetMutableGraphAttribute("then_branch");
-    ASSERT_NE(then_subgraph, nullptr);
-
-    auto then_subgraph_op_counts = CountOpsInGraph(*then_subgraph);
-    ASSERT_EQ(GetOpCount(then_subgraph_op_counts, k_optimizer_op_name), k_weight_names.size());
-    ASSERT_EQ(GetOpCount(then_subgraph_op_counts, k_is_finite_op_name), 0);
-    ASSERT_EQ(GetOpCount(then_subgraph_op_counts, k_unscale_op_name), 0);
-
-    Graph* else_subgraph = if_node_it->GetMutableGraphAttribute("else_branch");
-    ASSERT_NE(else_subgraph, nullptr);
-
-    auto else_subgraph_op_counts = CountOpsInGraph(*else_subgraph);
-    ASSERT_TRUE(else_subgraph_op_counts.empty());
-    */
-  } else {  // !use_mixed_precision
-    // verify that optimizers are in the main graph
-    // verify that gradient unscaling and finite gradient checks are not added
-    ASSERT_EQ(GetOpCount(op_counts, "If"), 0);
-    ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
-    ASSERT_EQ(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
-    ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), 0);
+  // verify gradient accumulation operations exist
+  if (config.gradient_accumulation_steps > 1) {
+    ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
+    ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
   }
+
+  // verify mixed precision operations exist
+  if (config.use_mixed_precision) {
+    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
+    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
+  }
+
+  // verify optimizers exist
+  ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
+
+  // verify distributed operations don't exist
+  ASSERT_EQ(GetOpCount(op_counts, k_all_reduce_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_reduce_scatter_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_all_gather_op_name), 0);
+  ASSERT_EQ(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
 }
-}  // namespace
 
-TEST_F(OptimizerGraphBuilderTest, OptimizersWithMixedPrecisionWithLossScaling) {
-  TestOptimizersAndMixedPrecision(true, true, graph_);
+TEST_F(OptimizerGraphBuilderTest, Default_NoGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = false;
+  TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, OptimizersWithMixedPrecisionWithoutLossScaling) {
-  TestOptimizersAndMixedPrecision(true, false, graph_);
+TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = false;
+  TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, OptimizersWithoutMixedPrecision) {
-  TestOptimizersAndMixedPrecision(false, false, graph_);
+TEST_F(OptimizerGraphBuilderTest, Default_NoGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestDefaultOptimizerGraphBuilder(config, graph_);
 }
 
-TEST_F(OptimizerGraphBuilderTest, OptimizersWithGradientAccumulation) {
-  OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.gradient_accumulation_steps = 10;
+TEST_F(OptimizerGraphBuilderTest, Default_WithGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestDefaultOptimizerGraphBuilder(config, graph_);
+}
 
-  OptimizerGraphBuilder optimizer_graph_builder{
-      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
+#if defined(USE_HOROVOD) || defined(USE_NCCL)
+static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  AllreduceOptimizerGraphBuilder optimizer_graph_builder(
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
 
   std::unordered_map<std::string, std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_initializer_names, opt_graph_outputs));
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
-  // verify that gradient_accumulator and zero_gradient nodes are added
-  auto op_counts = CountOpsInGraph(graph_, false);
-  ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
-  ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
-  ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+  auto op_counts = CountOpsInGraph(graph, false);
+
+  // verify gradient accumulation operations exist
+  if (config.gradient_accumulation_steps > 1) {
+    ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
+    ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
+    ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+  }
+
+  // verify mixed precision operations exist
+  if (config.use_mixed_precision) {
+    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
+    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
+  }
+
+  // verify allreduce operations exist
+  ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
+  if (config.use_nccl) {
+    ASSERT_GT(GetOpCount(op_counts, k_all_reduce_op_name), 0);
+  } else {
+    ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
+  }
+
+  // verify optimizers exist
+  ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
-
-TEST_F(OptimizerGraphBuilderTest, OptimizersWithoutGradientAccumulation) {
-  OptimizerGraphConfig opt_graph_config{};
-
-  OptimizerGraphBuilder optimizer_graph_builder{
-      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
-
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_initializer_names, opt_graph_outputs));
-
-  // verify that gradient_accumulator and zero_gradient nodes are not added
-  auto op_counts = CountOpsInGraph(graph_, false);
-  ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), 0);
-  ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), 0);
-  ASSERT_EQ(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
-}
+#endif
 
 #ifdef USE_HOROVOD
-TEST_F(OptimizerGraphBuilderTest, AllReduceNodeAdded) {
-  OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.world_size = 2;
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = false;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
 
-  OptimizerGraphBuilder optimizer_graph_builder{
-      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = false;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
 
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
-  std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_initializer_names, opt_graph_outputs));
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_NoGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
 
-  // verify that AllReduce nodes are added
-  auto op_counts = CountOpsInGraph(graph_);
-  ASSERT_EQ(GetOpCount(op_counts, k_all_reduce_op_name), k_weight_names.size());
+TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
 }
 #endif  // USE_HOROVOD
 
-TEST_F(OptimizerGraphBuilderTest, AllReduceNodeNotAdded) {
-  OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.world_size = 1;
+#ifdef USE_NCCL
+TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = false;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
 
-  OptimizerGraphBuilder optimizer_graph_builder{
-      GetOptimizerBuilderRegistry(), opt_graph_config, GetOptInfoMap()};
+TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = false;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Allreduce_NoGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Allreduce_WithGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAllreduceOptimizerGraphBuilder(config, graph_);
+}
+
+static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  ZeROOptimizerGraphBuilder optimizer_graph_builder(
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
 
   std::unordered_map<std::string, std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
-  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph_, opt_initializer_names, opt_graph_outputs));
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
-  // verify no AllReduce nodes are added
-  auto op_counts = CountOpsInGraph(graph_);
-  ASSERT_EQ(GetOpCount(op_counts, k_all_reduce_op_name), 0);
+  auto op_counts = CountOpsInGraph(graph, false);
+
+  // verify gradient accumulation operations exist
+  if (config.gradient_accumulation_steps > 1) {
+    ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
+    ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+  }
+
+  // verify mixed precision operations exist
+  if (config.use_mixed_precision) {
+    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
+    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
+  }
+
+  // verify ZeRO operations exist
+  ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
+  ASSERT_GT(GetOpCount(op_counts, k_reduce_scatter_op_name), 0);
+  ASSERT_GT(GetOpCount(op_counts, k_all_gather_op_name), 0);
+
+  // verify optimizers exist
+  ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
 }
+
+TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.partition_optimizer = true;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = false;
+  TestZeROOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.partition_optimizer = true;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = false;
+  TestZeROOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, ZeRO_NoGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.partition_optimizer = true;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestZeROOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, ZeRO_WithGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = true;
+  config.partition_optimizer = true;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestZeROOptimizerGraphBuilder(config, graph_);
+}
+
+#endif  // USE_NCCL
+
 }  // namespace test
 }  // namespace training
 }  // namespace onnxruntime
