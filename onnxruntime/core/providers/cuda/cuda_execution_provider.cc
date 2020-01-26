@@ -68,11 +68,6 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id, size_t 
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
-<<<<<<< 938d1de5c5d2a3800715de590a12387d1992a78f
-  CUBLAS_CALL_THROW(cublasDestroy(cublas_handle_));
-  CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
-  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
-=======
   // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
@@ -87,7 +82,7 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
->>>>>>> Update BFCArena logic to use backoff if cudaMalloc fails. Makes behaviour equivalent to when a CPU allocation fails. Add unit test. (#2748)
+  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler, size_t cuda_mem_limit)
