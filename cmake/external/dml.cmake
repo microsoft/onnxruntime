@@ -19,7 +19,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
 
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
-  set(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages)
+  get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
   set(DML_PACKAGE_DIR ${PACKAGES_DIR}/DirectML.0.0.1)
 
   # Restore nuget packages, which will pull down the DirectML redist package

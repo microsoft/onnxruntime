@@ -398,6 +398,10 @@ target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(winml_lib_common PRIVATE ${winml_lib_common_dir}/inc)
 target_precompiled_header(winml_lib_common inc/pch.h)
 
+if (onnxruntime_USE_DML)
+  target_add_dml(winml_lib_common)
+endif()
+
 ###########################
 # Add winml_dll
 ###########################
