@@ -245,7 +245,7 @@ OrtStatus* CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t sha
   size_t elem_count = 1;
   std::vector<int64_t> shapes(shape_len);
   for (size_t i = 0; i != shape_len; ++i) {
-    elem_count *= shape[i];
+    elem_count *= static_cast<size_t>(shape[i]);
     shapes[i] = shape[i];
   }
 
@@ -807,16 +807,8 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
   API_IMPL_END
 }
 
-///////////////////////////////////////////////////////////////////////////
-// Code to handle non-tensor types
-// OrtGetValueCount
-// OrtGetVaue
-// OrtCreateValue
-///////////////////////////////////////////////////////////////////////////
 const int NUM_MAP_INDICES = 2;
 
-////////////////////
-// OrtGetValueCount
 template <typename T>
 OrtStatus* OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<T>();
@@ -867,7 +859,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueCount, const OrtValue* value, size_t* out) 
 }
 
 ///////////////////
-// OrtGetValue
+// OrtGetValueImplSeqOfMap
 template <typename T>
 static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index, OrtValue** out) {
   using TKey = typename T::value_type::key_type;
@@ -971,28 +963,31 @@ static OrtStatus* OrtGetValueImplMapHelper(const OrtValue* p_ml_value, int index
   using TVal = typename T::mapped_type;
   auto& data = p_ml_value->Get<T>();
   int64_t num_kv_pairs = data.size();
+#if defined(_WIN32) && !defined(_M_AMD64)
+  ORT_ENFORCE(static_cast<uint64_t>(num_kv_pairs) < std::numeric_limits<size_t>::max());
+#endif
   switch (index) {
     case 0: {  // user is requesting keys
       std::vector<TKey> vec;
-      vec.reserve(num_kv_pairs);
+      vec.reserve(static_cast<size_t>(num_kv_pairs));
       for (const auto& kv : data) {
         vec.push_back(kv.first);
       }
       std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                       GetONNXTensorElementDataType<TKey>(), out);
-      return st ? st : PopulateTensorWithData(*out, vec.data(), num_kv_pairs, sizeof(TKey));
+      return st ? st : PopulateTensorWithData(*out, vec.data(), static_cast<size_t>(num_kv_pairs), sizeof(TKey));
     }
     case 1: {  // user is requesting values
       std::vector<TVal> vec;
-      vec.reserve(num_kv_pairs);
+      vec.reserve(static_cast<size_t>(num_kv_pairs));
       for (const auto& kv : data) {
         vec.push_back(kv.second);
       }
       std::vector<int64_t> dims{num_kv_pairs};
       OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                       GetONNXTensorElementDataType<TVal>(), out);
-      return st ? st : PopulateTensorWithData(*out, vec.data(), num_kv_pairs, sizeof(TVal));
+      return st ? st : PopulateTensorWithData(*out, vec.data(), static_cast<size_t>(num_kv_pairs), sizeof(TVal));
     }
     default:
       return OrtApis::CreateStatus(ORT_FAIL, "Invalid index requested for map type.");
@@ -1200,7 +1195,9 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
   // iterate through the key and value tensors and populate map
   auto key_data = key_tensor.Data<KeyType>();
   auto value_data = value_tensor.Data<ValueType>();
-  size_t num_kv_pairs = key_tensor.Shape().Size();
+  auto len = key_tensor.Shape().Size();
+  ORT_ENFORCE(len >= 0 && static_cast<uint64_t>(len) < std::numeric_limits<size_t>::max());
+  size_t num_kv_pairs = static_cast<size_t>(key_tensor.Shape().Size());
   for (size_t n = 0; n < num_kv_pairs; ++n, ++key_data, ++value_data) {
     map_ptr->insert({*key_data, *value_data});
   }
@@ -1463,7 +1460,7 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
+const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
   return &ort_api_base;
 }
 

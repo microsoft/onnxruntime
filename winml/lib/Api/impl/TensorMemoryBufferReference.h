@@ -7,7 +7,6 @@
 #include <type_traits>
 
 #include <Memorybuffer.h>
-#include "WinMLAdapter.h"
 
 namespace Windows::AI::MachineLearning {
 struct DMLResource {

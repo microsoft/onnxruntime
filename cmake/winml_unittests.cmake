@@ -4,7 +4,6 @@
 set(WINML_TEST_SRC_DIR ${REPO_ROOT}/winml/test)
 set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/test/common
-  ${REPO_ROOT}/winml/lib/Api.Image/inc
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
   ${REPO_ROOT}/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/D3DX12
@@ -44,7 +43,7 @@ function(add_winml_test)
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest windowsapp winml_lib_image ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_telemetry)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -52,6 +51,25 @@ function(add_winml_test)
   )
 endfunction()
 
+function(get_winml_test_scenario_src
+  output_winml_test_scenario_src
+  output_winml_test_scenario_libs
+)
+  if (onnxruntime_USE_DML)
+    file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
+    set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
+  else()
+    set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
+  endif()
+  set(${output_winml_test_scenario_src} ${winml_test_scenario_src} PARENT_SCOPE)
+endfunction()
+
+function(get_winml_test_api_src
+  output_winml_test_api_src
+)
+  file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
+  set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
+endfunction()
 
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
@@ -60,28 +78,28 @@ add_dependencies(winml_test_common
   winml_api
   winml_dll
 )
-set_winml_target_properties(winml_test_common)
 
-file(GLOB winml_test_api_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/api/*.cpp")
+add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+set_winml_target_properties(winml_google_test_lib)
+
+set_winml_target_properties(winml_test_common)
+get_winml_test_api_src(winml_test_api_src)
 add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
   LIBS winml_test_common
 )
+target_compile_definitions(winml_test_api PRIVATE BUILD_GOOGLE_TEST)
 target_precompiled_header(winml_test_api testPch.h)
 
-if (onnxruntime_USE_DML)
-  file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/*.cpp")
-  set(winml_test_scenario_libs "onnxruntime_providers_dml")
-else()
-  set(winml_test_scenario_src "${WINML_TEST_SRC_DIR}/scenario/cppwinrt/scenariotestscppwinrt.cpp")
-endif()
+get_winml_test_scenario_src(winml_test_scenario_src winml_test_scenario_libs)
 add_winml_test(
   TARGET winml_test_scenario
   SOURCES ${winml_test_scenario_src}
-  LIBS winml_test_common ${winml_test_scenario_libs}
+  LIBS winml_test_common delayimp.lib ${winml_test_scenario_libs}
 )
 target_precompiled_header(winml_test_scenario testPch.h)
+target_compile_definitions(winml_test_scenario PRIVATE BUILD_GOOGLE_TEST)
 set_target_properties(winml_test_scenario PROPERTIES LINK_FLAGS
   "/DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll"
 )

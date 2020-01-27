@@ -38,6 +38,12 @@ class Telemetry {
 
   virtual void LogProcessInfo() const;
 
+  virtual void LogSessionCreationStart() const;
+
+  virtual void LogEvaluationStop() const;
+
+  virtual void LogEvaluationStart() const;
+
   virtual void LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                   const std::string& model_producer_version, const std::string& model_domain,
                                   const std::unordered_map<std::string, int>& domain_to_version_map,

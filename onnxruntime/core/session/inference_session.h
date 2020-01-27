@@ -377,10 +377,6 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
-  // Immutable state for each op in the model. Shared by all executors.
-  // It has a dependency on execution_providers_.
-  std::unique_ptr<SessionState> session_state_;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
@@ -457,6 +453,12 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
+ protected:
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  std::unique_ptr<SessionState> session_state_;
+
+ private:
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
@@ -509,6 +511,11 @@ class InferenceSession {
   TimePoint time_sent_last_;                                        // the TimePoint of the last report
   const long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+
+  TimePoint time_sent_last_evalutation_start_;
+                                                                      // Event Rate per provider < 20 peak events per second
+  const long long kDurationBetweenSendingEvaluationStart = 1000 * 50; // duration in (us). send a EvaluationStop Event every 50 ms;
+  bool isEvaluationStart = false;
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;

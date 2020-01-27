@@ -23,6 +23,7 @@ class AbiCustomRegistryImpl : public AbiCustomRegistry {
       const MLOperatorKernelDescription* operator_kernel,
       IMLOperatorKernelFactory* operator_kernel_factory,
       _In_opt_ IMLOperatorShapeInferrer* shape_inferrer,
+      _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
       bool is_internal_operator,
       bool can_alias_first_input,
       bool supports_graph,

@@ -22,6 +22,15 @@ void Telemetry::DisableTelemetryEvents() const {
 void Telemetry::LogProcessInfo() const {
 }
 
+void Telemetry::LogSessionCreationStart() const {
+}
+
+void Telemetry::LogEvaluationStop() const {
+}
+
+void Telemetry::LogEvaluationStart() const {
+}
+
 void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                    const std::string& model_producer_version, const std::string& model_domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map,

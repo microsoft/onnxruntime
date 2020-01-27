@@ -95,12 +95,7 @@ Use the individual flags to only run the specified stages.
 
     # Build a shared lib
     parser.add_argument("--build_shared_lib", action='store_true', help="Build a shared library for the ONNXRuntime.")
-
-    # Build ONNX Runtime server
-    parser.add_argument("--build_server", action='store_true', help="Build server application for the ONNXRuntime.")
-    parser.add_argument("--enable_server_tests", action='store_true', help="Run server application tests.")
-    parser.add_argument("--enable_server_model_tests", action='store_true', help="Run server model tests.")
-
+        
     # Build options
     parser.add_argument("--cmake_extra_defines", nargs="+",
                         help="Extra definitions to pass to CMake during build system generation. " +
@@ -130,7 +125,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
-    parser.add_argument("--use_automl", action='store_true', help="Build with AutoML support.")
+    parser.add_argument("--use_featurizers", action='store_true', help="Build with ML Featurizer support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
@@ -141,7 +136,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_tvm", action="store_true", help="Build with tvm")
     parser.add_argument("--use_openmp", action='store_true', help="Build with OpenMP.")
     parser.add_argument("--use_llvm", action="store_true", help="Build tvm with llvm")
-    parser.add_argument("--use_eigenthreadpool", action="store_true", help="Build with eigenthreadpool")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument("--use_brainslice", action="store_true", help="Build with brain slice")
@@ -175,8 +169,17 @@ def resolve_executable_path(command_or_path):
 def is_windows():
     return sys.platform.startswith("win")
 
+def get_linux_distro():
+    try:
+        with open('/etc/os-release', 'r') as f:
+            dist_info = dict(line.strip().split('=', 1) for line in f.readlines())
+        return dist_info.get('NAME', '').strip('"'), dist_info.get('VERSION', '').strip('"')
+    except:
+        return '', ''
+
 def is_ubuntu_1604():
-    return platform.linux_distribution()[0] == 'Ubuntu' and platform.linux_distribution()[1] == '16.04'
+    dist, ver = get_linux_distro()
+    return dist == 'Ubuntu' and ver.startswith('16.04')
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
@@ -243,7 +246,7 @@ def install_ubuntu_deps(args):
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
-    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.15.0')
+    dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version else 'numpy>=1.18.0')
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
@@ -293,14 +296,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-                 "-Donnxruntime_USE_AUTOML=" + ("ON" if args.use_automl else "OFF"),
+                 "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
                  "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
                  "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
-                 "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib or args.build_server else "OFF"),
+                 "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
                  "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + ("OFF" if args.use_openblas else "ON"),
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
@@ -321,15 +324,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
                  "-Donnxruntime_USE_BRAINSLICE=" + ("ON" if args.use_brainslice else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
-                 "-Donnxruntime_USE_EIGEN_THREADPOOL=" + ("ON" if args.use_eigenthreadpool else "OFF"),
                  "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
                  "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
-                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),
-                 "-Donnxruntime_BUILD_SERVER=" + ("ON" if args.build_server else "OFF"),
-                 "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
+                 "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm else "OFF"),                 
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
-                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
+                 "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  # enable pyop if it is nightly build
@@ -709,70 +709,7 @@ def nuphar_run_python_tests(build_dir, configs):
         run_subprocess([sys.executable, 'onnxruntime_test_python_nuphar.py'], cwd=cwd, dll_path=dll_path)
 
 
-def split_server_binary_and_symbol(build_dir, configs):
-    if is_windows():
-        # TODO: Windows support
-        pass
-    else:
-        for config in configs:
-            if config == 'RelWithDebInfo':
-                config_build_dir = get_config_build_dir(build_dir, config)
-                run_subprocess(['objcopy', '--only-keep-debug', 'onnxruntime_server', 'onnxruntime_server.symbol'], cwd=config_build_dir)
-                run_subprocess(['strip', '--strip-debug', '--strip-unneeded', 'onnxruntime_server'], cwd=config_build_dir)
-                run_subprocess(['objcopy', '--add-gnu-debuglink=onnxruntime_server.symbol', 'onnxruntime_server'], cwd=config_build_dir)
-                libonnx = glob.glob(os.path.join(config_build_dir, "libonnxruntime.so.*"))
-                if len(libonnx) != 1 :
-                    raise ValueError("Too many libonxruntime.so.*")
-                libonnx = libonnx[0]
-                run_subprocess(['objcopy', '--only-keep-debug', libonnx, libonnx+'.symbol'], cwd=config_build_dir)
-                run_subprocess(['strip', '--strip-debug', libonnx], cwd=config_build_dir)
-                run_subprocess(['objcopy', '--add-gnu-debuglink={}.symbol'.format(libonnx), libonnx], cwd=config_build_dir)
-
-
-def run_server_tests(build_dir, configs):
-    pip_freeze_result = run_subprocess([sys.executable, '-m', 'pip', 'freeze'], capture=True).stdout
-    installed_packages = [r.decode().split('==')[0] for r in pip_freeze_result.split()]
-    if not (('requests' in installed_packages) and ('protobuf' in installed_packages) and ('numpy' in installed_packages) and ('grpcio' in installed_packages)):
-        if hasattr(sys, 'real_prefix'):
-            # In virtualenv
-            run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy', 'grpcio'])
-        else:
-            # Outside virtualenv
-            run_subprocess([sys.executable, '-m', 'pip', 'install', '--user', '--trusted-host', 'files.pythonhosted.org', 'requests', 'protobuf', 'numpy', 'grpcio'])
-    for config in configs:
-        config_build_dir = get_config_build_dir(build_dir, config)
-        if is_windows():
-            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
-            python_package_path = os.path.join(config_build_dir, config)
-        else:
-            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
-            python_package_path = config_build_dir
-        server_test_folder = os.path.join(config_build_dir, 'server_test')
-        server_test_model_folder = os.path.join(build_dir, 'models', 'opset8', 'test_mnist')
-        server_test_data_folder = os.path.join(config_build_dir, 'testdata', 'server')
-        run_subprocess([sys.executable, 'test_main.py', server_app_path, server_test_model_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
-
-
-def run_server_model_tests(build_dir, configs):
-    for config in configs:
-        config_build_dir = get_config_build_dir(build_dir, config)
-        server_test_folder = os.path.join(config_build_dir, 'server_test')
-        server_test_data_folder = os.path.join(config_build_dir, 'server_test_data')
-
-        if is_windows():
-            server_app_path = os.path.join(config_build_dir, config, 'onnxruntime_server.exe')
-            test_raw_data_folder = os.path.join(config_build_dir, 'models')
-            python_package_path = os.path.join(config_build_dir, config)
-        else:
-            server_app_path = os.path.join(config_build_dir, 'onnxruntime_server')
-            test_raw_data_folder = os.path.join(build_dir, 'models')
-            python_package_path = config_build_dir
-
-        run_subprocess([sys.executable, 'model_zoo_data_prep.py', test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
-        run_subprocess([sys.executable, 'model_zoo_tests.py', server_app_path, test_raw_data_folder, server_test_data_folder, python_package_path, server_test_folder], cwd=server_test_folder, dll_path=None)
-
-
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl, use_tensorrt, use_openvino, use_nuphar, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -786,6 +723,8 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_cuda')
         elif use_ngraph:
             args.append('--use_ngraph')
+        elif use_dnnl:
+            args.append('--use_dnnl')
         elif use_openvino:
             args.append('--use_openvino')
         elif use_nuphar:
@@ -891,7 +830,7 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.build_wheel or args.enable_server_model_tests:
+    if args.build_wheel:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_java:
@@ -938,10 +877,18 @@ def main():
             if args.test:
                 log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
                 args.test = False
-          else:
-            toolset = 'host=x64'
-            if (args.msvc_toolset):
-                toolset += ',version=' + args.msvc_toolset
+          else:            
+            if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
+                #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
+                #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
+                #14.16 is MSVC version
+                #141 is MSVC Toolset Version
+                #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
+                toolset = 'v141,host=x64,version=' + args.msvc_toolset
+            elif args.msvc_toolset:
+                toolset = 'host=x64,version=' + args.msvc_toolset
+            else:
+                toolset = 'host=x64'
             if (args.cuda_version):
                 toolset += ',cuda=' + args.cuda_version
 
@@ -998,7 +945,7 @@ def main():
               else:
                 tensorrt_run_onnx_tests(build_dir, configs, "")
 
-            if args.use_cuda:
+            if args.use_cuda and not args.use_tensorrt:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
 
             if args.use_ngraph:
@@ -1025,17 +972,10 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
-    if args.build_server:
-        split_server_binary_and_symbol(build_dir, configs)
-        if args.enable_server_tests:
-            run_server_tests(build_dir, configs)
-        if args.enable_server_model_tests:
-            run_server_model_tests(build_dir, configs)
-
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_dnnl, args.use_tensorrt, args.use_openvino, args.use_nuphar, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

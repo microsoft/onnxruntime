@@ -33,6 +33,7 @@
 #include "FeatureDescriptorFactory.h"
 #include "core\framework\utils.h"
 #include "core\framework\session_state.h"
+#include "core/providers/winml/winml_provider_factory.h"
 
 using namespace winrt::Windows::AI::MachineLearning;
 
@@ -593,7 +594,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
     auto allocator = provider->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault);
 
     const auto& info = allocator->Info();
-    *memory_info = new OrtMemoryInfo(info.name, info.type, info.device, info.id, info.mem_type);
+    *memory_info = new OrtMemoryInfo(info.name, info.alloc_type, info.device, info.id, info.mem_type);
     if (*memory_info == nullptr) {
       return E_OUTOFMEMORY;
     }
@@ -604,7 +605,7 @@ class WinMLAdapter : public Microsoft::WRL::RuntimeClass<
   HRESULT STDMETHODCALLTYPE GetValueMemoryInfo(const OrtValue* ort_value, OrtMemoryInfo** memory_info) override try {
     const auto& tensor = ort_value->Get<onnxruntime::Tensor>();
     auto info = tensor.Location();
-    *memory_info = new OrtMemoryInfo(info.name, info.type, info.device, info.id, info.mem_type);
+    *memory_info = new OrtMemoryInfo(info.name, info.alloc_type, info.device, info.id, info.mem_type);
     if (*memory_info == nullptr) {
       return E_OUTOFMEMORY;
     }

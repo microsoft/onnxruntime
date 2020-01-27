@@ -33,6 +33,7 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
       wil::SetResultTelemetryFallback(&OnErrorReported);
       break;
     case DLL_PROCESS_DETACH:
+      telemetry_helper.LogWinMLShutDown();
       // Unregister Trace Logging Provider feeding telemetry
       telemetry_helper.UnRegister();
 

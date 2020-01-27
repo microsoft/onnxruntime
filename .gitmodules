@@ -1,4 +1,4 @@
-[submodule "external/protobuf"]
+[submodule "cmake/external/protobuf"]
 	path = cmake/external/protobuf
 	url = https://github.com/google/protobuf.git
 [submodule "cmake/external/googletest"]
@@ -25,15 +25,9 @@
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://github.com/eigenteam/eigen-git-mirror.git
-[submodule "cmake/external/grpc"]
-	path = cmake/external/grpc
-	url = https://github.com/grpc/grpc
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary
-[submodule "cmake/external/spdlog"]
-	path = cmake/external/spdlog
-	url = https://github.com/gabime/spdlog.git
 [submodule "cmake/external/mimalloc"]
 	path = cmake/external/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
@@ -49,3 +43,9 @@
 [submodule "cmake/external/json"]
 	path = cmake/external/json
 	url = https://github.com/nlohmann/json
+[submodule "server/external/spdlog"]
+	path = server/external/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "cmake/external/FeaturizersLibrary"]
+	path = cmake/external/FeaturizersLibrary
+	url = https://github.com/microsoft/FeaturizersLibrary.git

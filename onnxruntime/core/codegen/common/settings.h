@@ -3,6 +3,7 @@
 
 #pragma once
 #include <map>
+#include <string>
 
 namespace onnxruntime {
 namespace codegen {

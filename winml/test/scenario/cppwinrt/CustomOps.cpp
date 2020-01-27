@@ -4,7 +4,6 @@
 #include <dxgi1_6.h>
 #include "filehelpers.h"
 #include <fstream>
-#include "SqueezeNetValidator.h"
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Media.h>
 #include "winrt/Windows.Storage.h"
@@ -12,7 +11,7 @@
 #include <MemoryBuffer.h>
 #include <gsl/gsl>
 #include "CustomOperatorProvider.h"
-#include "runtimeParameters.h"
+#include "CustomOps.h"
 
 // For custom operator and shape inferencing support
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
@@ -31,26 +30,19 @@ using namespace winrt::Windows::Graphics::Imaging;
 using namespace winrt::Windows::Storage;
 using namespace winrt::Windows::Storage::Streams;
 
-class CustomOpsScenarioTest : public ::testing::Test
+static void CustomOpsScenarioTestSetup()
 {
-protected:
-    CustomOpsScenarioTest() {
-        init_apartment();
-    }
-};
+  init_apartment();
+}
 
-class CustomOpsScenarioGpuTest : public CustomOpsScenarioTest
+static void CustomOpsScenarioGpuTestSetup()
 {
-protected:
-    void SetUp() override
-    {
-        GPUTEST
-    }
-};
+  init_apartment();
+  GPUTEST;
+}
 
 // Tests that the execution provider correctly fuses operators together when custom ops are involved.
-TEST_F(CustomOpsScenarioGpuTest, CustomOperatorFusion)
-{
+static void CustomOperatorFusion() {
     constexpr const wchar_t* c_modelFilename = L"squeezenet_tensor_input.onnx";
 
     // This particular model has 25 Conv ops and 25 Relu ops, all of which are eligible for fusion so we expect them
@@ -96,7 +88,7 @@ TEST_F(CustomOpsScenarioGpuTest, CustomOperatorFusion)
         {
             using namespace OperatorHelper;
 
-            EXPECT_HRESULT_SUCCEEDED(MLCreateOperatorRegistry(m_registry.put()));
+            WINML_EXPECT_HRESULT_SUCCEEDED(MLCreateOperatorRegistry(m_registry.put()));
 
 #pragma push_macro("REGISTER_KERNEL")
 #define REGISTER_KERNEL(_name, _domain, _opSet, _shapeInferrer, _callCount) \
@@ -143,14 +135,14 @@ TEST_F(CustomOpsScenarioGpuTest, CustomOperatorFusion)
     auto provider = customOperatorProvider.as<ILearningModelOperatorProvider>();
 
     LearningModelDevice device = nullptr;
-    EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
+    WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::DirectX));
     std::wstring fullPath = FileHelpers::GetModulePath() + c_modelFilename;
     auto model = LearningModel::LoadFromFilePath(fullPath, provider);
 
     auto featureValue = FileHelpers::LoadImageFeatureValue(L"227x227.png");
 
     LearningModelSession session = nullptr;
-    EXPECT_NO_THROW(session = LearningModelSession(model, device));
+    WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
     LearningModelBinding modelBinding(session);
 
     modelBinding.Bind(L"data", featureValue);
@@ -159,15 +151,15 @@ TEST_F(CustomOpsScenarioGpuTest, CustomOperatorFusion)
     const auto& callCounts = customOperatorProvider.as<CallbackOperatorProvider>()->GetCallCounts();
 
     // Verify that the correct number of each operator was seen (i.e. that none were dropped / incorrectly fused)
-    EXPECT_EQ(c_expectedConvOps, callCounts.conv);
-    EXPECT_EQ(c_expectedReluOps, callCounts.relu);
-    EXPECT_EQ(c_expectedFusedConvOps, callCounts.fusedConv);
-    EXPECT_EQ(c_expectedGemmOps, callCounts.gemm);
-    EXPECT_EQ(c_expectedSigmoidOps, callCounts.sigmoid);
-    EXPECT_EQ(c_expectedFusedGemmOps, callCounts.fusedGemm);
-    EXPECT_EQ(c_expectedBatchNormOps, callCounts.batchNorm);
-    EXPECT_EQ(c_expectedMaxPoolOps, callCounts.maxPool);
-    EXPECT_EQ(c_expectedConcatOps, callCounts.concat);
+    WINML_EXPECT_EQUAL(c_expectedConvOps, callCounts.conv);
+    WINML_EXPECT_EQUAL(c_expectedReluOps, callCounts.relu);
+    WINML_EXPECT_EQUAL(c_expectedFusedConvOps, callCounts.fusedConv);
+    WINML_EXPECT_EQUAL(c_expectedGemmOps, callCounts.gemm);
+    WINML_EXPECT_EQUAL(c_expectedSigmoidOps, callCounts.sigmoid);
+    WINML_EXPECT_EQUAL(c_expectedFusedGemmOps, callCounts.fusedGemm);
+    WINML_EXPECT_EQUAL(c_expectedBatchNormOps, callCounts.batchNorm);
+    WINML_EXPECT_EQUAL(c_expectedMaxPoolOps, callCounts.maxPool);
+    WINML_EXPECT_EQUAL(c_expectedConcatOps, callCounts.concat);
 }
 
 struct LocalCustomOperatorProvider :
@@ -178,7 +170,7 @@ struct LocalCustomOperatorProvider :
 {
     LocalCustomOperatorProvider()
     {
-        EXPECT_HRESULT_SUCCEEDED(MLCreateOperatorRegistry(m_registry.put()));
+        WINML_EXPECT_HRESULT_SUCCEEDED(MLCreateOperatorRegistry(m_registry.put()));
     }
 
     STDMETHOD(GetRegistry)(IMLOperatorRegistry** ppOperatorRegistry)
@@ -205,20 +197,20 @@ protected:
 void VerifyTestAttributes(const MLOperatorAttributes& attrs)
 {
     std::string strAttr = attrs.GetAttribute("DefaultedNonRequiredString");
-    EXPECT_EQ(strAttr, "1");
+    WINML_EXPECT_EQUAL(strAttr, "1");
 
     std::vector<std::string> strArrayAttr = attrs.GetAttributeVector("DefaultedNonRequiredStringArray");
     std::vector<std::string> expected = std::vector<std::string>({ "1", "2" });
     for (size_t i = 0; i < expected.size(); ++i)
     {
-        EXPECT_EQ(strArrayAttr[i], expected[i]);
+        WINML_EXPECT_EQUAL(strArrayAttr[i], expected[i]);
     }
 
-    EXPECT_EQ(1, attrs.GetAttribute<int64_t>("DefaultedNonRequiredInt"));
-    EXPECT_EQ(1.0f, attrs.GetAttribute<float>("DefaultedNonRequiredFloat"));
+    WINML_EXPECT_EQUAL(1, attrs.GetAttribute<int64_t>("DefaultedNonRequiredInt"));
+    WINML_EXPECT_EQUAL(1.0f, attrs.GetAttribute<float>("DefaultedNonRequiredFloat"));
 
-    EXPECT_EQ(std::vector<int64_t>({ 1, 2 }), attrs.GetAttributeVector<int64_t>("DefaultedNonRequiredIntArray"));
-    EXPECT_EQ(std::vector<float>({ 1.0f, 2.0f }), attrs.GetAttributeVector<float>("DefaultedNonRequiredFloatArray"));
+    WINML_EXPECT_EQUAL(std::vector<int64_t>({ 1, 2 }), attrs.GetAttributeVector<int64_t>("DefaultedNonRequiredIntArray"));
+    WINML_EXPECT_EQUAL(std::vector<float>({ 1.0f, 2.0f }), attrs.GetAttributeVector<float>("DefaultedNonRequiredFloatArray"));
 }
 
 // Foo kernel which is doing Add and optionally truncates its output
@@ -241,14 +233,14 @@ public:
         if (!Truncate)
         {
             com_ptr<IMLOperatorTensorShapeDescription> shapeInfo;
-            EXPECT_EQ(info.GetInterface()->HasTensorShapeDescription(), false);
-            EXPECT_HRESULT_FAILED(info.GetInterface()->GetTensorShapeDescription(shapeInfo.put()));
+            WINML_EXPECT_EQUAL(info.GetInterface()->HasTensorShapeDescription(), false);
+            WINML_EXPECT_HRESULT_FAILED(info.GetInterface()->GetTensorShapeDescription(shapeInfo.put()));
         }
         else
         {
             com_ptr<IMLOperatorTensorShapeDescription> shapeInfo;
-            EXPECT_EQ(info.GetInterface()->HasTensorShapeDescription(), true);
-            EXPECT_EQ(info.GetInterface()->GetTensorShapeDescription(shapeInfo.put()), S_OK);
+            WINML_EXPECT_EQUAL(info.GetInterface()->HasTensorShapeDescription(), true);
+            WINML_EXPECT_EQUAL(info.GetInterface()->GetTensorShapeDescription(shapeInfo.put()), S_OK);
         }
     }
 
@@ -271,7 +263,7 @@ public:
         if (!Truncate)
         {
             com_ptr<IMLOperatorTensor> tensor;
-            EXPECT_HRESULT_FAILED(context.GetInterface()->GetOutputTensor(0, tensor.put()));
+            WINML_EXPECT_HRESULT_FAILED(context.GetInterface()->GetOutputTensor(0, tensor.put()));
         }
         else
         {
@@ -295,20 +287,20 @@ public:
 };
 
 template <bool VerifyTestAttributes = false>
-void CreateABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
+void CALLBACK CreateABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
 {
     HRESULT hr = MLOperatorKernel<FooKernel<float, VerifyTestAttributes>>::CreateInstance(*kernelInfo, opKernel);
     THROW_IF_FAILED(hr);
 }
 
-void CreateTruncatedABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
+void CALLBACK CreateTruncatedABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
 {
     HRESULT hr = MLOperatorKernel<FooKernel<float, true, true>>::CreateInstance(*kernelInfo, opKernel);
     THROW_IF_FAILED(hr);
 }
 
 // Test using a foo kernel which is doing Add, but register it as "Mul".
-TEST_F(CustomOpsScenarioTest, CustomKernelWithBuiltInSchema)
+static void CustomKernelWithBuiltInSchema()
 {
     // Create the registry
     auto operatorProvider = winrt::make<LocalCustomOperatorProvider>();
@@ -337,7 +329,7 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithBuiltInSchema)
     };
 
     Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory = wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<false>);
-    EXPECT_HRESULT_SUCCEEDED(registry->RegisterOperatorKernel(&kernelDesc, factory.Get(), nullptr));
+    WINML_EXPECT_HRESULT_SUCCEEDED(registry->RegisterOperatorKernel(&kernelDesc, factory.Get(), nullptr));
 
     // Prepare inputs
     std::vector<int64_t> dimsX = { 3, 2 };
@@ -361,23 +353,23 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithBuiltInSchema)
     bindings.Bind(winrt::hstring(L"X"), inputTensor);
 
     auto outputValue = TensorFloat::Create();
-    EXPECT_NO_THROW(bindings.Bind(L"Y", outputValue));
+    WINML_EXPECT_NO_THROW(bindings.Bind(L"Y", outputValue));
 
     // Evaluate the model
     hstring correlationId;
-    EXPECT_NO_THROW(session.Evaluate(bindings, correlationId));
+    WINML_EXPECT_NO_THROW(session.Evaluate(bindings, correlationId));
 
     // Check the result shape
-    EXPECT_EQ(expectedDimsY.size(), outputValue.Shape().Size());
+    WINML_EXPECT_EQUAL(expectedDimsY.size(), outputValue.Shape().Size());
     for (uint32_t j = 0; j < outputValue.Shape().Size(); j++)
     {
-        EXPECT_EQ(expectedDimsY.at(j), outputValue.Shape().GetAt(j));
+        WINML_EXPECT_EQUAL(expectedDimsY.at(j), outputValue.Shape().GetAt(j));
     }
 
     // Check the results
     auto buffer = outputValue.GetAsVectorView();
-    EXPECT_TRUE(buffer != nullptr);
-    EXPECT_TRUE(std::equal(expectedValuesY.cbegin(), expectedValuesY.cend(), begin(buffer)));
+    WINML_EXPECT_TRUE(buffer != nullptr);
+    WINML_EXPECT_TRUE(std::equal(expectedValuesY.cbegin(), expectedValuesY.cend(), begin(buffer)));
 
     // Release the model before operatorProvider goes out of scope
     model = nullptr;
@@ -404,7 +396,7 @@ private:
 };
 
 // Test using a custom kernel and schema, while verifying attribute defaults, type mapping, and inference methods
-TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
+static void CustomKernelWithCustomSchema()
 {
     // Test cases
     struct
@@ -591,7 +583,7 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
         // Register the schema
         MLOperatorSetId opsetId = { "", 7 };
         MLOperatorSchemaDescription* opSchemaDescs = &schemaDesc;
-        EXPECT_EQ(S_OK, registry->RegisterOperatorSetSchema(
+        WINML_EXPECT_EQUAL(S_OK, registry->RegisterOperatorSetSchema(
             &opsetId,
             1,
             &opSchemaDescs,
@@ -608,7 +600,7 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
 
             MLOperatorSetId id = { "", 9 };
             MLOperatorSchemaDescription* schemaDescs = &futureSchemaDesc;
-            EXPECT_EQ(S_OK, registry->RegisterOperatorSetSchema(
+            WINML_EXPECT_EQUAL(S_OK, registry->RegisterOperatorSetSchema(
                 &id,
                 7,
                 &schemaDescs,
@@ -624,7 +616,7 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
 
             MLOperatorSetId id = { "otherDomain", 7 };
             MLOperatorSchemaDescription* schemaDescs = &otherSchemaDesc;
-            EXPECT_EQ(S_OK, registry->RegisterOperatorSetSchema(
+            WINML_EXPECT_EQUAL(S_OK, registry->RegisterOperatorSetSchema(
                 &id,
                 1,
                 &schemaDescs,
@@ -661,12 +653,12 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
             kernelDesc.options = MLOperatorKernelOptions::AllowDynamicInputShapes;
             Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory = wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<true>);
 
-            EXPECT_EQ(S_OK, registry->RegisterOperatorKernel(&kernelDesc, factory.Get(), nullptr));
+            WINML_EXPECT_EQUAL(S_OK, registry->RegisterOperatorKernel(&kernelDesc, factory.Get(), nullptr));
         }
         else
         {
             Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory = wil::MakeOrThrow<MLOperatorKernelFactory>(CreateTruncatedABIFooKernel);
-            EXPECT_EQ(S_OK, registry->RegisterOperatorKernel(
+            WINML_EXPECT_EQUAL(S_OK, registry->RegisterOperatorKernel(
                 &kernelDesc,
                 factory.Get(),
                 testCases[caseIndex].useShapeInferenceInKernel ? shapeInferrer.Get() : nullptr
@@ -699,23 +691,23 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
         bindings.Bind(winrt::hstring(L"X"), inputTensor);
 
         auto outputValue = TensorFloat::Create();
-        EXPECT_NO_THROW(bindings.Bind(L"Y", outputValue));
+        WINML_EXPECT_NO_THROW(bindings.Bind(L"Y", outputValue));
 
         // Evaluate the model
         hstring correlationId;
-        EXPECT_NO_THROW(session.Evaluate(bindings, correlationId));
+        WINML_EXPECT_NO_THROW(session.Evaluate(bindings, correlationId));
 
         // Verify the result shape
-        EXPECT_EQ(expectedDimsY.size(), outputValue.Shape().Size());
+        WINML_EXPECT_EQUAL(expectedDimsY.size(), outputValue.Shape().Size());
         for (uint32_t j = 0; j < outputValue.Shape().Size(); j++)
         {
-            EXPECT_EQ(expectedDimsY.at(j), outputValue.Shape().GetAt(j));
+            WINML_EXPECT_EQUAL(expectedDimsY.at(j), outputValue.Shape().GetAt(j));
         }
 
         // Verify the result values
         auto buffer = outputValue.GetAsVectorView();
-        EXPECT_TRUE(buffer != nullptr);
-        EXPECT_TRUE(std::equal(expectedValuesY.cbegin(), expectedValuesY.cend(), begin(buffer)));
+        WINML_EXPECT_TRUE(buffer != nullptr);
+        WINML_EXPECT_TRUE(std::equal(expectedValuesY.cbegin(), expectedValuesY.cend(), begin(buffer)));
 
         // Release the model before operatorProvider goes out of scope
         model = nullptr;
@@ -724,7 +716,19 @@ TEST_F(CustomOpsScenarioTest, CustomKernelWithCustomSchema)
         {
             // Check that the shape inference context is closed and safely fails
             MLOperatorEdgeDescription edgeDesc;
-            EXPECT_EQ(E_INVALIDARG, shapeInferenceContext->GetInputEdgeDescription(0, &edgeDesc));
+            WINML_EXPECT_EQUAL(E_INVALIDARG, shapeInferenceContext->GetInputEdgeDescription(0, &edgeDesc));
         }
     }
+}
+
+const CustomOpsTestApi& getapi() {
+  static constexpr CustomOpsTestApi api = 
+      {
+          CustomOpsScenarioTestSetup,
+          CustomOpsScenarioGpuTestSetup,
+          CustomOperatorFusion,
+          CustomKernelWithBuiltInSchema,
+          CustomKernelWithCustomSchema
+      };
+  return api;
 }
