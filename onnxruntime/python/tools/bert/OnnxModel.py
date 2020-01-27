@@ -253,18 +253,6 @@ class OnnxModel:
 
         return unique_nodes
 
-    def cast_float32_to_float16(self, input_name, output_name):
-        cast_node = onnx.helper.make_node('Cast', inputs=[input_name], outputs=[output_name])
-        cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.FLOAT16))])
-        self.add_node(cast_node)
-        self.replace_input_of_all_nodes(input_name, output_name)
-
-    def cast_float16_to_float32(self, input_name, output_name):
-        cast_node = onnx.helper.make_node('Cast', inputs=[input_name], outputs=[output_name])
-        cast_node.attribute.extend([onnx.helper.make_attribute("to", int(TensorProto.FLOAT32))])
-        self.add_node(cast_node)
-        self.replace_input_of_all_nodes(input_name, output_name)
-
     def convert_model_float32_to_float16(self):
         graph = self.model.graph
         initializers = graph.initializer
