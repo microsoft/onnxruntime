@@ -121,6 +121,9 @@ endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto tensorboard protobuf::libprotobuf)
+if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")   
+endif()
 
 if (onnxruntime_USE_FEATURIZERS)
   add_dependencies(onnxruntime_providers onnxruntime_featurizers)

@@ -68,8 +68,20 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id, size_t 
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
-  CUBLAS_CALL_THROW(cublasDestroy(cublas_handle_));
-  CUDNN_CALL_THROW(cudnnDestroy(cudnn_handle_));
+  // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
+  // here may be bad, and the destroy calls can throw.
+  // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
+  try {
+    CUBLAS_CALL(cublasDestroy(cublas_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
+  }
+
+  try {
+    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
+  }
   CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
@@ -77,12 +89,26 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), enable_compiler_(enable_compiler), cuda_mem_limit_(cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
+  size_t free = 0;
+  size_t total = 0;
+  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+
   DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int device_id) { return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA); }, cuda_mem_limit_});
+      {OrtMemTypeDefault,
+       [](int device_id) {
+         return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
+       },
+       cuda_mem_limit_});
+
   InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
-      {OrtMemTypeCPUOutput, [](int device_id) { return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeCPUOutput,
+       [](int device_id) {
+         return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+       },
+       std::numeric_limits<size_t>::max()});
+
   InsertAllocator(CreateAllocator(pinned_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 
   // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.

@@ -675,7 +675,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
     expected_values_prod.push_back(prod_f);
   }
 
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
@@ -1223,7 +1223,7 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {
       // LayerNormalization should have three inputs.
-      EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
@@ -1259,7 +1259,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {
       // LayerNormalization should have three inputs.
-      EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
