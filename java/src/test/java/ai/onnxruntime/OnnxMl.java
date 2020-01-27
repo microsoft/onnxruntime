@@ -424,10 +424,10 @@ public final class OnnxMl {
      * <pre>
      * The type field MUST be present for this version of the IR.
      * For 0.0.1 versions of the IR, this field was not defined, and
-     * implementations needed to use has_field hueristics to determine
+     * implementations needed to use has_field heuristics to determine
      * which value field was in use.  For IR_VERSION 0.0.2 or later, this
      * field MUST be set and match the f|i|s|t|... field in use.  This
-     * change was made to accomodate proto3 implementations.
+     * change was made to accommodate proto3 implementations.
      * </pre>
      *
      * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -437,10 +437,10 @@ public final class OnnxMl {
      * <pre>
      * The type field MUST be present for this version of the IR.
      * For 0.0.1 versions of the IR, this field was not defined, and
-     * implementations needed to use has_field hueristics to determine
+     * implementations needed to use has_field heuristics to determine
      * which value field was in use.  For IR_VERSION 0.0.2 or later, this
      * field MUST be set and match the f|i|s|t|... field in use.  This
-     * change was made to accomodate proto3 implementations.
+     * change was made to accommodate proto3 implementations.
      * </pre>
      *
      * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -1362,10 +1362,10 @@ public final class OnnxMl {
      * <pre>
      * The type field MUST be present for this version of the IR.
      * For 0.0.1 versions of the IR, this field was not defined, and
-     * implementations needed to use has_field hueristics to determine
+     * implementations needed to use has_field heuristics to determine
      * which value field was in use.  For IR_VERSION 0.0.2 or later, this
      * field MUST be set and match the f|i|s|t|... field in use.  This
-     * change was made to accomodate proto3 implementations.
+     * change was made to accommodate proto3 implementations.
      * </pre>
      *
      * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -1377,10 +1377,10 @@ public final class OnnxMl {
      * <pre>
      * The type field MUST be present for this version of the IR.
      * For 0.0.1 versions of the IR, this field was not defined, and
-     * implementations needed to use has_field hueristics to determine
+     * implementations needed to use has_field heuristics to determine
      * which value field was in use.  For IR_VERSION 0.0.2 or later, this
      * field MUST be set and match the f|i|s|t|... field in use.  This
-     * change was made to accomodate proto3 implementations.
+     * change was made to accommodate proto3 implementations.
      * </pre>
      *
      * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -2881,10 +2881,10 @@ public final class OnnxMl {
        * <pre>
        * The type field MUST be present for this version of the IR.
        * For 0.0.1 versions of the IR, this field was not defined, and
-       * implementations needed to use has_field hueristics to determine
+       * implementations needed to use has_field heuristics to determine
        * which value field was in use.  For IR_VERSION 0.0.2 or later, this
        * field MUST be set and match the f|i|s|t|... field in use.  This
-       * change was made to accomodate proto3 implementations.
+       * change was made to accommodate proto3 implementations.
        * </pre>
        *
        * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -2896,10 +2896,10 @@ public final class OnnxMl {
        * <pre>
        * The type field MUST be present for this version of the IR.
        * For 0.0.1 versions of the IR, this field was not defined, and
-       * implementations needed to use has_field hueristics to determine
+       * implementations needed to use has_field heuristics to determine
        * which value field was in use.  For IR_VERSION 0.0.2 or later, this
        * field MUST be set and match the f|i|s|t|... field in use.  This
-       * change was made to accomodate proto3 implementations.
+       * change was made to accommodate proto3 implementations.
        * </pre>
        *
        * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -2913,10 +2913,10 @@ public final class OnnxMl {
        * <pre>
        * The type field MUST be present for this version of the IR.
        * For 0.0.1 versions of the IR, this field was not defined, and
-       * implementations needed to use has_field hueristics to determine
+       * implementations needed to use has_field heuristics to determine
        * which value field was in use.  For IR_VERSION 0.0.2 or later, this
        * field MUST be set and match the f|i|s|t|... field in use.  This
-       * change was made to accomodate proto3 implementations.
+       * change was made to accommodate proto3 implementations.
        * </pre>
        *
        * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -2930,10 +2930,10 @@ public final class OnnxMl {
        * <pre>
        * The type field MUST be present for this version of the IR.
        * For 0.0.1 versions of the IR, this field was not defined, and
-       * implementations needed to use has_field hueristics to determine
+       * implementations needed to use has_field heuristics to determine
        * which value field was in use.  For IR_VERSION 0.0.2 or later, this
        * field MUST be set and match the f|i|s|t|... field in use.  This
-       * change was made to accomodate proto3 implementations.
+       * change was made to accommodate proto3 implementations.
        * </pre>
        *
        * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
@@ -2951,10 +2951,10 @@ public final class OnnxMl {
        * <pre>
        * The type field MUST be present for this version of the IR.
        * For 0.0.1 versions of the IR, this field was not defined, and
-       * implementations needed to use has_field hueristics to determine
+       * implementations needed to use has_field heuristics to determine
        * which value field was in use.  For IR_VERSION 0.0.2 or later, this
        * field MUST be set and match the f|i|s|t|... field in use.  This
-       * change was made to accomodate proto3 implementations.
+       * change was made to accommodate proto3 implementations.
        * </pre>
        *
        * <code>.onnx.AttributeProto.AttributeType type = 20;</code>
