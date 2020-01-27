@@ -358,6 +358,7 @@ add_dependencies(winml_lib_api winml_sdk_cppwinrt)
 add_dependencies(winml_lib_api winml_api)
 add_dependencies(winml_lib_api winml_api_native)
 add_dependencies(winml_lib_api winml_api_native_internal)
+add_dependencies(winml_lib_api ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 # Link libraries
 target_link_libraries(winml_lib_api PRIVATE wil winml_lib_telemetry)
@@ -389,6 +390,7 @@ add_dependencies(winml_lib_common winml_sdk_cppwinrt)
 add_dependencies(winml_lib_common winml_api)
 add_dependencies(winml_lib_common winml_api_native)
 add_dependencies(winml_lib_common winml_api_native_internal)
+add_dependencies(winml_lib_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
