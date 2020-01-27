@@ -41,7 +41,12 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("scale", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("mean", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("var", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("X", DataTypeImpl::GetTensorType<double>())
+        .TypeConstraint("scale", DataTypeImpl::GetTensorType<double>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<double>())
+        .TypeConstraint("mean", DataTypeImpl::GetTensorType<double>())
+        .TypeConstraint("var", DataTypeImpl::GetTensorType<double>()),
     BatchNorm<float>);
 
 template <>
