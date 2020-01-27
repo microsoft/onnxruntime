@@ -27,7 +27,7 @@ using Resource = std::unique_ptr<void, std::function<void(void*)>>;
 MIDL_INTERFACE("31f39226-cfe8-4758-af38-3d01b2a33ee1") IValue : IUnknown {
     STDMETHOD(IsEmpty)(bool* out) PURE;
     STDMETHOD(IsCpu)(bool* out) PURE;
-    STDMETHOD_(Resource, GetResource)() PURE;
+    STDMETHOD(GetResource)(WinML::Resource& resource) PURE;
 
     STDMETHOD(IsTensor)(bool* out) PURE;
     STDMETHOD(IsOfTensorType)(winml::TensorKind kind, bool* out) PURE;

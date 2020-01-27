@@ -290,7 +290,8 @@ struct TensorBase : TBase {
         m_resources,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
-    auto updated_resource = value->GetResource();
+    WinML::Resource updated_resource;
+    RETURN_IF_FAILED(value->GetResource(updated_resource));
 
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");

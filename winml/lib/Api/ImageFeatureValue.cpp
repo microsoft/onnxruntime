@@ -417,7 +417,8 @@ HRESULT ImageFeatureValue::GetValue(WinML::BindingContext& context, IValue** out
 	  value.put()));
 
   // Get the tensor raw data
-  auto void_resource = value->GetResource();
+  WinML::Resource void_resource;
+  RETURN_IF_FAILED(value->GetResource(void_resource));
 
   if (context.type == BindingType::kInput) {
     // Only tensorize inputs
@@ -450,7 +451,8 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
   // Get the output tensor raw data
-  auto void_resource = value->GetResource();
+  WinML::Resource void_resource;
+  RETURN_IF_FAILED(value->GetResource(void_resource));
 
   // Get the run context
   auto metadata = GetInputMetadata(context);

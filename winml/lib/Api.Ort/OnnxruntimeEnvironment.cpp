@@ -129,10 +129,10 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
 
   // Configure the environment with the winml logger
   auto winml_adapter_api = OrtGetWinMLAdapter(ort_api);
-  auto status = winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
-                                                                       &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
-                                                                       OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
-  THROW_IF_NOT_OK_MSG(status, ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env_.get(),
+                          &WinmlOrtLoggingCallback, &WinmlOrtProfileEventCallback, nullptr,
+                          OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
+	                  ort_api);
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
 }
