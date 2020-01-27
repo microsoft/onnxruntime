@@ -99,14 +99,7 @@ class PerformanceRunner {
 
   template <bool isWarmup>
   Status RunOneIteration() {
-    std::chrono::duration<double> duration_seconds;
-
-    try {
-      duration_seconds = session_->Run();
-    } catch (const std::exception& ex) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "PerformanceRunner::RunOneIteration caught exception: ", ex.what());
-    }
-
+    std::chrono::duration<double> duration_seconds = session_->Run();
     if (!isWarmup) {
       std::lock_guard<std::mutex> guard(results_mutex_);
       performance_result_.time_costs.emplace_back(duration_seconds.count());

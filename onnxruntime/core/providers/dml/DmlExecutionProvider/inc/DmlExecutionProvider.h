@@ -47,4 +47,9 @@ namespace Dml
 
     void RegisterDmlOperators(IMLOperatorRegistry* registry);
 
+    onnxruntime::common::Status RegisterDmlGraphTransformer(
+        onnxruntime::InferenceSession* session, 
+        std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry
+    );
+
 } // namespace Dml

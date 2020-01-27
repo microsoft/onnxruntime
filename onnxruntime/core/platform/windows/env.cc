@@ -41,8 +41,7 @@ struct FileHandleTraits {
   static void CleanUp(Handle h) noexcept {
     if (!CloseHandle(h)) {
       const int err = GetLastError();
-      //It indicates potential data loss
-      LOGS_DEFAULT(ERROR) << "Failed to close file handle - error code: " << err;
+      LOGS_DEFAULT(ERROR) << "Failed to close file handle " << h << " - error code: " << err;
     }
   }
 };

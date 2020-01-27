@@ -25,8 +25,7 @@ static bool IsSupportedDataType(const Node& node) {
 
 static bool CheckFirstAdd(Node& add, ProviderType providertype) {
   if (providertype != add.GetExecutionProviderType() ||
-      !IsSupportedDataType(add) ||
-      add.GetOutputEdgesCount() != 1) {
+      !IsSupportedDataType(add)) {
     return false;
   }
 
@@ -59,8 +58,7 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
 // The 2nd input should be a 1D constant value
 static bool CheckSecondAdd(Node& add, ProviderType providertype) {
   if (providertype != add.GetExecutionProviderType() ||
-      !IsSupportedDataType(add) ||
-      add.GetOutputEdgesCount() != 1) {
+      !IsSupportedDataType(add)) {
     return false;
   }
 

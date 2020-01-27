@@ -910,8 +910,7 @@ struct CallGetValueImpl {
     const auto* tensor_data = tensor.Data<TensorElemType>();
     OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
                                                     onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
-    //TODO: check overflow before doing static_cast
-    return st ? st : PopulateTensorWithData(*out, tensor_data, static_cast<size_t>(shape.Size()), sizeof(TensorElemType));
+    return st ? st : PopulateTensorWithData(*out, tensor_data, shape.Size(), sizeof(TensorElemType));
   }
 };
 
@@ -1080,8 +1079,7 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
     return st;
   }
 
-  //TODO: check the cast below
-  size_t num_elems = static_cast<size_t>(tensor.Shape().Size());
+  size_t num_elems = tensor.Shape().Size();
   auto* out_data = out.MutableData<TensorElemType>();
   for (size_t i = 0; i < num_elems; ++i) {
     *out_data++ = *data++;
