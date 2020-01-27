@@ -93,7 +93,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(
     std::vector<DataType> tensorData;
     auto& values = tensorProto.raw_data();
     if (elementCount != values.size() / sizeof(DataType)) {
-        WINML_LOG_ERROR("TensorProto element count should match raw data buffer size in elements.");
+      throw winrt::hresult_invalid_argument(L"TensorProto element count should match raw data buffer size in elements.");
     }
 
     tensorData = std::vector<DataType>(elementCount);
@@ -107,7 +107,10 @@ std::vector<DataType> GetTensorDataFromTensorProto(
 static std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
     onnx::TensorProto tensorProto,
     uint64_t elementCount) {
-  WINML_EXPECT_EQUAL(tensorProto.string_data_size(), elementCount);
+  if(tensorProto.string_data_size() != elementCount)
+  {
+    throw winrt::hresult_invalid_argument(L"Number of elements in TensorProto does not match expected element count.");
+  }
   auto& values = tensorProto.string_data();
   auto returnVector = std::vector<winrt::hstring>(elementCount);
   std::transform(std::begin(values), std::end(values), std::begin(returnVector),
@@ -141,7 +144,7 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(
       case (onnx::TensorProto::DataType::TensorProto_DataType_STRING):
         return TensorString::CreateFromIterable(tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount));
       default:
-        WINML_LOG_ERROR("Tensor type for creating tensor from protobuf file not supported.");
+        throw winrt::hresult_invalid_argument(L"Tensor type for creating tensor from protobuf file not supported.");
         break;
     }
   }
@@ -154,7 +157,9 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
   onnx::TensorProto tensorProto;
   if (LoadTensorFromPb(tensorProto, filePath)) {
     if (tensorProto.has_data_type()) {
-      WINML_EXPECT_EQUAL(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16, tensorProto.data_type());
+      if(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16 != tensorProto.data_type()) {
+        throw winrt::hresult_invalid_argument(L"TensorProto datatype isn't of type Float16.");
+      }
     } else {
       std::cerr << "Loading unknown TensorProto datatype as TensorFloat16Bit.\n";
     }
@@ -170,7 +175,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
 
     if (!tensorProto.has_raw_data())
     {
-      WINML_LOG_ERROR("Float16 tensor proto buffers are expected to contain raw data.");
+      throw winrt::hresult_invalid_argument(L"Float16 tensor proto buffers are expected to contain raw data.");
     }
 
     auto& raw_data = tensorProto.raw_data();

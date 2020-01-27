@@ -446,7 +446,7 @@ if (onnxruntime_USE_DML)
   function(target_add_dml target)
     if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/DirectML.lib")
-      target_include_directories(${target} PRIVATE "${DML_PACKAGE_DIR}/include")
+      add_dependencies(${target} RESTORE_PACKAGES)
     endif()
   endfunction()
 

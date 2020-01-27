@@ -4,7 +4,6 @@
 #include <dxgi1_6.h>
 #include "filehelpers.h"
 #include <fstream>
-#include "SqueezeNetValidator.h"
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Media.h>
 #include "winrt/Windows.Storage.h"
@@ -288,13 +287,13 @@ public:
 };
 
 template <bool VerifyTestAttributes = false>
-void CreateABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
+void CALLBACK CreateABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
 {
     HRESULT hr = MLOperatorKernel<FooKernel<float, VerifyTestAttributes>>::CreateInstance(*kernelInfo, opKernel);
     THROW_IF_FAILED(hr);
 }
 
-void CreateTruncatedABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
+void CALLBACK CreateTruncatedABIFooKernel(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)
 {
     HRESULT hr = MLOperatorKernel<FooKernel<float, true, true>>::CreateInstance(*kernelInfo, opKernel);
     THROW_IF_FAILED(hr);
