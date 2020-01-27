@@ -4,7 +4,6 @@
 #include <dxgi1_6.h>
 #include "filehelpers.h"
 #include <fstream>
-#include "SqueezeNetValidator.h"
 #include <winrt/Windows.Graphics.Imaging.h>
 #include <winrt/Windows.Media.h>
 #include "winrt/Windows.Storage.h"
