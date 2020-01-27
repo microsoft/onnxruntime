@@ -9,15 +9,19 @@
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
+#if __GNUC__ >= 6
+#pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
+#elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4267)
+#pragma warning(disable : 4127)
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
-#else
+#elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
 

@@ -9,7 +9,6 @@ parameters:
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64' # Optional. Options: x86, x64
-  msbuildArchitecture: 'amd64' # Options: x86, amd64
   sln_platform: 'x64' # Options: Win32, x64
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
@@ -153,11 +152,11 @@ jobs:
     # Nuget packaging if needed
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - task: BatchScript@1
-        displayName: 'Setup VS2017 env vars'
+        displayName: 'Setup VS2019 env vars'
         inputs:
           filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: ${{ parameters.msbuildArchitecture }}
-          modifyEnvironment: true    
+          arguments: ${{ parameters.BuildArch }}
+          modifyEnvironment: true
       # Esrp signing
       - template: esrp_dll.yml
         parameters:
@@ -186,8 +185,8 @@ jobs:
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
     - template: clean-agent-build-directory-step.yml

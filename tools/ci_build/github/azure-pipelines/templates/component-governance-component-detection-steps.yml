@@ -1,0 +1,15 @@
+# component detection for component governance checks
+parameters:
+- name: condition
+  type: string
+  default: '' # could be 'ci_only', 'always', 'succeeded'
+
+steps:
+- task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+  displayName: 'Component Detection'
+  condition:
+    or(or(and(eq('${{parameters.condition}}', 'ci_only'), and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))),
+          and(eq('${{parameters.condition}}', 'always'), always())),
+          and(eq('${{parameters.condition}}', 'succeeded'), succeeded()))
+  inputs:
+    ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external/tvm/3rdparty/dmlc-core/tracker' # ignore dmlc-core tracker for its CI, which is not used in onnxruntime build
