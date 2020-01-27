@@ -36,14 +36,14 @@ function(add_winml_test)
     list(REMOVE_DUPLICATES _UT_DEPENDS)
   endif()
 
-  add_executable(${_UT_TARGET} ${_UT_SOURCES} ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+  add_executable(${_UT_TARGET} ${_UT_SOURCES})
   source_group(TREE ${WINML_TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_winml_target_properties(${_UT_TARGET})
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif()
-  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime)
+  target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} gtest winml_google_test_lib ${onnxruntime_EXTERNAL_LIBRARIES} winml_lib_common onnxruntime)
 
   add_test(NAME ${_UT_TARGET}
     COMMAND ${_UT_TARGET}
@@ -81,6 +81,9 @@ add_dependencies(winml_test_common
   winml_api
   winml_dll
 )
+
+add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
 get_winml_test_api_src(${REPO_ROOT} winml_test_api_src)
