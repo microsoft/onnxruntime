@@ -43,11 +43,6 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo
 common::Status AllocateHelper(const IExecutionProvider& execution_provider, int device_id, const Tensor& fetched_tensor,
                               OrtValue& output_mlvalue);
 
-// Allocate a block using IArenaAllocator::Reserve if possible.
-// Use this for large blocks that are atypical and should not affect the growth rate of the arena
-// such as the initializers and memory pattern planner blocks.
-void* AllocateBlock(IAllocator& allocator, size_t size);
-
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
