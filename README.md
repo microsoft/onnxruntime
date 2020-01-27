@@ -18,7 +18,7 @@ ONNX Runtime stays up to date with the ONNX standard and supports all operators 
 
 ***
 # Table of Contents
-* **[Functional Overview](#overview)**
+* **[Functional Overview](#functional-overview)**
   * [Key Features](#key-features)
   * [Performance Focused Design](#performance-focused-design)
     * [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
@@ -83,7 +83,7 @@ transform](include/onnxruntime/core/optimizer/graph_transformer.h)
 
 ## API Documentation
 
-|Language|Supported Version|Samples|
+|Language|Supported Versions|Samples|
 |--|--|--|
 [Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)|[Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
@@ -99,7 +99,7 @@ Official builds are published for the default CPU Provider (Eigen + MLAS), as we
 For additional build flavors and/or dockerfiles, please see [BUILD.md](BUILD.md). For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
 
 #### PyPi (Python):
-*If using `pip` to be download the Python binaries, run `pip install --upgrade pip` prior to downloading.*
+*If using `pip` to download the Python binaries, run `pip install --upgrade pip` prior to downloading.*
 
 * [onnxruntime](https://pypi.org/project/onnxruntime)
 * [onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)
@@ -130,7 +130,7 @@ system.
 
 #### GPU
 * GPU builds require CUDA runtime libraries being installed on the system:
-	 * Version: **CUDA 10.0** and **cuDNN 7.6**
+	 * Version: **CUDA 10.0** and **cuDNN 7.6** on Linux / **cuDNN 7.3** on Windows
   * Older ONNX Runtime releases used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
 
 ***
