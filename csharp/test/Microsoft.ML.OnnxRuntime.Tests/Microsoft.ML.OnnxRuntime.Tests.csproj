@@ -14,7 +14,7 @@
     <!-- following attributes were necessary for the migrated Tensor tests -->  
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <SignAssembly>true</SignAssembly> <!-- need signing for freind access to the internals of the Tensors assembly -->
+    <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
     <DelaySign>false</DelaySign>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <!-- end -->
