@@ -19,7 +19,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
 
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
-  set(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages)
+  set(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/packages)
   set(DML_PACKAGE_DIR ${PACKAGES_DIR}/DirectML.0.0.1)
 
   # Restore nuget packages, which will pull down the DirectML redist package
@@ -32,6 +32,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   include_directories(BEFORE "${DML_PACKAGE_DIR}/include")
   add_custom_target(RESTORE_PACKAGES ALL DEPENDS ${DML_PACKAGE_DIR}/bin/x64/DirectML.lib ${DML_PACKAGE_DIR}/bin/x86/DirectML.lib)
   add_dependencies(RESTORE_PACKAGES nuget)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES RESTORE_PACKAGES)
 else()
   include_directories(${dml_INCLUDE_DIR})
 endif()
