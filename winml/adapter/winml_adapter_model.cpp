@@ -314,9 +314,11 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t in
 
 ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, const OrtModel* model, size_t index,
 	const char** input_description, size_t* count) {
+  API_IMPL_BEGIN
   *input_description = model->UseModelInfo()->input_features_[index]->doc_string().c_str();
   *count = model->UseModelInfo()->input_features_[index]->doc_string().size();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, const OrtModel* model, size_t index,
