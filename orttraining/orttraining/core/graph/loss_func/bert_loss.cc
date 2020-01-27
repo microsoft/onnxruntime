@@ -54,7 +54,7 @@ TypeProto* BertLoss::GetLossTypeProto(GraphAugmenter::GraphDefs& graph_defs) {
 GraphAugmenter::GraphDefs BertLoss::operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) {
   const std::string& total_loss = loss_func_info.loss_name;
   const VectorString& args = loss_func_info.loss_builder_args;
-  ORT_ENFORCE(args.size() == 11, " Invalid loss_func_info for BertLoss.");
+  ORT_ENFORCE(args.size() == 8, " Invalid loss_func_info for BertLoss.");
   const std::string& prediction_masked_lm = args[0];
   const std::string& prediction_next_sentence = args[1];
   const std::string& masked_lm_positions = args[2];

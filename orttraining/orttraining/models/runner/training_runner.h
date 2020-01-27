@@ -31,8 +31,6 @@ class TrainingRunner {
     PathString test_data_dir;
     PathString output_dir;  // Output of training, e.g., trained model files.
 
-    bool is_perf_test;
-    size_t perf_warm_up_iters;
     LossFunctionInfo loss_func_info;
 
     // The training optimizer name
@@ -55,6 +53,7 @@ class TrainingRunner {
 
     MapStringToString input_name_map;
 
+    bool is_perf_test;
     bool shuffle_data;
     size_t batch_size;
     size_t eval_batch_size;

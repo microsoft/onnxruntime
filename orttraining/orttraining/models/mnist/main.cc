@@ -44,7 +44,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
       ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.01"))
-      ("perf_warm_up_iters", "Num of warm-up iterations to run before the perf test", cxxopts::value<int>()->default_value("0"))
       ("evaluation_period", "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("1"));
   // clang-format on
@@ -64,7 +63,6 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       params.eval_batch_size = params.batch_size;
     }
     params.evaluation_period = flags["evaluation_period"].as<size_t>();
-    params.perf_warm_up_iters = flags["perf_warm_up_iters"].as<int>();
 
     auto train_data_dir = flags["train_data_dir"].as<std::string>();
     auto log_dir = flags["log_dir"].as<std::string>();

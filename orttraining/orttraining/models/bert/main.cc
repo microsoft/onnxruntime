@@ -104,7 +104,6 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("max_profile_records", "Maximum number of runtime profile data records to collect.",
         cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
-      ("perf_warm_up_iters", "Num of warm-up iterations to run before the perf test", cxxopts::value<int>()->default_value("10"))
       ("histogram", "Tensor(s) to display a histogram on tensorboard (e.g. '417,3347,417_grad,3347_grad' for bert-large or '81,449,81_grad,449_grad' for bert-tiny)",
         cxxopts::value<std::vector<std::string>>()->default_value({}))
       ("norm", "Tensor(s) to display their L2-norm values on tensorboard (e.g. '417,3347,417_grad,3347_grad' for bert-large or '81,449,81_grad,449_grad' for bert-tiny)",
@@ -166,7 +165,6 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.num_train_steps_phase2 = flags["num_train_steps_phase2"].as<int>();
 
-    params.perf_warm_up_iters = flags["perf_warm_up_iters"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
@@ -369,10 +367,7 @@ void setup_training_params(BertParameters& params) {
                                             /*masked_lm_weights*/ "masked_lm_weights",
                                             /*next_sentence_labels*/ "next_sentence_labels",
                                             /*mlm_loss*/ "mlm_loss",
-                                            /*nsp_loss*/ "nsp_loss",
-                                            /*batch_size*/ std::to_string(params.batch_size),
-                                            /*max_sequence_len*/ std::to_string(params.max_sequence_length),
-                                            /*max_predictions_per_sequence*/ std::to_string(params.max_predictions_per_sequence)});
+                                            /*nsp_loss*/ "nsp_loss"});
 
   params.weights_not_to_train = {
       "position_01",            // Slice's dat input
