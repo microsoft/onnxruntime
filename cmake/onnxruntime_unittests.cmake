@@ -162,7 +162,6 @@ endif()
 set(onnxruntime_test_common_libs
   onnxruntime_test_utils
   onnxruntime_common
-  winml_adapter
 )
 
 set(onnxruntime_test_ir_libs
@@ -429,7 +428,7 @@ endif()  # SingleUnitTestProject
 AddTest(
   TARGET onnxruntime_test_framework_session_without_environment_standalone
   SOURCES "${TEST_SRC_DIR}/framework/inference_session_without_environment/inference_session_without_environment_standalone_test.cc" "${TEST_SRC_DIR}/framework/test_main.cc"
-  LIBS  onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS} winml_adapter
+  LIBS  onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
   DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
 )
 
@@ -562,7 +561,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
-target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} winml_adapter)
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 

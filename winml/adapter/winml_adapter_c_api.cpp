@@ -4,16 +4,11 @@
 
 #include "winml_adapter_c_api.h"
 #include "winml_adapter_apis.h"
+#include "core/session/ort_apis.h"
 
 #include <core/providers/winml/winml_provider_factory.h>
 #include <core/providers/cpu/cpu_provider_factory.h>
 #include <core/providers/dml/dml_provider_factory.h>
-
-#ifdef USE_DML
-//#include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
-//#include "core/providers/dml/GraphTransformers/GraphTransformerHelpers.h"
-//#include "core/providers/dml/OperatorAuthorHelper/SchemaInferenceOverrider.h"
-#endif USE_DML
 
 const OrtApi* GetVersion1Api();
 
@@ -27,16 +22,16 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::EnvConfigureCustomLoggerAndProfiler,
 
   // OrtTypeInfo Casting methods
-  &winmla::GetDenotationFromTypeInfo,
-  &winmla::CastTypeInfoToMapTypeInfo,
-  &winmla::CastTypeInfoToSequenceTypeInfo,
+  &OrtApis::GetDenotationFromTypeInfo,
+  &OrtApis::CastTypeInfoToMapTypeInfo,
+  &OrtApis::CastTypeInfoToSequenceTypeInfo,
 
   // OrtMapTypeInfo Accessors
-  &winmla::GetMapKeyType, 
-  &winmla::GetMapValueType,
+  &OrtApis::GetMapKeyType, 
+  &OrtApis::GetMapValueType,
 
   // OrtSequenceTypeInfo Accessors
-  &winmla::GetSequenceElementType, 
+  &OrtApis::GetSequenceElementType, 
 
   // OrtModel methods
   &winmla::CreateModelFromPath,
@@ -96,12 +91,11 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::ValueGetDeviceId,
   &winmla::SessionGetInputRequiredDeviceId,
 
-// Release
-&winmla::ReleaseModel,
-    &winmla::ReleaseMapTypeInfo,
-    &winmla::ReleaseSequenceTypeInfo
-}
-;
+  // Release
+  &winmla::ReleaseModel,
+  &OrtApis::ReleaseMapTypeInfo,
+  &OrtApis::ReleaseSequenceTypeInfo
+};
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
   if (GetVersion1Api() == ort_api) {

@@ -13,9 +13,8 @@
 #include "core/framework/error_code_helper.h"
 
 #include "core/framework/tensor_type_and_shape.h"
-#include "../../winml/adapter/winml_adapter_map_type_info.h"
-#include "../../winml/adapter/winml_adapter_sequence_type_info.h"
-#include "../../winml/adapter/winml_adapter_apis.h"
+#include "core/framework/onnxruntime_map_type_info.h"
+#include "core/framework/onnxruntime_sequence_type_info.h"
 
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -25,7 +24,6 @@ using onnxruntime::Tensor;
 using onnxruntime::TensorShape;
 
 namespace on = ONNX_NAMESPACE;
-namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 OrtTypeInfo::OrtTypeInfo(ONNXType type1) noexcept : type(type1) {
 }
@@ -33,21 +31,20 @@ OrtTypeInfo::OrtTypeInfo(ONNXType type1) noexcept : type(type1) {
 OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtTensorTypeAndShapeInfo* data1) noexcept : type(type1), data(data1) {
 }
 
-OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtMapTypeInfo* map_type_info) noexcept : type(type1), map_type_info_(map_type_info) {
+OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtMapTypeInfo* map_type_info1) noexcept : type(type1), map_type_info(map_type_info1) {
 }
 
-OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtSequenceTypeInfo* sequence_type_info) noexcept : type(type1), sequence_type_info_(sequence_type_info) {
+OrtTypeInfo::OrtTypeInfo(ONNXType type1, OrtSequenceTypeInfo* sequence_type_info1) noexcept : type(type1), sequence_type_info(sequence_type_info1) {
 }
 
 OrtTypeInfo::~OrtTypeInfo() {
   OrtApis::ReleaseTensorTypeAndShapeInfo(data);
 
-  namespace winmla = Windows::AI::MachineLearning::Adapter;
-  if (map_type_info_) {
-    winmla::ReleaseMapTypeInfo(map_type_info_);
+  if (map_type_info) {
+    OrtApis::ReleaseMapTypeInfo(map_type_info);
   }
-  if (sequence_type_info_) {
-    winmla::ReleaseSequenceTypeInfo(sequence_type_info_);
+  if (sequence_type_info) {
+    OrtApis::ReleaseSequenceTypeInfo(sequence_type_info);
   }
 }
 
@@ -61,24 +58,24 @@ ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtType
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(winmla::CastTypeInfoToMapTypeInfo, const OrtTypeInfo* type_info, const OrtMapTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, const OrtTypeInfo* type_info, const OrtMapTypeInfo** out) {
   API_IMPL_BEGIN
-  *out = type_info->type == ONNX_TYPE_MAP ? type_info->map_type_info_ : nullptr;
+  *out = type_info->type == ONNX_TYPE_MAP ? type_info->map_type_info : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* type_info, const OrtSequenceTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, const OrtTypeInfo* type_info, const OrtSequenceTypeInfo** out) {
   API_IMPL_BEGIN
-  *out = type_info->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info_ : nullptr;
+  *out = type_info->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::GetDenotationFromTypeInfo, const OrtTypeInfo* type_info, const char** const out, size_t* len) {
+ORT_API_STATUS_IMPL(OrtApis::GetDenotationFromTypeInfo, const OrtTypeInfo* type_info, const char** const out, size_t* len) {
   API_IMPL_BEGIN
-  *out = type_info->denotation_.c_str();
-  *len = type_info->denotation_.size();
+  *out = type_info->denotation.c_str();
+  *len = type_info->denotation.size();
   return nullptr;
   API_IMPL_END
 }
@@ -249,7 +246,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
       }
       if (st != nullptr) return st;
       auto type_info = new OrtTypeInfo(ten_type, info);
-      type_info->denotation_ = input->denotation();
+      type_info->denotation = input->denotation();
       *out = type_info;
       return nullptr;
     } break;
@@ -261,7 +258,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
       }
 
       auto type_info = new OrtTypeInfo(ONNX_TYPE_SEQUENCE, sequence_type_info);
-      type_info->denotation_ = input->denotation();
+      type_info->denotation = input->denotation();
       *out = type_info;
       return nullptr;
     } break;
@@ -273,13 +270,13 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
       }
 
       auto type_info = new OrtTypeInfo(ONNX_TYPE_MAP, map_type_info);
-      type_info->denotation_ = input->denotation();
+      type_info->denotation = input->denotation();
       *out = type_info;
       return nullptr;
     } break;
     case on::TypeProto::kOpaqueType: {
       auto type_info = new OrtTypeInfo(ONNX_TYPE_OPAQUE);
-      type_info->denotation_ = input->denotation();
+      type_info->denotation = input->denotation();
       *out = type_info;
       return nullptr;
     } break;
@@ -302,32 +299,32 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
         return status;
       }
       *out = new OrtTypeInfo(type, clone);
-      (*out)->denotation_ = denotation_;
+      (*out)->denotation = denotation;
       return nullptr;
     }
     case ONNX_TYPE_SEQUENCE:
     {
       OrtSequenceTypeInfo* clone;
-      if (auto status = sequence_type_info_->Clone(&clone)) {
+      if (auto status = sequence_type_info->Clone(&clone)) {
         return status;
       }
       *out = new OrtTypeInfo(type, clone);
-      (*out)->denotation_ = denotation_;
+      (*out)->denotation = denotation;
       return nullptr;
     }
     case ONNX_TYPE_MAP: {
       OrtMapTypeInfo* clone;
-      if (auto status = map_type_info_->Clone(&clone)) {
+      if (auto status = map_type_info->Clone(&clone)) {
         return status;
       }
       *out = new OrtTypeInfo(type, clone);
-      (*out)->denotation_ = denotation_;
+      (*out)->denotation = denotation;
       return nullptr;
     }
     case ONNX_TYPE_OPAQUE:
     {
       *out = new OrtTypeInfo(type);
-      (*out)->denotation_ = denotation_;
+      (*out)->denotation = denotation;
       return nullptr;
     }
     default:

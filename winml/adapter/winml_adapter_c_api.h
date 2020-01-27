@@ -6,8 +6,6 @@
 #include "core/session/onnxruntime_c_api.h"
 
 ORT_RUNTIME_CLASS(Model);
-ORT_RUNTIME_CLASS(MapTypeInfo);
-ORT_RUNTIME_CLASS(SequenceTypeInfo);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 
 struct WinmlAdapterApi;

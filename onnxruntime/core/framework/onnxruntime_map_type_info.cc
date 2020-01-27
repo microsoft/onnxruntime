@@ -1,16 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#pragma once
-#include "pch.h"
-
-#include "winml_adapter_map_type_info.h"
+#include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
-
-namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type, OrtTypeInfo* map_value_type) noexcept : map_key_type_(map_key_type), map_value_type_(map_value_type, &OrtApis::ReleaseTypeInfo) {  
 }
@@ -72,19 +66,19 @@ OrtStatus* OrtMapTypeInfo::Clone(OrtMapTypeInfo** out) {
 }
 
 // OrtMapTypeInfo Accessors
-ORT_API_STATUS_IMPL(winmla::GetMapKeyType, const OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetMapKeyType, const OrtMapTypeInfo* map_type_info, enum ONNXTensorElementDataType* out) {
   API_IMPL_BEGIN
   *out = map_type_info->map_key_type_;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::GetMapValueType, const OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetMapValueType, const OrtMapTypeInfo* map_type_info, OrtTypeInfo** out) {
   API_IMPL_BEGIN
   return map_type_info->map_value_type_->Clone(out);
   API_IMPL_END
 }
 
-ORT_API(void, winmla::ReleaseMapTypeInfo, OrtMapTypeInfo* ptr) {
+ORT_API(void, OrtApis::ReleaseMapTypeInfo, OrtMapTypeInfo* ptr) {
   delete ptr;
 }

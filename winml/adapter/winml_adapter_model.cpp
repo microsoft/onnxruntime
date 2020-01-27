@@ -110,8 +110,9 @@ class ModelInfo {
   }
 };
 
-OrtModel::OrtModel(std::unique_ptr<onnx::ModelProto>&& model_proto) : model_proto_(std::move(model_proto)),
-                                                                      model_info_(std::make_unique<ModelInfo>(model_proto_.get())) {
+OrtModel::OrtModel(std::unique_ptr<onnx::ModelProto> model_proto) :
+	model_proto_(std::move(model_proto)),
+    model_info_(std::make_unique<ModelInfo>(model_proto_.get())) {
 }
 
 // factory methods for creating an ort model from a path
@@ -293,7 +294,8 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputCount, const OrtModel* model, size_t* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetInputName, const OrtModel* model, size_t index, const char** input_name, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetInputName, const OrtModel* model, size_t index,
+	const char** input_name, size_t* count) {
   API_IMPL_BEGIN
   *input_name = model->UseModelInfo()->input_features_[index]->name().c_str();
   *count = model->UseModelInfo()->input_features_[index]->name().size();
@@ -301,7 +303,8 @@ ORT_API_STATUS_IMPL(winmla::ModelGetInputName, const OrtModel* model, size_t ind
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t index, const char** output_name, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t index,
+	const char** output_name, size_t* count) {
   API_IMPL_BEGIN
   *output_name = model->UseModelInfo()->output_features_[index]->name().c_str();
   *count = model->UseModelInfo()->output_features_[index]->name().size();
@@ -309,13 +312,15 @@ ORT_API_STATUS_IMPL(winmla::ModelGetOutputName, const OrtModel* model, size_t in
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, const OrtModel* model, size_t index, const char** input_description, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetInputDescription, const OrtModel* model, size_t index,
+	const char** input_description, size_t* count) {
   *input_description = model->UseModelInfo()->input_features_[index]->doc_string().c_str();
   *count = model->UseModelInfo()->input_features_[index]->doc_string().size();
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, const OrtModel* model, size_t index, const char** output_description, size_t* count) {
+ORT_API_STATUS_IMPL(winmla::ModelGetOutputDescription, const OrtModel* model, size_t index,
+	const char** output_description, size_t* count) {
   API_IMPL_BEGIN
   *output_description = model->UseModelInfo()->output_features_[index]->doc_string().c_str();
   *count = model->UseModelInfo()->output_features_[index]->doc_string().size();
@@ -360,7 +365,9 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
       auto& tensor_type = type.tensor_type();
       if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
         std::stringstream error_message;
-        error_message << "The model contains a 16-bit input (" << input->name() << "), but the current device does not support 16-bit float.";
+        error_message << "The model contains a 16-bit input ("
+			          << input->name()
+			          << "), but the current device does not support 16-bit float.";
         return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
       }
     }
@@ -375,7 +382,9 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
         if (attribute.name() == "to") {
           if (attribute.i() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
             std::stringstream error_message;
-            error_message << "The model contains a 16-bit input (" << node.name().c_str() << "), but the current device does not support 16-bit float.";
+            error_message << "The model contains a 16-bit input ("
+				          << node.name().c_str()
+				          << "), but the current device does not support 16-bit float.";
             return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
           }
         }
@@ -389,7 +398,9 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
     auto initializer = graph.initializer(i);
     if (initializer.data_type() == onnx::TensorProto::DataType::TensorProto_DataType_FLOAT16) {
       std::stringstream error_message;
-      error_message << "The model contains a 16-bit input (" << initializer.name().c_str() << "), but the current device does not support 16-bit float.";
+      error_message << "The model contains a 16-bit input ("
+		            << initializer.name().c_str()
+		            << "), but the current device does not support 16-bit float.";
       return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
     }
   }
@@ -401,7 +412,9 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, const OrtModel* model) {
       auto& tensor_type = type.tensor_type();
       if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
         std::stringstream error_message;
-        error_message << "The model contains a 16-bit input (" << output->name() << "), but the current device does not support 16-bit float.";
+        error_message << "The model contains a 16-bit input ("
+			          << output->name()
+			          << "), but the current device does not support 16-bit float.";
         return OrtApis::CreateStatus(ORT_INVALID_GRAPH, error_message.str().c_str());
       }
     }

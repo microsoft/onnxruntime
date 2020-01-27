@@ -461,6 +461,14 @@ OnnxruntimeEngineFactory* OnnxruntimeEngine::GetEngineFactory() {
   return engine_factory_.Get();
 }
 
+/*
+* OnnxruntimeEngine::CreateTensorValue
+* 
+* Used by callers like ImageFeatureValue to allocate a cpu or gpu OrtValue with ORT owned memory.
+* In the image feature value case, tensorization creates temporary buffers, and will need to copy the value from
+* its source location to the ort value. Since a copy is required, there is need to preserve the caller's memory locations.
+* We simply allocate memory with ORT and copy the tensorized values into it.
+*/
 HRESULT OnnxruntimeEngine::CreateTensorValue(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -495,6 +503,12 @@ class DmlAllocatorWrapper : public Microsoft::WRL::RuntimeClass<
   DmlAllocatorResource dml_resource_;
 };
 
+/*
+* OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource
+* 
+* Used by callers like TensorBase to allocate a gpu OrtValue based on a called owned ID3D12Resource.
+* WinML cannot use ORT allocators here since they will allocate the ID3D12Resource and force a copy from the user provided value.
+*/
 HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resource* d3d_resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
@@ -539,6 +553,15 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   return S_OK;
 }
 
+/*
+* OnnxruntimeEngine::CreateStringTensorValueFromDataWithCopy
+* 
+* Used by callers like TensorString to allocate a cpu OrtValue and populate the contents with use specified data.
+* WinML cannot use CreateTensorWithDataAsOrtValue since externally allocated strings are not supported on the c-abi.
+* The c-abi string implementation requires a copy the external buffer into its own internal std::string copy.
+* In addition, strings have different APIs on the c-abi like FillStringTensor to populate the buffer, and so strings
+* have a different calling pattern than other Tensor<T> types of simple data types.
+*/
 HRESULT OnnxruntimeEngine::CreateStringTensorValueFromDataWithCopy(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   RETURN_IF_FAILED(CreateTensorValue(shape, count, winml::TensorKind::String, out));
@@ -548,6 +571,11 @@ HRESULT OnnxruntimeEngine::CreateStringTensorValueFromDataWithCopy(const char* c
   return S_OK;
 }
 
+/*
+* OnnxruntimeEngine::CreateTensorValueFromExternalBuffer
+* 
+* Used by callers like TensorBase<T> to allocate a cpu OrtValue that is backed by caller owned memory.
+*/
 HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
 
@@ -575,6 +603,12 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(void* data, size_
   return S_OK;
 }
 
+/*
+* OnnxruntimeEngine::CreateNullValue
+* 
+* Used by callers like TensorBase<T> and the binding object to allocate a cpu OrtValue that is empty.
+* This is used for WinML unbound outputs.
+*/
 HRESULT OnnxruntimeEngine::CreateNullValue(_Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto unique_value = UniqueOrtValue(nullptr, ort_api->ReleaseValue);

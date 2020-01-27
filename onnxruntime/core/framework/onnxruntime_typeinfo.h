@@ -26,14 +26,14 @@ struct OrtSequenceTypeInfo;
 struct OrtTypeInfo {
  public:
   ONNXType type = ONNX_TYPE_UNKNOWN;
-  std::string denotation_;
+  std::string denotation;
 
   ~OrtTypeInfo();
 
   //owned by this
   OrtTensorTypeAndShapeInfo* data = nullptr;
-  OrtMapTypeInfo* map_type_info_ = nullptr;
-  OrtSequenceTypeInfo* sequence_type_info_ = nullptr;
+  OrtMapTypeInfo* map_type_info = nullptr;
+  OrtSequenceTypeInfo* sequence_type_info = nullptr;
   OrtTypeInfo(const OrtTypeInfo& other) = delete;
   OrtTypeInfo& operator=(const OrtTypeInfo& other) = delete;
 

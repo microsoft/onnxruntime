@@ -19,7 +19,7 @@ struct OrtModel {
   std::unique_ptr<onnx::ModelProto> DetachModelProto();
 
  private:
-  OrtModel(std::unique_ptr<onnx::ModelProto>&& model_proto);
+  OrtModel(std::unique_ptr<onnx::ModelProto> model_proto);
   OrtModel(const OrtModel& other) = delete;
   OrtModel& operator=(const OrtModel& other) = delete;
 

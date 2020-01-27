@@ -203,12 +203,8 @@ list(APPEND winml_adapter_files
     ${winml_adapter_dir}/winml_adapter_dml.cpp
     ${winml_adapter_dir}/winml_adapter_environment.cpp
     ${winml_adapter_dir}/winml_adapter_execution_provider.cpp
-    ${winml_adapter_dir}/winml_adapter_map_type_info.cpp
-    ${winml_adapter_dir}/winml_adapter_map_type_info.h
     ${winml_adapter_dir}/winml_adapter_model.cpp
     ${winml_adapter_dir}/winml_adapter_model.h
-    ${winml_adapter_dir}/winml_adapter_sequence_type_info.cpp
-    ${winml_adapter_dir}/winml_adapter_sequence_type_info.h
     ${winml_adapter_dir}/winml_adapter_session.cpp
     )
 	

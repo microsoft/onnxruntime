@@ -1,18 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#pragma once
-
-#include "pch.h"
-#include "winml_adapter_sequence_type_info.h"
+#include "core/framework/onnxruntime_sequence_type_info.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
 
-namespace winmla = Windows::AI::MachineLearning::Adapter;
-
-OrtSequenceTypeInfo::OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept : sequence_key_type_(sequence_key_type, &OrtApis::ReleaseTypeInfo) {
+OrtSequenceTypeInfo::OrtSequenceTypeInfo(OrtTypeInfo* sequence_key_type) noexcept :
+	sequence_key_type_(sequence_key_type, &OrtApis::ReleaseTypeInfo) {
 }
 
 OrtStatus* OrtSequenceTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* type_proto, OrtSequenceTypeInfo** out) {
@@ -43,12 +38,12 @@ OrtStatus* OrtSequenceTypeInfo::Clone(OrtSequenceTypeInfo** out) {
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(winmla::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetSequenceElementType, const OrtSequenceTypeInfo* sequence_type_info, OrtTypeInfo** out) {
   API_IMPL_BEGIN
   return sequence_type_info->sequence_key_type_->Clone(out);
   API_IMPL_END
 }
 
-ORT_API(void, winmla::ReleaseSequenceTypeInfo, OrtSequenceTypeInfo* ptr) {
+ORT_API(void, OrtApis::ReleaseSequenceTypeInfo, OrtSequenceTypeInfo* ptr) {
   delete ptr;
 }

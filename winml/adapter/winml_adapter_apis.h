@@ -11,26 +11,12 @@ namespace MachineLearning {
 namespace Adapter {
 
 ORT_API(void, ReleaseModel, OrtModel*);
-ORT_API(void, ReleaseMapTypeInfo, OrtMapTypeInfo*);
-ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 
 ORT_API_STATUS(OverrideSchema);
 
 // OrtEnv methods
 ORT_API_STATUS(EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
-
-// OrtTypeInfo methods
-ORT_API_STATUS(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
-ORT_API_STATUS(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out);
-ORT_API_STATUS(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out);
-
-// OrtMapTypeInfo Accessors
-ORT_API_STATUS(GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out);
-ORT_API_STATUS(GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info);
-
-// OrtSequenceTypeInfo Accessors
-ORT_API_STATUS(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);
 
 // OrtModel methods
 ORT_API_STATUS(CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out);

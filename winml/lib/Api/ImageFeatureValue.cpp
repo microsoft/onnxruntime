@@ -293,9 +293,6 @@ static void GPUTensorize(
       context.converter = pooledConverter;
     }
   }
-#ifdef DEBUG_IMAGE_TENSOR_RESOURCE
-  DumpResourceToCPU(d3dResource, spSession, tensorDescriptor);
-#endif
 }
 
 std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetInputMetadata(const WinML::BindingContext& context) {
@@ -501,9 +498,6 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(BindingContext& context, IVa
       spDevice->GetD3DDeviceCache()->SyncD3D12ToCPU();
       pooledConverter->Get()->Detensorizer->ResetAllocator();
     }
-#ifdef DEBUG_IMAGE_TENSOR_RESOURCE
-    DumpResourceToCPU(d3dResource, spSession, resourceInfo.Metadata.TensorDescriptor);
-#endif
   }
 
   // Release any converters back to the pool by nulling out the wrapper.

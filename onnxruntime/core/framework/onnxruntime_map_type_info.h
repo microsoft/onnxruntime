@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "winml_adapter_c_api.h"
+#include "onnxruntime_c_api.h"
+
+#include <memory>
 
 namespace ONNX_NAMESPACE {
 class TypeProto;
