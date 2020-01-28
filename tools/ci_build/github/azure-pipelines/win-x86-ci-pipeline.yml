@@ -16,7 +16,7 @@ jobs:
     EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
   workspace:
     clean: all
   steps:    
@@ -120,9 +120,9 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: succeeded()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
    

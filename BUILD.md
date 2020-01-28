@@ -115,26 +115,6 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 
 ---
 
-## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](./docs/ONNX_Runtime_Server_Usage.md).
-
-### Pre-Requisites
-* ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
-    See https://golang.org/doc/install for installation instructions.
-
-### Build Instructions
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel
-```
-
-ONNX Runtime Server supports sending logs to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`.
-
-Build command:
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1
-```
-
----
 
 
 ## Execution Providers
@@ -391,7 +371,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 
 ---
 
-### ARM Compute Library 
+### ARM Compute Library
 See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
 
 #### Prerequisites
@@ -515,7 +495,7 @@ See the instructions for the the Dockerfile [here](./dockerfiles/README.md#arm-3
     ```
 3. Get a pre-compiled protoc:
 
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
 4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
 5. Save the following content as tool.cmake
     ```

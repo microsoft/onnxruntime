@@ -204,7 +204,10 @@ void NchwcGlobalPoolOpSchemaGenerator(OpSchema& schema) {
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize = 0) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
-    if (nullptr == data_type || data_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+    if (nullptr == data_type) {
+      fail_type_inference("Input data type does not match the expected data type");
+    }
+    if (data_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
         data_type->tensor_type().elem_type() != expectedType) {
       fail_type_inference(
           "Input data type does not match the expected data type. Current data type is ", data_type->tensor_type().elem_type());

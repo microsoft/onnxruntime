@@ -16,7 +16,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     setVcvars: true    
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
   workspace:
     clean: all
   steps:    
@@ -37,7 +37,21 @@ jobs:
      python -m pip install -q pyopenssl setuptools wheel numpy     
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-    
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
+  - task: NuGetCommand@2
+    displayName: 'NuGet restore'
+    inputs:
+      command: 'restore'
+      feedsToUse: 'config'
+      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
+      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
+      restoreDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+
   - task: PythonScript@0
     displayName: 'Generate cmake config'
     inputs:
@@ -66,13 +80,6 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
   - template: templates/set-test-data-variables-step.yml
-
-  - task: NuGetToolInstaller@0
-    displayName: Use Nuget 4.9
-    inputs:
-      versionSpec: 4.9.4  
-
-   
 
   - task: PythonScript@0
     displayName: 'Download test data'
@@ -122,9 +129,9 @@ jobs:
     displayName: 'Run tests'
  
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: succeeded()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
    

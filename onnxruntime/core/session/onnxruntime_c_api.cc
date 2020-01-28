@@ -829,16 +829,8 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
   API_IMPL_END
 }
 
-///////////////////////////////////////////////////////////////////////////
-// Code to handle non-tensor types
-// OrtGetValueCount
-// OrtGetVaue
-// OrtCreateValue
-///////////////////////////////////////////////////////////////////////////
 const int NUM_MAP_INDICES = 2;
 
-////////////////////
-// OrtGetValueCount
 template <typename T>
 OrtStatus* OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<T>();
@@ -889,7 +881,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueCount, const OrtValue* value, size_t* out) 
 }
 
 ///////////////////
-// OrtGetValue
+// OrtGetValueImplSeqOfMap
 template <typename T>
 static OrtStatus* OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int index, OrtValue** out) {
   using TKey = typename T::value_type::key_type;
@@ -940,7 +932,8 @@ struct CallGetValueImpl {
     const auto* tensor_data = tensor.Data<TensorElemType>();
     OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
                                                     onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
-    return st ? st : PopulateTensorWithData(*out, tensor_data, shape.Size(), sizeof(TensorElemType));
+    //TODO: check overflow before doing static_cast
+    return st ? st : PopulateTensorWithData(*out, tensor_data, static_cast<size_t>(shape.Size()), sizeof(TensorElemType));
   }
 };
 
@@ -1109,7 +1102,8 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
     return st;
   }
 
-  size_t num_elems = tensor.Shape().Size();
+  //TODO: check the cast below
+  size_t num_elems = static_cast<size_t>(tensor.Shape().Size());
   auto* out_data = out.MutableData<TensorElemType>();
   for (size_t i = 0; i < num_elems; ++i) {
     *out_data++ = *data++;
@@ -1493,7 +1487,7 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-const OrtApiBase* ORT_API_CALL OrtGetApiBase() NO_EXCEPTION {
+const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION {
   return &ort_api_base;
 }
 

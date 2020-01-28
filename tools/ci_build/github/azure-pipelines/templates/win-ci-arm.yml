@@ -1,6 +1,6 @@
 parameters:
-  AgentPool : 'Win-CPU'
   DoDebugBuild: 'true'
+  DoCompliance: 'false'
   BuildCommand: ''
   JobName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
@@ -8,6 +8,8 @@ parameters:
   ArtifactName: 'drop-nuget'
   DoEsrp: 'false'
   BuildArch: 'x64'
+  DoTestCoverage: 'false'
+  sln_platform: 'Arm64' # Options: Win32, x64,Arm64
   SetVcvars: 'false'
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
@@ -28,57 +30,70 @@ jobs:
 
   steps:
     - template: set-test-data-variables-step.yml
-    - template: windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: ${{ parameters.EnvSetupScript }}
-        buildArch: ${{ parameters.BuildArch }}
-        setVcvars: ${{ parameters.SetVcvars }}
+    - powershell: |
+        if($env:TELEMETRYGUID)
+        {
+          $length = $env:TELEMETRYGUID.length
+          $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
+            TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+          New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+          Write-Output "Enabling TELEMETRY"
+        }
+      displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+      env:
+        TELEMETRYGUID: $(TELEMETRYGUID)
 
-    - task: CmdLine@1
-      displayName: 'Download test data and generate cmake config'
+    - task: BatchScript@1
+      displayName: 'setup env'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(BuildCommand) --update --config Debug RelWithDebInfo'
-        workingDirectory: "$(Build.BinariesDirectory)"
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
 
-    # Build Debug Mode
-    - ${{ if eq(parameters['DoDebugBuild'], 'true') }}:
-      - task: VSBuild@1
-        displayName: 'Build Debug'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\Debug\onnxruntime.sln'
-          platform: 'arm64'
-          configuration: 'Debug'
-          msbuildArguments: ${{ parameters.MsbuildArguments }}
-          msbuildArchitecture: 'x64'
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\Debug'
-          createLogFile: true
+    - task: BatchScript@1
+      displayName: 'Setup VS2019 env vars'
+      inputs:
+        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+        arguments: amd64_arm
+        modifyEnvironment: true
+
+    - task: UsePythonVersion@0
+      inputs: 
+        versionSpec: '3.7' 
+        addToPath: true 
+        architecture: x64
+
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy     
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '$(BuildCommand) --update --config RelWithDebInfo'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: ${{ parameters.sln_platform }}
+        configuration: RelWithDebInfo
+        msbuildArchitecture: ${{ parameters.BuildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
 
     # Build RelWithDebInfo -- this variable required to build C#
     - script: |
        @echo ##vso[task.setvariable variable=Configuration]RelWithDebInfo
 
-    - task: VSBuild@1
-      displayName: 'Build RelWithDebInfo'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-        platform: 'arm64'
-        configuration: 'RelWithDebInfo'
-        msbuildArguments: ${{ parameters.MsbuildArguments }}
-        msbuildArchitecture: 'x64'
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
 
     # Nuget packaging if needed
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-      - task: BatchScript@1
-        displayName: 'Setup VS2017 env vars'
-        inputs:
-          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
-          arguments: 'x64'
-          modifyEnvironment: true
-
       # Esrp signing
       - template: esrp_dll.yml
         parameters:
@@ -97,9 +112,9 @@ jobs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
     - template: clean-agent-build-directory-step.yml
 

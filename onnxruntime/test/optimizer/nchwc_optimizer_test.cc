@@ -39,7 +39,7 @@ class NchwcInferenceSession : public InferenceSession {
 };
 
 struct NchwcTestHelper {
-  NchwcTestHelper(Graph& graph) : graph_(graph), fill_value_(0) {
+  NchwcTestHelper(Graph& graph) : graph_(graph), fill_value_(0), per_sample_tolerance_(0.0) {
   }
 
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
@@ -157,6 +157,7 @@ struct NchwcTestHelper {
   NameMLValMap feeds_;
   std::vector<std::string> output_names_;
   int fill_value_;
+  double per_sample_tolerance_;
 };
 
 void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& build_test_case,
@@ -210,12 +211,11 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   ASSERT_TRUE(num_outputs == level3_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
-    double per_sample_tolerance = 0.0;
     double relative_per_sample_tolerance = 0.0;
     std::pair<COMPARE_RESULT, std::string> ret =
         CompareOrtValue(level3_fetches[i],
                         level2_fetches[i],
-                        per_sample_tolerance,
+                        helper.per_sample_tolerance_,
                         relative_per_sample_tolerance,
                         false);
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS);
@@ -697,13 +697,13 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBiBo) {
     const auto& graph = session.GetGraph();
     for (auto& node : graph.Nodes()) {
       if (node.Domain() == kMSNchwcDomain && node.OpType() == "Conv") {
-        EXPECT_EQ(node.InputDefs().size(), 3);
+        EXPECT_EQ(node.InputDefs().size(), 3u);
         weight_args.emplace(node.InputDefs()[1]);
         bias_args.emplace(node.InputDefs()[2]);
       }
     }
-    EXPECT_EQ(weight_args.size(), 1);
-    EXPECT_EQ(bias_args.size(), 1);
+    EXPECT_EQ(weight_args.size(), 1u);
+    EXPECT_EQ(bias_args.size(), 1u);
   };
 
   // Verify that a single weight tensor is reordered once.
@@ -747,13 +747,13 @@ TEST(NchwcOptimizerTests, ConvReuseWeightsOIHWBo) {
     const auto& graph = session.GetGraph();
     for (auto& node : graph.Nodes()) {
       if (node.Domain() == kMSNchwcDomain && node.OpType() == "Conv") {
-        EXPECT_EQ(node.InputDefs().size(), 3);
+        EXPECT_EQ(node.InputDefs().size(), 3u);
         weight_args.emplace(node.InputDefs()[1]);
         bias_args.emplace(node.InputDefs()[2]);
       }
     }
-    EXPECT_EQ(weight_args.size(), 1);
-    EXPECT_EQ(bias_args.size(), 1);
+    EXPECT_EQ(weight_args.size(), 1u);
+    EXPECT_EQ(bias_args.size(), 1u);
   };
 
   // Verify that a single weight tensor is reordered once.
@@ -930,6 +930,83 @@ TEST(NchwcOptimizerTests, TensorAlignment) {
 
   // Verify that convolutions with unaligned inputs are not transformed.
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+TEST(NchwcOptimizerTests, BatchNormalization) {
+  auto test_case = [&](bool training_outputs) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput({1, 1, 23, 21});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* conv2_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      // Using a channel count not aligned to the block size to verify handling
+      // of unaligned data.
+      helper.AddConvNode(input_arg, conv1_output_arg, {34, 1, 3, 3});
+      helper.AddConvNode(input_arg, conv2_output_arg, {34, 1, 3, 3});
+
+      auto* add_output_arg = helper.MakeIntermediate();
+      helper.AddNode("Add", {conv1_output_arg, conv2_output_arg}, {add_output_arg});
+
+      std::vector<float> bn_scale(34);
+      std::vector<float> bn_bias(34);
+      std::vector<float> bn_mean(34);
+      std::vector<float> bn_var(34);
+
+      for (int i = 0; i < 34; i++) {
+        bn_scale[i] = static_cast<float>((i % 5) + 1) * 0.01f;
+        bn_bias[i] = static_cast<float>(i - 17) * 0.25f;
+        bn_mean[i] = static_cast<float>(i % 7) * 0.001f;
+        bn_var[i] = static_cast<float>((i % 9) + 1) * 0.001f;
+      }
+
+      auto* bn_scale_arg = helper.MakeInitializer({34}, bn_scale);
+      auto* bn_bias_arg = helper.MakeInitializer({34}, bn_bias);
+      auto* bn_mean_arg = helper.MakeInitializer({34}, bn_mean);
+      auto* bn_var_arg = helper.MakeInitializer({34}, bn_var);
+
+      auto* bn_output_arg = helper.MakeIntermediate();
+      std::vector<NodeArg*> bn_output_args = {bn_output_arg};
+      if (training_outputs) {
+        bn_output_args.push_back(helper.MakeIntermediate());
+        bn_output_args.push_back(helper.MakeIntermediate());
+        bn_output_args.push_back(helper.MakeIntermediate());
+        bn_output_args.push_back(helper.MakeIntermediate());
+      }
+      helper.AddNode("BatchNormalization", {add_output_arg, bn_scale_arg, bn_bias_arg, bn_mean_arg, bn_var_arg}, bn_output_args);
+      helper.AddNode("Relu", {bn_output_arg}, {output_arg});
+
+      // Override the sample tolerance for this test. By default, the NCHWc
+      // tests generate bit identical results when run with and without
+      // optimizations, but the BatchNormalizationtransform does introduce
+      // small bit differences.
+      helper.per_sample_tolerance_ = .000125;
+    };
+
+    auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+      auto op_to_count = session.CountOpsInGraph();
+      if (training_outputs) {
+        EXPECT_EQ(op_to_count["nchwc.Conv"], 2);
+        EXPECT_EQ(op_to_count["BatchNormalization"], 1);
+        EXPECT_EQ(op_to_count["Relu"], 1);
+      } else {
+        EXPECT_EQ(op_to_count["nchwc.Conv"], 3);
+        EXPECT_EQ(op_to_count["BatchNormalization"], 0);
+        EXPECT_EQ(op_to_count["Relu"], 0);
+      }
+      EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 0);
+      EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // Verify that a batch normalization node can be converted to a convolution
+  // if the input tensor is already in NCHWc format. However, this transform
+  // should be skipped if the batch normalization node has the optional training
+  // outputs supplied.
+  test_case(false);
+  test_case(true);
 }
 
 #endif

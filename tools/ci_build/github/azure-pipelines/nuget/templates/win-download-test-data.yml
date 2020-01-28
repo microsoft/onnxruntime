@@ -5,14 +5,6 @@ steps:
   inputs:
     scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
     arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-    pythonInterpreter: '$(Build.BinariesDirectory)\packages\python\python.exe'
     workingDirectory: $(Build.BinariesDirectory)
   env:
     Test_Data_Download_Key: $(ort-internal-test-data-sas)
-
-- task: CmdLine@1
-  continueOnError: true
-  displayName: 'Run OpenCPPCoverage installer'
-  inputs:
-    filename: '$(Build.BinariesDirectory)\installer\opencppcoverage\installer.exe'
-    arguments: '/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$(Build.BinariesDirectory)\OpenCppCoverage"'

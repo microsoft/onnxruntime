@@ -86,8 +86,7 @@ class FuseExecutionProvider : public IExecutionProvider {
     DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault,
                                                  [](int) { return onnxruntime::make_unique<CPUAllocator>(); },
                                                  std::numeric_limits<size_t>::max()});
-    InsertAllocator(std::shared_ptr<IArenaAllocator>(
-        onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+    InsertAllocator(device_info.factory(0));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -176,7 +175,8 @@ template <typename T = float>
 void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
-  ASSERT_EQ(expected_shape, tensor.Shape());
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor.Shape()));
   const std::vector<T> found(tensor.template Data<T>(),
                              tensor.template Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
@@ -184,7 +184,7 @@ void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_di
 
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   VerifyOutputs(rtensor, expected_dims, expected_values);
 }
@@ -775,8 +775,8 @@ static void TestBindHelper(const std::string& log_str,
   std::string s1;
   p_model->ToProto().SerializeToString(&s1);
   std::stringstream sstr(s1);
-  ASSERT_TRUE(session_object.Load(sstr).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
@@ -1309,10 +1309,11 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
-  ASSERT_EQ(expected_shape, rtensor.Shape());
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
   for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
@@ -1354,7 +1355,8 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::vector<int64_t> truncated_output_dims = Y_dims;
     truncated_output_dims[0] = truncated_len;
     TensorShape truncated_shape(truncated_output_dims);
-    ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
+    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+    ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&truncated_shape), *reinterpret_cast<const std::vector<int64_t>*>(&truncated_rtensor.Shape()));
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
       EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
@@ -1591,7 +1593,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  ASSERT_EQ(3, fetches.size());
+  ASSERT_EQ(3u, fetches.size());
   VerifyOutputs(fetches[0].Get<Tensor>(), expected_dims_res, expected_values_res);
   VerifyOutputs(fetches[1].Get<Tensor>(), expected_dims_res2, expected_values_res2);
   VerifyOutputs(fetches[2].Get<Tensor>(), expected_dims_res3, expected_values_res3);
