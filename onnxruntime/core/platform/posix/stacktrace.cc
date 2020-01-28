@@ -3,7 +3,9 @@
 
 #include "core/common/common.h"
 
+#ifndef __ANDROID__
 #include <execinfo.h>
+#endif
 #include <vector>
 
 namespace onnxruntime {
@@ -11,7 +13,7 @@ namespace onnxruntime {
 std::vector<std::string> GetStackTrace() {
   std::vector<std::string> stack;
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(__ANDROID__)
   constexpr int kCallstackLimit = 64;  // Maximum depth of callstack
 
   void* array[kCallstackLimit];
