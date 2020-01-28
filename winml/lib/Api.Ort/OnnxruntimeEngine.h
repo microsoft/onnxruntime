@@ -130,12 +130,14 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
 
   const OrtApi* UseOrtApi();
   const WinmlAdapterApi* UseWinmlAdapterApi();
+  HRESULT EnsureEnvironment();
   HRESULT GetOrtEnvironment(_Out_ OrtEnv** ort_env);
 
  private:
   const OrtApi* ort_api_ = nullptr;
   const WinmlAdapterApi* winml_adapter_api_ = nullptr;
   std::shared_ptr<OnnxruntimeEnvironment> environment_;
+  std::mutex mutex_;
 };
 
 }  // namespace Windows::AI::MachineLearning

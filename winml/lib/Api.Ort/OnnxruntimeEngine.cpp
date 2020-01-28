@@ -1183,18 +1183,25 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
   return S_OK;
 }
 
-// TODO supposedly this doesnt work if it is not static
-static std::shared_ptr<OnnxruntimeEnvironment> onnxruntime_environment_;
-
 HRESULT OnnxruntimeEngineFactory::RuntimeClassInitialize() {
   ort_api_ = GetVersionedOrtApi();
   winml_adapter_api_ = GetVersionedWinmlAdapterApi();
+  return S_OK;
+}
 
-  environment_ = onnxruntime_environment_ = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
+STDMETHODIMP OnnxruntimeEngineFactory::EnsureEnvironment() {
+  if (environment_ == nullptr) {
+    std::lock_guard lock(mutex_);
+    if (environment_ == nullptr) {
+      environment_ = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
+	}
+  }
   return S_OK;
 }
 
 STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) {
+  RETURN_IF_FAILED(EnsureEnvironment());
+
   OrtModel* ort_model = nullptr;
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api_->CreateModelFromPath(model_path, len, &ort_model),
                           ort_api_);
@@ -1205,6 +1212,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ const char* model_path, 
 }
 
 STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) {
+  RETURN_IF_FAILED(EnsureEnvironment());
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModelFromData(data, size, &ort_model)) {
     return E_INVALIDARG;
@@ -1216,6 +1224,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t 
 }
 
 STDMETHODIMP OnnxruntimeEngineFactory::CreateEngineBuilder(_Outptr_ Windows::AI::MachineLearning::IEngineBuilder** out) {
+  RETURN_IF_FAILED(EnsureEnvironment());
   Microsoft::WRL::ComPtr<OnnxruntimeEngineBuilder> onnxruntime_engine_builder;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngineBuilder>(&onnxruntime_engine_builder, this));
   RETURN_IF_FAILED(onnxruntime_engine_builder.CopyTo(out));
@@ -1231,11 +1240,13 @@ const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
 }
 
 HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
+  RETURN_IF_FAILED(EnsureEnvironment());
   RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
   return S_OK;
 }
 
 HRESULT OnnxruntimeEngineFactory::EnableDebugOutput(bool is_enabled) {
+  RETURN_IF_FAILED(EnsureEnvironment());
   RETURN_IF_FAILED(environment_->EnableDebugOutput(is_enabled));
   return S_OK;
 }
