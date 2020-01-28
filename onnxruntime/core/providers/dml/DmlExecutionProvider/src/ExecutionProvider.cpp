@@ -680,7 +680,7 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
-    std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
+    std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> 
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
         return m_internalRegInfoMap;

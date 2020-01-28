@@ -156,7 +156,7 @@ namespace Dml
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
-        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
+        std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> 
         GetInternalRegistrationInfoMap() const;
 
     private:

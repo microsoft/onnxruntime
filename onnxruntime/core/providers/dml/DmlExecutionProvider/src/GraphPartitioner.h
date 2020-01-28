@@ -64,7 +64,7 @@ namespace Dml
         const onnxruntime::Node& node,    
         const onnxruntime::KernelRegistry& registry,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
-        const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap& internalRegInfoMap,
+        const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
         bool allow64BitInputThroughStrides,
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap // Only used when allow64BitInputThroughStrides is true
     );
