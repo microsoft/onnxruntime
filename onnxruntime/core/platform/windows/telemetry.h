@@ -42,7 +42,7 @@ class WindowsTelemetry : public Telemetry {
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const override;
 
-  void LogExecutionProviderEvent(LUID adapterLuid) const override;
+  void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 
  private:
   static OrtMutex mutex_;

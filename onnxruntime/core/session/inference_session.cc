@@ -752,19 +752,24 @@ static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
           return true;
         }
       }
-    } break;
+      break;
+    }
     case ::onnx::TypeProto::ValueCase::kSequenceType: {
       if (type_proto.has_sequence_type()) {
         auto& sequence_type = type_proto.sequence_type();
         return ModelUseFP16Helper(sequence_type.elem_type());
       }
-    } break;
+      break;
+    }
     case ::onnx::TypeProto::ValueCase::kMapType: {
       if (type_proto.has_map_type()) {
         auto& map_type = type_proto.map_type();
         return ModelUseFP16Helper(map_type.value_type());
       }
-    } break;
+      break;
+    }
+    default:
+      break;
   }
   return false;
 }

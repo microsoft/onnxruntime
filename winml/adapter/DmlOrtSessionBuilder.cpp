@@ -125,7 +125,8 @@ HRESULT DmlOrtSessionBuilder::CreateSession(
   auto session = std::make_unique<onnxruntime::InferenceSession>(options->value);
 
   const onnxruntime::Env& env = onnxruntime::Env::Default();
-  env.GetTelemetryProvider().LogExecutionProviderEvent(p_d3d_device->GetAdapterLuid());
+  LUID temp_LUID = p_d3d_device->GetAdapterLuid();
+  env.GetTelemetryProvider().LogExecutionProviderEvent(&temp_LUID);
   // Cache the provider's raw pointer
   *pp_provider = gpu_provider.get();
 

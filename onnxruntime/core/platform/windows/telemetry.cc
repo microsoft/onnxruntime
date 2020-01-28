@@ -216,7 +216,7 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"));
 }
 
-void WindowsTelemetry::LogExecutionProviderEvent(LUID adapterLuid) const {
+void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -225,8 +225,8 @@ void WindowsTelemetry::LogExecutionProviderEvent(LUID adapterLuid) const {
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
-                    TraceLoggingUInt32(adapterLuid.LowPart, "adapterLuidLowPart"),
-                    TraceLoggingUInt32(adapterLuid.HighPart, "adapterLuidHighPart"));
+                    TraceLoggingUInt32(adapterLuid->LowPart, "adapterLuidLowPart"),
+                    TraceLoggingUInt32(adapterLuid->HighPart, "adapterLuidHighPart"));
 }
 
 }  // namespace onnxruntime
