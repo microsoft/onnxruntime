@@ -8,11 +8,11 @@
 
 **ONNX Runtime** is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.
 
-Models trained with Tensorflow, Keras, PyTorch, scikit-learn, CoreML, and other popular [supported training frameworks](https://github.com/onnx/tutorials#converting-to-onnx-format) can be converted to the standard [ONNX](https://onnx.ai) format, providing framework interoperability and helping to maximize the reach of hardware optimization investments. This provides a solution for systems to integrate a single inference engine to support models trained from a variety of frameworks, while taking advantage of specific hardware accelerators where available.
+Models in the Tensorflow, Keras, PyTorch, scikit-learn, CoreML, and other popular [supported formats](https://github.com/onnx/tutorials#converting-to-onnx-format) can be converted to the standard [ONNX](https://onnx.ai) format, providing framework interoperability and helping to maximize the reach of hardware optimization investments. This provides a solution for systems to integrate a single inference engine to support models trained from a variety of frameworks, while taking advantage of specific hardware accelerators where available.
 
 ONNX Runtime was designed with a focus on performance and scalability in order to support heavy workloads in high-scale production scenarios. It also has extensibility options for compatibility with emerging hardware developments.
 
-ONNX Runtime stays up to date with the ONNX standard and supports all operators from the ONNX v1.2+ spec with both forwards and backwards compatibility. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
+ONNX Runtime stays up to date with the ONNX standard and supports all operators from the ONNX v1.2+ spec and is backwards compatible with older versions. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
 
 
 
@@ -61,7 +61,7 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 * [NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)
 * [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
 
-#### IOT/Edge/Mobile
+#### IoT/Edge/Mobile
 * [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
 * [ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)
 * [Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)
@@ -155,7 +155,7 @@ This is particularly important when there are massive volumes of incoming data/s
 To deploy AI workloads to these edge devices and take advantage of hardware acceleration capabilities on the target device, see [these reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge).
 
 ### Client applications
-Install or build the package ([aka.ms/onnxruntime](https://microsoft.github.io/onnxruntime/) you need to use in your application. See [sample implementations](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
+Install or build the package you need to use in your application. Check [this page](https://microsoft.github.io/onnxruntime/) for installation/package guidance. See [sample implementations](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
 
 On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). Find tutorials [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) for building a Windows Desktop or UWP application using WinML.
 
