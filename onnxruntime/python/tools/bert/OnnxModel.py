@@ -272,7 +272,7 @@ class OnnxModel:
                         att.CopyFrom(onnx.helper.make_attribute("to", 10))
 
         for input_value_info in graph.input:
-            if input_value_info.type.tensor_type.elem_type == 1:
+            if input_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
                 initializer = self.get_initializer(input_value_info.name)
                 if initializer is not None: # for compatibility for old converter/exporter
                     input_value_info.type.tensor_type.elem_type = 10
@@ -285,7 +285,7 @@ class OnnxModel:
                     self.add_node(cast_node)
 
         for output_value_info in graph.output:
-            if output_value_info.type.tensor_type.elem_type == 1:
+            if output_value_info.type.tensor_type.elem_type == TensorProto.FLOAT:
                 cast_input = output_value_info.name + '_float16'
                 cast_output = output_value_info.name
                 self.replace_output_of_all_nodes(cast_output, cast_input)
