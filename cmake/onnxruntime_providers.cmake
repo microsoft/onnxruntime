@@ -94,6 +94,9 @@ if (onnxruntime_USE_FEATURIZERS)
 endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
+if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")   
+endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 
 if (onnxruntime_USE_FEATURIZERS)

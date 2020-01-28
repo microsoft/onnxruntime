@@ -156,6 +156,9 @@ namespace Dml
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
 
+        std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
+        GetInternalRegistrationInfoMap() const;
+
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
 
@@ -266,6 +269,11 @@ namespace Dml
         }
         
         ExecutionProviderImpl* GetImpl()
+        {
+            return m_impl.Get();
+        }
+
+        const ExecutionProviderImpl* GetImpl() const
         {
             return m_impl.Get();
         }

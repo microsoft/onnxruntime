@@ -211,7 +211,7 @@ void RunSession(InferenceSession& session_object,
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
   std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   EXPECT_TRUE(st.IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213

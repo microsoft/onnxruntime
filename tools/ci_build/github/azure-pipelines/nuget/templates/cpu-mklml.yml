@@ -13,7 +13,6 @@ jobs:
     JobName: 'Windows_CI_Dev'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_mklml --build_shared_lib --enable_onnx_tests  --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
-    msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
@@ -62,9 +61,9 @@ jobs:
       inputs:
         artifactName: 'drop-linux'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml

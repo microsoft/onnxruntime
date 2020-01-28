@@ -62,8 +62,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -130,8 +129,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
 
@@ -205,9 +203,9 @@ jobs:
     inputs:
       ArtifactName: onnxruntime
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: succeeded()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
 
   - template: templates/clean-agent-build-directory-step.yml
 
@@ -259,7 +257,7 @@ jobs:
       displayName: 'build'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --enable_onnx_tests --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.3.1.20\cuda"
+        arguments: --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --enable_onnx_tests --parallel --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
         workingDirectory: '$(Build.BinariesDirectory)'   
 
     - task: CopyFiles@2
@@ -274,8 +272,7 @@ jobs:
       inputs:
         ArtifactName: onnxruntime_gpu
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
 
     - template: templates/clean-agent-build-directory-step.yml
     
@@ -318,5 +315,4 @@ jobs:
       inputs:
         ArtifactName: onnxruntime
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
+    - template: templates/component-governance-component-detection-steps.yml
