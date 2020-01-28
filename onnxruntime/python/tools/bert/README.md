@@ -1,6 +1,10 @@
 # BERT Model Optimization Tool Overview
 
+<<<<<<< HEAD
 This tool converts a BERT ONNX model exported from PyTorch, and generates an optimized model to run faster in NVidia GPU.
+=======
+This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensorFlow, and generates an optimized model to run faster with OnnxRuntime.
+>>>>>>> origin/master
 
 Currently, this script **cannot** process BERT models exported from Tensorflow since the graph has some difference.
 
