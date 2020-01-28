@@ -411,10 +411,10 @@ HRESULT ImageFeatureValue::GetValue(WinML::BindingContext& context, IValue** out
   // create the OrtValue
   winrt::com_ptr<IValue> value;
   RETURN_IF_FAILED(engine->CreateTensorValue(
-	  resourceMetadata.TensorDescriptor.sizes,
-	  sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
+      resourceMetadata.TensorDescriptor.sizes,
+      sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
       resourceMetadata.TensorDescriptor.dataType == kImageTensorDataTypeFloat32 ? winml::TensorKind::Float : winml::TensorKind::Float16,
-	  value.put()));
+      value.put()));
 
   // Get the tensor raw data
   WinML::Resource void_resource;

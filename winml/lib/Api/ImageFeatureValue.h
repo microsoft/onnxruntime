@@ -32,14 +32,19 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, WinML::ILotusVa
   std::optional<ImageResourceMetadata> GetInputMetadata(const WinML::BindingContext& context);
 
   // ILotusValueProviderPrivate implementation
-  STDMETHOD(GetValue)(WinML::BindingContext& context, WinML::IValue** out);
-  STDMETHOD(IsPlaceholder)(bool* pIsPlaceHolder);
-  STDMETHOD(UpdateSourceResourceData)(WinML::BindingContext& context, WinML::IValue* value);
-  STDMETHOD(AbiRepresentation)(winrt::Windows::Foundation::IInspectable& abiRepresentation);
+  STDMETHOD(GetValue)
+  (WinML::BindingContext& context, WinML::IValue** out);
+  STDMETHOD(IsPlaceholder)
+  (bool* pIsPlaceHolder);
+  STDMETHOD(UpdateSourceResourceData)
+  (WinML::BindingContext& context, WinML::IValue* value);
+  STDMETHOD(AbiRepresentation)
+  (winrt::Windows::Foundation::IInspectable& abiRepresentation);
 
   std::vector<uint32_t> Widths() { return m_widths; }
   std::vector<uint32_t> Heights() { return m_heights; }
   bool IsBatch() { return m_batchSize > 1; }
+
  private:
   winrt::Windows::Foundation::Collections::IVector<Windows::Media::VideoFrame> m_videoFrames;
   std::vector<uint32_t> m_widths = {};

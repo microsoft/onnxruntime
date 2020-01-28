@@ -588,12 +588,12 @@ struct TensorBase : TBase {
 
   // Specialized version to convert float16 to float
   template <>
-  winrt::Windows::Foundation::Collections::IVectorView<float> GetAsVectorView<onnxruntime::MLFloat16, float>() try {
+  winrt::Windows::Foundation::Collections::IVectorView<float> GetAsVectorView<WinML::Half, float>() try {
     // Ensure that this call is being called with the correct template parameters
-    ASSERT_TEMPLATE_PARAMETERS<onnxruntime::MLFloat16, float>();
+    ASSERT_TEMPLATE_PARAMETERS<WinML::Half, float>();
 
     uint32_t size;
-    onnxruntime::MLFloat16* pBuffer;
+    WinML::Half* pBuffer;
 
     // Get the data pointer and size
     std::tie(size, pBuffer) = GetCpuResource()->buffer();
@@ -604,7 +604,7 @@ struct TensorBase : TBase {
         floatValue.data(),
         sizeof(float) /* output stride */,
         reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
-        sizeof(DirectX::PackedVector::HALF) /* input stride */,
+        sizeof(WinML::Half) /* input stride */,
         size);
 
     // Create IVectorView from copied data.
@@ -721,12 +721,12 @@ struct TensorBase : TBase {
 
   // Specialized version to convert floats to float16
   template <>
-  void SetBufferFromArray<onnxruntime::MLFloat16, float>(winrt::array_view<float const> data) {
+  void SetBufferFromArray<WinML::Half, float>(winrt::array_view<float const> data) {
     // Ensure that this call is being called with the correct template parameters
-    ASSERT_TEMPLATE_PARAMETERS<onnxruntime::MLFloat16, float>();
+    ASSERT_TEMPLATE_PARAMETERS<WinML::Half, float>();
 
     uint32_t size;
-    onnxruntime::MLFloat16* pBuffer;
+    WinML::Half* pBuffer;
 
     // Get the data pointer and size
     std::tie(size, pBuffer) = GetCpuResource()->buffer();
@@ -734,7 +734,7 @@ struct TensorBase : TBase {
     THROW_HR_IF(E_UNEXPECTED, data.size() != size);
     DirectX::PackedVector::XMConvertFloatToHalfStream(
         reinterpret_cast<DirectX::PackedVector::HALF*>(pBuffer),
-        sizeof(DirectX::PackedVector::HALF) /* output stride */,
+        sizeof(WinML::Half) /* output stride */,
         data.data(),
         sizeof(float) /* input stride */,
         data.size());
@@ -797,13 +797,13 @@ struct TensorBase : TBase {
 
   // Specialized version to convert floats to float16
   template <>
-  void SetBufferFromIterable<onnxruntime::MLFloat16, float>(
+  void SetBufferFromIterable<WinML::Half, float>(
       winrt::Windows::Foundation::Collections::IIterable<float> const& data) {
     // Ensure that this call is being called with the correct template parameters
-    ASSERT_TEMPLATE_PARAMETERS<onnxruntime::MLFloat16, float>();
+    ASSERT_TEMPLATE_PARAMETERS<WinML::Half, float>();
 
     uint32_t size;
-    onnxruntime::MLFloat16* pBuffer;
+    WinML::Half* pBuffer;
 
     // Get the data pointer and size
     std::tie(size, pBuffer) = GetCpuResource()->buffer();

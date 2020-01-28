@@ -11,29 +11,15 @@ namespace winrt::Windows::AI::MachineLearning::implementation {
 TensorFeatureDescriptor::TensorFeatureDescriptor(
     const char* name,
     const char* description,
-    bool is_required,
     winml::TensorKind tensor_kind,
     const std::vector<int64_t>& shape,
+    bool is_required,
     bool has_unsupported_image_metadata) : name_(WinML::Strings::HStringFromUTF8(name)),
                                            description_(WinML::Strings::HStringFromUTF8(description)),
                                            tensor_kind_(tensor_kind),
                                            shape_(shape),
                                            is_required_(is_required),
                                            has_unsupported_image_metadata_(has_unsupported_image_metadata) {
-}
-
-TensorFeatureDescriptor::TensorFeatureDescriptor(
-    hstring const& Name,
-    hstring const& Description,
-    bool IsRequired,
-    winml::TensorKind const& TensorKind,
-    array_view<int64_t const> Shape,
-    bool HasUnsupportedImageMetadata) : name_(Name),
-                                        description_(Description),
-                                        tensor_kind_(TensorKind),
-                                        shape_(Shape.begin(), Shape.end()),
-                                        is_required_(IsRequired),
-                                        has_unsupported_image_metadata_(HasUnsupportedImageMetadata) {
 }
 
 winml::TensorKind
@@ -72,11 +58,6 @@ WINML_CATCH_ALL
 
 bool TensorFeatureDescriptor::IsRequired() try {
   return is_required_;
-}
-WINML_CATCH_ALL
-
-bool TensorFeatureDescriptor::HasUnsupportedImageMetadata() try {
-    return has_unsupported_image_metadata_;
 }
 WINML_CATCH_ALL
 

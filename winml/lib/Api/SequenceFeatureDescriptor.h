@@ -15,11 +15,6 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
       const char* description,
       bool is_required,
       winml::ILearningModelFeatureDescriptor element_descriptor);
-  SequenceFeatureDescriptor(
-      hstring const& Name,
-      hstring const& Description,
-      bool IsRequired,
-      Windows::AI::MachineLearning::ILearningModelFeatureDescriptor const& ElementDescriptor);
 
   winml::ILearningModelFeatureDescriptor
   ElementDescriptor();
@@ -54,9 +49,3 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
   winml::ILearningModelFeatureDescriptor element_descriptor_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
-
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
-    struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<SequenceFeatureDescriptor, implementation::SequenceFeatureDescriptor> {
-
-    };
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation

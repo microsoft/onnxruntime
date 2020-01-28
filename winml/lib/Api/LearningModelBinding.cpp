@@ -38,10 +38,6 @@ static Windows::AI::MachineLearning::ILearningModelFeatureDescriptor FindValidBi
   return nullptr;
 }
 
-LearningModelBinding::~LearningModelBinding() {
-  Clear();
-}
-
 using NullableBindingPort = std::optional<std::pair<Windows::AI::MachineLearning::ILearningModelFeatureDescriptor, BindingType>>;
 
 static NullableBindingPort FindValidBinding(

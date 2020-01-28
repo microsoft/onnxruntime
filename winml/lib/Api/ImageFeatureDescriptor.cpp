@@ -11,9 +11,9 @@ namespace winrt::Windows::AI::MachineLearning::implementation {
 ImageFeatureDescriptor::ImageFeatureDescriptor(
     const char* name,
     const char* description,
-    bool is_required,
     winml::TensorKind tensor_kind,
     const std::vector<int64_t>& shape,
+    bool is_required,
     wgi::BitmapPixelFormat pixel_format,
     wgi::BitmapAlphaMode alpha_mode,
     uint32_t width,
@@ -30,28 +30,6 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
                                               height_(height),
                                               nominal_pixel_range_(nominal_pixel_range),
                                               color_space_gamma_(color_space_gamma) {
-}
-
-ImageFeatureDescriptor::ImageFeatureDescriptor(
-        hstring const& Name,
-        hstring const& Description,
-        bool IsRequired,
-        Windows::AI::MachineLearning::TensorKind const& TensorKind,
-        array_view<int64_t const> Shape,
-        Windows::Graphics::Imaging::BitmapPixelFormat const& BitmapPixelFormat,
-        Windows::Graphics::Imaging::BitmapAlphaMode const& BitmapAlphaMode,
-        uint32_t Width,
-        uint32_t Height) : name_(Name),
-                           description_(Description),
-                            tensor_kind_(TensorKind),
-                            shape_(Shape.begin(), Shape.end()),
-                            is_required_(IsRequired),
-                            pixel_format_(BitmapPixelFormat),
-                            alpha_mode_(BitmapAlphaMode),
-                            width_(Width),
-                            height_(Height),
-                            nominal_pixel_range_(ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255),
-                            color_space_gamma_(ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB) {
 }
 
 wgi::BitmapPixelFormat

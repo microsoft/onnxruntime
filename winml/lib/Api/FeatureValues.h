@@ -85,7 +85,7 @@ CREATE_TENSOR(TensorUInt32Bit, uint32_t, uint32_t)
 CREATE_TENSOR(TensorInt32Bit, int32_t, int32_t)
 CREATE_TENSOR(TensorUInt64Bit, uint64_t, uint64_t)
 CREATE_TENSOR(TensorInt64Bit, int64_t, int64_t)
-CREATE_TENSOR(TensorFloat16Bit, onnxruntime::MLFloat16, float)
+CREATE_TENSOR(TensorFloat16Bit, WinML::Half, float)
 
 #pragma warning(push)
 #pragma warning(disable : 4702) // Unreachable code (one of TensorBase's constructor unconditionally throws for

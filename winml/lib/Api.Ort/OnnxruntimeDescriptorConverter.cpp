@@ -421,11 +421,11 @@ CreateTensorFeatureDescriptor(
   auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
 
   auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
-      WinML::Strings::HStringFromUTF8(feature_descriptor->name_),
-      WinML::Strings::HStringFromUTF8(feature_descriptor->description_),  // description
-      feature_descriptor->name_length_ > 0,                               // is_required
+      feature_descriptor->name_,
+      feature_descriptor->description_,         // description
       kind,
       shape,
+      feature_descriptor->name_length_ > 0,    // is_required
       has_unsupported_image_metadata);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
@@ -461,10 +461,6 @@ CreateImageFeatureDescriptor(
   auto pixel_format = format_info.first;
   auto alpha_mode = format_info.second;
 
-  // paulm:   commenting this out during layering.    gamma and nominal are never used
-  // since we only support one of them.  if a non support one is set, they all fall back
-  // to TensorFeatureDescriptor (invalid image metadata)
-#ifdef DONE_LAYERING
   // color space gamma value
   auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
   auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
@@ -472,7 +468,6 @@ CreateImageFeatureDescriptor(
   // nominal range
   auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
   auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
-#endif
 
   // The current code assumes that the shape will be in NCHW.
   // Should the model metadata be read instead???
@@ -481,15 +476,17 @@ CreateImageFeatureDescriptor(
   auto height = static_cast<uint32_t>(shape[c_height_dimension]);
   auto width = static_cast<uint32_t>(shape[c_width_dimension]);
   auto descriptor = winrt::make<winmlp::ImageFeatureDescriptor>(
-      WinML::Strings::HStringFromUTF8(feature_descriptor->name_),
-      WinML::Strings::HStringFromUTF8(feature_descriptor->description_),
-      feature_descriptor->name_length_ > 0,  // is_required
+      feature_descriptor->name_,
+      feature_descriptor->description_,
       kind,
       shape,
+      feature_descriptor->name_length_ > 0,  // is_required
       pixel_format,
       alpha_mode,
       width,
-      height);
+      height,
+      nominal_range,
+      color_space_gamma);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
 }
@@ -528,8 +525,8 @@ CreateMapFeatureDescriptor(
       CreateFeatureDescriptor(engine_factory, &dummy_ort_value_info_wrapper, metadata);
 
   auto descriptor = winrt::make<winmlp::MapFeatureDescriptor>(
-      WinML::Strings::HStringFromUTF8(feature_descriptor->name_),
-      WinML::Strings::HStringFromUTF8(feature_descriptor->description_),
+      feature_descriptor->name_,
+      feature_descriptor->description_,
       feature_descriptor->name_length_ > 0,  // is_required
       key_kind,
       value_descriptor);
@@ -564,8 +561,8 @@ CreateSequenceFeatureDescriptor(
       CreateFeatureDescriptor(engine_factory, &dummy_ort_value_info_wrapper, metadata);
 
   auto descriptor = winrt::make<winmlp::SequenceFeatureDescriptor>(
-      WinML::Strings::HStringFromUTF8(feature_descriptor->name_),
-      WinML::Strings::HStringFromUTF8(feature_descriptor->description_),
+      feature_descriptor->name_,
+      feature_descriptor->description_,
       feature_descriptor->name_length_ > 0,  // is_required
       element_descriptor);
 

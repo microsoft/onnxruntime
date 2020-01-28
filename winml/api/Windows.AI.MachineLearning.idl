@@ -20,7 +20,7 @@ import "windows.storage.idl";
 
 namespace Windows.AI.MachineLearning 
 {
-    [contractversion(4)]
+    [contractversion(3)]
     apicontract MachineLearningContract{};
 
     //! Forward declarations
@@ -334,18 +334,6 @@ namespace Windows.AI.MachineLearning
         TensorKind KeyKind{ get; };
         //! Returns the properties of the map's value.
         ILearningModelFeatureDescriptor  ValueDescriptor{ get; };
-
-        [contract(MachineLearningContract, 4)]
-        {
-            //! allows creation of feature descriptors outside the runtime (immutable)
-            [method_name("Create")] MapFeatureDescriptor(
-                String Name,
-                String Description,
-                Boolean IsRequired,
-                TensorKind KeyKind,
-                ILearningModelFeatureDescriptor ValueDescriptor
-            );
-        }
     }
 
     //! \class SequenceFeatureDescriptor
@@ -358,17 +346,6 @@ namespace Windows.AI.MachineLearning
     {
         //! Gets the properties of the specified feature.
         ILearningModelFeatureDescriptor  ElementDescriptor{ get; };
-
-        [contract(MachineLearningContract, 4)]
-        {
-            //! allows creation of feature descriptors outside the runtime (immutable)
-            [method_name("Create")] SequenceFeatureDescriptor(
-                String Name,
-                String Description,
-                Boolean IsRequired,
-                ILearningModelFeatureDescriptor ElementDescriptor
-            );
-        }
     }
 
     //! \class TensorFeatureDescriptor
@@ -383,23 +360,6 @@ namespace Windows.AI.MachineLearning
         TensorKind TensorKind{ get; };
         //! Returns the count and size of each dimension.
         Windows.Foundation.Collections.IVectorView<Int64> Shape{ get; };
-
-        [contract(MachineLearningContract, 4)]
-        {
-            //! allows creation of feature descriptors outside the runtime (immutable)
-            [method_name("Create")] TensorFeatureDescriptor(
-                String Name,
-                String Description,
-                Boolean IsRequired,
-                TensorKind TensorKind,
-                Int64[] Shape,
-                Boolean HasUnsupportedImageMetadata
-            );
-            //! if this feature is an image but has unsupport image metadata (like a BitmapPixelFormat) 
-            //! you can still use the runtime but without image conversion support.
-            //! this setting will be 'true'
-            Boolean HasUnsupportedImageMetadata{ get; } ;
-        }
     }
 
     //! \class ImageFeatureDescriptor
@@ -418,26 +378,6 @@ namespace Windows.AI.MachineLearning
         UInt32 Width{ get; };
         //! The height of the image.
         UInt32 Height{ get; };
-
-        [contract(MachineLearningContract, 4)]
-        {
-            //! allows creation of feature descriptors outside the runtime (immutable)
-            [method_name("Create")] ImageFeatureDescriptor(
-                String Name,
-                String Description,
-                Boolean IsRequired,
-                TensorKind TensorKind,
-                Int64[] Shape,
-                Windows.Graphics.Imaging.BitmapPixelFormat BitmapPixelFormat,
-                Windows.Graphics.Imaging.BitmapAlphaMode BitmapAlphaMode,
-                UInt32 Width,
-                UInt32 Height
-            );
-
-            //! Returns the data type of the tensor.  This is useful if you want to know
-            //! if it's fp16 or fp32
-            TensorKind TensorKind{ get; };
-        }
     }
 
     //! \interface ITensor

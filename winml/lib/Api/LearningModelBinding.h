@@ -22,7 +22,6 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
       Windows::Foundation::Collections::IKeyValuePair<hstring, Windows::Foundation::IInspectable>;
 
   LearningModelBinding() = delete;
-  ~LearningModelBinding();
   LearningModelBinding(Windows::AI::MachineLearning::LearningModelSession const& session);
 
   void Bind(hstring const& name, Windows::Foundation::IInspectable const& value);
