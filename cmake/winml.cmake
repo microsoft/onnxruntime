@@ -8,12 +8,13 @@ include(winml_cppwinrt.cmake)
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
 set(target_folder ONNXRuntime/winml)
+set(winml_adapter_dir ${REPO_ROOT}/winml/adapter)
 set(winml_api_root ${REPO_ROOT}/winml/api)
 set(winml_dll_dir ${REPO_ROOT}/winml/dll)
 set(winml_lib_dir ${REPO_ROOT}/winml/lib)
 set(winml_lib_api_dir ${REPO_ROOT}/winml/lib/api)
-set(winml_adapter_dir ${REPO_ROOT}/winml/adapter)
 set(winml_lib_api_image_dir ${REPO_ROOT}/winml/lib/api.image)
+set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
@@ -117,31 +118,101 @@ set_target_properties(winml_lib_telemetry
 target_link_libraries(winml_lib_telemetry PRIVATE wil)
 
 ###########################
+# Add winml_lib_ort
+###########################
+
+list(APPEND winml_lib_api_ort_files
+  ${winml_lib_api_ort_dir}/inc/OnnxruntimeProvider.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeCpuSessionBuilder.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeCpuSessionBuilder.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeDescriptorConverter.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeDescriptorConverter.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngine.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngine.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeEngineBuilder.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeEnvironment.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeModel.h
+  ${winml_lib_api_ort_dir}/OnnxruntimeModel.cpp
+  ${winml_lib_api_ort_dir}/OnnxruntimeSessionBuilder.h
+  ${winml_lib_api_ort_dir}/pch.h
+    )
+
+if (onnxruntime_USE_DML)
+  list(APPEND winml_lib_api_ort_files
+    ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.h
+    ${winml_lib_api_ort_dir}/OnnxruntimeDmlSessionBuilder.cpp
+    )
+endif(onnxruntime_USE_DML)
+
+# Add static library that will be archived/linked for both static/dynamic library
+add_library(winml_lib_ort STATIC ${winml_lib_api_ort_files})
+
+# Compiler options
+target_compile_features(winml_lib_ort PRIVATE cxx_std_17)
+target_compile_options(winml_lib_ort PRIVATE /GR- /await /wd4238)
+
+# Compiler definitions
+target_compile_definitions(winml_lib_ort PRIVATE PLATFORM_WINDOWS)
+target_compile_definitions(winml_lib_ort PRIVATE _SCL_SECURE_NO_WARNINGS)                         # remove warnings about unchecked iterators
+
+# Specify the usage of a precompiled header
+target_precompiled_header(winml_lib_ort pch.h)
+
+# Includes
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
+
+target_include_directories(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+target_include_directories(winml_lib_ort PRIVATE ${REPO_ROOT}/winml)
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_dir})                            # needed for generated headers
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_core_dir})
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_api_ort_dir})
+target_include_directories(winml_lib_ort PRIVATE ${winml_lib_common_dir}/inc)
+target_include_directories(winml_lib_ort PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+target_include_directories(winml_lib_ort PRIVATE ${ONNXRUNTIME_ROOT})
+
+set_target_properties(winml_lib_ort
+  PROPERTIES
+  FOLDER
+  ${target_folder})
+
+# Add deps
+add_dependencies(winml_lib_ort winml_sdk_cppwinrt)
+add_dependencies(winml_lib_ort winml_api)
+add_dependencies(winml_lib_ort winml_api_native)
+add_dependencies(winml_lib_ort winml_api_native_internal)
+
+# Link libraries
+target_link_libraries(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+target_link_libraries(winml_lib_ort PRIVATE wil)
+
+
+###########################
 # Add winml_adapter
 ###########################
 
 list(APPEND winml_adapter_files
-    ${winml_adapter_dir}/CpuOrtSessionBuilder.cpp
-    ${winml_adapter_dir}/CpuOrtSessionBuilder.h
-    ${winml_adapter_dir}/CustomRegistryHelper.h
-    ${winml_adapter_dir}/FeatureDescriptorFactory.cpp
-    ${winml_adapter_dir}/FeatureDescriptorFactory.h
-    ${winml_adapter_dir}/LotusEnvironment.cpp
-    ${winml_adapter_dir}/LotusEnvironment.h
     ${winml_adapter_dir}/pch.h
-    ${winml_adapter_dir}/WinMLAdapter.cpp
-    ${winml_adapter_dir}/WinMLAdapter.h
-    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.cpp
-    ${winml_adapter_dir}/ZeroCopyInputStreamWrapper.h
+    ${winml_adapter_dir}/winml_adapter_apis.h
+    ${winml_adapter_dir}/winml_adapter_c_api.h
+    ${winml_adapter_dir}/winml_adapter_c_api.cpp
+    ${winml_adapter_dir}/winml_adapter_dml.cpp
+    ${winml_adapter_dir}/winml_adapter_environment.cpp
+    ${winml_adapter_dir}/winml_adapter_execution_provider.cpp
+    ${winml_adapter_dir}/winml_adapter_model.cpp
+    ${winml_adapter_dir}/winml_adapter_model.h
+    ${winml_adapter_dir}/winml_adapter_session.cpp
     )
-
+	
 if (onnxruntime_USE_DML)
   list(APPEND winml_adapter_files
-      ${winml_adapter_dir}/AbiCustomRegistryImpl.cpp
-      ${winml_adapter_dir}/AbiCustomRegistryImpl.h
-      ${winml_adapter_dir}/DmlOrtSessionBuilder.cpp
-      ${winml_adapter_dir}/DmlOrtSessionBuilder.h
-      )
+    ${winml_adapter_dir}/abi_custom_registry_impl.cpp
+    ${winml_adapter_dir}/abi_custom_registry_impl.h
+    )
 endif(onnxruntime_USE_DML)
 
 add_library(winml_adapter ${winml_adapter_files})
@@ -329,6 +400,7 @@ target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_dir}/pch)
 target_include_directories(winml_lib_api PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_image_dir}/inc)
+target_include_directories(winml_lib_api PRIVATE ${winml_lib_api_ort_dir}/inc)
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_telemetry_dir}/inc)
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_common_dir}/inc)
 
@@ -370,6 +442,19 @@ endif(onnxruntime_USE_DML)
 ###########################
 
 add_library(winml_lib_common STATIC
+  ${winml_lib_common_dir}/inc/common.h
+  ${winml_lib_common_dir}/inc/CommonDeviceHelpers.h
+  ${winml_lib_common_dir}/inc/cppwinrt_onnx.h
+  ${winml_lib_common_dir}/inc/dx.h
+  ${winml_lib_common_dir}/inc/errors.h
+  ${winml_lib_common_dir}/inc/iengine.h
+  ${winml_lib_common_dir}/inc/NamespaceAliases.h
+  ${winml_lib_common_dir}/inc/onnx.h
+  ${winml_lib_common_dir}/inc/PheonixSingleton.h
+  ${winml_lib_common_dir}/inc/StringHelpers.h
+  ${winml_lib_common_dir}/inc/WinMLTelemetryHelper.h
+  ${winml_lib_common_dir}/inc/WinML_Lock.h
+  ${winml_lib_common_dir}/inc/winrt_headers.h
   ${winml_lib_common_dir}/CommonDeviceHelpers.cpp
 )
 
@@ -448,6 +533,7 @@ target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/s
 target_include_directories(winml_dll PRIVATE ${winml_dll_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_dir}/impl)
+target_include_directories(winml_dll PRIVATE ${winml_lib_api_ort_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_dll PRIVATE ${winml_lib_api_image_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_lib_telemetry_dir}/inc)
@@ -514,6 +600,7 @@ target_link_libraries(winml_dll PRIVATE re2)
 target_link_libraries(winml_dll PRIVATE wil)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 target_link_libraries(winml_dll PRIVATE winml_lib_image)
+target_link_libraries(winml_dll PRIVATE winml_lib_ort)
 target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 target_link_libraries(winml_dll PRIVATE delayimp.lib)
 target_link_libraries(winml_dll PRIVATE ${DBGHELP})

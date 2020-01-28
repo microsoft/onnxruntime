@@ -9,24 +9,6 @@
 #include <Memorybuffer.h>
 
 namespace Windows::AI::MachineLearning {
-struct DMLResource {
-  DMLResource(ID3D12Resource* pResource, UINT64 resource_width) {
-    DXResource.copy_from(pResource);
-    WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter_.put()));
-    ExecutionProviderAllocatedResource = adapter_->CreateGPUAllocationFromD3DResource(pResource);
-    resource_width_ = resource_width;
-  }
-
-  ~DMLResource() {
-    adapter_->FreeGPUAllocation(ExecutionProviderAllocatedResource);
-  }
-
-  winrt::com_ptr<ID3D12Resource> DXResource;
-  UINT64 resource_width_;
-  void* ExecutionProviderAllocatedResource = nullptr;
-  winrt::com_ptr<winmla::IWinMLAdapter> adapter_;
-};
-
 template <typename T>
 struct TensorResources {
   // ITensorNative::GetBuffer
@@ -36,40 +18,28 @@ struct TensorResources {
     RETURN_HR_IF_NULL(E_POINTER, value);
     RETURN_HR_IF_NULL(E_POINTER, capacity);
 
-    *value = nullptr;
-    *capacity = 0;
-
-    // This Api is not supported for TensorString
-    auto isTensorString = std::is_same<T, std::string>::value;
-    RETURN_HR_IF(ERROR_INVALID_FUNCTION, isTensorString);
+    RETURN_HR_IF_MSG(
+        ERROR_INVALID_FUNCTION,
+        (std::is_same_v<T, std::string>),
+        "TensorString objects cannot return byte buffers!");
 
     try {
+      *value = nullptr;
+      *capacity = 0;
+
       // Lazily allocate the cpu resource on call to GetBuffer
       if (CpuResource == nullptr) {
-        winrt::com_ptr<winmla::IWinMLAdapter> adapter;
-        WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-        CpuResource = std::make_shared<WinML::Tensor<T>>(adapter.get(), shape);
+        CpuResource = std::make_shared<WinML::Tensor<T>>(shape);
       }
 
-      if constexpr (std::is_same_v<T, std::string>) {
-        std::string* pData;
-        uint32_t pSize;
-        std::tie(pSize, pData) = CpuResource->buffer();
+      // Get the data pointer and size
+      T* data;
+      uint32_t size;
+      std::tie(size, data) = CpuResource->buffer();
 
-        // Set out parameters
-        *capacity = static_cast<UINT32>(pSize * sizeof(T));
-        *value = (BYTE*)pData;
-      } else {
-        // Get the data pointer and size
-        T* pData;
-        uint32_t pSize;
-        std::tie(pSize, pData) = CpuResource->buffer();
-
-        // Set out parameters
-        *capacity = static_cast<UINT32>(pSize * sizeof(T));
-        *value = (BYTE*)pData;
-      }
-
+      // Set out parameters
+      *capacity = static_cast<UINT32>(size * sizeof(T));
+      *value = (BYTE*)data;
       return S_OK;
     }
     WINML_CATCH_ALL_COM
@@ -77,7 +47,7 @@ struct TensorResources {
 
   // Theses are access directly by TensorMemoryBufferReference<T> and TensorBase
   std::shared_ptr<WinML::Tensor<T>> CpuResource;
-  std::shared_ptr<DMLResource> GpuResource;
+  winrt::com_ptr<ID3D12Resource> GpuResource;
 };
 
 // This class holds onto the lifetime of TensorResources<T> so that they can be kept alive by TensorBase AND its active MBRs.

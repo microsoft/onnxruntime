@@ -18,19 +18,6 @@ MapFeatureDescriptor::MapFeatureDescriptor(
                                                          value_kind_(value_kind) {
 }
 
-MapFeatureDescriptor::MapFeatureDescriptor(
-    hstring const& Name,
-    hstring const& Description,
-    bool IsRequired,
-    Windows::AI::MachineLearning::TensorKind const& KeyKind,
-    Windows::AI::MachineLearning::ILearningModelFeatureDescriptor const& ValueDescriptor) : 
-        name_(Name),
-        description_(Description),
-        is_required_(IsRequired),
-        key_kind_(KeyKind),
-        value_kind_(ValueDescriptor) {
-}
-
 winml::TensorKind
 MapFeatureDescriptor::KeyKind() try {
   return key_kind_;

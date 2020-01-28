@@ -9,6 +9,7 @@
 #include "MLOperatorAuthor.h"
 #include "WinML_Lock.h"
 #include "core/providers/winml/winml_provider_factory.h"
+#include "iengine.h"
 
 namespace winrt::Windows::AI::MachineLearning::implementation {
 
@@ -66,11 +67,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
 
  public:
   /* Non-ABI methods */
-  onnxruntime::IExecutionProvider*
-  GetExecutionProvider();
 
-  winmla::IInferenceSession*
-  GetIInferenceSession();
+  WinML::IEngine*
+  GetEngine();
 
   void
   CheckClosed();
@@ -79,10 +78,10 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   void
   Initialize();
 
-  winmla::IModelProto*
+  WinML::IModel*
   GetOptimizedModel();
 
-  winmla::IModelProto*
+  WinML::IModel*
   GetOptimizedModel(bool should_close_model);
 
   uint64_t
@@ -102,16 +101,11 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   ToggleProfiler();
 
  private:
-  com_ptr<winmla::IInferenceSession> inference_session_;
-  struct IMLOperatorRegistryDeleter {
-    void operator()(IMLOperatorRegistry* p) {
-        p->Release();
-    }
-  };
-  std::unique_ptr<IMLOperatorRegistry, IMLOperatorRegistryDeleter> operatorRegistry_;
+  com_ptr<WinML::IEngineFactory> engine_factory_;
+  com_ptr<WinML::IEngine> engine_;
 
-  // reference to the active execution provider. weak
-  onnxruntime::IExecutionProvider* cached_execution_provider_ = nullptr;
+  using MLOperatorRegistry = std::unique_ptr<IMLOperatorRegistry, void (*)(IMLOperatorRegistry*)>;
+  MLOperatorRegistry operator_registry_;
 
   winml::LearningModel model_;
   winml::LearningModelDevice device_;

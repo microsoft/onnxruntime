@@ -6,7 +6,7 @@
 #ifdef USE_DML
 #include "core/providers/dml/DmlExecutionProvider/src/AbiCustomRegistry.h"
 
-namespace Windows::AI::MachineLearning::Adapter{
+namespace Windows::AI::MachineLearning::Adapter {
 
 // An implementation of AbiCustomRegistry that emits telemetry events when operator kernels or schemas are registered.
 class AbiCustomRegistryImpl : public AbiCustomRegistry {
@@ -38,5 +38,5 @@ class AbiCustomRegistryImpl : public AbiCustomRegistry {
       _In_opt_ IMLOperatorShapeInferrer* shape_inferrer) const noexcept override;
 };
 
-}  // namespace winrt::Windows::AI::MachineLearning::Adapter
+}  // namespace Windows::AI::MachineLearning::Adapter
 #endif USE_DML

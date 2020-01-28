@@ -13,9 +13,6 @@
 // Restore ERROR define
 #define ERROR 0
 
-// the C++ ort api
-#include "core/session/onnxruntime_cxx_api.h"
-
 #ifdef USE_DML
 #include <DirectML.h>
 #endif USE_DML

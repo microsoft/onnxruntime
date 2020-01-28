@@ -4,6 +4,13 @@
 #pragma once
 
 namespace Windows::AI::MachineLearning {
+
+// We need to define our own type for Half since DirectX::PackedVector::Half resolves to uint16_t per its typedef declaration.
+// Templates require an actual type name to resolve correctly.
+struct Half {
+  DirectX::PackedVector::HALF value;
+};
+
 template <typename T>
 struct TensorKindFrom {};
 template <>
@@ -60,12 +67,7 @@ struct TensorKindFrom<winrt::hstring> { static const winml::TensorKind Type = wi
 template <>
 struct TensorKindFrom<std::string> { static const winml::TensorKind Type = winml::TensorKind::String; };
 template <>
-struct TensorKindFrom<onnxruntime::MLFloat16> { static const winml::TensorKind Type = winml::TensorKind::Float16; };
-
-template <typename T>
-struct ONNXTensorElementDataTypeFrom {};
-
-
+struct TensorKindFrom<Half> { static const winml::TensorKind Type = winml::TensorKind::Float16; };
 
 template <typename T>
 struct TensorFeatureDescriptorFrom {
@@ -75,9 +77,9 @@ struct TensorFeatureDescriptorFrom {
     return winrt::make<winmlp::TensorFeatureDescriptor>(
         nullptr /* set to null as values are name-less */,
         nullptr /* set to null as values are description-less */,
-        false /* set to false as values dont have required annotations */,
         TensorKindFrom<T>::Type,
         shape,
+        false /* set to false as values dont have required annotations */,
         false /* set to false as this is not a tensor of unsupported metadata */);
   }
 };

@@ -156,6 +156,8 @@ ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
 ORT_RUNTIME_CLASS(CustomOpDomain);
+ORT_RUNTIME_CLASS(MapTypeInfo);
+ORT_RUNTIME_CLASS(SequenceTypeInfo);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.

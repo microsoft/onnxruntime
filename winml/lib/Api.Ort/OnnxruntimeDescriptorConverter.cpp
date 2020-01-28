@@ -5,7 +5,7 @@
 
 #include <evntrace.h>
 
-#include "FeatureDescriptorFactory.h"
+#include "OnnxruntimeDescriptorConverter.h"
 #include "ImageFeatureDescriptor.h"
 #include "MapFeatureDescriptor.h"
 #include "SequenceFeatureDescriptor.h"
@@ -13,7 +13,11 @@
 
 #include "winrt/windows.foundation.collections.h"
 #include "winrt/windows.graphics.imaging.h"
-#include "WinMLAdapter.h"
+
+#include "OnnxruntimeEngine.h"
+
+#include "OnnxruntimeErrors.h"
+
 using namespace winrt::Windows::AI::MachineLearning;
 
 // BitmapPixelFormat constants
@@ -42,152 +46,64 @@ static const char* c_supported_nominal_ranges[] =
 
 namespace Windows::AI::MachineLearning {
 
-
-// since this code is now running inside ONNXRUNTIME we need to shortcut
-// this a bit when creating winrt objects.   This will help.
-
-/* extern "C"
-HRESULT __stdcall OS_RoGetActivationFactory(HSTRING classId, GUID const& iid, void** factory) noexcept;
-
-#ifdef _M_IX86
-#pragma comment(linker, "/alternatename:_OS_RoGetActivationFactory@12=_RoGetActivationFactory@12")
-#else
-#pragma comment(linker, "/alternatename:OS_RoGetActivationFactory=RoGetActivationFactory")
-#endif
-*/
-
-bool starts_with(std::wstring_view value, std::wstring_view match) noexcept
-{
-    return 0 == value.compare(0, match.size(), match);
-}
-
-EXTERN_C IMAGE_DOS_HEADER __ImageBase;
-
-std::wstring GetModulePath()
-{
-    std::wstring val;
-    wchar_t modulePath[MAX_PATH] = { 0 };
-    GetModuleFileNameW((HINSTANCE)&__ImageBase, modulePath, _countof(modulePath));
-    wchar_t drive[_MAX_DRIVE];
-    wchar_t dir[_MAX_DIR];
-    wchar_t filename[_MAX_FNAME];
-    wchar_t ext[_MAX_EXT];
-    _wsplitpath_s(modulePath, drive, _MAX_DRIVE, dir, _MAX_DIR, filename, _MAX_FNAME, ext, _MAX_EXT);
-
-    val = drive;
-    val += dir;
-
-    return val;
-}
-
-extern "C" int32_t __stdcall WINRT_RoGetActivationFactory(void* classId, winrt::guid const& iid, void** factory) noexcept {
-    *factory = nullptr;
-    HSTRING classId_hstring = (HSTRING)classId;
-    std::wstring_view name{ WindowsGetStringRawBuffer(classId_hstring, nullptr), WindowsGetStringLen(classId_hstring) };
-    HMODULE library{ nullptr };
-
-    std::wstring winmlDllPath = GetModulePath() + L"Windows.AI.MachineLearning.dll";
-
-    if (starts_with(name, L"Windows.AI.MachineLearning."))
-    {
-        const wchar_t* libPath = winmlDllPath.c_str();
-        library = LoadLibraryW(libPath);
-    }
-    else
-    {
-        return RoGetActivationFactory(classId_hstring, iid, factory);
-    }
-
-    if (!library)
-    {
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
-
-    using DllGetActivationFactory = HRESULT __stdcall(HSTRING classId, void** factory);
-    auto call = reinterpret_cast<DllGetActivationFactory*>(GetProcAddress(library, "DllGetActivationFactory"));
-
-    if (!call)
-    {
-        HRESULT const hr = HRESULT_FROM_WIN32(GetLastError());
-        WINRT_VERIFY(FreeLibrary(library));
-        return hr;
-    }
-
-    winrt::com_ptr<winrt::Windows::Foundation::IActivationFactory> activation_factory;
-    HRESULT const hr = call(classId_hstring, activation_factory.put_void());
-
-    if (FAILED(hr))
-    {
-        WINRT_VERIFY(FreeLibrary(library));
-        return hr;
-    }
-
-    if (winrt::guid(iid) != winrt::guid_of<winrt::Windows::Foundation::IActivationFactory>())
-    {
-        return activation_factory->QueryInterface(iid, factory);
-    }
-
-    *factory = activation_factory.detach();
-    return S_OK;
-}
-
 // Forward declare CreateFeatureDescriptor
 static winml::ILearningModelFeatureDescriptor
 CreateFeatureDescriptor(
-    const onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata);
 
 static TensorKind
-TensorKindFromOnnxDataType(
-    ONNX_NAMESPACE::TensorProto_DataType dataType) {
-  using TensorType = ONNX_NAMESPACE::TensorProto_DataType;
+TensorKindFromONNXTensorElementDataType(ONNXTensorElementDataType dataType) {
   switch (dataType) {
-    case TensorType::TensorProto_DataType_BOOL: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
       return TensorKind::Boolean;
     }
-    case TensorType::TensorProto_DataType_STRING: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: {
       return TensorKind::String;
     }
-    case TensorType::TensorProto_DataType_FLOAT16: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
       return TensorKind::Float16;
     }
-    case TensorType::TensorProto_DataType_FLOAT: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
       return TensorKind::Float;
     }
-    case TensorType::TensorProto_DataType_DOUBLE: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
       return TensorKind::Double;
     }
-    case TensorType::TensorProto_DataType_INT8: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
       return TensorKind::Int8;
     }
-    case TensorType::TensorProto_DataType_INT16: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: {
       return TensorKind::Int16;
     }
-    case TensorType::TensorProto_DataType_INT32: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
       return TensorKind::Int32;
     }
-    case TensorType::TensorProto_DataType_INT64: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
       return TensorKind::Int64;
     }
-    case TensorType::TensorProto_DataType_UINT8: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
       return TensorKind::UInt8;
     }
-    case TensorType::TensorProto_DataType_UINT16: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: {
       return TensorKind::UInt16;
     }
-    case TensorType::TensorProto_DataType_UINT32: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: {
       return TensorKind::UInt32;
     }
-    case TensorType::TensorProto_DataType_UINT64: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: {
       return TensorKind::UInt64;
     }
-    case TensorType::TensorProto_DataType_COMPLEX64: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: {
       return TensorKind::Complex64;
     }
-    case TensorType::TensorProto_DataType_COMPLEX128: {
+    case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: {
       return TensorKind::Complex128;
     }
-    default: { return TensorKind::Undefined; }
+    default: {
+      return TensorKind::Undefined;
+    }
   }
 }
 
@@ -240,26 +156,10 @@ TensorKindToString(TensorKind tensorKind) {
       return "complex128";
     }
     case TensorKind::Undefined:
-    default: { return "undefined"; }
-  }
-}
-
-static std::vector<int64_t>
-ConvertShapeProtoToVector(
-    const ::onnx::TensorShapeProto& shape_proto) {
-  std::vector<int64_t> shape;
-  for (int i = 0; i < shape_proto.dim_size(); i++) {
-    auto& dim = shape_proto.dim(i);
-    if (dim.has_dim_param()) {
-      shape.push_back(-1);
-    } else if (dim.has_dim_value()) {
-      shape.push_back(dim.dim_value());
-    } else {
-      winrt::throw_hresult(E_INVALIDARG);
+    default: {
+      return "undefined";
     }
   }
-
-  return shape;
 }
 
 static const char*
@@ -410,16 +310,16 @@ enum class TensorType { Tensor_Data,
 
 static TensorType
 GetTensorType(
-    const ::onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    OrtTypeInfo* type_info,
     const std::unordered_map<std::string, std::string>& metadata) {
-  const auto& type_proto = value_info_proto->type();
+  const char* denotation;
+  size_t len;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetDenotationFromTypeInfo(type_info, &denotation, &len),
+                      engine_factory->UseOrtApi());
 
-  THROW_HR_IF_MSG(
-      E_FAIL,
-      type_proto.has_tensor_type() == false,
-      "Malformed onnx file.");
-
-  auto has_image_denotation = type_proto.denotation() == "IMAGE";
+  constexpr char c_image[] = "IMAGE";
+  auto has_image_denotation = strncmp(denotation, c_image, _countof(c_image)) == 0;
   if (!has_image_denotation) {
     return TensorType::Tensor_Data;
   }
@@ -430,9 +330,15 @@ GetTensorType(
 
   // Check if the tensor value_info_proto is of type float.
   // IMAGE tensors MUST be of type float
-  const auto& tensor_type = type_proto.tensor_type();
-  auto tensor_kind = WinML::TensorKindFromOnnxDataType(
-      onnx::TensorProto_DataType(tensor_type.elem_type()));
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->CastTypeInfoToTensorInfo(type_info, &tensor_info),
+                      engine_factory->UseOrtApi());
+
+  ONNXTensorElementDataType tensor_element_data_type;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
+                      engine_factory->UseOrtApi());
+
+  auto tensor_kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
   auto is_float_tensor = tensor_kind == TensorKind::Float;
   if (!is_float_tensor) {
     log_stream << "Unsupported image with " << TensorKindToString(tensor_kind)
@@ -471,7 +377,7 @@ GetTensorType(
        has_unsupported_image_metadata);
 
   if (is_tensor_improperly_annotated_as_image) {
-    TraceLoggingWrite(winmla::winml_trace_logging_provider,
+    TraceLoggingWrite(winml_trace_logging_provider,
                       "WinMLInputValidation",
                       TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
                       TraceLoggingLevel(WINEVENT_LEVEL_WARNING),
@@ -491,21 +397,35 @@ GetTensorType(
 
 static winml::ILearningModelFeatureDescriptor
 CreateTensorFeatureDescriptor(
-    const onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata,
     bool has_unsupported_image_metadata) {
-  const auto& type_proto = value_info_proto->type();
-  const auto& tensor_type = type_proto.tensor_type();
-  auto shape = WinML::ConvertShapeProtoToVector(tensor_type.shape());
-  auto kind = WinML::TensorKindFromOnnxDataType(
-      onnx::TensorProto_DataType(tensor_type.elem_type()));
+  auto type_info = feature_descriptor->type_info_.get();
 
-  TensorFeatureDescriptor descriptor(
-      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
-      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),  // description
-      value_info_proto->name().empty() == false,                        // is_required
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->CastTypeInfoToTensorInfo(type_info, &tensor_info),
+                      engine_factory->UseOrtApi());
+  size_t num_dims;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensionsCount(tensor_info, &num_dims),
+                      engine_factory->UseOrtApi());
+
+  auto shape = std::vector<int64_t>(num_dims);
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensions(tensor_info, shape.data(), shape.size()),
+                      engine_factory->UseOrtApi());
+
+  ONNXTensorElementDataType tensor_element_data_type;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
+                      engine_factory->UseOrtApi());
+
+  auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
+
+  auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
+      feature_descriptor->name_,
+      feature_descriptor->description_,  // description
       kind,
       shape,
+      feature_descriptor->name_length_ > 0,  // is_required
       has_unsupported_image_metadata);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
@@ -513,13 +433,27 @@ CreateTensorFeatureDescriptor(
 
 static winml::ILearningModelFeatureDescriptor
 CreateImageFeatureDescriptor(
-    const onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata) {
-  const auto& type_proto = value_info_proto->type();
-  const auto& tensor_type = type_proto.tensor_type();
-  auto shape = WinML::ConvertShapeProtoToVector(tensor_type.shape());
-  auto kind = WinML::TensorKindFromOnnxDataType(
-  onnx::TensorProto_DataType(tensor_type.elem_type()));
+  auto type_info = feature_descriptor->type_info_.get();
+
+  const OrtTensorTypeAndShapeInfo* tensor_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->CastTypeInfoToTensorInfo(type_info, &tensor_info),
+                      engine_factory->UseOrtApi());
+
+  size_t num_dims;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensionsCount(tensor_info, &num_dims),
+                      engine_factory->UseOrtApi());
+
+  auto shape = std::vector<int64_t>(num_dims);
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDimensions(tensor_info, shape.data(), shape.size()),
+                      engine_factory->UseOrtApi());
+
+  ONNXTensorElementDataType tensor_element_data_type;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetTensorElementType(tensor_info, &tensor_element_data_type),
+                      engine_factory->UseOrtApi());
+  auto kind = WinML::TensorKindFromONNXTensorElementDataType(tensor_element_data_type);
 
   // pixel format and alpha
   auto pixel_format_value = FetchMetadataValueOrNull(metadata, c_bitmap_pixel_format_key);
@@ -527,18 +461,13 @@ CreateImageFeatureDescriptor(
   auto pixel_format = format_info.first;
   auto alpha_mode = format_info.second;
 
-  // paulm:   commenting this out during layering.    gamma and nominal are never used
-  // since we only support one of them.  if a non support one is set, they all fall back 
-  // to TensorFeatureDescriptor (invalid image metadata)
-#ifdef DONE_LAYERING
   // color space gamma value
-    auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
-    auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
+  auto color_space_gamma_value = FetchMetadataValueOrNull(metadata, c_color_space_key);
+  auto color_space_gamma = CreateImageColorSpaceGamma(color_space_gamma_value);
 
   // nominal range
-    auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
-    auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
-#endif
+  auto nominal_range_value = FetchMetadataValueOrNull(metadata, c_nominal_range_key);
+  auto nominal_range = CreateImageNominalPixelRange(nominal_range_value);
 
   // The current code assumes that the shape will be in NCHW.
   // Should the model metadata be read instead???
@@ -546,42 +475,59 @@ CreateImageFeatureDescriptor(
   const int c_width_dimension = 3;
   auto height = static_cast<uint32_t>(shape[c_height_dimension]);
   auto width = static_cast<uint32_t>(shape[c_width_dimension]);
-  ImageFeatureDescriptor descriptor(
-      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
-      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),
-      value_info_proto->name().empty() == false,  // is_required
+  auto descriptor = winrt::make<winmlp::ImageFeatureDescriptor>(
+      feature_descriptor->name_,
+      feature_descriptor->description_,
       kind,
       shape,
+      feature_descriptor->name_length_ > 0,  // is_required
       pixel_format,
       alpha_mode,
       width,
-      height);
+      height,
+      nominal_range,
+      color_space_gamma);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
 }
 
 static winml::ILearningModelFeatureDescriptor
 CreateMapFeatureDescriptor(
-    const onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata) {
-  const auto& type_proto = value_info_proto->type();
-  auto type_proto_map = type_proto.map_type();
+  auto type_info = feature_descriptor->type_info_.get();
 
-  auto key_kind = WinML::TensorKindFromOnnxDataType(
-      onnx::TensorProto_DataType(type_proto_map.key_type()));
+  const OrtMapTypeInfo* map_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->CastTypeInfoToMapTypeInfo(type_info, &map_info),
+                      engine_factory->UseOrtApi());
 
-  onnx::ValueInfoProto dummy_value_info_proto;
-  dummy_value_info_proto.set_name(value_info_proto->name().c_str());
-  dummy_value_info_proto.set_doc_string(value_info_proto->doc_string().c_str());
-  *dummy_value_info_proto.mutable_type() = type_proto_map.value_type();
+  ONNXTensorElementDataType map_key_data_type;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetMapKeyType(map_info, &map_key_data_type),
+                      engine_factory->UseOrtApi());
+
+  auto key_kind = WinML::TensorKindFromONNXTensorElementDataType(map_key_data_type);
+
+  OrtTypeInfo* map_value_type_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetMapValueType(map_info, &map_value_type_info),
+                      engine_factory->UseOrtApi());
+
+  UniqueOrtTypeInfo unique_map_value_type_info(map_value_type_info, engine_factory->UseOrtApi()->ReleaseTypeInfo);
+
+  OnnxruntimeValueInfoWrapper dummy_ort_value_info_wrapper;
+  dummy_ort_value_info_wrapper.description_ = feature_descriptor->description_;
+  dummy_ort_value_info_wrapper.description_length_ = feature_descriptor->description_length_;
+  dummy_ort_value_info_wrapper.name_ = feature_descriptor->name_;
+  dummy_ort_value_info_wrapper.name_length_ = feature_descriptor->name_length_;
+  dummy_ort_value_info_wrapper.type_info_ = std::move(unique_map_value_type_info);
 
   auto value_descriptor =
-      CreateFeatureDescriptor(&dummy_value_info_proto, metadata);
+      CreateFeatureDescriptor(engine_factory, &dummy_ort_value_info_wrapper, metadata);
 
-  MapFeatureDescriptor descriptor(
-      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
-      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),
-      value_info_proto->name().empty() == false,  // is_rRequired
+  auto descriptor = winrt::make<winmlp::MapFeatureDescriptor>(
+      feature_descriptor->name_,
+      feature_descriptor->description_,
+      feature_descriptor->name_length_ > 0,  // is_required
       key_kind,
       value_descriptor);
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
@@ -589,24 +535,35 @@ CreateMapFeatureDescriptor(
 
 static winml::ILearningModelFeatureDescriptor
 CreateSequenceFeatureDescriptor(
-    const onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata) {
-  const auto& type_proto = value_info_proto->type();
-  // assert(typeProto->has_sequence_type());
-  auto type_proto_sequence = type_proto.sequence_type();
+  auto type_info = feature_descriptor->type_info_.get();
 
-  onnx::ValueInfoProto dummy_value_info_proto;
-  dummy_value_info_proto.set_name(value_info_proto->name().c_str());
-  dummy_value_info_proto.set_doc_string(value_info_proto->doc_string().c_str());
-  *dummy_value_info_proto.mutable_type() = type_proto_sequence.elem_type();
+  const OrtSequenceTypeInfo* sequence_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->CastTypeInfoToSequenceTypeInfo(type_info, &sequence_info),
+                      engine_factory->UseOrtApi());
+
+  OrtTypeInfo* sequence_element_type_info;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetSequenceElementType(sequence_info, &sequence_element_type_info),
+                      engine_factory->UseOrtApi());
+
+  UniqueOrtTypeInfo unique_sequence_element_type_info(sequence_element_type_info, engine_factory->UseOrtApi()->ReleaseTypeInfo);
+
+  OnnxruntimeValueInfoWrapper dummy_ort_value_info_wrapper;
+  dummy_ort_value_info_wrapper.description_ = feature_descriptor->description_;
+  dummy_ort_value_info_wrapper.description_length_ = feature_descriptor->description_length_;
+  dummy_ort_value_info_wrapper.name_ = feature_descriptor->name_;
+  dummy_ort_value_info_wrapper.name_length_ = feature_descriptor->name_length_;
+  dummy_ort_value_info_wrapper.type_info_ = std::move(unique_sequence_element_type_info);
 
   auto element_descriptor =
-      CreateFeatureDescriptor(&dummy_value_info_proto, metadata);
+      CreateFeatureDescriptor(engine_factory, &dummy_ort_value_info_wrapper, metadata);
 
-  SequenceFeatureDescriptor descriptor(
-      WinML::Strings::HStringFromUTF8(value_info_proto->name()),
-      WinML::Strings::HStringFromUTF8(value_info_proto->doc_string()),
-      value_info_proto->name().empty() == false,  // is_required
+  auto descriptor = winrt::make<winmlp::SequenceFeatureDescriptor>(
+      feature_descriptor->name_,
+      feature_descriptor->description_,
+      feature_descriptor->name_length_ > 0,  // is_required
       element_descriptor);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();
@@ -614,36 +571,43 @@ CreateSequenceFeatureDescriptor(
 
 static winml::ILearningModelFeatureDescriptor
 CreateFeatureDescriptor(
-    const onnx::ValueInfoProto* value_info_proto,
+    OnnxruntimeEngineFactory* engine_factory,
+    const OnnxruntimeValueInfoWrapper* feature_descriptor,
     const std::unordered_map<std::string, std::string>& metadata) {
-  const auto& type_proto = value_info_proto->type();
+  auto type_info = feature_descriptor->type_info_.get();
 
-  using ValueCase = ::onnx::TypeProto::ValueCase;
-  switch (type_proto.value_case()) {
-    case ValueCase::kTensorType: {
-      auto tensor_type =
-          GetTensorType(value_info_proto, metadata);
+  ONNXType onnx_type;
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetOnnxTypeFromTypeInfo(type_info, &onnx_type),
+                      engine_factory->UseOrtApi());
+
+  switch (onnx_type) {
+    case ONNXType::ONNX_TYPE_TENSOR: {
+      auto tensor_type = GetTensorType(engine_factory, type_info, metadata);
       if (tensor_type == TensorType::Tensor_Image) {
         return CreateImageFeatureDescriptor(
-            value_info_proto,
+            engine_factory,
+            feature_descriptor,
             metadata);
       } else {
         auto has_unsupported_image_metadata =
             tensor_type == TensorType::Tensor_Data_UnsupportedImageMetadata;
         return CreateTensorFeatureDescriptor(
-            value_info_proto,
+            engine_factory,
+            feature_descriptor,
             metadata,
             has_unsupported_image_metadata);
       }
     }
-    case ValueCase::kMapType: {
+    case ONNXType::ONNX_TYPE_MAP: {
       return CreateMapFeatureDescriptor(
-          value_info_proto,
+          engine_factory,
+          feature_descriptor,
           metadata);
     }
-    case ValueCase::kSequenceType: {
+    case ONNXType::ONNX_TYPE_SEQUENCE: {
       return CreateSequenceFeatureDescriptor(
-          value_info_proto,
+          engine_factory,
+          feature_descriptor,
           metadata);
     }
     default:
@@ -651,18 +615,17 @@ CreateFeatureDescriptor(
   }
 }
 
-FeatureDescriptorFactory::FeatureDescriptorFactory(
-    const std::unordered_map<std::string, std::string>& metadata) : metadata_(metadata) {}
+OnnxruntimeDescriptorConverter::OnnxruntimeDescriptorConverter(
+    OnnxruntimeEngineFactory* engine_factory,
+    const std::unordered_map<std::string, std::string>& metadata) : engine_factory_(engine_factory), metadata_(metadata) {}
 
 wfc::IVector<winml::ILearningModelFeatureDescriptor>
-FeatureDescriptorFactory::CreateDescriptorsFromValueInfoProtos(
-    const std::vector<const onnx::ValueInfoProto*>& value_info_protos) {
-  auto features =
-      winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
+OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
+  auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
-  for (auto value_info_proto : value_info_protos) {
-    auto descriptor = WinML::CreateFeatureDescriptor(value_info_proto, metadata_);
-    features.Append(descriptor);
+  for (const auto& descriptor : descriptors) {
+    auto learning_model_descriptor = WinML::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
+    features.Append(learning_model_descriptor);
   }
 
   return features;

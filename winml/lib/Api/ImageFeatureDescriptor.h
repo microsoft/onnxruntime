@@ -24,26 +24,15 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   ImageFeatureDescriptor(
       const char* name,
       const char* description,
-      bool is_required,
       winml::TensorKind tensor_kind,
       const std::vector<int64_t>& shape,
+      bool is_required,
       wgi::BitmapPixelFormat pixelformat,
       wgi::BitmapAlphaMode alphamode,
       uint32_t width,
       uint32_t height,
       ImageNominalPixelRange nominalPixelRange,
       ImageColorSpaceGamma colorSpaceGamma);
-
-  ImageFeatureDescriptor(
-      hstring const& Name,
-      hstring const& Description,
-      bool IsRequired,
-      Windows::AI::MachineLearning::TensorKind const& TensorKind, 
-      array_view<int64_t const> Shape,
-      Windows::Graphics::Imaging::BitmapPixelFormat const& BitmapPixelFormat,
-      Windows::Graphics::Imaging::BitmapAlphaMode const& BitmapAlphaMode,
-      uint32_t Width,
-      uint32_t Height);
 
   wgi::BitmapPixelFormat
   BitmapPixelFormat();
@@ -105,9 +94,3 @@ struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
   ImageColorSpaceGamma color_space_gamma_;
 };
 }  // namespace winrt::Windows::AI::MachineLearning::implementation
-
-namespace winrt::Windows::AI::MachineLearning::factory_implementation {
-    struct ImageFeatureDescriptor : ImageFeatureDescriptorT<ImageFeatureDescriptor, implementation::ImageFeatureDescriptor> {
-
-    };
-}  // namespace winrt::Windows::AI::MachineLearning::factory_implementation

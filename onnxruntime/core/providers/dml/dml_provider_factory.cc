@@ -26,14 +26,22 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
+  AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
-  return Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get());
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get());
+  Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
+  return provider;
+}
+
+void DMLProviderFactory::SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode) {
+  rounding_mode_ = rounding_mode;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
@@ -57,8 +65,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
 }
 
-bool IsSoftwareAdapter(IDXGIAdapter1* adapter)
-{
+void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode) {
+  auto dml_prvider_factory = static_cast<DMLProviderFactory*>(factory);
+  dml_prvider_factory->SetDefaultRoundingMode(rounding_mode);
+}
+
+bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     DXGI_ADAPTER_DESC1 desc;
     adapter->GetDesc1(&desc);
 
@@ -96,7 +108,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   // In debug builds, enable the DML debug layer if the D3D12 debug layer is also enabled
 #if _DEBUG
   ComPtr<ID3D12DebugDevice> debug_device;
-  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device)); // ignore failure
+  (void)d3d12_device->QueryInterface(IID_PPV_ARGS(&debug_device));  // ignore failure
   const bool is_d3d12_debug_layer_enabled = (debug_device != nullptr);
 
   if (is_d3d12_debug_layer_enabled) {
@@ -110,7 +122,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
                                    DML_FEATURE_LEVEL_2_0,
                                    IID_PPV_ARGS(&dml_device)));
 
-  
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
 }
 

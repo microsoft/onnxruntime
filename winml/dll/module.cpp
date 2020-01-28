@@ -6,19 +6,19 @@
 #include <Hstring.h>
 
 #include "LearningModelDevice.h"
+#include "OnnxruntimeProvider.h"
 
 using namespace winrt::Windows::AI::MachineLearning::implementation;
 
-void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const &failure) WI_NOEXCEPT {
+void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT {
   if (!alreadyReported) {
     winrt::hstring message(failure.pszMessage ? failure.pszMessage : L"");
     telemetry_helper.LogRuntimeError(
-      failure.hr,
-      winrt::to_string(message),
-      failure.pszFile,
-      failure.pszFunction,
-      failure.uLineNumber
-    );
+        failure.hr,
+        winrt::to_string(message),
+        failure.pszFile,
+        failure.pszFunction,
+        failure.uLineNumber);
   }
 }
 
@@ -57,10 +57,10 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
 }
 
 extern "C" HRESULT WINAPI MLCreateOperatorRegistry(_COM_Outptr_ IMLOperatorRegistry** registry) try {
-  *registry = nullptr;
-  winrt::com_ptr<winmla::IWinMLAdapter> adapter;
-  WINML_THROW_IF_FAILED(OrtGetWinMLAdapter(adapter.put()));
-  return adapter->GetCustomRegistry(registry);
+  winrt::com_ptr<WinML::IEngineFactory> engine_factory;
+  WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory.put()));
+  WINML_THROW_IF_FAILED(engine_factory->CreateCustomRegistry(registry));
+  return S_OK;
 }
 CATCH_RETURN();
 

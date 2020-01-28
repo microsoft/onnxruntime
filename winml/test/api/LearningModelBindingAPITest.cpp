@@ -154,6 +154,8 @@ static void DictionaryVectorizerMapString()
     WINML_EXPECT_TRUE(first.Current().Key() == mapInputName);
     WINML_EXPECT_TRUE(first.Current().Value() == mapInputInspectable);
     WINML_EXPECT_TRUE(binding.Lookup(mapInputName) == mapInputInspectable);
+
+	modelSession.Evaluate(binding, L"");
 }
 
 static void RunZipMapInt64(

@@ -133,9 +133,7 @@ class TensorBuffer<std::string> {
     return std::make_pair(gsl::narrow_cast<uint32_t>(m_buffer.size()), m_buffer.data());
   }
 
-  // The Set APIs should generally be avoided implemented in the TensorBuffer<std::string>.
-  // Callers should generally use the Buffer API and copy directly into it.
-  auto Set(uint32_t size, const std::string* pData) {
+  auto Set(uint32_t size, std::string_view* data) {
     WINML_THROW_HR_IF_FALSE_MSG(
         E_INVALIDARG,
         size <= m_buffer.size(),
@@ -143,24 +141,8 @@ class TensorBuffer<std::string> {
         static_cast<int>(size),
         static_cast<int>(m_buffer.size()));
 
-    std::copy(pData, pData + size, m_buffer.begin());
-  }
-
-  auto Set(std::vector<std::string>&& other) {
-    auto tensorSize = m_buffer.size();
-
-    WINML_THROW_HR_IF_FALSE_MSG(
-        E_INVALIDARG,
-        other.size() <= tensorSize,
-        "Vector argument other has size (%d) which is greater than tensor size(%d)",
-        static_cast<int>(other.size()),
-        static_cast<int>(tensorSize));
-
-    if (tensorSize != other.size()) {
-      other.resize(tensorSize);
-    }
-
-    m_buffer = std::move(other);
+    // Copy
+    std::copy(data, data + size, m_buffer.begin());
   }
 };
 }  // namespace Windows::AI::MachineLearning

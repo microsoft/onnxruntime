@@ -16,16 +16,6 @@ SequenceFeatureDescriptor::SequenceFeatureDescriptor(
                                                          description_(WinML::Strings::HStringFromUTF8(description)),
                                                          is_required_(is_required),
                                                          element_descriptor_(descriptor) {}
-SequenceFeatureDescriptor::SequenceFeatureDescriptor(
-    hstring const& Name,
-    hstring const& Description,
-    bool IsRequired,
-    Windows::AI::MachineLearning::ILearningModelFeatureDescriptor const& ElementDescriptor) : 
-        name_(Name),
-        description_(Description),
-        is_required_(IsRequired),
-        element_descriptor_(ElementDescriptor) {
-}
 
 
 winml::ILearningModelFeatureDescriptor
