@@ -12,9 +12,8 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --enable_msvc_static_runtime'
-    BuildArch: 'x64'
-    msbuildArchitecture: 'amd64'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --enable_msvc_static_runtime'
+    BuildArch: 'x64'    
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
@@ -32,9 +31,8 @@ jobs:
     AgentPool : 'Win-CPU-2019'
     ArtifactName: 'drop-win-x86-zip'
     JobName: 'Windows_CI_Dev_x86'
-    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --x86 --use_telemetry --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --enable_msvc_static_runtime'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --x86 --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --enable_msvc_static_runtime'
     BuildArch: 'x86'
-    msbuildArchitecture: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
     DoDebugBuild: 'false'
@@ -53,7 +51,7 @@ jobs:
   parameters:
     AgentPool : 'Win-CPU-2019'
     JobName: 'Windows_Arm64_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --disable_contrib_ops --enable_msvc_static_runtime --build_shared_lib --arm64'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 16 2019" --disable_contrib_ops --enable_msvc_static_runtime --arm64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
@@ -102,9 +100,9 @@ jobs:
       inputs:
         artifactName: 'drop-linux'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml

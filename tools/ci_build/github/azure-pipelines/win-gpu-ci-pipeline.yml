@@ -42,7 +42,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --use_featurizers --use_dnnl --build_shared_lib --enable_onnx_tests --use_dml --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --use_featurizers --use_dnnl --build_shared_lib --enable_onnx_tests --use_dml --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.6.5.32\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -116,15 +116,15 @@ jobs:
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --use_featurizers --use_dnnl --build_shared_lib --enable_onnx_tests --use_dml --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --build_wheel --use_featurizers --use_dnnl --build_shared_lib --enable_onnx_tests --use_dml --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.6.5.32\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
  
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: succeeded()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'  
 
   
    

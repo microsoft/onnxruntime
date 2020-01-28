@@ -6,6 +6,7 @@
 #include "gtest/gtest.h"
 #include "cuda_runtime.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace test {
@@ -70,6 +71,45 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   cpu_arena->Free(cpu_addr_b);
   cuda_arena->Free(cuda_addr);
   pinned_allocator->Free(pinned_addr);
+}
+
+// test that we fallback to smaller allocations if the growth of the arena exceeds the available memory
+TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
+  int cuda_device_id = 0;
+
+  size_t free = 0;
+  size_t total = 0;
+
+  CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
+  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
+
+  // need extra test logic if this ever happens.
+  EXPECT_NE(free, total) << "All memory is free. Test logic does not handle this.";
+
+  DeviceAllocatorRegistrationInfo default_memory_info(
+      {OrtMemTypeDefault,
+       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
+       std::numeric_limits<size_t>::max()});
+
+  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
+
+  // initial allocation that sets the growth size for the next allocation
+  size_t size = total / 2;
+  void* cuda_addr_0 = cuda_arena->Alloc(size);
+  EXPECT_TRUE(cuda_addr_0);
+
+  // this should trigger an allocation equal to the current total, which should fail initially and gradually fall back
+  // to a smaller block.
+  size_t next_size = 1024;
+
+  void* cuda_addr_1 = cuda_arena->Alloc(next_size);
+  EXPECT_TRUE(cuda_addr_1);
+  cuda_arena->Free(cuda_addr_0);
+  cuda_arena->Free(cuda_addr_1);
+  cuda_arena = nullptr;
+
+  auto last_error = cudaGetLastError();
+  EXPECT_EQ(last_error, cudaSuccess) << "Last error should be cleared if handled gracefully";
 }
 }  // namespace test
 }  // namespace onnxruntime

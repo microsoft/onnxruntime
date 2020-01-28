@@ -20,18 +20,39 @@
 #include "onnxruntime_config.h"
 // external/eigen/Eigen/src/Core/AssignEvaluator.h:86:63:
 // error: enum constant in boolean context [-Werror=int-in-bool-context]
-#if defined(__GNUC__) && __GNUC__ >= 7
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#if __GNUC__ >= 6
+#pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
 #ifdef HAS_DEPRECATED_COPY
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #endif
 #endif
-
+#else
+// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
+// warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
+// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/TensorStorage.h(65):
+// warning C4324: structure was padded due to alignment specifier
+// unsupported\eigen\cxx11\src\Tensor\TensorUInt128.h(150,0): Warning C4245: 'initializing': conversion from '__int64'
+// to 'uint64_t', signed/unsigned mismatch
+#pragma warning(push)
+#pragma warning(disable : 4554)
+#pragma warning(disable : 4324)
+#pragma warning(disable : 4245)
+#pragma warning(disable : 4127)
+#endif
 #include "Eigen/Core"
 
-#if defined(__GNUC__) && __GNUC__ >= 7
+#if defined(__GNUC__)
 #pragma GCC diagnostic pop
+#else
+#pragma warning(pop)
 #endif
 
 #include "Eigen/Dense"

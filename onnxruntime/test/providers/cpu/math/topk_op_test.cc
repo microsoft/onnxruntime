@@ -8,11 +8,12 @@
 namespace onnxruntime {
 namespace test {
 
+template <typename T = float>
 static void RunTest(int op_set,
                     int64_t k,
-                    const std::vector<float>& input_vals,
+                    const std::vector<T>& input_vals,
                     const std::vector<int64_t>& input_dimensions,
-                    const std::vector<float>& expected_vals,
+                    const std::vector<T>& expected_vals,
                     const std::vector<int64_t>& expected_indices,
                     const std::vector<int64_t>& expected_dimensions,
                     bool is_tensorrt_supported = true,
@@ -34,16 +35,16 @@ static void RunTest(int op_set,
     test.AddAttribute("sorted", sorted);
 
   // Inputs
-  test.AddInput<float>("X", input_dimensions, input_vals);
+  test.AddInput<T>("X", input_dimensions, input_vals);
   if (op_set >= 10)
     test.AddInput<int64_t>("K", {1}, {k});
 
   // Outputs
   if (sorted == 1) {
-    test.AddOutput<float>("Values", expected_dimensions, expected_vals);
+    test.AddOutput<T>("Values", expected_dimensions, expected_vals);
     test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices);
   } else {
-    test.AddOutput<float>("Values", expected_dimensions, expected_vals, true);
+    test.AddOutput<T>("Values", expected_dimensions, expected_vals, true);
     test.AddOutput<int64_t>("Indices", expected_dimensions, expected_indices, true);
   }
 
@@ -442,6 +443,24 @@ TEST(TopKOperator, SelectFirstSortNext) {
   RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);  // largest values
 }
 
+TEST(TopKOperator, SelectFirstSortNextInt64) {
+  // in this test, we will select the top 5 elements first then sort the chosen 5 elements
+  // Select + Sort  = O(n + k * ln(k)) = 50 + 5 * ln(5) = 58.047
+  // Sorted selection: O(n * ln(k)) = 50 * ln(5) = 80.47
+  // The algorithm used will be Select + Sort
+  std::vector<int64_t> input_vals = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                                     11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                                     21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+                                     31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+                                     41, 42, 43, 44, 45, 46, 47, 48, 49, 50};
+  std::vector<int64_t> input_dimensions = {50};
+  std::vector<int64_t> expected_vals = {50, 49, 48, 47, 46};
+  std::vector<int64_t> expected_indices = {49, 48, 47, 46, 45};
+  std::vector<int64_t> expected_dimensions = {5};
+  int64_t axis = 0;
+  RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis);  // largest values
+}
+
 TEST(TopKOperator, SortedSelection) {
   // in this test, we will use sorted selection (using heap)
   // Select + Sort  = O(n + k * ln(k)) = 10 + 5 * ln(5) = 18.04
@@ -454,6 +473,51 @@ TEST(TopKOperator, SortedSelection) {
   std::vector<int64_t> expected_dimensions = {5};
   int64_t axis = 0;
   RunTest(11, 5, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, axis, 0);  // smallest values
+}
+
+TEST(TopKOperator, MediumArrayTopKSorted) 
+{
+  std::vector<float> input_vals(1000, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+  std::vector<int64_t> input_dimensions = {1000};
+  std::vector<float> expected_vals(100, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), 900.0f);
+  std::reverse(expected_vals.begin(), expected_vals.end());
+  std::vector<int64_t> expected_indices(100, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 900);
+  std::reverse(expected_indices.begin(), expected_indices.end());
+  std::vector<int64_t> expected_dimensions = {100};
+  RunTest(11, 100, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
+}
+
+TEST(TopKOperator, BigArrayTopKSorted) 
+{
+  std::vector<float> input_vals(10000, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+  std::vector<int64_t> input_dimensions = {10000};
+  std::vector<float> expected_vals(1000, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), 9000.0f);
+  std::reverse(expected_vals.begin(), expected_vals.end());
+  std::vector<int64_t> expected_indices(1000, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 9000);
+  std::reverse(expected_indices.begin(), expected_indices.end());
+  std::vector<int64_t> expected_dimensions = {1000};
+  RunTest(11, 1000, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
+}
+
+TEST(TopKOperator, BigArrayBigTopKSorted) 
+{
+  std::vector<float> input_vals(10000, 0.0f);
+  std::iota(input_vals.begin(), input_vals.end(), 0.0f);
+  std::vector<int64_t> input_dimensions = {10000};
+  std::vector<float> expected_vals(9000, 0.0f);
+  std::iota(expected_vals.begin(), expected_vals.end(), 1000.0f);
+  std::reverse(expected_vals.begin(), expected_vals.end());
+  std::vector<int64_t> expected_indices(9000, 0);
+  std::iota(expected_indices.begin(), expected_indices.end(), 1000);
+  std::reverse(expected_indices.begin(), expected_indices.end());
+  std::vector<int64_t> expected_dimensions = {9000};
+  RunTest(11, 9000, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false, 0, 1, 1);
 }
 
 }  // namespace test
