@@ -50,15 +50,15 @@ ORT_API_STATUS_IMPL(winmla::EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* en
   API_IMPL_BEGIN
   std::string name = logid;
   std::unique_ptr<onnxruntime::logging::ISink> logger = onnxruntime::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
-  
+
   // Clear the logging manager, since only one default instance of logging manager can exist at a time.
   env->SetLoggingManager(nullptr);
 
   auto winml_logging_manager = std::make_unique<onnxruntime::logging::LoggingManager>(std::move(logger),
-                                  static_cast<onnxruntime::logging::Severity>(default_warning_level),
-                                  false,
-                                  onnxruntime::logging::LoggingManager::InstanceType::Default,
-                                  &name);
+                                                                                      static_cast<onnxruntime::logging::Severity>(default_warning_level),
+                                                                                      false,
+                                                                                      onnxruntime::logging::LoggingManager::InstanceType::Default,
+                                                                                      &name);
 
   // Set a new default logging manager
   env->SetLoggingManager(std::move(winml_logging_manager));

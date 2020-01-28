@@ -9,10 +9,9 @@ namespace Windows::AI::MachineLearning {
 
 class OnnxruntimeEngineFactory;
 
-class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass <
-    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-    IOrtSessionBuilder> {
-
+class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
+                                         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                                         IOrtSessionBuilder> {
  public:
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, ID3D12Device* device, ID3D12CommandQueue* queue);
 

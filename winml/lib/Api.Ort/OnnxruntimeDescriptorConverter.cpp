@@ -422,10 +422,10 @@ CreateTensorFeatureDescriptor(
 
   auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
       feature_descriptor->name_,
-      feature_descriptor->description_,         // description
+      feature_descriptor->description_,  // description
       kind,
       shape,
-      feature_descriptor->name_length_ > 0,    // is_required
+      feature_descriptor->name_length_ > 0,  // is_required
       has_unsupported_image_metadata);
 
   return descriptor.as<winml::ILearningModelFeatureDescriptor>();

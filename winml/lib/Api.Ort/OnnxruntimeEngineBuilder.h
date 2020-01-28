@@ -8,12 +8,20 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
  public:
   HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine);
 
-  STDMETHOD(GetD3D12Device)(_Outptr_ ID3D12Device** device);
-  STDMETHOD(SetD3D12Device)(_In_ ID3D12Device* device);
-  STDMETHOD(GetID3D12CommandQueue)(_Outptr_ ID3D12CommandQueue** queue);
-  STDMETHOD(SetID3D12CommandQueue)(_In_ ID3D12CommandQueue* queue);
-  STDMETHOD(SetBatchSizeOverride)(uint32_t batch_size_override);
-  STDMETHOD(CreateEngine)(_Outptr_ IEngine** out);
+  STDMETHOD(SetD3D12Resources)
+  (ID3D12Device* device, ID3D12CommandQueue* queue);
+
+  STDMETHOD(GetD3D12Device)
+  (_Outptr_ ID3D12Device** device);
+
+  STDMETHOD(GetID3D12CommandQueue)
+  (_Outptr_ ID3D12CommandQueue** queue);
+
+  STDMETHOD(SetBatchSizeOverride)
+  (uint32_t batch_size_override);
+
+  STDMETHOD(CreateEngine)
+  (_Outptr_ IEngine** out);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

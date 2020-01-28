@@ -63,10 +63,9 @@ MIDL_INTERFACE("30c99886-38d2-41cb-a615-203fe7d7daac") IEngine : IUnknown {
 };
 
 MIDL_INTERFACE("0452ef15-b66b-47ca-9eff-aedac571764e") IEngineBuilder : IUnknown {
+    STDMETHOD(SetD3D12Resources)(ID3D12Device* device, ID3D12CommandQueue* queue) PURE;
 	STDMETHOD(GetD3D12Device)(ID3D12Device** device) PURE;
-    STDMETHOD(SetD3D12Device)(ID3D12Device* device) PURE;
     STDMETHOD(GetID3D12CommandQueue)(ID3D12CommandQueue** queue) PURE;
-    STDMETHOD(SetID3D12CommandQueue)(ID3D12CommandQueue* queue) PURE;
     STDMETHOD(SetBatchSizeOverride)(uint32_t batch_size_override) PURE;
     STDMETHOD(CreateEngine)(IEngine** out) PURE;
 };

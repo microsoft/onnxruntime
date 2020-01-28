@@ -55,18 +55,14 @@ STDMETHODIMP OnnxruntimeEngineBuilder::GetD3D12Device(ID3D12Device** device) {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineBuilder::SetD3D12Device(ID3D12Device* device) {
+STDMETHODIMP OnnxruntimeEngineBuilder::SetD3D12Resources(ID3D12Device* device, ID3D12CommandQueue* queue) {
   device_ = device;
+  queue_ = queue;
   return S_OK;
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(ID3D12CommandQueue** queue) {
   *queue = queue_.Get();
-  return S_OK;
-}
-
-STDMETHODIMP OnnxruntimeEngineBuilder::SetID3D12CommandQueue(ID3D12CommandQueue* queue) {
-  queue_ = queue;
   return S_OK;
 }
 

@@ -106,8 +106,7 @@ void LearningModelSession::Initialize() {
   engine_factory_->CreateEngineBuilder(engine_builder.put());
 
   if (device_impl->IsCpuDevice() == false) {
-    engine_builder->SetD3D12Device(device_impl->GetD3DDevice());
-    engine_builder->SetID3D12CommandQueue(device_impl->GetDeviceQueue());
+    engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue());
   }
 
   // Make onnxruntime apply the batch size override, if any

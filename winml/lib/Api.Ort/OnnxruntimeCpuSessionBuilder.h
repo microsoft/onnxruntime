@@ -9,10 +9,9 @@ namespace Windows::AI::MachineLearning {
 
 class OnnxruntimeEngineFactory;
 
-class OnnxruntimeCpuSessionBuilder : public Microsoft::WRL::RuntimeClass <
-    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-    IOrtSessionBuilder> {
-
+class OnnxruntimeCpuSessionBuilder : public Microsoft::WRL::RuntimeClass<
+                                         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                                         IOrtSessionBuilder> {
  public:
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory);
 
@@ -26,8 +25,8 @@ class OnnxruntimeCpuSessionBuilder : public Microsoft::WRL::RuntimeClass <
   HRESULT STDMETHODCALLTYPE Initialize(
       OrtSession* session) override;
 
-  private:
+ private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
 };
 
-}  // namespace Windows::AI::MachineLearning::Adapter
+}  // namespace Windows::AI::MachineLearning

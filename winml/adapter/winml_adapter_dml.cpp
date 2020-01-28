@@ -12,7 +12,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
-#endif // USE_DML
+#endif  // USE_DML
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
@@ -35,7 +35,7 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
     d3d12DebugDevice = nullptr;
     dmlFlags |= DML_CREATE_DEVICE_FLAG_DEBUG;
   }
-#endif // USE_DML
+#endif  // USE_DML
 
   Microsoft::WRL::ComPtr<IDMLDevice> dmlDevice;
   THROW_IF_FAILED(dmlCreateDevice1Fn(d3d12Device, dmlFlags, DML_FEATURE_LEVEL_2_0, IID_PPV_ARGS(&dmlDevice)));
@@ -50,7 +50,7 @@ namespace onnxruntime {
 void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode);
 }
 
-#endif // USE_DML
+#endif  // USE_DML
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     ID3D12Device* d3d_device, ID3D12CommandQueue* queue) {
@@ -67,7 +67,7 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // lifetime and can be large, so shouldn't be rounded.
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
-#endif // USE_DML
+#endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -87,7 +87,7 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderFlushContext, _In_ OrtExecutionP
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   Dml::FlushContext(dml_provider_internal);
-#endif // USE_DML
+#endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -97,7 +97,7 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutio
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   Dml::TrimUploadHeap(dml_provider_internal);
-#endif // USE_DML
+#endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -107,7 +107,7 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderReleaseCompletedReferences, _In_
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   Dml::ReleaseCompletedReferences(dml_provider_internal);
-#endif // USE_DML
+#endif  // USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -116,7 +116,7 @@ ORT_API_STATUS_IMPL(winmla::DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Re
   API_IMPL_BEGIN
 #ifdef USE_DML
   *dml_resource = Dml::CreateGPUAllocationFromD3DResource(pResource);
-#endif // USE_DML USE_DML
+#endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -129,7 +129,7 @@ ORT_API_STATUS_IMPL(winmla::DmlGetD3D12ResourceFromAllocation, _In_ OrtExecution
       Dml::GetD3D12ResourceFromAllocation(
           dml_provider_internal->GetAllocator(0, ::OrtMemType::OrtMemTypeDefault).get(),
           allocation);
-#endif // USE_DML USE_DML
+#endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -138,7 +138,7 @@ ORT_API_STATUS_IMPL(winmla::DmlFreeGPUAllocation, _In_ void* ptr) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   Dml::FreeGPUAllocation(ptr);
-#endif // USE_DML USE_DML
+#endif  // USE_DML USE_DML
   return nullptr;
   API_IMPL_END
 }
@@ -154,6 +154,6 @@ ORT_API_STATUS_IMPL(winmla::DmlCopyTensor, _In_ OrtExecutionProvider* dml_provid
   return nullptr;
 #else
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Out of memory");
-#endif // USE_DML USE_DML
+#endif  // USE_DML USE_DML
   API_IMPL_END
 }

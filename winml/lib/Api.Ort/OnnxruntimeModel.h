@@ -13,7 +13,7 @@ class OnnxruntimeEngineFactory;
 // InferenceSession, that enables the creation of the session based on a device (CPU/DML).
 MIDL_INTERFACE("92679cbf-7a9d-48bb-b97f-ef9fb447ce8e")
 IOnnxruntimeModel : IUnknown {
-  virtual HRESULT STDMETHODCALLTYPE DetachOrtModel(OrtModel** model) PURE;
+  virtual HRESULT STDMETHODCALLTYPE DetachOrtModel(OrtModel * *model) PURE;
 };
 
 class ModelInfo : public Microsoft::WRL::RuntimeClass<
@@ -22,14 +22,22 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
  public:
   HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine, _In_ OrtModel* ort_model);
 
-  STDMETHOD(GetAuthor)(const char** out, size_t* len);
-  STDMETHOD(GetName)(const char** out, size_t* len);
-  STDMETHOD(GetDomain)(const char** out, size_t* len);
-  STDMETHOD(GetDescription)(const char** out, size_t* len);
-  STDMETHOD(GetVersion)(int64_t* out);
-  STDMETHOD(GetModelMetadata)(ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>** metadata);
-  STDMETHOD(GetInputFeatures)(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features);
-  STDMETHOD(GetOutputFeatures)(ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features);
+  STDMETHOD(GetAuthor)
+  (const char** out, size_t* len);
+  STDMETHOD(GetName)
+  (const char** out, size_t* len);
+  STDMETHOD(GetDomain)
+  (const char** out, size_t* len);
+  STDMETHOD(GetDescription)
+  (const char** out, size_t* len);
+  STDMETHOD(GetVersion)
+  (int64_t* out);
+  STDMETHOD(GetModelMetadata)
+  (ABI::Windows::Foundation::Collections::IMapView<HSTRING, HSTRING>** metadata);
+  STDMETHOD(GetInputFeatures)
+  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features);
+  STDMETHOD(GetOutputFeatures)
+  (ABI::Windows::Foundation::Collections::IVectorView<winml::ILearningModelFeatureDescriptor>** features);
 
  private:
   std::string author_;
@@ -42,7 +50,6 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
   wfc::IVector<winml::ILearningModelFeatureDescriptor> output_features_;
 };
 
-
 class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
                             Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                             IModel,
@@ -52,11 +59,15 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
 
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine, UniqueOrtModel&& ort_model);
 
-  STDMETHOD(GetModelInfo)(IModelInfo** info);
-  STDMETHOD(ModelEnsureNoFloat16)();
-  STDMETHOD(CloneModel)(IModel** copy);
-  STDMETHOD(DetachOrtModel)(OrtModel** model);
-  
+  STDMETHOD(GetModelInfo)
+  (IModelInfo** info);
+  STDMETHOD(ModelEnsureNoFloat16)
+  ();
+  STDMETHOD(CloneModel)
+  (IModel** copy);
+  STDMETHOD(DetachOrtModel)
+  (OrtModel** model);
+
  private:
   UniqueOrtModel ort_model_;
 

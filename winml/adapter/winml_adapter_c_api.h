@@ -38,7 +38,7 @@ struct OrtProfilerEventRecord {
 typedef void(ORT_API_CALL* OrtProfilingFunction)(const OrtProfilerEventRecord* event_record);
 
 struct WinmlAdapterApi {
-	/**
+  /**
     * OverrideSchema
 	 * This api is used to override schema inference functions for a variety of ops across opsets.
 	 * This exists because certain ops were failing to infer schemas and caused performance
@@ -46,8 +46,8 @@ struct WinmlAdapterApi {
 	 * This can be removed when schema inference functions have been updated.
     */
   OrtStatus*(ORT_API_CALL* OverrideSchema)() NO_EXCEPTION;
-  
-	/**
+
+  /**
      * EnvConfigureCustomLoggerAndProfiler
 	 * This api is used to add a custom logger and profiler to the ors environment.
 	 * This exists because existing methods on the c-abi to create the environment only support a custom logger.
@@ -55,23 +55,23 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* EnvConfigureCustomLoggerAndProfiler)(_In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out)NO_EXCEPTION;
 
-	/**
+  /**
     * GetDenotationFromTypeInfo
 	 * This api augments OrtTypeInfo to return denotations on the type.
 	 * This is used by WinML to determine if an input/output is intended to be an Image or a Tensor.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* GetDenotationFromTypeInfo)(_In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len)NO_EXCEPTION;
 
   // OrtTypeInfo Casting methods
 
-	/**
+  /**
     * CastTypeInfoToMapTypeInfo
 	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
 	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
 	 * This is used by WinML to support model reflection APIs.
 	 *
 	 * Don't free the 'out' value
-    */  
+    */
   OrtStatus*(ORT_API_CALL* CastTypeInfoToMapTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out)NO_EXCEPTION;
 
   /**
@@ -81,7 +81,7 @@ struct WinmlAdapterApi {
     * This is used by WinML to support model reflection APIs.
 	 *
 	 * Don't free the 'out' value
-    */  
+    */
   OrtStatus*(ORT_API_CALL* CastTypeInfoToSequenceTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out)NO_EXCEPTION;
 
   // OrtMapTypeInfo Accessors
@@ -90,13 +90,13 @@ struct WinmlAdapterApi {
     * GetMapKeyType
 	 * This api augments get the key type of a map. Key types are restricted to being scalar types and use ONNXTensorElementDataType.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* GetMapKeyType)(_In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out)NO_EXCEPTION;
 
   /**
     * GetMapValueType
 	 * This api augments get the value type of a map.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* GetMapValueType)(_In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   // OrtSequenceTypeInfo Accessors
@@ -105,7 +105,7 @@ struct WinmlAdapterApi {
     * GetSequenceElementType
 	 * This api augments get the element type of a sequence.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* GetSequenceElementType)(_In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   // OrtModel methods
@@ -115,7 +115,7 @@ struct WinmlAdapterApi {
 	 * This api creates an OrtModel based on a specified model path.
 	 * There is no inferencing or evaluation setup performed. Only ONNX load is done to reflect on the model's inputs/outputs and other properties.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* CreateModelFromPath)(_In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
 
   /**
@@ -123,7 +123,7 @@ struct WinmlAdapterApi {
 	 * This api creates an OrtModel from a buffer.
 	 * There is no inferencing or evaluation setup performed. Only ONNX load is done to reflect on the model's inputs/outputs and other properties.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* CreateModelFromData)(_In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out)NO_EXCEPTION;
 
   /**
@@ -131,107 +131,107 @@ struct WinmlAdapterApi {
 	 * This api copies the OrtModel along with its internal proto buffer and cached metadata.
 	 * The OrtSession type expects to own the model proto buffer.
 	 * WinML uses this to yield copies of the model proto held by OrtModel to OrtSession.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* CloneModel)(_In_ const OrtModel* in, _Outptr_ OrtModel** out)NO_EXCEPTION;
 
   /**
     * ModelGetAuthor
 	 * This api gets the model author from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetAuthor)(_In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len)NO_EXCEPTION;
 
   /**
     * ModelGetName
 	 * This api gets the model name from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetName)(_In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len)NO_EXCEPTION;
-  
+
   /**
     * ModelGetDomain
 	 * This api gets the model domain from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetDomain)(_In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len)NO_EXCEPTION;
-  
+
   /**
     * ModelGetDescription
 	 * This api gets the model description from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetDescription)(_In_ const OrtModel* model, _Out_ const char** const description, _Out_ size_t* len)NO_EXCEPTION;
-  
+
   /**
     * ModelGetVersion
 	 * This api gets the model version from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetVersion)(_In_ const OrtModel* model, _Out_ int64_t* version)NO_EXCEPTION;
-  
+
   /**
     * ModelGetInputCount
 	 * This api gets the number of inputs from the OrtModel. It closely matches the API of a similar name similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetInputCount)(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  
+
   /**
     * ModelGetOutputCount
 	 * This api gets the number of outputs from the OrtModel. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetOutputCount)(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-    
+
   /**
     * ModelGetInputName
 	 * This api gets the input name from the OrtModel given an index. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
-    */  
+    */
   OrtStatus*(ORT_API_CALL* ModelGetInputName)(_In_ const OrtModel* model, _In_ size_t index, _Out_ const char** input_name, _Out_ size_t* count)NO_EXCEPTION;
-  
+
   /**
     * ModelGetOutputName
 	 * This api gets the output name from the OrtModel given an index. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetOutputName)(_In_ const OrtModel* model, _In_ size_t index, _Out_ const char** output_name, _Out_ size_t* count)NO_EXCEPTION;
-  
+
   /**
     * ModelGetInputDescription
 	 * This api gets the input description from the OrtModel given an index. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetInputDescription)(_In_ const OrtModel* model, _In_ size_t index, _Out_ const char** input_description, _Out_ size_t* count)NO_EXCEPTION;
-  
+
   /**
     * ModelGetOutputDescription
 	 * This api gets the output description from the OrtModel given an index. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetOutputDescription)(_In_ const OrtModel* model, _In_ size_t index, _Out_ const char** output_description, _Out_ size_t* count)NO_EXCEPTION;
-  
+
   /**
     * ModelGetInputTypeInfo
 	 * This api gets the input OrtTypeInfo from the OrtModel given an index. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetInputTypeInfo)(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-  
+
   /**
     * ModelGetOutputTypeInfo
 	 * This api gets the output OrtTypeInfo from the OrtModel given an index. It closely matches the API of a similar name for retrieving model metadata from OrtSession.
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetOutputTypeInfo)(_In_ const OrtModel* model, _In_ size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-  
+
   /**
     * ModelGetMetadataCount
 	 * This api gets the number of metadata entries from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.
     */
   OrtStatus*(ORT_API_CALL* ModelGetMetadataCount)(_In_ const OrtModel* model, _Out_ size_t* count)NO_EXCEPTION;
-  
+
   /**
     * ModelGetMetadata
 	 * This api gets the model metadata from the OrtModel.
@@ -249,22 +249,21 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
 
   // OrtSessionOptions methods
-  
-  
+
   /**
     * OrtSessionOptionsAppendExecutionProvider_CPU
 	 * This api is used to add the cpu EP to OrtSessionOptions so that WinML Gpu session are configures with CPU fallback.
     */
   OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_CPU)(_In_ OrtSessionOptions* options, int use_arena)NO_EXCEPTION;
-  
+
   /**
     * OrtSessionOptionsAppendExecutionProvider_DML
 	 * This api is used to add the DML EP to OrtSessionOptions.
     */
   OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
-  
+
   // OrtSession methods
-  
+
   /**
     * CreateSessionWithoutModel
 	 * This api is used to create a Session that is completely uninitialized. While there are other Session creation APIs in the
@@ -273,21 +272,21 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
 
-    /**
+  /**
     * SessionGetExecutionProvider
 	 * This api is used to get a handle to an OrtExecutionProvider.
     * Currently WinML uses this to talk directly to the DML EP and configure settings on it.
     */
   OrtStatus*(ORT_API_CALL* SessionGetExecutionProvider)(_In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider)NO_EXCEPTION;
 
-    /**
+  /**
     * SessionInitialize
 	 * This api is used to initialize an OrtSession. This is one component of creating a usable OrtSession, and is a part of CreateSession in the c-abi.
     * Currently WinML uses this to finalize session creation, after configuring a variety of properties on the OrtSession.
     */
   OrtStatus*(ORT_API_CALL* SessionInitialize)(_In_ OrtSession* session)NO_EXCEPTION;
 
-    /**
+  /**
     * SessionRegisterGraphTransformers
 	 * This api is used to enable DML specific graph transformations on an OrtSession.
     * 
@@ -295,13 +294,13 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* SessionRegisterGraphTransformers)(_In_ OrtSession* session)NO_EXCEPTION;
 
-    /**
+  /**
     * SessionRegisterCustomRegistry
 	 * This api is used to support custom operators as they were shipped in WinML RS5.
     */
   OrtStatus*(ORT_API_CALL* SessionRegisterCustomRegistry)(_In_ OrtSession* session, _In_ IMLOperatorRegistry* registry)NO_EXCEPTION;
-  
-    /**
+
+  /**
     * SessionLoadAndPurloinModel
 	 * This api is used to load an OrtModel into an OrtSession.
     * 
@@ -309,15 +308,15 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* SessionLoadAndPurloinModel)(_In_ OrtSession* session, _In_ OrtModel* model)NO_EXCEPTION;
 
-    /**
+  /**
     * SessionStartProfiling
 	 * This api is used to start profiling OrtSession. The existing mechanism only allows configuring profiling at session creation.
     * 
  	 * WinML uses this to toggle profilling on and off based on if a telemetry providers are being listened to.
     */
   OrtStatus*(ORT_API_CALL* SessionStartProfiling)(_In_ OrtEnv* env, _In_ OrtSession* session)NO_EXCEPTION;
-    
-    /**
+
+  /**
     * SessionEndProfiling
 	 * This api is used to end profiling OrtSession. The existing mechanism only allows configuring profiling at session creation.
     * 
@@ -325,7 +324,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* session)NO_EXCEPTION;
 
-    /**
+  /**
     * SessionCopyOneInputAcrossDevices
 	 * This api is used to copy and create an OrtValue input to prepare the input on the correct device.
     * 
@@ -343,7 +342,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderSetDefaultRoundingMode)(_In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlExecutionProviderFlushContext
 	 * This api is used to flush the DML EP.
     * 
@@ -351,7 +350,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlExecutionProviderTrimUploadHeap
 	 * This api is used to trim the upload heap in the DML EP.
     * 
@@ -359,7 +358,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlExecutionProviderReleaseCompletedReferences
 	 * This api is used to release completed references after first run the DML EP.
     * 
@@ -367,7 +366,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderReleaseCompletedReferences)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlCreateGPUAllocationFromD3DResource
 	 * This api is used to create a DML EP input based on a user specified d3d12 resource.
     * 
@@ -375,7 +374,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlCreateGPUAllocationFromD3DResource)(_In_ ID3D12Resource* pResource, _Out_ void** dml_resource)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlFreeGPUAllocation
 	 * This api is used free the DML EP input created by DmlCreateGPUAllocationFromD3DResource.
     * 
@@ -383,7 +382,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlFreeGPUAllocation)(_In_ void* ptr)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlGetD3D12ResourceFromAllocation
 	 * This api is used to get the D3D12 resource when a OrtValue has been allocated by the DML EP and accessed via GetMutableTensorData.
     * 
@@ -391,7 +390,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlGetD3D12ResourceFromAllocation)(_In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource)NO_EXCEPTION;
 
-   /**
+  /**
     * DmlCopyTensor
 	 * This api is used copy a tensor allocated by the DML EP Allocator to the CPU.
     * 
@@ -399,7 +398,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* DmlCopyTensor)(_In_ OrtExecutionProvider* provider, _In_ OrtValue* src, _In_ OrtValue* dst)NO_EXCEPTION;
 
-   /**
+  /**
     * GetProviderMemoryInfo
 	 * This api gets the memory info object associated with an EP.
     * 
@@ -407,7 +406,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* GetProviderMemoryInfo)(_In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info)NO_EXCEPTION;
 
-   /**
+  /**
     * GetProviderAllocator
 	 * This api gets associated allocator used by a provider.
     * 
@@ -415,7 +414,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* GetProviderAllocator)(_In_ OrtExecutionProvider* provider, OrtAllocator** allocator)NO_EXCEPTION;
 
-   /**
+  /**
     * FreeProviderAllocator
 	 * This api frees an allocator.
     * 
@@ -424,7 +423,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* FreeProviderAllocator)(_In_ OrtAllocator* allocator)NO_EXCEPTION;
 
-   /**
+  /**
     * GetValueMemoryInfo
 	 * This api gets the memory info of an OrtValue.
     * 
@@ -432,7 +431,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* GetValueMemoryInfo)(const OrtValue* value, OrtMemoryInfo** memory_info)NO_EXCEPTION;
 
-   /**
+  /**
     * ExecutionProviderSync
 	 * This api syncs the EP.
     * 
@@ -440,7 +439,7 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* ExecutionProviderSync)(_In_ OrtExecutionProvider* provider)NO_EXCEPTION;
 
-   /**
+  /**
     * CreateCustomRegistry
 	 * This api creates a custom registry that callers can populate with cusom ops.
     * 
@@ -448,15 +447,15 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* CreateCustomRegistry)(_Out_ IMLOperatorRegistry** registry)NO_EXCEPTION;
 
-   /**
+  /**
     * ValueGetDeviceId
 	 * This api returns the device id of the OrtValue.
     * 
     * WinML uses this to determine if an OrtValue is created on the needed device.
     */
   OrtStatus*(ORT_API_CALL* ValueGetDeviceId)(_In_ OrtValue* ort_value, _Out_ int16_t* device_id)NO_EXCEPTION;
-  
-   /**
+
+  /**
     * SessionGetInputRequiredDeviceId
 	 * This api returns the required device id for a model input.
     * 

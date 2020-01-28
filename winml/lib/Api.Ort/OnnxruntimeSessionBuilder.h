@@ -14,10 +14,10 @@ IOrtSessionBuilder : IUnknown {
 
   virtual HRESULT STDMETHODCALLTYPE CreateSession(
       OrtSessionOptions * options,
-      OrtSession** session) = 0;
+      OrtSession * *session) = 0;
 
   virtual HRESULT STDMETHODCALLTYPE Initialize(
-      OrtSession* session) = 0;
+      OrtSession * session) = 0;
 };
 
 }  // namespace Windows::AI::MachineLearning

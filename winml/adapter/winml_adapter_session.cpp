@@ -230,7 +230,7 @@ ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* s
   auto ort_value = std::make_unique<OrtValue>();
   auto status = onnxruntime::utils::CopyOneInputAcrossDevices(session_state, input_name, *orig_value, *ort_value.get());
   if (!status.IsOK()) {
-      return onnxruntime::ToOrtStatus(status);
+    return onnxruntime::ToOrtStatus(status);
   }
 
   *new_value = ort_value.release();

@@ -177,23 +177,23 @@ HRESULT OnnxruntimeValue::GetResource(WinML::Resource& out) {
 
   void* mutable_data = nullptr;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorMutableData(value_.get(), &mutable_data),
-	                      ort_api);
+                          ort_api);
 
   OrtExecutionProvider* ort_provider;
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(engine_->UseOrtSession(), 0, &ort_provider),
-	                      ort_api);
+                          ort_api);
 
   bool is_cpu = false;
   if (SUCCEEDED(IsCpu(&is_cpu)) && !is_cpu) {
     void* resource;
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, mutable_data,
-                                                         reinterpret_cast<ID3D12Resource**>(&resource)),
-		                    ort_api);
+                                                                                 reinterpret_cast<ID3D12Resource**>(&resource)),
+                            ort_api);
     out = WinML::Resource(resource, [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
     int is_tensor;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->IsTensor(value_.get(), &is_tensor),
-		                    ort_api);
+                            ort_api);
     if (is_tensor == 0) {
       out = WinML::Resource(mutable_data, [](void*) { /*do nothing, as this pointer is actually owned elsewhere in ORT! */ });
       return S_OK;
@@ -201,12 +201,12 @@ HRESULT OnnxruntimeValue::GetResource(WinML::Resource& out) {
 
     OrtTensorTypeAndShapeInfo* info = nullptr;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorTypeAndShape(value_.get(), &info),
-		                    ort_api);
+                            ort_api);
     auto type_and_shape_info = UniqueOrtTensorTypeAndShapeInfo(info, ort_api->ReleaseTensorTypeAndShapeInfo);
 
     ONNXTensorElementDataType data_type;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTensorElementType(type_and_shape_info.get(), &data_type),
-		                    ort_api);
+                            ort_api);
 
     if (data_type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
       auto strings = GetStrings(ort_api, value_.get(), info);
@@ -932,9 +932,9 @@ HRESULT CreateSequenceOfMapsValue(OnnxruntimeEngine* engine, IInspectable* seque
 
   OrtValue* sequence_value;
   RETURN_HR_IF_NOT_OK_MSG(
-	  ort_api->CreateValue(element_ort_values.data(), element_ort_values.size(),
-	      ONNXType::ONNX_TYPE_SEQUENCE, &sequence_value),
-	  ort_api);
+      ort_api->CreateValue(element_ort_values.data(), element_ort_values.size(),
+                           ONNXType::ONNX_TYPE_SEQUENCE, &sequence_value),
+      ort_api);
   auto unique_sequence_ort_value = UniqueOrtValue(sequence_value, ort_api->ReleaseValue);
 
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, engine, std::move(unique_sequence_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
@@ -1037,15 +1037,15 @@ HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue*
     int16_t source_location;
     int16_t input_required_location;
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(src_value->UseOrtValue(), &source_location),
-		                ort_api);
+                            ort_api);
     RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionGetInputRequiredDeviceId(session_.get(), name, &input_required_location),
-		                ort_api);
+                            ort_api);
 
     if (source_location != input_required_location) {
       OrtValue* dest_ort_value = nullptr;
       RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->SessionCopyOneInputAcrossDevices(session_.get(), name,
-		                          src_value->UseOrtValue(), &dest_ort_value),
-		                      ort_api);
+                                                                                  src_value->UseOrtValue(), &dest_ort_value),
+                              ort_api);
       auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
 
       RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)));
