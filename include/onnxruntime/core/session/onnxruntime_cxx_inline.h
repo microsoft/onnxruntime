@@ -76,18 +76,6 @@ inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, O
   ThrowOnError(Global<void>::api_.CreateMemoryInfo(name, type, id, mem_type, &p_));
 }
 
-inline const char* MemoryInfo::Name() const {
-  const char* out = nullptr;
-  ThrowOnError(Global<void>::api_.MemoryInfoGetName(p_, &out));
-  return out;
-}
-
-inline OrtMemType MemoryInfo::MemType() const {
-  OrtMemType out;
-  ThrowOnError(Global<void>::api_.MemoryInfoGetMemType(p_, &out));
-  return out;
-}
-
 inline Env::Env(OrtLoggingLevel default_warning_level, _In_ const char* logid) {
   ThrowOnError(Global<void>::api_.CreateEnv(default_warning_level, logid, &p_));
 }
@@ -357,21 +345,6 @@ inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-template <>
-inline Value Value::CreateTensor<std::string>(const OrtMemoryInfo*, std::string* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
-  // convert the array of std::string to an array of const char *
-  std::vector<const char*> string_vector;
-  for (size_t i = 0; i < p_data_element_count; ++i) {
-    string_vector.push_back(p_data[i].c_str());
-  }
-  // now make an empty tensor using the default allocator (strings have to make a copy)
-  AllocatorWithDefaultOptions allocator;
-  auto tensor = Value::CreateTensor(static_cast<OrtAllocator*>(allocator), shape, shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-  // now fill the string data
-  ThrowOnError(GetApi().FillStringTensor(tensor, string_vector.data(), string_vector.size()));
-  return tensor;
-}
-
 inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
@@ -442,33 +415,6 @@ inline size_t Value::GetStringTensorDataLength() const {
 
 inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
   ThrowOnError(Global<void>::api_.GetStringTensorContent(p_, buffer, buffer_length, offsets, offsets_count));
-}
-
-inline std::vector<std::string> Value::GetStrings() {
-  std::vector<std::string> out;
-  // make sure this is an array of strings
-  auto shape = this->GetTensorTypeAndShapeInfo().GetShape();
-  // there needs to be only one dimension
-  if (shape.size() != 1) throw Ort::Exception("shape.size() != 1", ORT_INVALID_ARGUMENT);
-  // make a big buffer to hold all the string data
-  size_t buflen = this->GetStringTensorDataLength();
-  std::vector<uint8_t> buf(buflen);
-  std::vector<size_t> offsets(shape[0]);
-  this->GetStringTensorContent(buf.data(), buf.size(), offsets.data(), offsets.size());
-  // now go build all the strings
-  for (auto i = 0; i < shape[0]; ++i) {
-    std::string str;
-    size_t strlen = 0;
-    // are we on the last one?
-    if (i == (shape[0] - 1ll)) {
-      strlen = buflen - offsets[i];
-    } else {
-      strlen = offsets[i + 1ll] - offsets[i];
-    }
-    str.append(reinterpret_cast<const char *>(buf.data() + offsets[i]), strlen);
-    out.push_back(str);
-  }
-  return out;
 }
 
 template <typename T>
