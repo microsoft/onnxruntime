@@ -2380,7 +2380,7 @@ TEST(GradientCheckerTest, LayerNormGrad) {
     float max_error;
     float error_tolerance = 1e-2f;
 
-    OpDef op_def{"LayerNormalization", kMSDomain, 1};
+    OpDef op_def{"LayerNormalization"};
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, B_info}, {shape, mean_info, var_info}, &max_error);
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }

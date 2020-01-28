@@ -40,7 +40,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
   const std::vector<int64_t>& stats_dims = keep_dims ? n_and_ones_dims : n_dims;
 
-  CompareOpTester test("LayerNormalization", 1, kMSDomain);
+  CompareOpTester test("LayerNormalization");
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {

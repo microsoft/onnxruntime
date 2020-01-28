@@ -80,6 +80,8 @@ class LayerNormOpTester : public OpTester {
     AddInput<float>("B", B_dims_, B_data_, true);
 
     AddOutput<float>("output", Y_dims_, Y_data_);
+    AddOutput<float>("mean", mean_);
+    AddOutput<float>("inv_std_var", inv_std_var_);
   }
   void Run() {
 #ifndef NDEBUG
@@ -92,19 +94,19 @@ class LayerNormOpTester : public OpTester {
     ComputeWithCUDA(cuda_fetches);
     ComputeOriSubgraphWithCPU(subgraph_fetches);
 
-    // Compare CPU with original subgraph
-    ASSERT_TRUE(cpu_fetches.size() == subgraph_fetches.size());
-    for (size_t i = 0; i < cpu_fetches.size(); i++) {
+    // Compare CPU with original subgraph on the output(0) - Y
+    ASSERT_TRUE(cpu_fetches.size() >= subgraph_fetches.size());
+    for (size_t i = 0; i < subgraph_fetches.size(); i++) {
       if (cpu_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
         VLOGS_DEFAULT(1) << "Checking tensor " << i;
         CheckTensor(subgraph_fetches[i].Get<Tensor>(), cpu_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
       }
     }
 
-    // Compare GPU with original subgraph
+    // Compare GPU with original subgraph on the output(0) - Y
     if (DefaultCudaExecutionProvider()) {
-      ASSERT_TRUE(cuda_fetches.size() == subgraph_fetches.size());
-      for (size_t i = 0; i < cuda_fetches.size(); i++) {
+      ASSERT_TRUE(cuda_fetches.size() >= subgraph_fetches.size());
+      for (size_t i = 0; i < subgraph_fetches.size(); i++) {
         if (cuda_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
           VLOGS_DEFAULT(1) << "Checking tensor " << i;
           CheckTensor(subgraph_fetches[i].Get<Tensor>(), cuda_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
@@ -128,6 +130,8 @@ class LayerNormOpTester : public OpTester {
   std::vector<float> scale_data_;
   std::vector<float> B_data_;
   std::vector<float> Y_data_;
+  float mean_;
+  float inv_std_var_;
 
   float epsilon_;
   int64_t axis_;
@@ -234,7 +238,7 @@ TEST(LayerNormTest, BERTLayerNorm) {
   std::vector<int64_t> scale_dims{128};
   std::vector<int64_t> B_dims{128};
   std::vector<int64_t> Y_dims{4, 128};
-  LayerNormOpTester test("LayerNormalization", X_dims, scale_dims, B_dims, Y_dims, epsilon, -1, 1);
+  LayerNormOpTester test("LayerNormalization", X_dims, scale_dims, B_dims, Y_dims, epsilon, -1, 1, 9);
   test.Run();
 }
 

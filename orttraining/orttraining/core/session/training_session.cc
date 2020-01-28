@@ -11,6 +11,7 @@
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #include "core/optimizer/gelu_fusion.h"
+#include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/identity_elimination.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -111,6 +112,8 @@ Status TrainingSession::ApplyTransformationsToMainGraph() {
     std::unordered_set<std::string> compatible_eps = {};
     auto gelu_transformer = onnxruntime::make_unique<GeluFusion>(compatible_eps);
     graph_transformation_mgr.Register(std::move(gelu_transformer), TransformerLevel::Level2);
+    auto layernorm_transformer = onnxruntime::make_unique<LayerNormFusion>(compatible_eps);
+    graph_transformation_mgr.Register(std::move(layernorm_transformer), TransformerLevel::Level2);
 
     auto status = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *session_logger_);
     return status;

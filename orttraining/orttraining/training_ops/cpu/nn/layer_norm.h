@@ -6,17 +6,7 @@
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
-
-template <typename T>
-class LayerNorm final : public OpKernel {
- public:
-  LayerNorm(const OpKernelInfo& op_kernel_info);
-  Status Compute(OpKernelContext* p_op_kernel_context) const override;
-
- private:
-  int64_t axis_;
-  float epsilon_;
-};
+namespace contrib {
 
 template <typename T>
 class LayerNormGrad final : public OpKernel {
@@ -28,4 +18,5 @@ class LayerNormGrad final : public OpKernel {
   int64_t axis_;
 };
 
+}  // namespace contrib
 }  // namespace onnxruntime
