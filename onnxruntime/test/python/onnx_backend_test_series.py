@@ -156,6 +156,12 @@ def create_backend_test(testname=None):
             current_failing_tests += ['^test_scan9_sum_cpu',#sum_out output node not defined, temporarily disabling test
                                       '^test_scan_sum_cpu'] #sum_out output node not defined, temporarily disabling test
 
+        if c2.supports_device('MIGRAPHX'):
+            current_failing_tests += ['^test_constant_pad_cpu', '^test_softmax_axis_1_cpu', '^test_softmax_axis_0_cpu',
+                            '^test_softmax_default_axis_cpu', '^test_round_cpu', '^test_lrn_default_cpu',
+                            '^test_lrn_cpu', '^test_logsoftmax_axis_0_cpu', '^test_logsoftmax_axis_1_cpu', 
+                            '^test_logsoftmax_default_axis_cpu']
+
         filters = current_failing_tests + \
                   tests_with_pre_opset7_dependencies_filters() + \
                   unsupported_usages_filters() + \
