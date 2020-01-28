@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <windows.h>
 #include "core/platform/telemetry.h"
 #include "core/platform/env.h"
 
@@ -67,7 +66,7 @@ void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_la
   ORT_UNUSED_PARAMETER(total_run_duration_since_last);
 }
 
-void Telemetry::LogExecutionProviderEvent(LUID adapterLuid) const {
+void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
   ORT_UNUSED_PARAMETER(adapterLuid);
 }
 

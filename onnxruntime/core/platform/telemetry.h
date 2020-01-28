@@ -57,7 +57,7 @@ class Telemetry {
 
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const;
 
-  virtual void LogExecutionProviderEvent(LUID adapterLuid) const;
+  virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
