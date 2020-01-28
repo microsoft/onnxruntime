@@ -431,11 +431,25 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
                               5.f, 6.f,
                               7.f, 8.f}};
 
-  std::vector<int64_t> splits{1, -1, 3};  // 0 is not valid
+  std::vector<int64_t> splits{1, -1, 3};  // -1 is not valid
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(axis, splits, input, outputs, false, true, "Invalid value in 'split' attribute");  //TensorRT parser: Assertion failed: axis != BATCH_DIM
+}
+
+TEST(SplitOperatorTest, ZeroValueInSplitAttribute) {
+  const int64_t axis = 0;
+  std::vector<ShapeAndFloatData> outputs;
+  // input shape and data
+  ShapeAndFloatData input = CreateInput({0});
+
+  std::vector<int64_t> splits{0, 0, 0};
+  outputs.push_back({{0}, {}});
+  outputs.push_back({{0}, {}});
+  outputs.push_back({{0}, {}});
+
+  RunTest<float>(axis, splits, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 /*
