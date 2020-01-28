@@ -56,7 +56,6 @@ function(get_winml_test_scenario_src
   output_winml_test_scenario_src
   output_winml_test_scenario_libs
 )
-  message(${winml_test_src_path})
   if (onnxruntime_USE_DML)
     file(GLOB winml_test_scenario_src CONFIGURE_DEPENDS "${winml_test_src_path}/scenario/cppwinrt/*.cpp")
     set(${output_winml_test_scenario_libs} "onnxruntime_providers_dml" PARENT_SCOPE)
@@ -86,7 +85,7 @@ add_library(winml_google_test_lib STATIC ${WINML_TEST_SRC_DIR}/common/googletest
 set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
-get_winml_test_api_src(WINML_TEST_SRC_DIR winml_test_api_src)
+get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
 add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
