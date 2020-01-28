@@ -10,7 +10,7 @@
 
 namespace onnxruntime {
 
-#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 void* MiMallocAllocator::Alloc(size_t size) {
   return mi_malloc(size);
 }

@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
   using TArenaAllocator = MiMallocArena;
 #else
   using TArenaAllocator = BFCArena;

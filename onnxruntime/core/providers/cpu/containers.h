@@ -3,13 +3,13 @@
 
 #pragma once
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_STL_ALLOCATOR)
 #include <mimalloc.h>
 #endif
 
 namespace onnxruntime {
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_STL_ALLOCATOR)
 template <typename T>
 using FastAllocVector = std::vector<T,mi_stl_allocator<T>>;
 #else

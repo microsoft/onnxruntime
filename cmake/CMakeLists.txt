@@ -531,7 +531,7 @@ else()
 endif()
 
 if (onnxruntime_USE_JEMALLOC)
-  if (onnxruntime_USE_MIMALLOC)
+  if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
     message( FATAL_ERROR "You cannot specify both jemalloc and mimalloc." )
   endif()
 

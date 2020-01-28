@@ -1,4 +1,4 @@
-#if 0 && defined(USE_MIMALLOC) // explicitly disable subbing mimalloc in for changes that interact with python
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 #include "core/common/common.h"
 #include "core/framework/arena.h"
 #include "onnxruntime_config.h"
