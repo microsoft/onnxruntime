@@ -266,7 +266,7 @@ void DmlCommandRecorder::ExecuteCommandList(
     m_currentDescriptorHeap = nullptr;
     Open();
 
-    // The caller can re-use relevent resources after the next set of work to be
+    // The caller can re-use relevant resources after the next set of work to be
     // flushed has completed.  Its command list hasn't been executed yet, just batched.
     GpuEvent gpuEvent = m_queue->GetNextCompletionEvent();
     gpuEvent.fence.CopyTo(fence);
