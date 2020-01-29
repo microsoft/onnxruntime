@@ -6,8 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 
-// This value is used in structures passed to ORT so that a newer version of ORT will still work with
-#define ORT_API_VERSION 1
+// This value is used in structures passed to ORT so that a newer version of ORT will still work with them
+#define ORT_API_VERSION 2
 
 #ifdef __cplusplus
 extern "C" {
@@ -214,6 +214,8 @@ typedef struct OrtApi OrtApi;
 
 struct OrtApiBase {
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
+  // nullptr will be returned if the version is unsupported, for example when using a runtime older than this header file
+
   const char*(ORT_API_CALL* GetVersionString)() NO_EXCEPTION;
 };
 typedef struct OrtApiBase OrtApiBase;
