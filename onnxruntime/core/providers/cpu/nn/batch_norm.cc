@@ -37,16 +37,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     BatchNormalization,
     9,
     KernelDefBuilder()
-        .TypeConstraint("X", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("scale", {DataTypeImpl::GetTensorType<float>(),
-                                  DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("B", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("mean", {DataTypeImpl::GetTensorType<float>(),
-                                 DataTypeImpl::GetTensorType<double>()})
-        .TypeConstraint("var", {DataTypeImpl::GetTensorType<float>(),
-                                DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     BatchNorm<float>);
 
 template <>
