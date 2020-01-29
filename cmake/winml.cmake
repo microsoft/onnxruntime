@@ -621,7 +621,7 @@ endif()
 
 # This is needed to suppress warnings that complain that no imports are found for the delayloaded library cublas64*.lib
 # When cuda is enabled in the pipeline, it sets CMAKE_SHARED_LINKER_FLAGS which affects all targets including winml_dll.
-# However, there are no cuda imports in winml_dll, and the linkler throws the 4199 warning.
+# However, there are no cuda imports in winml_dll, and the linker throws the 4199 warning.
 # This is needed to allow winml_dll build with cuda enabled.
 set_target_properties(winml_dll
   PROPERTIES
