@@ -1375,23 +1375,20 @@ Second example, if we wanted to add and remove some members, we'd do this:
 
 static constexpr OrtApi ort_api_1_to_2 = {
 
-    // Shipped as version 1 - DO NOT MODIFY
+    // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
 
-    // DO NOT MODIFY
     &OrtApis::CreateEnv,
     &OrtApis::CreateEnvWithCustomLogger,
     &OrtApis::EnableTelemetryEvents,
     &OrtApis::DisableTelemetryEvents,
 
-    // DO NOT MODIFY
     &OrtApis::CreateSession,
     &OrtApis::CreateSessionFromArray,
     &OrtApis::Run,
 
-    // DO NOT MODIFY
     &OrtApis::CreateSessionOptions,
     &OrtApis::SetOptimizedModelFilePath,
     &OrtApis::CloneSessionOptions,
@@ -1409,13 +1406,11 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::SetIntraOpNumThreads,
     &OrtApis::SetInterOpNumThreads,
 
-    // DO NOT MODIFY
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,
     &OrtApis::AddCustomOpDomain,
     &OrtApis::RegisterCustomOpsLibrary,
 
-    // DO NOT MODIFY
     &OrtApis::SessionGetInputCount,
     &OrtApis::SessionGetOutputCount,
     &OrtApis::SessionGetOverridableInitializerCount,
@@ -1426,7 +1421,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::SessionGetOutputName,
     &OrtApis::SessionGetOverridableInitializerName,
 
-    // DO NOT MODIFY
     &OrtApis::CreateRunOptions,
     &OrtApis::RunOptionsSetRunLogVerbosityLevel,
     &OrtApis::RunOptionsSetRunLogSeverityLevel,
@@ -1437,24 +1431,20 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::RunOptionsSetTerminate,
     &OrtApis::RunOptionsUnsetTerminate,
 
-    // DO NOT MODIFY
     &OrtApis::CreateTensorAsOrtValue,
     &OrtApis::CreateTensorWithDataAsOrtValue,
     &OrtApis::IsTensor,
     &OrtApis::GetTensorMutableData,
     &OrtApis::FillStringTensor,
 
-    // DO NOT MODIFY
     &OrtApis::GetStringTensorDataLength,
     &OrtApis::GetStringTensorContent,
 
-    // DO NOT MODIFY
     &OrtApis::CastTypeInfoToTensorInfo,
     &OrtApis::GetOnnxTypeFromTypeInfo,
     &OrtApis::CreateTensorTypeAndShapeInfo,
     &OrtApis::SetTensorElementType,
 
-    // DO NOT MODIFY
     &OrtApis::SetDimensions,
     &OrtApis::GetTensorElementType,
     &OrtApis::GetDimensionsCount,
@@ -1482,7 +1472,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::CreateOpaqueValue,
     &OrtApis::GetOpaqueValue,
 
-    // DO NOT MODIFY
     &OrtApis::KernelInfoGetAttribute_float,
     &OrtApis::KernelInfoGetAttribute_int64,
     &OrtApis::KernelInfoGetAttribute_string,
@@ -1491,7 +1480,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::KernelContext_GetInput,
     &OrtApis::KernelContext_GetOutput,
 
-    // DO NOT MODIFY
     &OrtApis::ReleaseEnv,
     &OrtApis::ReleaseStatus,
     &OrtApis::ReleaseMemoryInfo,
@@ -1502,10 +1490,9 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::ReleaseTensorTypeAndShapeInfo,
     &OrtApis::ReleaseSessionOptions,
     &OrtApis::ReleaseCustomOpDomain,
-    // End of Version 1 - DO NOT MODIFY ABOVE
+    // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 2 - in development, feel free to add/remove/rearrange here
-
+    // Version 2 - In development, feel free to add/remove/rearrange here
 };
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
