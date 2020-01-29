@@ -248,7 +248,6 @@ public class OrtEnvironment implements AutoCloseable {
      */
     @Override
     public synchronized void close() throws OrtException {
-        closed = true;
         synchronized (refCount) {
             int curCount = refCount.get();
             if (curCount != 0) {
@@ -256,6 +255,7 @@ public class OrtEnvironment implements AutoCloseable {
             }
             if (curCount == 1) {
                 close(OnnxRuntime.ortApiHandle, nativeHandle);
+                closed = true;
                 INSTANCE = null;
             }
         }
