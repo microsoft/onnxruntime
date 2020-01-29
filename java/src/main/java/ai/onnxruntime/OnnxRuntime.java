@@ -8,6 +8,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -39,8 +41,10 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    load(ONNXRUNTIME_LIBRARY_NAME);
-    load(ONNXRUNTIME_JNI_LIBRARY_NAME);
+    Path tempDirectory = Files.createTempDirectory("onnxruntime-java");
+    tempDirectory.toFile().deleteOnExit();
+    load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
+    load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
     ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
     loaded = true;
   }
@@ -48,10 +52,11 @@ final class OnnxRuntime {
   /**
    * Load a shared library by name.
    *
+   * @param tempDirectory The temp directory to write the library resource to.
    * @param library The bare name of the library.
    * @throws IOException If the file failed to read or write.
    */
-  private static void load(String library) throws IOException {
+  private static void load(Path tempDirectory, String library) throws IOException {
     // 1) The user may skip loading of this library:
     String skip = System.getProperty("onnxruntime.native." + library + ".skip");
     if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {
@@ -86,27 +91,20 @@ final class OnnxRuntime {
       logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
     } else {
       // 3b) Found in resources, load via temporary file
+      File tempFile = tempDirectory.resolve(libraryFileName).toFile();
+      tempFile.deleteOnExit();
       logger.log(
           Level.FINE,
-          "Attempting to load native library '" + library + "' from resource path " + resourcePath);
-      File temp = File.createTempFile("javaload_", libraryFileName);
-      try {
-        byte[] buffer = new byte[1024];
-        int readBytes;
-        try (FileOutputStream os = new FileOutputStream(temp)) {
-          while ((readBytes = is.read(buffer)) != -1) {
-            os.write(buffer, 0, readBytes);
-          }
-        }
-        System.load(temp.getAbsolutePath());
-        logger.log(Level.FINE, "Loaded native library '" + library + "' from resources");
-      } finally {
-        // attempt to delete, however the file may still be open on some platforms, so the delete may fail
-        if(!temp.delete()) {
-          // mark the file to be deleted at shutdown
-          temp.deleteOnExit();
+          "Attempting to load native library '" + library + "' from resource path " + resourcePath + " copying to " + tempFile);
+      byte[] buffer = new byte[1024];
+      int readBytes;
+      try (FileOutputStream os = new FileOutputStream(tempFile)) {
+        while ((readBytes = is.read(buffer)) != -1) {
+          os.write(buffer, 0, readBytes);
         }
       }
+      System.load(tempFile.getAbsolutePath());
+      logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
     }
   }
 
