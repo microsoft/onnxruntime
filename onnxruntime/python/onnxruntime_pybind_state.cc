@@ -84,8 +84,14 @@
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
+
+#ifdef ENABLE_TRAINING
+#include "core/session/IOBinding.h"
+#include "orttraining/core/session/training_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/data_transfer_utils.h"
+#endif
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -107,10 +113,6 @@ size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 std::string nuphar_settings;
-#endif
-
-#ifdef ENABLE_TRAINING
-#include "orttraining/core/framework/data_transfer_utils.h"
 #endif
 
 namespace onnxruntime {

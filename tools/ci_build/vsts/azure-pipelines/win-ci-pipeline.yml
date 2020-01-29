@@ -25,6 +25,7 @@ jobs:
       --use_dnnl
       --use_openmp
       --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
+      --enable_training
 
   steps:
   - checkout: self

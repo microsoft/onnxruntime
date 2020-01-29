@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Linux_CPU
+- job: Onnxruntime_Linux_GPU_Inference
 
   timeoutInMinutes: 60
 
@@ -17,14 +17,9 @@ jobs:
 
   - script: >-
       tools/ci_build/vsts/linux/run_dockerbuild.sh
-      -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)
-      -x "
-      --azure_sas_key=$(AZURESASKEY)
-      --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
-      --use_mklml --use_dnnl
-      --build_wheel
-      --enable_training
-      "
+      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x "
+      --azure_sas_key=$(AZURESASKEY) --test_data_url $(TestDataUrl)
+      --test_data_checksum $(TestDataChecksum) --build"
     displayName: 'Command Line Script'
     env:
       AZURESASKEY: $(AZURESASKEY)
@@ -41,3 +36,4 @@ jobs:
     displayName: 'Component Detection'
 
   - template: templates/clean-agent-build-directory-step.yml
+

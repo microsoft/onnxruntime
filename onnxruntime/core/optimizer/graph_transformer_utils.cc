@@ -26,9 +26,12 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
-#include "orttraining/core/optimizer/matmul_transpose_fusion.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/matmul_transpose_fusion.h"
+#endif
 
 namespace onnxruntime {
 
@@ -114,8 +117,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
-      std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_cuda_execution_providers));
+#ifdef ENABLE_TRAINING
+      {
+        std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
+        transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_cuda_execution_providers));
+      }
+#endif
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;

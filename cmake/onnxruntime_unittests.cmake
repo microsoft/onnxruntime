@@ -291,8 +291,6 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 set(ONNXRUNTIME_TEST_LIBS
-    onnxruntime_training_runner
-    onnxruntime_training
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
@@ -315,6 +313,10 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_common
     onnxruntime_mlas
 )
+
+if (onnxruntime_ENABLE_TRAINING)
+  set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_TEST_LIBS})
+endif()
 
 set(onnxruntime_test_providers_libs
     onnxruntime_test_utils_for_framework
@@ -374,8 +376,12 @@ target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/i
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 
 if (SingleUnitTestProject)
-  set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_training_src})
+  set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src} ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
   set(all_dependencies ${onnxruntime_test_providers_dependencies} )
+
+  if (onnxruntime_ENABLE_TRAINING)
+    list(APPEND all_tests ${onnxruntime_test_training_src})
+  endif()
 
   if (onnxruntime_USE_TVM)
     list(APPEND all_tests ${onnxruntime_test_tvm_src})

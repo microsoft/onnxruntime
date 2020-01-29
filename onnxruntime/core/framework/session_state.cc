@@ -284,7 +284,8 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   return Status::OK();
 }
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes, const std::vector<int>& feed_mlvalue_idxs) const {
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+                                                              const std::vector<int>& feed_mlvalue_idxs) const {
   int64_t key = CalculateMemoryPatternsKey(input_shapes);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
@@ -300,6 +301,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<
     }
     return nullptr;
 #else
+    ORT_UNUSED_PARAMETER(feed_mlvalue_idxs);
     return nullptr;
 #endif
   }

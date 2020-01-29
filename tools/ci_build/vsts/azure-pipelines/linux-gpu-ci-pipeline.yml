@@ -15,7 +15,7 @@ jobs:
 
   - template: templates/set-test-data-variables-step.yml
 
-  - script: 'tools/ci_build/vsts/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x " --azure_sas_key=$(AZURESASKEY) --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)"'
+  - script: 'tools/ci_build/vsts/linux/run_dockerbuild.sh -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) -x " --azure_sas_key=$(AZURESASKEY) --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum) --enable_training"'
     displayName: 'Command Line Script'
     env:
       AZURESASKEY: $(AZURESASKEY)

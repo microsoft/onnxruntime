@@ -12,8 +12,11 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
-#include "orttraining/core/session/training_session.h"
 #include "test/util/include/default_providers.h"
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/session/training_session.h"
+#endif
 
 using namespace ::onnxruntime::logging;
 
@@ -257,7 +260,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& outp
 
   // first ensure data types match
   EXPECT_EQ(exp_seq.DataType(), output_seq.DataType()) << "Data types don't match: Expected: " << DataTypeImpl::ToString(exp_seq.DataType())
-                                             << " Output: " << output_seq.DataType() << " provider_type: " << provider_type;
+                                                       << " Output: " << output_seq.DataType() << " provider_type: " << provider_type;
 
   // check num of contained tensors
   size_t expected_num_tensors = exp_seq.Size();
@@ -605,7 +608,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
-        kAclExecutionProvider,};
+        kAclExecutionProvider,
+    };
 
     bool has_run = false;
 
@@ -722,6 +726,7 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
   }
 }
 
+#ifdef ENABLE_TRAINING
 template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(Model& model,
                                                                                 training::TrainingSession& session_object,
                                                                                 ExpectResult expect_result,
@@ -731,6 +736,7 @@ template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(
                                                                                 std::vector<std::string> output_names,
                                                                                 const std::string& provider_type,
                                                                                 const CustomOutputVerifierFn& custom_output_verifier);
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

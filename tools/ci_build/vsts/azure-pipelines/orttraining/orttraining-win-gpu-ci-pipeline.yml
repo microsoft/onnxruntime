@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Win_GPU
+- job: Onnxruntime_Win_GPU_Training
 
   timeoutInMinutes: 180
 

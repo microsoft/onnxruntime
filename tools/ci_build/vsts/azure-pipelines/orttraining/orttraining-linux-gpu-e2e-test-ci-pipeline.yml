@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Linux_GPU_E2E_Test
+- job: Onnxruntime_Linux_GPU_Training_E2E_Test
 
   timeoutInMinutes: 60
 

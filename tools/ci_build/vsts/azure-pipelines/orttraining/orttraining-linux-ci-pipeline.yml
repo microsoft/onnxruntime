@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Linux_CPU
+- job: Onnxruntime_Linux_CPU_Training
 
   timeoutInMinutes: 60
 

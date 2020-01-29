@@ -1,7 +1,7 @@
 trigger: none
 
 jobs:
-- job: Onnxruntime_Mac_CPU
+- job: Onnxruntime_Mac_CPU_Training
 
   timeoutInMinutes: 60
 
