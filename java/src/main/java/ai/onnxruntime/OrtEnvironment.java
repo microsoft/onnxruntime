@@ -125,7 +125,7 @@ public class OrtEnvironment implements AutoCloseable {
 
     final OrtAllocator defaultAllocator;
 
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     /**
      * Create an OrtEnvironment using a default name.
