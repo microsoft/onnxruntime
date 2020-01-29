@@ -8,7 +8,6 @@
 
 #include <core/providers/winml/winml_provider_factory.h>
 #include <core/providers/cpu/cpu_provider_factory.h>
-#include <core/providers/dml/dml_provider_factory.h>
 
 const OrtApi* GetVersion1Api();
 

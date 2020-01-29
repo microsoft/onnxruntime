@@ -170,7 +170,7 @@ GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
 
     // Get the ORT registry
     return abi_custom_registry->GetRegistries();
-#endif USE_DML
+#endif // USE_DML
   }
   return {};
 }
@@ -191,8 +191,10 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterCustomRegistry, _In_ OrtSession* sess
 
 ORT_API_STATUS_IMPL(winmla::CreateCustomRegistry, _Out_ IMLOperatorRegistry** registry) {
   API_IMPL_BEGIN
+#ifdef USE_DML
   auto impl = wil::MakeOrThrow<winmla::AbiCustomRegistryImpl>();
   *registry = impl.Detach();
+#endif // USE_DML
   return nullptr;
   API_IMPL_END
 }
