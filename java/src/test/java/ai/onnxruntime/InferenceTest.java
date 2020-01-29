@@ -794,7 +794,7 @@ public class InferenceTest {
             String inputName = session.getInputNames().iterator().next();
 
             Map<String,OnnxTensor> container = new HashMap<>();
-            String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test"}};
+            String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test \u263A"}};
             OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
 
@@ -809,14 +809,14 @@ public class InferenceTest {
                 assertEquals("this", labelOutput[0]);
                 assertEquals("is", labelOutput[1]);
                 assertEquals("identity", labelOutput[2]);
-                assertEquals("test", labelOutput[3]);
+                assertEquals("test \u263A", labelOutput[3]);
                 assertEquals(4, labelOutput.length);
 
                 OnnxValue.close(container);
                 container.clear();
             }
 
-            String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
+            String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test \u263A"};
             ov = OnnxTensor.createTensor(env,tensorInFlatArr, new long[]{2,2});
             container.put(inputName,ov);
 
@@ -831,7 +831,7 @@ public class InferenceTest {
                 assertEquals("this", labelOutput[0]);
                 assertEquals("is", labelOutput[1]);
                 assertEquals("identity", labelOutput[2]);
-                assertEquals("test", labelOutput[3]);
+                assertEquals("test \u263A", labelOutput[3]);
                 assertEquals(4, labelOutput.length);
             }
         }
