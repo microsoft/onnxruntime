@@ -161,6 +161,7 @@ ORT_API_STATUS_IMPL(winmla::SessionRegisterGraphTransformers, _In_ OrtSession* s
 inline std::list<std::shared_ptr<onnxruntime::CustomRegistry>>
 GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
   if (registry != nullptr) {
+#ifdef USE_DML
     // Down-cast to the concrete type.
     // The only supported input is the AbiCustomRegistry type.
     // Other implementations of IMLOperatorRegistry are forbidden.
@@ -169,6 +170,7 @@ GetLotusCustomRegistries(IMLOperatorRegistry* registry) {
 
     // Get the ORT registry
     return abi_custom_registry->GetRegistries();
+#endif USE_DML
   }
   return {};
 }
