@@ -1367,7 +1367,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
 	old one OrtApi1. In the new OrtApi we'd add or remove any members that we desire.
 
-	In this file, we'd create a new copy of ort_api_1_to_2 caled ort_api_3 and make the corresponding changes that were
+	In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
 	made to the new OrtApi.
 
 	In GetApi we now make it return ort_api_3 for version 3.
