@@ -7,7 +7,7 @@
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with
-#define ORT_API_VERSION 1
+#define ORT_API_VERSION 2
 
 #ifdef __cplusplus
 extern "C" {

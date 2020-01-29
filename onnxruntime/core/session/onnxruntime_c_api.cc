@@ -1353,42 +1353,45 @@ If there is no desire to have the headers still expose the older APIs (clutter, 
 definition should be moved to a file included by this file so that it's still defined here for binary compatibility
 but isn't visible in public headers.
 
-So for example, if we wanted to just add some new members to the ort_api_1, we'd take the following steps:
+So for example, if we wanted to just add some new members to the ort_api_1_to_2, we'd take the following steps:
 
 	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
 
-	In this file, we'd correspondingly add the member values to the end of the ort_api_1 structure, and also rename
-	it to ort_api_1_to_2.
+	In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
+	it to ort_api_1_to_3.
 
-	Then in GetApi we'd make it return ort_api_1_to_2 for versions 1 through 2.
+	Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
 
 Second example, if we wanted to add and remove some members, we'd do this:
 
 	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
 	old one OrtApi1. In the new OrtApi we'd add or remove any members that we desire.
 
-	In this file, we'd create a new copy of ort_api_1 caled ort_api_2 and make the corresponding changes that were
+	In this file, we'd create a new copy of ort_api_1_to_2 caled ort_api_3 and make the corresponding changes that were
 	made to the new OrtApi.
 
-	In GetApi we now make it return ort_api_2 for version 2.
+	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1 = {
+static constexpr OrtApi ort_api_1_to_2 = {
 
-    // READ the 'Rules on how to add a new API version' above before modifying this structure!
+    // Shipped as version 1 - DO NOT MODIFY
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
 
+    // DO NOT MODIFY
     &OrtApis::CreateEnv,
     &OrtApis::CreateEnvWithCustomLogger,
     &OrtApis::EnableTelemetryEvents,
     &OrtApis::DisableTelemetryEvents,
 
+    // DO NOT MODIFY
     &OrtApis::CreateSession,
     &OrtApis::CreateSessionFromArray,
     &OrtApis::Run,
 
+    // DO NOT MODIFY
     &OrtApis::CreateSessionOptions,
     &OrtApis::SetOptimizedModelFilePath,
     &OrtApis::CloneSessionOptions,
@@ -1406,11 +1409,13 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SetIntraOpNumThreads,
     &OrtApis::SetInterOpNumThreads,
 
+    // DO NOT MODIFY
     &OrtApis::CreateCustomOpDomain,
     &OrtApis::CustomOpDomain_Add,
     &OrtApis::AddCustomOpDomain,
     &OrtApis::RegisterCustomOpsLibrary,
 
+    // DO NOT MODIFY
     &OrtApis::SessionGetInputCount,
     &OrtApis::SessionGetOutputCount,
     &OrtApis::SessionGetOverridableInitializerCount,
@@ -1421,6 +1426,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SessionGetOutputName,
     &OrtApis::SessionGetOverridableInitializerName,
 
+    // DO NOT MODIFY
     &OrtApis::CreateRunOptions,
     &OrtApis::RunOptionsSetRunLogVerbosityLevel,
     &OrtApis::RunOptionsSetRunLogSeverityLevel,
@@ -1431,20 +1437,24 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::RunOptionsSetTerminate,
     &OrtApis::RunOptionsUnsetTerminate,
 
+    // DO NOT MODIFY
     &OrtApis::CreateTensorAsOrtValue,
     &OrtApis::CreateTensorWithDataAsOrtValue,
     &OrtApis::IsTensor,
     &OrtApis::GetTensorMutableData,
     &OrtApis::FillStringTensor,
 
+    // DO NOT MODIFY
     &OrtApis::GetStringTensorDataLength,
     &OrtApis::GetStringTensorContent,
 
+    // DO NOT MODIFY
     &OrtApis::CastTypeInfoToTensorInfo,
     &OrtApis::GetOnnxTypeFromTypeInfo,
     &OrtApis::CreateTensorTypeAndShapeInfo,
     &OrtApis::SetTensorElementType,
 
+    // DO NOT MODIFY
     &OrtApis::SetDimensions,
     &OrtApis::GetTensorElementType,
     &OrtApis::GetDimensionsCount,
@@ -1472,6 +1482,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::CreateOpaqueValue,
     &OrtApis::GetOpaqueValue,
 
+    // DO NOT MODIFY
     &OrtApis::KernelInfoGetAttribute_float,
     &OrtApis::KernelInfoGetAttribute_int64,
     &OrtApis::KernelInfoGetAttribute_string,
@@ -1480,6 +1491,7 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::KernelContext_GetInput,
     &OrtApis::KernelContext_GetOutput,
 
+    // DO NOT MODIFY
     &OrtApis::ReleaseEnv,
     &OrtApis::ReleaseStatus,
     &OrtApis::ReleaseMemoryInfo,
@@ -1490,14 +1502,17 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseTensorTypeAndShapeInfo,
     &OrtApis::ReleaseSessionOptions,
     &OrtApis::ReleaseCustomOpDomain,
-    // READ the 'Rules on how to add a new API version' above before modifying this structure!
+    // End of Version 1 - DO NOT MODIFY ABOVE
+
+    // Version 2 - in development, feel free to add/remove/rearrange here
+
 };
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version > 1)
-    return nullptr;
+  if (version >= 1 && version <= 2)
+    return &ort_api_1_to_2;
 
-  return &ort_api_1;
+  return nullptr;  // Unsupported version
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
