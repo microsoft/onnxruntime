@@ -1374,6 +1374,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 */
 
 static constexpr OrtApi ort_api_1_to_2 = {
+    // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
     &OrtApis::CreateStatus,
