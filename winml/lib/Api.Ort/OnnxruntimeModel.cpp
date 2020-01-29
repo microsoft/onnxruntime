@@ -196,8 +196,9 @@ STDMETHODIMP OnnruntimeModel::GetModelInfo(IModelInfo** info) {
 
 STDMETHODIMP OnnruntimeModel::ModelEnsureNoFloat16() {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelEnsureNoFloat16(ort_model_.get()),
-                          engine_factory_->UseOrtApi());
+  if (auto status = winml_adapter_api->ModelEnsureNoFloat16(ort_model_.get())) {
+    return DXGI_ERROR_UNSUPPORTED;
+  }
   return S_OK;
 }
 
