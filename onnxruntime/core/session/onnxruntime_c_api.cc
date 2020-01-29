@@ -1496,6 +1496,10 @@ static constexpr OrtApi ort_api_1_to_2 = {
     // Version 2 - In development, feel free to add/remove/rearrange here
 };
 
+// Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
+// If this assert hits, read the above 'Rules on how to add a new Ort API version'
+static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
+
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= 2)
     return &ort_api_1_to_2;
