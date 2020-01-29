@@ -298,13 +298,10 @@ TEST(GradientCheckerTest, GemmGrad) {
   OpDef op_def{"Gemm"};
 
   // Single Batch with Scalar Bias
-  // TODO!!!! : following test case is failing due to a bug in ReduceSum cuda
-  /*
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error);
-    ASSERT_IS_TINY(max_error);
+    EXPECT_IS_TINY(max_error);
   }
-  */
 
   // Single Batch with Vector Bias
   {
@@ -313,13 +310,10 @@ TEST(GradientCheckerTest, GemmGrad) {
   }
 
   // Non-Single Batch with Scalar Bias
-  // TODO!!!! : following test case is failing due to a bug in ReduceSum cuda
-  /*
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error);
-    ASSERT_IS_TINY(max_error);
+    EXPECT_IS_TINY(max_error);
   }
-  */
 
   // Non-Single Batch with Vector Bias
   {

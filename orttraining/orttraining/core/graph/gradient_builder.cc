@@ -352,22 +352,26 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
       HandleBroadcasting(dY, C, IA("dC_reduced"), C_axes, result);
 
       if (has_beta && beta != 1.0f) {
+        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+        ArgDef SCALE = scale_node.output_args[0];
+        result.push_back(scale_node);
         result.push_back(
-            NodeDef("Scale",
-                    {IA("dC_reduced")},
-                    {dC},
-                    {MakeAttribute("scale", beta)}));
+            NodeDef("Mul",
+                    {IA("dC_reduced"), SCALE},
+                    {dC}));
       } else {
         result.push_back(
             NodeDef("Identity", {IA("dC_reduced")}, {dC}));
       }
     } else {
       if (has_beta && beta != 1.0f) {
+        NodeDef scale_node = ConstantValueNode(beta, Name("Scale"));
+        ArgDef SCALE = scale_node.output_args[0];
+        result.push_back(scale_node);
         result.push_back(
-            NodeDef("Scale",
-                    {dY},
-                    {dC},
-                    {MakeAttribute("scale", beta)}));
+            NodeDef("Mul",
+                    {dY, SCALE},
+                    {dC}));
       } else {
         result.push_back(
             NodeDef("Identity",
@@ -816,11 +820,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
       ORT_ENFORCE(false, "Dimension missing");
     }
   }
+
+  NodeDef scale_node = ConstantValueNode(1.0f / static_cast<float>(scale), Name("Scale"));
+  ArgDef SCALE = scale_node.output_args[0];
   return std::vector<NodeDef>{
-      NodeDef("Scale",
-              {GO(0)},
-              {IA("scaled_dY")},
-              {MakeAttribute("scale", 1.0f / static_cast<float>(scale))}),
+      scale_node,
+      NodeDef("Mul",
+              {GO(0), SCALE},
+              {IA("scaled_dY")}),
       NodeDef("Shape",
               {X},
               {IA("x_shape")}),
