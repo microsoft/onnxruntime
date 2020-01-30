@@ -14,9 +14,9 @@ apt-get install -y --no-install-recommends \
 wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda
 rm ~/miniconda.sh
 /opt/miniconda/bin/conda clean -ya
-
-/opt/miniconda/bin/conda install -y numpy
-/opt/miniconda/bin/conda clean -aqy
+pip install numpy
+#/opt/miniconda/bin/conda install -y numpy
+#/opt/miniconda/bin/conda clean -aqy
 rm -rf /opt/miniconda/pkgs
 
 # Dependencies: cmake
