@@ -55,7 +55,7 @@ add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 # the JNI headers are generated in the onnxruntime4j target
 target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers)
-target_link_libraries(onnxruntime4j_jni PUBLIC ${JNI_LIBRARIES} onnxruntime)
+target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
 
 # expose native libraries to the gradle build process
 file(MAKE_DIRECTORY ${JAVA_OUTPUT_DIR}/build)
