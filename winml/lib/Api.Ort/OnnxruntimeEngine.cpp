@@ -1006,7 +1006,7 @@ HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(IInspectable* sequence, winml
   std::vector<::winrt::Windows::Foundation::IInspectable> element_map_inspectables;
   for (size_t index = 0; index < num_elements; index++) {
     OrtValue* elements_ort_value = nullptr;
-    RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValue(ort_sequence_value, index, ort_allocator, &elements_ort_value), ort_api);
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValue(ort_sequence_value, static_cast<int>(index), ort_allocator, &elements_ort_value), ort_api);
     auto unique_element_value = UniqueOrtValue(elements_ort_value, ort_api->ReleaseValue);
 
     winrt::com_ptr<IValue> element_value;
