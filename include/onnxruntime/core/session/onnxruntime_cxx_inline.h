@@ -291,31 +291,31 @@ inline ModelMetadata Session::GetModelMetadata() const {
 }
 
 inline char* ModelMetadata::GetProducerName(OrtAllocator* allocator) const {
-  char* out;
+  char* out = nullptr;
   ThrowOnError(Global<void>::api_.ModelMetadataGetProducerName(p_, allocator, out));
   return out;
 }
 
 inline char* ModelMetadata::GetGraphName(OrtAllocator* allocator) const {
-  char* out;
+  char* out = nullptr;
   ThrowOnError(Global<void>::api_.ModelMetadataGetGraphName(p_, allocator, out));
   return out;
 }
 
 inline char* ModelMetadata::GetDomain(OrtAllocator* allocator) const {
-  char* out;
+  char* out = nullptr;
   ThrowOnError(Global<void>::api_.ModelMetadataGetDomain(p_, allocator, out));
   return out;
 }
 
 inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
-  char* out;
+  char* out = nullptr;
   ThrowOnError(Global<void>::api_.ModelMetadataGetDescription(p_, allocator, out));
   return out;
 }
 
 inline char* ModelMetadata::LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const {
-  char* out;
+  char* out = nullptr;
   ThrowOnError(Global<void>::api_.ModelMetadataLookupCustomMetadataMap(p_, allocator, key, out));
   return out;
 }
