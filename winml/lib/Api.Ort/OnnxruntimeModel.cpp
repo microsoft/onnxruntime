@@ -175,7 +175,7 @@ STDMETHODIMP ModelInfo::GetOutputFeatures(ABI::Windows::Foundation::Collections:
 OnnruntimeModel::OnnruntimeModel() : ort_model_(nullptr, nullptr) {
 }
 
-STDMETHODIMP OnnruntimeModel::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, UniqueOrtModel&& ort_model) {
+HRESULT OnnruntimeModel::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, UniqueOrtModel&& ort_model) {
   RETURN_HR_IF_NULL(E_INVALIDARG, ort_model);
 
   engine_factory_ = engine_factory;

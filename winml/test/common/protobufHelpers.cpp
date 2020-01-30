@@ -56,7 +56,7 @@ bool LoadTensorFromPb(onnx::TensorProto& tensor, std::wstring filePath) {
   std::streamsize size = stream.tellg();
   stream.seekg(0, std::ios::beg);
 
-  std::vector<char> buffer(size);
+  std::vector<char> buffer(static_cast<size_t>(size));
   if (stream.read(buffer.data(), size)) {
     return tensor.ParseFromArray(buffer.data(), static_cast<int>(size));
   } else {
@@ -96,7 +96,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(
       throw winrt::hresult_invalid_argument(L"TensorProto element count should match raw data buffer size in elements.");
     }
 
-    tensorData = std::vector<DataType>(elementCount);
+    tensorData = std::vector<DataType>(static_cast<size_t>(elementCount));
     memcpy(tensorData.data(), values.data(), values.size());
     return tensorData;
   } else {
@@ -112,7 +112,7 @@ static std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
     throw winrt::hresult_invalid_argument(L"Number of elements in TensorProto does not match expected element count.");
   }
   auto& values = tensorProto.string_data();
-  auto returnVector = std::vector<winrt::hstring>(elementCount);
+  auto returnVector = std::vector<winrt::hstring>(static_cast<size_t>(elementCount));
   std::transform(std::begin(values), std::end(values), std::begin(returnVector),
                  [](auto& value) { return winrt::to_hstring(value); });
   return returnVector;

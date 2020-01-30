@@ -13,7 +13,7 @@ class TypeProto;
 struct OrtMapTypeInfo {
  public:
   ONNXTensorElementDataType map_key_type_ = ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-  std::unique_ptr<OrtTypeInfo, void(*)(OrtTypeInfo*)> map_value_type_;
+  std::unique_ptr<OrtTypeInfo, decltype(OrtApi::ReleaseTypeInfo)> map_value_type_;
 
   static OrtStatus* FromTypeProto(const ONNX_NAMESPACE::TypeProto*, OrtMapTypeInfo** out); 
 

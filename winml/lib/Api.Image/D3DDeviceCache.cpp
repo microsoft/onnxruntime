@@ -473,7 +473,7 @@ ID3D12PipelineState* D3DDeviceCache::CreateTensorizePipelineState(PipelineStateC
 
   D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
   computePsoDesc.pRootSignature = GetTensorizeRootSignature();
-  computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBytecode, shaderBytecodeSize);
+  computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBytecode, static_cast<size_t>(shaderBytecodeSize));
 
   com_ptr<ID3D12PipelineState> pipelineState;
   WINML_THROW_IF_FAILED(device_->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(pipelineState.put())));
@@ -566,7 +566,7 @@ ID3D12PipelineState* D3DDeviceCache::CreateDetensorizePipelineState(PipelineStat
 
   D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
   computePsoDesc.pRootSignature = GetDetensorizeRootSignature();
-  computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBytecode, shaderBytecodeSize);
+  computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(shaderBytecode, static_cast<size_t>(shaderBytecodeSize));
 
   com_ptr<ID3D12PipelineState> pipelineState;
   WINML_THROW_IF_FAILED(device_->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(pipelineState.put())));

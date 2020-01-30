@@ -121,7 +121,7 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
 static int64_t ShapeSize(const int64_t* shape, size_t count) {
   // for each dim
   int64_t size = 1;
-  for (int i = 0; i < count; i++) {
+  for (size_t i = 0; i < count; i++) {
     // find out it's total size
     size *= shape[i];
     // make sure there are no invalid dimensions (-1 or any invalid shape)
@@ -151,7 +151,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
 
   std::vector<std::string_view> strings;
   std::unique_ptr<uint8_t[]> buffer(new uint8_t[buffer_length]);
-  std::vector<size_t> offsets(length);
+  std::vector<size_t> offsets(static_cast<size_t>(length));
 
   THROW_IF_NOT_OK_MSG(ort_api->GetStringTensorContent(ort_value, buffer.get(), buffer_length, offsets.data(), offsets.size()),
                       ort_api);
@@ -593,7 +593,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(
                               dml_memory,
                               unique_dml_allocator_resource.get(),
-                              d3d_resource->GetDesc().Width,
+                              static_cast<size_t>(d3d_resource->GetDesc().Width),
                               shape,
                               count,
                               ONNXTensorElementDataTypeFromTensorKind(kind),
@@ -826,13 +826,11 @@ template <>
 struct FillMapTensors<HSTRING, HSTRING> {
   static HRESULT Run(const OrtApi* ort_api, IInspectable* map_insp, OrtValue* keys_ort_value, OrtValue* values_ort_value) {
     auto map = CastToWinrtMap<HSTRING, HSTRING>(map_insp);
-    size_t index = 0;
     std::vector<std::string> keys;
     std::vector<std::string> values;
     for (const auto& pair : map) {
       keys.push_back(CppwinrtTypeToOrtType(pair.Key()));
       values.push_back(CppwinrtTypeToOrtType(pair.Value()));
-      index++;
     }
 
     std::vector<const char*> raw_keys;
@@ -1006,7 +1004,7 @@ HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(IInspectable* sequence, winml
 
   // get the elements
   std::vector<::winrt::Windows::Foundation::IInspectable> element_map_inspectables;
-  for (int index = 0; index < num_elements; index++) {
+  for (size_t index = 0; index < num_elements; index++) {
     OrtValue* elements_ort_value = nullptr;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValue(ort_sequence_value, index, ort_allocator, &elements_ort_value), ort_api);
     auto unique_element_value = UniqueOrtValue(elements_ort_value, ort_api->ReleaseValue);
@@ -1113,7 +1111,7 @@ HRESULT FillAbiMap(IInspectable* map_insp, size_t num_elements, void* keys_data,
   auto keys = reinterpret_cast<typename AbiTypeInfo<TAbiKey>::ResourceType*>(keys_data);
   auto values = reinterpret_cast<typename AbiTypeInfo<TAbiValue>::ResourceType*>(values_data);
 
-  for (auto i = 0; i < num_elements; ++i) {
+  for (size_t i = 0; i < num_elements; ++i) {
     map.Insert(
         ResourceTypeToCppwinrtType<TAbiKey>(keys[i]),
         ResourceTypeToCppwinrtType<TAbiValue>(values[i]));
@@ -1177,7 +1175,7 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
   WinML::Resource values_data;
   RETURN_IF_FAILED(values_value->GetResource(values_data));
 
-  auto num_elements = ShapeSize(keys_shape.data(), keys_shape.size());
+  auto num_elements = static_cast<size_t>(ShapeSize(keys_shape.data(), keys_shape.size()));
   GetAbiMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());
 
   return S_OK;
@@ -1189,7 +1187,7 @@ HRESULT OnnxruntimeEngineFactory::RuntimeClassInitialize() {
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineFactory::EnsureEnvironment() {
+HRESULT OnnxruntimeEngineFactory::EnsureEnvironment() {
   if (environment_ == nullptr) {
     std::lock_guard lock(mutex_);
     if (environment_ == nullptr) {
