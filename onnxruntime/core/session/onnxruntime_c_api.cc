@@ -1401,8 +1401,6 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::SessionGetInputName,
     &OrtApis::SessionGetOutputName,
     &OrtApis::SessionGetOverridableInitializerName,
-    &OrtApis::SessionEndProfiling,
-    &OrtApis::SessionGetModelMetadata,
 
     &OrtApis::CreateRunOptions,
     &OrtApis::RunOptionsSetRunLogVerbosityLevel,
@@ -1473,6 +1471,8 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseTensorTypeAndShapeInfo,
     &OrtApis::ReleaseSessionOptions,
     &OrtApis::ReleaseCustomOpDomain,
+    &OrtApis::SessionEndProfiling,
+    &OrtApis::SessionGetModelMetadata,
     &OrtApis::ReleaseModelMetadata,
 };
 
