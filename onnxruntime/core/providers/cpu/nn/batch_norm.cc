@@ -20,89 +20,13 @@
 
 namespace onnxruntime {
 // spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
-    BatchNormalization,
-    7,
-    8,
-    KernelDefBuilder()
-        .TypeConstraint("X", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("scale", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("B", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("mean", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
-    BatchNorm<float>);
 
-// 'spatial' attribute was removed.
-ONNX_CPU_OPERATOR_KERNEL(
-    BatchNormalization,
-    9,
-    KernelDefBuilder()
-        .TypeConstraint("X", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("scale", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("B", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("mean", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("var", DataTypeImpl::GetTensorType<float>()),
-    BatchNorm<float>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 9, float,
+                                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                         BatchNorm<float>);
 
-template <>
-Status BatchNorm<float>::Compute(OpKernelContext* p_op_kernel_context) const {
-  const auto* X = p_op_kernel_context->Input<Tensor>(0);
-  const auto* scale = p_op_kernel_context->Input<Tensor>(1);
-  const auto* B = p_op_kernel_context->Input<Tensor>(2);
-  const auto* mean = p_op_kernel_context->Input<Tensor>(3);
-  const auto* var = p_op_kernel_context->Input<Tensor>(4);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 9, double,
+                                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+                                         BatchNorm<double>);
 
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var, is_spatial_));
-
-  const TensorShape& x_shape = X->Shape();
-  Tensor* Y = p_op_kernel_context->Output(0, x_shape);
-
-  const auto& dims_vec = x_shape.GetDims();
-  const size_t N = dims_vec[0];
-  const size_t C = dims_vec[1];  // assume NCHW as per the spec
-
-  // calculate sample_size (per individual channel)
-  size_t sample_size = 1;
-  for (size_t i = 2; i < dims_vec.size(); ++i) {
-    sample_size *= dims_vec[i];
-  }
-
-  // calculate sample_size (including all channels)
-  size_t sample_size_incl_all_channels = sample_size * C;
-
-  ConstEigenVectorArrayMap<float> scale_arr(scale->template Data<float>(), is_spatial_ ? C : sample_size_incl_all_channels);
-  ConstEigenVectorArrayMap<float> bias_arr(B->template Data<float>(), is_spatial_ ? C : sample_size_incl_all_channels);
-
-  // Regardless of training or testing, we will apply the estimated mean
-  // and standard deviation to the input. For testing, they are
-  // specified directly by the input, and for training, they are computed
-  // by the op.
-  Eigen::Array<float, Eigen::Dynamic, 1> inv_std(is_spatial_ ? C : sample_size_incl_all_channels);
-  ConstEigenVectorArrayMap<float> var_arr(var->template Data<float>(), is_spatial_ ? C : sample_size_incl_all_channels);
-  inv_std = (var_arr + epsilon_).sqrt().inverse();
-  ConstEigenVectorArrayMap<float> mean_arr(mean->template Data<float>(), is_spatial_ ? C : sample_size_incl_all_channels);
-  // We can fuse the output computation as follows:
-  //   ((x - est_mean) * (inv_var) * scale + bias
-  // to
-  //   (x * inv_var * scale) + (bias - est_mean * inv_var * scale)
-  Eigen::Array<float, Eigen::Dynamic, 1> new_scale = inv_std * scale_arr;
-  Eigen::Array<float, Eigen::Dynamic, 1> new_bias = bias_arr - mean_arr * new_scale;
-  EigenArrayMap<float> Y_arr(Y->template MutableData<float>(),
-                             is_spatial_ ? sample_size : sample_size_incl_all_channels,
-                             is_spatial_ ? N * C : N);
-  ConstEigenArrayMap<float> X_arr(X->template Data<float>(),
-                                  is_spatial_ ? sample_size : sample_size_incl_all_channels,
-                                  is_spatial_ ? N * C : N);
-  if (is_spatial_) {  // spatial == 1
-    for (size_t nc = 0; nc < N * C; ++nc) {
-      Y_arr.col(nc) = X_arr.col(nc) * new_scale(nc % C) + new_bias(nc % C);
-    }
-  } else {  // spatial == 0
-    for (size_t n = 0; n < N; ++n) {
-      Y_arr.col(n) = X_arr.col(n) * new_scale.col(0) + new_bias.col(0);
-    }
-  }
-
-  return Status::OK();
-}
 }  // namespace onnxruntime
