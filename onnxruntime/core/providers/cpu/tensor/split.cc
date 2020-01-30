@@ -81,10 +81,10 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<float>(*context, input);
   else if (input.IsDataType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input);
-  else if (input.IsDataTypeString())
-    status = ComputeImpl<std::string>(*context, input);
   else if (input.IsDataType<int64_t>())
     status = ComputeImpl<int64_t>(*context, input);
+  else if (input.IsDataTypeString())
+    status = ComputeImpl<std::string>(*context, input);
   else
     ORT_THROW("Split operator does not support ", input.DataType(), " yet");
 
