@@ -45,19 +45,6 @@ class OrtValueTensorData {
   std::vector<float> data_;
 };
 
-class OrtCallbackInvoker {
- public:
-  explicit OrtCallbackInvoker(OrtCallback callback) : callback_(callback) {}
-
-  ~OrtCallbackInvoker() {
-    if (callback_.f) callback_.f(callback_.param);
-  }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtCallbackInvoker);
-  OrtCallback callback_;
-};
-
 void CompareOrtValuesToTensorProtoValues(
     const PathString& model_path,
     const NameMLValMap& name_to_ort_value,
@@ -66,7 +53,7 @@ void CompareOrtValuesToTensorProtoValues(
 
   NameMLValMap name_to_ort_value_from_tensor_proto{};
   std::vector<std::vector<char>> tensor_buffers{};
-  std::vector<std::unique_ptr<OrtCallbackInvoker>> tensor_deleters{};
+  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
 
   for (const auto& name_and_tensor_proto : name_to_tensor_proto) {
     const auto& name = name_and_tensor_proto.first;
@@ -79,10 +66,11 @@ void CompareOrtValuesToTensorProtoValues(
     OrtCallback callback;
     ASSERT_STATUS_OK(utils::TensorProtoToMLValue(
         Env::Default(), model_path.c_str(), tensor_proto, m, ort_value, callback));
+    ScopedOrtCallbackInvoker callback_invoker{callback};
 
     name_to_ort_value_from_tensor_proto.emplace(name, ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(onnxruntime::make_unique<OrtCallbackInvoker>(callback));
+    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
   for (const auto& name_and_ort_value : name_to_ort_value) {

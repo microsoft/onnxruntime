@@ -27,10 +27,209 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #endif
 
-using namespace std;
-
 namespace onnxruntime {
 namespace training {
+
+namespace {
+Status SetupOptimizerParams(
+    const std::unordered_set<std::string>& weight_names_to_train,
+    const std::unordered_map<std::string, NodeArg*>& fp32_weight_names_to_fp16_node_args,
+    const std::string& loss_scale_input_name,
+    const TrainingSession::TrainingConfiguration& config,
+    OptimizerGraphConfig& opt_graph_config_result,
+    std::unordered_map<std::string, OptimizerNodeConfig>& opt_node_configs_result) {
+  ORT_RETURN_IF_NOT(config.optimizer_config.has_value());
+  const auto& optimizer_config = config.optimizer_config.value();
+
+  std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
+  for (const auto& weight_name : weight_names_to_train) {
+    OptimizerNodeConfig opt_node_config{};
+    opt_node_config.name = optimizer_config.name;
+    opt_node_config.lr_feed_name = optimizer_config.learning_rate_input_name;
+    try {
+      opt_node_config.attributes = optimizer_config.weight_attributes_generator(weight_name);
+    } catch (const std::exception& ex) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+    }
+    opt_node_config.loss_scale_input_name = loss_scale_input_name;
+    opt_node_config.use_fp16_moments = optimizer_config.use_fp16_moments;
+
+    const auto fp16_weight_name_it = fp32_weight_names_to_fp16_node_args.find(weight_name);
+    if (fp16_weight_name_it != fp32_weight_names_to_fp16_node_args.end()) {
+      opt_node_config.fp16_weight_arg = fp16_weight_name_it->second;
+    }
+
+    opt_node_configs.emplace(weight_name, std::move(opt_node_config));
+  }
+
+  OptimizerGraphConfig opt_graph_config{};
+  opt_graph_config.use_mixed_precision = config.mixed_precision_config.has_value();
+  opt_graph_config.loss_scale_input_name = loss_scale_input_name;
+  opt_graph_config.world_rank = config.distributed_config.world_rank;
+  opt_graph_config.world_size = config.distributed_config.world_size;
+  opt_graph_config.gradient_accumulation_steps = config.gradient_accumulation_steps;
+  opt_graph_config.allreduce_in_fp16 = optimizer_config.do_all_reduce_in_fp16;
+  opt_graph_config.use_nccl = optimizer_config.use_nccl;
+  opt_graph_config.partition_optimizer = optimizer_config.partition_optimizer;
+
+  opt_node_configs_result = std::move(opt_node_configs);
+  opt_graph_config_result = std::move(opt_graph_config);
+
+  return Status::OK();
+}
+
+bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
+  return config.distributed_config.world_rank == 0;
+}
+}
+
+Status TrainingSession::ConfigureForTraining(
+    const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {
+  ORT_RETURN_IF(
+      IsInitialized(),
+      "TrainingSession::ConfigureForTraining() must be called before TrainingSession::Initialize().");
+
+  if (is_configured_) return Status::OK();
+
+  TrainingConfigurationResult config_result{};
+  std::vector<std::string> tensorboard_scalar_names{};
+
+  ORT_RETURN_IF_ERROR(ApplyTransformationsToMainGraph());
+
+  // add loss scale
+  std::string loss_scale_input_name{};
+  if (config.mixed_precision_config.has_value()) {
+    const auto& mixed_precision_config = config.mixed_precision_config.value();
+
+    TrainingConfigurationResult::MixedPrecisionConfigurationResult mixed_precision_config_result{};
+
+    if (mixed_precision_config.add_loss_scaling) {
+      ORT_RETURN_IF_ERROR(BuildLossScalingFactorInput(
+          mixed_precision_config.initial_loss_scale_value,
+          loss_scale_input_name));
+
+      tensorboard_scalar_names.emplace_back(loss_scale_input_name);
+      mixed_precision_config_result.loss_scale_input_name = loss_scale_input_name;
+    }
+
+    config_result.mixed_precision_config_result = mixed_precision_config_result;
+  }
+
+  // configure loss function or use external one
+  ORT_RETURN_IF_NOT(
+      config.loss_function_config.has_value() ^ config.loss_name.has_value(),
+      "Exactly one of loss_function_config or loss_name should be given.");
+
+  std::string loss_name{};
+  if (config.loss_function_config.has_value()) {
+    const auto& loss_function_config = config.loss_function_config.value();
+    ORT_RETURN_IF_ERROR(BuildLossFunction(
+        loss_function_config.loss_function_info, loss_scale_input_name, loss_name));
+
+    if (IsRootNode(config) && config.model_with_loss_function_path.has_value()) {
+      ORT_IGNORE_RETURN_VALUE(Save(
+          config.model_with_loss_function_path.value(), SaveOption::NO_RELOAD));
+    }
+  } else {
+    loss_name = config.loss_name.value();
+  }
+
+  // derive actual set of weights to train
+  std::unordered_set<std::string> weight_names_to_train =
+      !config.weight_names_to_train.empty()
+          ? config.weight_names_to_train
+          : GetTrainableModelInitializers(config.immutable_weights);
+  for (const auto& weight_name_to_not_train : config.weight_names_to_not_train) {
+    weight_names_to_train.erase(weight_name_to_not_train);
+  }
+
+  {
+    std::ostringstream weight_names_stream{};
+    for (const auto& weight_name : weight_names_to_train) {
+      weight_names_stream << "  " << weight_name << "\n";
+    }
+    LOGS(*session_logger_, INFO) << "Training weights:\n"
+                                 << weight_names_stream.str();
+  }
+
+  // add gradient graph
+  ORT_RETURN_IF_ERROR(BuildGradientGraph(
+      weight_names_to_train, loss_name, config.set_gradients_as_graph_outputs));
+
+  // transform for mixed precision
+  std::unordered_map<std::string, NodeArg*> fp32_weight_name_to_fp16_node_arg{};
+  if (config.mixed_precision_config.has_value()) {
+    const auto& mixed_precision_config = config.mixed_precision_config.value();
+    ORT_RETURN_IF_ERROR(EnableMixedPrecision(
+        weight_names_to_train, mixed_precision_config.use_fp16_initializers, fp32_weight_name_to_fp16_node_arg));
+  }
+
+  // add optimizer or gradient accumulation
+  if (config.optimizer_config.has_value()) {
+    OptimizerGraphConfig opt_graph_config{};
+    std::unordered_map<std::string, OptimizerNodeConfig> opt_node_configs{};
+    ORT_RETURN_IF_ERROR(SetupOptimizerParams(
+        weight_names_to_train, fp32_weight_name_to_fp16_node_arg,
+        loss_scale_input_name, config, opt_graph_config, opt_node_configs));
+
+    TrainingConfigurationResult::OptimizerConfigurationResult optimizer_config_result{};
+    ORT_RETURN_IF_ERROR(BuildOptimizer(
+        opt_graph_config, opt_node_configs,
+        optimizer_config_result.output_key_to_graph_output_name));
+
+    config_result.opt_config_result = optimizer_config_result;
+  } else {
+    if (config.gradient_accumulation_steps > 1) {
+      ORT_RETURN_IF_ERROR(BuildAccumulationNode(weight_names_to_train));
+    }
+  }
+
+  // add Tensorboard
+  if (config.tensorboard_config.has_value()) {
+    const auto& tensorboard_config = config.tensorboard_config.value();
+
+    tensorboard_scalar_names.insert(
+        tensorboard_scalar_names.end(),
+        tensorboard_config.scalar_node_names.begin(), tensorboard_config.scalar_node_names.end());
+
+    // add some tensors from optimizer graph outputs
+    if (config_result.opt_config_result.has_value()) {
+      const auto& opt_output_key_to_graph_output_name =
+          config_result.opt_config_result.value().output_key_to_graph_output_name;
+
+      auto add_opt_graph_output_by_key =
+          [&tensorboard_scalar_names, &opt_output_key_to_graph_output_name](OptimizerOutputKey key) {
+            const auto it = opt_output_key_to_graph_output_name.find(key);
+            if (it != opt_output_key_to_graph_output_name.end()) {
+              tensorboard_scalar_names.emplace_back(it->second);
+            }
+          };
+
+      add_opt_graph_output_by_key(OptimizerOutputKey::GradientAllIsFinite);
+      add_opt_graph_output_by_key(OptimizerOutputKey::GlobalGradientNorm);
+    }
+
+    ORT_RETURN_IF_ERROR(AddTensorboard(
+        tensorboard_config.summary_name, tensorboard_scalar_names,
+        tensorboard_config.histogram_node_names, tensorboard_config.norm_node_names,
+        tensorboard_config.dump_convergence_metrics));
+  }
+
+  // add GIST encoding
+  if (config.gist_config.has_value()) {
+    ORT_RETURN_IF_ERROR(AddGistEncoding());
+  }
+
+  if (IsRootNode(config) && config.model_with_training_graph_path.has_value()) {
+    ORT_IGNORE_RETURN_VALUE(Save(
+        config.model_with_training_graph_path.value(), SaveOption::NO_RELOAD));
+  }
+
+  config_result_out = std::move(config_result);
+  is_configured_ = true;
+
+  return Status::OK();
+}
 
 static Status AddLossFunctionInternal(Graph& graph,
                                       ILossFunction& loss_graph_builder,
@@ -56,8 +255,8 @@ static Status AddLossFunctionInternal(Graph& graph,
 }
 
 static Status BuildGradientGraphInternal(Graph& graph,
-                                         const string& loss_function_output_name,
-                                         const unordered_set<string>& node_arg_names_to_train,
+                                         const std::string& loss_function_output_name,
+                                         const std::unordered_set<std::string>& node_arg_names_to_train,
                                          const bool set_gradient_as_graph_output = false) {
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
@@ -70,9 +269,9 @@ static Status BuildGradientGraphInternal(Graph& graph,
 
 static Status BuildOptimizerInternal(Graph& graph,
                                      const OptimizerGraphConfig& opt_graph_config,
-                                     const unordered_map<string, OptimizerNodeConfig>& opt_configs,
+                                     const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
                                      std::unordered_set<std::string>& opt_state_initializer_names,
-                                     std::unordered_map<std::string, std::string>& opt_graph_outputs) {
+                                     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
   OptimizerBuilderRegistry& optimizer_registry = OptimizerBuilderRegistry::GetInstance();
   OptimizerGraphBuilderRegistry& optimizer_graph_registry = OptimizerGraphBuilderRegistry::GetInstance();
   std::string graph_builder_name = optimizer_graph_registry.GetNameFromConfig(opt_graph_config);
@@ -197,8 +396,8 @@ Status TrainingSession::EnableMixedPrecision(const std::unordered_set<std::strin
   return Status::OK();
 }
 
-Status TrainingSession::BuildGradientGraph(const unordered_set<string>& weights_to_train,
-                                           const string& loss_function_output_name,
+Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>& weights_to_train,
+                                           const std::string& loss_function_output_name,
                                            const bool set_gradient_as_graph_output) {
   // Fill weights_to_train_ according to weights_to_train
   weights_to_train_ = weights_to_train;
@@ -226,8 +425,8 @@ Status TrainingSession::BuildAccumulationNode(const std::unordered_set<std::stri
 
 Status TrainingSession::BuildOptimizer(
     const OptimizerGraphConfig& opt_graph_config,
-    const unordered_map<string, OptimizerNodeConfig>& opt_configs,
-    std::unordered_map<std::string, std::string>& opt_graph_outputs) {
+    const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
+    OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
   ORT_RETURN_IF_NOT(
       opt_configs.size() == weights_to_train_.size(),
       "Number of optimizer configurations does not match number of weights to train.")
@@ -257,12 +456,6 @@ Status TrainingSession::OverrideGraphOutputs(const std::vector<std::string>& out
 
 NameMLValMap TrainingSession::GetWeights() const {
   return session_state_->GetInitializedTensors(weights_to_train_);
-}
-
-Status TrainingSession::UpdateWeightsInSessionState(const NameMLValMap& new_weights) {
-  session_state_->UpdateInitializedTensors(new_weights);
-  VLOGS(*session_logger_, 1) << "Done updating weights";
-  return Status::OK();
 }
 
 static Status UpdateWeightsBeforeSaving(
@@ -308,7 +501,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
   // Have to load the original model again.
   // Because after Initialize(), the model has been optimized and the saved graph doesn't look like what we expect.
-  shared_ptr<Model> new_model;
+  std::shared_ptr<Model> new_model;
   ORT_RETURN_IF_ERROR(Model::Load(model_location_, new_model, nullptr, *session_logger_));
   ORT_RETURN_IF_ERROR(UpdateWeightsBeforeSaving(
       new_model->MainGraph(), GetWeights(), session_state_->GetDataTransferMgr()));
@@ -329,7 +522,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
                                                    weights_to_train_,
                                                    false));
 
-    std::unordered_map<std::string, std::string> opt_graph_outputs;
+    OptimizerOutputKeyMap<std::string> opt_graph_outputs;
     std::unordered_set<std::string> opt_state_initializer_names;
     ORT_RETURN_IF_ERROR(BuildOptimizerInternal(new_model->MainGraph(),
                                                opt_graph_config_,
@@ -348,6 +541,56 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 }
 
 common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
+  return session_state_->GetInitializedTensors(GetStateTensorNames(), false, state_tensors);
+}
+
+const DataTransferManager& TrainingSession::GetDataTransferManager() const {
+  return session_state_->GetDataTransferMgr();
+}
+
+Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool strict) {
+  ORT_RETURN_IF_NOT(IsInitialized(), "Can't update initializers before session has been initialized.");
+
+  std::unordered_set<std::string> ckpt_initializer_names;
+  std::transform(state_tensors.begin(), state_tensors.end(),
+                 std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()),
+                 [](auto pair) { return pair.first; });
+
+  NameMLValMap initializers;
+  ORT_RETURN_IF_ERROR(session_state_->GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
+
+  const std::unordered_set<std::string> valid_state_tensor_names = GetStateTensorNames();
+
+  for (auto& state : state_tensors) {
+    const bool is_valid_state_tensor =
+        valid_state_tensor_names.find(state.first) != valid_state_tensor_names.end();
+    const auto initializer_it = initializers.find(state.first);
+    const bool is_tensor_present = initializer_it != initializers.end();
+
+    if (strict) {
+      ORT_RETURN_IF_NOT(
+          is_valid_state_tensor,
+          "Checkpoint tensor: ", state.first, " is not a known state tensor.");
+      ORT_RETURN_IF_NOT(
+          is_tensor_present,
+          "Checkpoint tensor: ", state.first, " is not present in the model.");
+    }
+
+    if (is_valid_state_tensor && is_tensor_present) {
+      ORT_RETURN_IF_NOT(
+          initializer_it->second.IsTensor() && state.second.IsTensor(),
+          "Non-tensor type as initializer is not expected.")
+
+      auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
+      auto& ckpt_tensor = state.second.Get<Tensor>();
+      ORT_RETURN_IF_ERROR(session_state_->GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
+    }
+  }
+
+  return Status::OK();
+}
+
+std::unordered_set<std::string> TrainingSession::GetStateTensorNames() const {
   std::unordered_set<std::string> checkpointed_tensor_names{};
   checkpointed_tensor_names.insert(
       weights_to_train_.begin(), weights_to_train_.end());
@@ -355,89 +598,7 @@ common::Status TrainingSession::GetStateTensors(NameMLValMap& state_tensors) {
       opt_state_initializer_names_.begin(), opt_state_initializer_names_.end());
   checkpointed_tensor_names.insert(
       fp16_weight_initializer_names_.begin(), fp16_weight_initializer_names_.end());
-
-  return session_state_->GetInitializedTensors(checkpointed_tensor_names, false, state_tensors);
-}
-
-const DataTransferManager& TrainingSession::GetDataTransferManager() {
-  return session_state_->GetDataTransferMgr();
-}
-
-Status TrainingSession::SaveCheckpoint(
-    const PathString& checkpoint_path,
-    const std::unordered_map<std::string, std::string>& properties) {
-  const bool is_profiler_enabled = session_state_->Profiler().IsEnabled();
-  const TimePoint start_time = is_profiler_enabled ? session_state_->Profiler().StartTime() : TimePoint{};
-
-  NameMLValMap checkpointed_initialized_tensors{};
-  ORT_RETURN_IF_ERROR(GetStateTensors(checkpointed_initialized_tensors));
-
-  ORT_RETURN_IF_ERROR(SaveModelCheckpoint(
-      checkpoint_path, session_state_->GetDataTransferMgr(),
-      checkpointed_initialized_tensors, properties));
-
-  if (is_profiler_enabled) {
-    session_state_->Profiler().EndTimeAndRecordEvent(
-        profiling::EventCategory::SESSION_EVENT, "checkpoint_save", start_time);
-  }
-
-  return Status::OK();
-}
-
-Status TrainingSession::LoadCheckpointAndUpdateInitializedTensors(
-    const PathString& checkpoint_path,
-    std::unordered_map<std::string, std::string>& properties) {
-  const bool is_profiler_enabled = session_state_->Profiler().IsEnabled();
-  const TimePoint start_time = is_profiler_enabled ? session_state_->Profiler().StartTime() : TimePoint{};
-
-  std::vector<ONNX_NAMESPACE::TensorProto> loaded_tensor_protos{};
-  ORT_RETURN_IF_ERROR(LoadModelCheckpoint(
-      checkpoint_path, model_location_, loaded_tensor_protos, properties));
-
-  // overwrite graph initializers
-  Graph& graph = model_->MainGraph();
-  for (const auto& tensor_proto : loaded_tensor_protos) {
-    ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(tensor_proto));
-  }
-
-  if (is_profiler_enabled) {
-    session_state_->Profiler().EndTimeAndRecordEvent(
-        profiling::EventCategory::SESSION_EVENT, "checkpoint_load", start_time);
-  }
-
-  return Status::OK();
-}
-
-common::Status TrainingSession::UpdateInitializedTensors(const NameMLValMap& state_tensors, bool strict) {
-  if (!IsInitialized())
-    return Status(ONNXRUNTIME, FAIL, "Can't update initializers before session initialized.");
-  NameMLValMap initializers;
-  std::unordered_set<std::string> ckpt_initializer_names;
-  std::transform(state_tensors.begin(), state_tensors.end(),
-                 std::inserter(ckpt_initializer_names, ckpt_initializer_names.end()),
-                 [](auto pair) { return pair.first; });
-  ORT_RETURN_IF_ERROR(session_state_->GetInitializedTensors(ckpt_initializer_names, !strict, initializers));
-  for (auto& state : state_tensors) {
-    auto it = initializers.find(state.first);
-    if (it != initializers.end()) {
-      if (!it->second.IsTensor() || !state.second.IsTensor())
-        return Status(ONNXRUNTIME, FAIL, "Non-tensor type as initializer is not expected.");
-      auto* initializer_tensor = it->second.GetMutable<Tensor>();
-      auto& ckpt_tensor = state.second.Get<Tensor>();
-      ORT_RETURN_IF_ERROR(session_state_->GetDataTransferMgr().CopyTensor(ckpt_tensor, *initializer_tensor));
-    } else if (strict) {
-      return Status(ONNXRUNTIME, FAIL, "Checkpoint tensor: " + state.first + " is not found in training session");
-    }
-  }
-  return Status::OK();
-}
-
-std::unordered_set<std::string> TrainingSession::GetModelInputNames() const {
-  return model_input_names_;
-}
-
-std::unordered_set<std::string> TrainingSession::GetModelOutputNames() const {
-  return model_output_names_;
+  return checkpointed_tensor_names;
 }
 
 bool TrainingSession::IsUntrainable(const Node* node, const std::string& initializer_name,
@@ -504,7 +665,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
                  [](const auto& pair) { return pair.first; });
 
   std::unordered_set<std::string> trainable_initializers(model_initializers);
-  for (const string& initializer_name : model_initializers) {
+  for (const std::string& initializer_name : model_initializers) {
     const auto& nodes = graph.GetConsumerNodes(initializer_name);
     for (const Node* node : nodes) {
       if (IsUntrainable(node, initializer_name, session_logger_) ||

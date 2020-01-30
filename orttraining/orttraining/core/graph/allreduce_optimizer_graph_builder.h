@@ -22,7 +22,7 @@ class AllreduceOptimizerGraphBuilder : public OptimizerGraphBuilder {
       std::vector<ArgDef>& weight_argdefs,
       std::vector<ArgDef>& gradient_argdefs,
       std::unordered_set<std::string>& optimizer_state_initializer_names,
-      std::unordered_map<std::string, std::string>& optimizer_graph_outputs) override;
+      OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) override;
 };
 
 }  // namespace training

@@ -175,7 +175,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
-    std::unordered_map<std::string, std::string>& optimizer_graph_outputs) {
+    OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
 
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
@@ -207,11 +207,11 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
     auto gradient_norm_inputs = GetGradientNormInputs(gradient_argdefs, reduced_fused_gradient_argdef);
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_norm_inputs, graph_defs, global_grad_norm_argdef));
-    optimizer_graph_outputs[kGlobalGradientNormOutputKey] = global_grad_norm_argdef.name;
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, global_grad_norm_argdef, graph_defs, global_grad_norm_finite_argdef));
-    optimizer_graph_outputs[kGradientAllIsFiniteOutputKey] = global_grad_norm_finite_argdef.name;
+    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 
   // add weight update

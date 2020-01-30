@@ -213,8 +213,8 @@ static std::string GetDeviceName(const OrtDevice& device) {
 struct TrainingParameters {
   std::string loss_output_name;
   std::unordered_set<std::string> weights_to_train;
+  std::unordered_set<std::string> weights_not_to_train;
   onnxruntime::training::TrainingSession::ImmutableWeights immutable_weights;
-  std::vector<std::string> weights_not_to_train;
 
   // optimizer
   std::string training_optimizer_name;
@@ -309,113 +309,6 @@ class SessionObjectInitializer {
   }
 };
 
-// TODO: this method does not handle parallal optimization.
-Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
-                            const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
-                            const std::string& loss_scale_input_name,
-                            const std::string& training_optimizer_name,
-                            const std::string& lr_params_feed_name,
-                            const std::unordered_map<std::string, std::unordered_map<std::string, float>>& optimizer_attributes_map,
-                            bool use_fp16_moments,
-                            bool use_mixed_precision,
-                            bool allreduce_post_accumulation,
-                            int world_rank,
-                            int world_size,
-                            int gradient_accumulation_steps,
-                            OptimizerGraphConfig& opt_graph_config_result,
-                            std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs) {
-  opt_configs.reserve(weights_to_train.size());
-  for (const auto& weight_name : weights_to_train) {
-    // Prepare the weight<->optimizer mapping.
-    // All weights use the same type of optimizer
-    auto it_attr = optimizer_attributes_map.find(weight_name);
-    if (it_attr == optimizer_attributes_map.end())
-      return Status(ONNXRUNTIME, FAIL, "Cannot find weight " + weight_name);
-
-    const std::unordered_map<std::string, float>& optimizer_attributes = it_attr->second;
-
-    OptimizerNodeConfig opt_config{
-        training_optimizer_name,
-        nullptr,
-        lr_params_feed_name,
-        optimizer_attributes,
-        loss_scale_input_name,
-        use_fp16_moments};
-
-    const auto it = fp16_weights_map.find(weight_name);
-    if (it != fp16_weights_map.cend()) {
-      opt_config.fp16_weight_arg = it->second;
-    }
-    opt_configs[weight_name] = opt_config;
-  }
-
-  // set up optimizer graph config
-  OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.use_mixed_precision = use_mixed_precision;
-  opt_graph_config.always_do_update = false;
-  opt_graph_config.loss_scale_input_name = loss_scale_input_name;
-  opt_graph_config.world_rank = world_rank;
-  opt_graph_config.world_size = world_size;
-  opt_graph_config.gradient_accumulation_steps = gradient_accumulation_steps;
-  opt_graph_config.allreduce_in_fp16 = true;
-
-  // this condition block is temporary.
-  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-  // eventually we will have one all reduce kernel and let opt_graph_config to have
-  // an allreduce_post_accumulation option and remove the use_nccl option.
-  if (allreduce_post_accumulation)
-    opt_graph_config.use_nccl = true;
-  else
-    opt_graph_config.use_nccl = false;
-
-  opt_graph_config_result = std::move(opt_graph_config);
-
-  return Status::OK();
-}
-
-void SetupAndBuildOptimizer(onnxruntime::training::TrainingSession* sess,
-                            const std::unordered_set<std::string>& weights_to_train,
-                            const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
-                            const TrainingParameters& parameters) {
-  // Add optimizer
-  OptimizerGraphConfig opt_graph_config{};
-  std::unordered_map<std::string, OptimizerNodeConfig> opt_configs;
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
-  auto status = SetupOptimizerParams(
-      weights_to_train,
-      fp16_weights_map,
-      parameters.loss_scale_input_name,
-      parameters.training_optimizer_name,
-      parameters.lr_params_feed_name,
-      parameters.optimizer_attributes_map,
-      parameters.use_fp16_moments,
-      parameters.use_mixed_precision,
-      parameters.allreduce_post_accumulation,
-      parameters.world_rank,
-      parameters.world_size,
-      parameters.gradient_accumulation_steps,
-      opt_graph_config, opt_configs);
-  if (!status.IsOK())
-    throw std::runtime_error(status.ToString().c_str());
-  status = sess->BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs);
-  if (!status.IsOK())
-    throw std::runtime_error(status.ToString().c_str());
-
-#ifdef USE_HOROVOD
-  // this condition block is temporary.
-  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
-  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
-  bool use_nccl = parameters.allreduce_post_accumulation;
-  if (!use_nccl && parameters.world_size > 1) {
-    auto mpi_context = setup_horovod();
-    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
-    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
-    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
-  }
-#endif
-}
-
 inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExecutionProviderFactory& f) {
   auto p = f.CreateProvider();
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
@@ -502,6 +395,74 @@ void InitializeSession(InferenceSession* sess, const std::vector<std::string>& p
     RegisterExecutionProviders(sess, provider_types);
   }
   OrtPybindThrowIfError(sess->Initialize());
+}
+
+// TODO: this method does not handle parallel optimization.
+static void ConfigureSessionForTraining(
+    training::TrainingSession* sess, TrainingParameters& parameters) {
+#ifdef USE_HOROVOD
+  // this condition block is temporary.
+  // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
+  // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
+  bool use_nccl = parameters.allreduce_post_accumulation;
+  if (!use_nccl && parameters.world_size > 1) {
+    auto mpi_context = setup_horovod();
+    std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
+    std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
+    std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+  }
+#endif
+
+  training::TrainingSession::TrainingConfiguration config{};
+  config.weight_names_to_train = parameters.weights_to_train;
+  config.weight_names_to_not_train = parameters.weights_not_to_train;
+  config.immutable_weights = parameters.immutable_weights;
+
+  config.set_gradients_as_graph_outputs = true;
+
+  config.gradient_accumulation_steps = parameters.gradient_accumulation_steps;
+
+  config.distributed_config.world_rank = parameters.world_rank;
+  config.distributed_config.world_size = parameters.world_size;
+
+  if (parameters.use_mixed_precision) {
+    training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    mp.add_loss_scaling = false;
+    mp.use_fp16_initializers = true;
+
+    config.mixed_precision_config = mp;
+  }
+
+  config.loss_name =
+      parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
+
+  if (!parameters.training_optimizer_name.empty()) {
+    training::TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
+    opt.name = parameters.training_optimizer_name;
+    opt.learning_rate_input_name = parameters.lr_params_feed_name;
+    opt.weight_attributes_generator = [&parameters](const std::string& weight_name) {
+      const auto it = parameters.optimizer_attributes_map.find(weight_name);
+      ORT_ENFORCE(
+          it != parameters.optimizer_attributes_map.end(),
+          "Failed to find attribute map for weight ", weight_name);
+      return it->second;
+    };
+    opt.use_fp16_moments = parameters.use_fp16_moments;
+    opt.do_all_reduce_in_fp16 = true;
+    // this mapping is temporary.
+    // For now, nccl allreduce kernel only implements for allreduce_post_accumulation
+    // hovorod allreduce kernel only implements for not allreduce_post_accumulation.
+    // eventually we will have one all reduce kernel and let opt to have
+    // an allreduce_post_accumulation option and remove the use_nccl option.
+    opt.use_nccl = parameters.allreduce_post_accumulation;
+    opt.partition_optimizer = false;
+
+    config.optimizer_config = opt;
+  }
+
+  training::TrainingSession::TrainingConfigurationResult config_result{};
+
+  OrtPybindThrowIfError(sess->ConfigureForTraining(config, config_result));
 }
 
 void addGlobalMethods(py::module& m) {
@@ -1066,92 +1027,18 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #endif
       })
       .def("load_model", [](onnxruntime::training::TrainingSession* sess, const std::string& path, TrainingParameters& parameters) {
-        auto status = sess->Load(path);
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-        status = sess->ApplyTransformationsToMainGraph();
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-        auto weights_to_train = parameters.weights_to_train;
-        if (weights_to_train.empty()) {
-          weights_to_train = sess->GetTrainableModelInitializers(parameters.immutable_weights);
-          for (const auto& not_to_train : parameters.weights_not_to_train) {
-            weights_to_train.erase(not_to_train);
-          }
-        }
+        OrtPybindThrowIfError(sess->Load(path));
 
-        // Add gradient graph
-        std::string actual_loss_name = parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
-        status = sess->BuildGradientGraph(weights_to_train, actual_loss_name, true);
-
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-
-        std::unordered_map<std::string, NodeArg*> fp16_weights_map;
-        if (parameters.use_mixed_precision) {
-          status = sess->EnableMixedPrecision(weights_to_train, true, fp16_weights_map);
-          if (!status.IsOK()) {
-            throw std::runtime_error(status.ToString().c_str());
-          }
-        }
-
-        if (!parameters.training_optimizer_name.empty()) {
-          SetupAndBuildOptimizer(sess, weights_to_train, fp16_weights_map, parameters);
-        } else if (parameters.gradient_accumulation_steps > 1) {
-          status = sess->BuildAccumulationNode(weights_to_train);
-          if (!status.IsOK()) {
-            throw std::runtime_error(status.ToString().c_str());
-          }
-        }
+        ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
       })
-      .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialziedModel, TrainingParameters& parameters) {
-        std::istringstream buffer(serialziedModel);
-        auto status = sess->Load(buffer);
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-        status = sess->ApplyTransformationsToMainGraph();
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
+      .def("read_bytes", [](onnxruntime::training::TrainingSession* sess, const py::bytes& serialized_model, TrainingParameters& parameters) {
+        std::istringstream buffer(serialized_model);
+        OrtPybindThrowIfError(sess->Load(buffer));
 
-        auto weights_to_train = parameters.weights_to_train;
-        if (weights_to_train.empty()) {
-          weights_to_train = sess->GetTrainableModelInitializers(parameters.immutable_weights);
-          for (const auto& not_to_train : parameters.weights_not_to_train) {
-            weights_to_train.erase(not_to_train);
-          }
-        }
-
-        // Add gradient graph
-        std::string actual_loss_name = parameters.use_mixed_precision ? parameters.scaled_loss_output_name : parameters.loss_output_name;
-        status = sess->BuildGradientGraph(weights_to_train, actual_loss_name, true);
-        if (!status.IsOK()) {
-          throw std::runtime_error(status.ToString().c_str());
-        }
-
-        std::unordered_map<std::string, NodeArg*> fp16_weights_map;
-        if (parameters.use_mixed_precision) {
-          status = sess->EnableMixedPrecision(weights_to_train, true, fp16_weights_map);
-          if (!status.IsOK()) {
-            throw std::runtime_error(status.ToString().c_str());
-          }
-        }
-
-        if (!parameters.training_optimizer_name.empty()) {
-          SetupAndBuildOptimizer(sess, weights_to_train, fp16_weights_map, parameters);
-        } else if (parameters.gradient_accumulation_steps > 1) {
-          status = sess->BuildAccumulationNode(weights_to_train);
-          if (!status.IsOK()) {
-            throw std::runtime_error(status.ToString().c_str());
-          }
-        }
+        ConfigureSessionForTraining(sess, parameters);
 
         std::vector<std::string> provider_types = {};
         InitializeSession(sess, provider_types);
@@ -1198,7 +1085,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           }
           state_tensors.insert(std::make_pair(initializer.first, ml_value));
         }
-        ORT_THROW_IF_ERROR(sess->UpdateInitializedTensors(state_tensors, strict));
+        ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
       });
 }
 

@@ -121,7 +121,8 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Check condition. if met, return status.
 #define ORT_RETURN_IF(condition, ...)                                                     \
   if (condition) {                                                                        \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Satsified: " #condition "\n",              \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                             \
+                           "Satisfied, but should not be: " #condition "\n",              \
                            ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
   }
 

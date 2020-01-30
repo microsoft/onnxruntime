@@ -28,7 +28,6 @@ struct OptimizerGraphConfig {
   int world_rank{0};
   int world_size{1};
   bool use_mixed_precision{false};
-  bool always_do_update{false};
   bool allreduce_in_fp16{false};
   bool use_nccl{false};
   bool partition_optimizer{false};

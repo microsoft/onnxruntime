@@ -226,8 +226,8 @@ class InferenceSession {
   common::Status Load(const void* model_data, int model_data_len);
 
   /**
-    * Load an ONNX model from the member model_proto_. 
-    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
+    * Load an ONNX model from the member model_proto_.
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array
     * @return OK if success.
     */
   common::Status Load();
@@ -372,7 +372,6 @@ class InferenceSession {
   std::shared_ptr<onnxruntime::Model> model_;
 
   // names of model outputs used for quick validation.
-  std::unordered_set<std::string> model_input_names_;
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx

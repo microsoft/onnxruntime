@@ -10,16 +10,16 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/path_lib.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/session/environment.h"
+#include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/models/runner/training_util.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #endif
-
-using namespace std;
 
 namespace onnxruntime {
 namespace training {
@@ -61,13 +61,77 @@ TrainingRunner::TrainingRunner(Parameters params)
 Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
 
-  ORT_RETURN_IF_ERROR(session_.ApplyTransformationsToMainGraph());
+  TrainingSession::TrainingConfiguration config{};
+  config.model_with_loss_function_path = params_.model_with_loss_func_path;
+  config.model_with_loss_function_path = params_.model_with_training_graph_path;
 
-  std::string loss_scale_input_name{};
+  config.weight_names_to_train = params_.weights_to_train;
+  config.weight_names_to_not_train = params_.weights_not_to_train;
+  config.immutable_weights = params_.immutable_weights;
+
+  config.set_gradients_as_graph_outputs = false;
+
+  config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
+
+  config.distributed_config.world_rank = params_.mpi_context.world_rank;
+  config.distributed_config.world_size = params_.mpi_context.world_size;
+
   if (params_.use_mixed_precision) {
-    ORT_RETURN_IF_ERROR(session_.BuildLossScalingFactorInput(params_.loss_scale, loss_scale_input_name));
-    params_.scalar_names.push_back(loss_scale_input_name);
+    TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
+    mp.add_loss_scaling = true;
+    mp.initial_loss_scale_value = params_.loss_scale;
+    mp.use_fp16_initializers = params_.use_fp16_initializer;
 
+    config.mixed_precision_config = mp;
+  }
+
+  // always configure the loss function
+  {
+    TrainingSession::TrainingConfiguration::LossFunctionConfiguration lf{};
+    lf.loss_function_info = params_.loss_func_info;
+
+    config.loss_function_config = lf;
+  }
+
+  // always configure the optimizer
+  {
+    TrainingSession::TrainingConfiguration::OptimizerConfiguration opt{};
+    opt.name = params_.training_optimizer_name;
+    opt.learning_rate_input_name = params_.lr_params.feed_name;
+    opt.weight_attributes_generator = params_.optimizer_attributes;
+    opt.use_fp16_moments = params_.use_fp16_moments;
+    opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
+    opt.use_nccl = params_.use_nccl;
+    opt.partition_optimizer = params_.partition_optimizer;
+
+    config.optimizer_config = opt;
+  }
+
+  if (params_.EnableTensorboard()) {
+    TrainingSession::TrainingConfiguration::TensorboardConfiguration tb{};
+    tb.summary_name = params_.summary_name;
+    tb.scalar_node_names = params_.scalar_names;
+    tb.histogram_node_names = params_.histogram_names;
+    tb.norm_node_names = params_.norm_names;
+    tb.dump_convergence_metrics = params_.dump_convergence_metrics;
+
+    config.tensorboard_config = tb;
+  }
+
+  if (params_.use_gist) {
+    TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+
+    config.gist_config = gist;
+  }
+
+  TrainingSession::TrainingConfigurationResult config_result{};
+
+  ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
+
+  if (config_result.mixed_precision_config_result.has_value() &&
+      config_result.mixed_precision_config_result.value().loss_scale_input_name.has_value()) {
+    const std::string& loss_scale_input_name =
+        config_result.mixed_precision_config_result.value().loss_scale_input_name.value();
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
       loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
@@ -77,76 +141,14 @@ Status TrainingRunner::Initialize() {
     }
   }
 
-  // Add loss func
-  std::string actual_loss_name{};
-  ORT_RETURN_IF_ERROR(session_.BuildLossFunction(
-      params_.loss_func_info, loss_scale_input_name, actual_loss_name));
-  if (params_.mpi_context.world_rank == 0 && !params_.model_with_loss_func_path.empty()) {
-    session_.Save(params_.model_with_loss_func_path, TrainingSession::SaveOption::NO_RELOAD);
-  }
-
-  // Get the weights-to-train list if user specify it.
-  // Otherwise, generate the list by removing not-to-train ones from all initializers.
-  auto weights_to_train = params_.weights_to_train;
-  if (weights_to_train.empty()) {
-    weights_to_train = session_.GetTrainableModelInitializers(params_.immutable_weights);
-    for (const auto& not_to_train : params_.weights_not_to_train) {
-      weights_to_train.erase(not_to_train);
-    }
-  }
-
-  for (const std::string& weight : weights_to_train) {
-    std::cout << "Training weight " << weight << std::endl;
-  }
-
-  // Add gradient graph
-  ORT_RETURN_IF_ERROR(session_.BuildGradientGraph(weights_to_train, actual_loss_name));
-
-  std::unordered_map<std::string, NodeArg*> fp16_weights_map;
-  if (params_.use_mixed_precision) {
-    ORT_RETURN_IF_ERROR(session_.EnableMixedPrecision(weights_to_train, params_.use_fp16_initializer, fp16_weights_map));
-  }
-
-  // Add optimizer
-  OptimizerGraphConfig opt_graph_config{};
-  std::unordered_map<std::string, OptimizerNodeConfig> opt_configs;
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
-  ORT_RETURN_IF_ERROR(SetupOptimizerParams(
-      weights_to_train, fp16_weights_map, loss_scale_input_name,
-      opt_graph_config, opt_configs));
-  ORT_RETURN_IF_ERROR(session_.BuildOptimizer(opt_graph_config, opt_configs, opt_graph_outputs));
-  opt_graph_outputs_ = opt_graph_outputs;
-
-  // Add tensorboard
-  if (params_.EnableTensorboard()) {
-    if (opt_graph_outputs_.count(kGradientAllIsFiniteOutputKey) > 0) {
-      params_.scalar_names.push_back(opt_graph_outputs_[kGradientAllIsFiniteOutputKey]);
-    }
-    if (opt_graph_outputs_.count(kGlobalGradientNormOutputKey) > 0) {
-      params_.scalar_names.push_back(opt_graph_outputs_[kGlobalGradientNormOutputKey]);
-    }
-    ORT_RETURN_IF_ERROR(session_.AddTensorboard(
-        params_.summary_name, params_.scalar_names, params_.histogram_names,
-        params_.norm_names, params_.dump_convergence_metrics));
-  }
+  opt_graph_outputs_ = config_result.opt_config_result.value().output_key_to_graph_output_name;
 
   // Expose all fetches as graph outputs
   VectorString fetch_names = params_.fetch_names;
-  for (const auto& it : opt_graph_outputs) {
+  for (const auto& it : opt_graph_outputs_) {
     fetch_names.push_back(it.second);
   }
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
-
-  if (params_.mpi_context.world_rank == 0 && !params_.model_with_training_graph_path.empty()) {
-    session_.Save(params_.model_with_training_graph_path, TrainingSession::SaveOption::NO_RELOAD);
-  }
-
-  if (params_.use_gist) {
-    ORT_RETURN_IF_ERROR(session_.AddGistEncoding());
-    if (!params_.model_gist_encode_path.empty()) {
-      session_.Save(params_.model_gist_encode_path, TrainingSession::SaveOption::NO_RELOAD);
-    }
-  }
 
 #ifdef USE_CUDA
   if (params_.use_cuda) {
@@ -160,29 +162,6 @@ Status TrainingRunner::Initialize() {
   }
 #endif
 
-  // Checkpointing initialization
-  if (!params_.checkpoints_dir.empty()) {
-    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.checkpoints_dir));
-
-    checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
-        params_.checkpoints_dir, params_.max_num_checkpoints);
-
-    // Load checkpoint, if any
-    PathString checkpoint_to_load_path = params_.checkpoint_to_load_path;
-    if (!checkpoint_to_load_path.empty() ||
-        checkpoint_registry_->TryGetLatestCheckpoint(checkpoint_to_load_path)) {
-      std::unordered_map<std::string, std::string> checkpoint_properties{};
-      ORT_RETURN_IF_ERROR(session_.LoadCheckpointAndUpdateInitializedTensors(
-          checkpoint_to_load_path, checkpoint_properties));
-      ORT_RETURN_IF_ERROR(LoadCheckpointProperties(checkpoint_properties));
-    }
-  }
-
-  // Create output directory if needed.
-  if (!params_.output_dir.empty()) {
-    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.output_dir));
-  }
-
   if (params_.use_profiler && !SESSION_OPTION.enable_profiling) {
     // Profiling has not already been enabled, so override from command line options.
 
@@ -193,7 +172,23 @@ Status TrainingRunner::Initialize() {
     session_.StartProfiling(SESSION_OPTION.profile_file_prefix);
   }
 
-  return session_.Initialize();
+  ORT_RETURN_IF_ERROR(session_.Initialize());
+
+  // Checkpointing initialization
+  // session_.Initialize() must be called prior to LoadCheckpoint()
+  if (!params_.checkpoints_dir.empty()) {
+    checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
+        params_.checkpoints_dir, params_.max_num_checkpoints);
+
+    // Load checkpoint, if any
+    PathString checkpoint_to_load_path = params_.checkpoint_to_load_path;
+    if (!checkpoint_to_load_path.empty() ||
+        checkpoint_registry_->TryGetLatestCheckpoint(checkpoint_to_load_path)) {
+      ORT_RETURN_IF_ERROR(LoadCheckpoint(checkpoint_to_load_path));
+    }
+  }
+
+  return Status::OK();
 }
 
 Status TrainingRunner::Run(IDataLoader* training_data_loader, IDataLoader* test_data_loader) {
@@ -232,14 +227,14 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
   VectorString fetch_names = params_.fetch_names;
   if (params_.use_mixed_precision) {
-    auto it = opt_graph_outputs_.find(kGradientAllIsFiniteOutputKey);
+    auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
     fetch_names.push_back(it->second);
   }
 
   VectorString fetch_grad_accumulator_output;
   if (params_.gradient_accumulation_steps > 1) {
-    auto it = opt_graph_outputs_.find(kGradientAccumulationOutputKey);
+    auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAccumulation);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient accumulation output is missing in the optimizer output");
     fetch_grad_accumulator_output.push_back(it->second);
   }
@@ -291,7 +286,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
           feeds.push_back(lr_ort_val);
         }
 
-        vector<MLValue> fetches;
+        std::vector<MLValue> fetches;
 
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
         auto start = std::chrono::high_resolution_clock::now();
@@ -304,7 +299,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                                            &fetches));
 
           if (loss_scaler_) {
-            auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[kGradientAllIsFiniteOutputKey]);
+            auto it = std::find(fetch_names.begin(), fetch_names.end(), opt_graph_outputs_[OptimizerOutputKey::GradientAllIsFinite]);
             if (it != fetch_names.end()) {
               const size_t index = static_cast<size_t>(std::distance(fetch_names.begin(), it));
               const Tensor& all_is_finite_t = fetches[index].Get<Tensor>();
@@ -368,6 +363,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
               weight_update_step_count_, new_checkpoint_path,
               should_remove_old_checkpoint, old_checkpoint_path));
 
+          // ensure checkpoint directory exists
+          if (!Env::Default().FolderExists(params_.checkpoints_dir)) {
+            ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.checkpoints_dir));
+          }
+
           if (should_remove_old_checkpoint) {
             const auto status = Env::Default().DeleteFolder(old_checkpoint_path);
             LOGS_DEFAULT_IF(!status.IsOK(), WARNING)
@@ -376,9 +376,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
                 << ", error: " << status.ErrorMessage();
           }
 
-          std::unordered_map<std::string, std::string> checkpoint_properties{};
-          ORT_RETURN_IF_ERROR(SaveCheckpointProperties(checkpoint_properties));
-          ORT_RETURN_IF_ERROR(session_.SaveCheckpoint(new_checkpoint_path, checkpoint_properties));
+          ORT_RETURN_IF_ERROR(SaveCheckpoint(new_checkpoint_path));
         }
       }  // end of one file/shard
 
@@ -425,6 +423,11 @@ Status TrainingRunner::EndTraining(IDataLoader* data_loader, bool do_load_and_ev
     return Status::OK();
   }
 
+  // Create output directory if needed.
+  if (!params_.output_dir.empty()) {
+    ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(params_.output_dir));
+  }
+
   printf("\nSaving the trained model.\n");
   const PathString model_base_name = GetLastComponent(params_.model_path);
 
@@ -460,7 +463,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
 
   // A static batch index representing current test batch
   static size_t current_batch = 0;
-  vector<string> feed_names = data_loader.DataSetTensorNames();
+  std::vector<std::string> feed_names = data_loader.DataSetTensorNames();
   if (loss_scaler_) {
     feed_names.push_back(loss_scaler_->GetLossScaleInputName());
   }
@@ -500,7 +503,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
     OrtValue lr_ort_val;
     TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{params_.lr_params.initial_lr}, &lr_ort_val);
     feeds.push_back(lr_ort_val);
-    vector<MLValue> fetches;
+    std::vector<MLValue> fetches;
     ORT_RETURN_IF_ERROR(session.Run(run_options,
                                     feed_names,
                                     feeds,
@@ -539,44 +542,76 @@ Status TrainingRunner::LoadAndEvaluate(const PathString& model_path, IDataLoader
   return Evaluate(s, data_loader);
 }
 
-Status TrainingRunner::SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
-                                            const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
-                                            const std::string& loss_scale_input_name,
-                                            OptimizerGraphConfig& opt_graph_config_result,
-                                            std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs) {
-  opt_configs.reserve(weights_to_train.size());
-  for (const auto& weight_name : weights_to_train) {
-    // Prepare the weight<->optimizer mapping.
-    // All weights use the same type of optimizer
-    OptimizerNodeConfig opt_config{
-        params_.training_optimizer_name,
-        nullptr,
-        params_.lr_params.feed_name,
-        params_.optimizer_attributes(weight_name),
-        loss_scale_input_name,
-        params_.use_fp16_moments};
+Status TrainingRunner::SaveCheckpoint(const PathString& checkpoint_path) {
+  NameMLValMap checkpointed_tensors{};
+  ORT_RETURN_IF_ERROR(session_.GetStateTensors(checkpointed_tensors));
 
-    const auto it = fp16_weights_map.find(weight_name);
-    if (it != fp16_weights_map.cend()) {
-      opt_config.fp16_weight_arg = it->second;
-    }
+  std::unordered_map<std::string, std::string> checkpointed_properties{};
+  ORT_RETURN_IF_ERROR(SaveCheckpointProperties(checkpointed_properties));
 
-    opt_configs[weight_name] = opt_config;
+  ORT_RETURN_IF_ERROR(SaveModelCheckpoint(
+      checkpoint_path, session_.GetDataTransferManager(),
+      checkpointed_tensors, checkpointed_properties));
+
+  return Status::OK();
+}
+
+namespace {
+Status WithOrtValuesFromTensorProtos(
+    const PathString& model_location,
+    const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+    std::function<Status(const NameMLValMap&)> use_name_to_ort_value_fn) {
+  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+
+  NameMLValMap name_to_ort_value{};
+  std::vector<std::vector<char>> tensor_buffers{};
+  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
+
+  for (const auto& tensor_proto : tensor_protos) {
+    const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type());
+    const size_t element_size = tensor_type->GetElementType()->Size();
+    const TensorShape shape{
+        tensor_proto.dims().data(), static_cast<size_t>(tensor_proto.dims().size())};
+
+    std::vector<char> tensor_buffer{};
+    tensor_buffer.resize(element_size * shape.Size());
+
+    const MemBuffer mem_buffer{tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info};
+
+    OrtValue ort_value;
+    OrtCallback callback;
+
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
+        Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
+        ort_value, callback));
+    ScopedOrtCallbackInvoker callback_invoker{callback};
+
+    name_to_ort_value.emplace(tensor_proto.name(), ort_value);
+    tensor_buffers.emplace_back(std::move(tensor_buffer));
+    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
-  // set up optimizer graph config
-  OptimizerGraphConfig opt_graph_config{};
-  opt_graph_config.use_mixed_precision = params_.use_mixed_precision;
-  opt_graph_config.always_do_update = params_.is_perf_test;
-  opt_graph_config.loss_scale_input_name = loss_scale_input_name;
-  opt_graph_config.world_rank = params_.mpi_context.world_rank;
-  opt_graph_config.world_size = params_.mpi_context.world_size;
-  opt_graph_config.gradient_accumulation_steps = params_.gradient_accumulation_steps;
-  opt_graph_config.allreduce_in_fp16 = params_.allreduce_in_fp16;
-  opt_graph_config.use_nccl = params_.use_nccl;
-  opt_graph_config.partition_optimizer = params_.partition_optimizer;
+  ORT_RETURN_IF_ERROR(use_name_to_ort_value_fn(name_to_ort_value));
 
-  opt_graph_config_result = std::move(opt_graph_config);
+  return Status::OK();
+}
+}  // namespace
+
+Status TrainingRunner::LoadCheckpoint(const PathString& checkpoint_path) {
+  std::vector<ONNX_NAMESPACE::TensorProto> checkpointed_tensors{};
+  std::unordered_map<std::string, std::string> checkpointed_properties{};
+  ORT_RETURN_IF_ERROR(LoadModelCheckpoint(
+      checkpoint_path, session_.GetModelLocation(),
+      checkpointed_tensors, checkpointed_properties));
+
+  ORT_RETURN_IF_ERROR(WithOrtValuesFromTensorProtos(
+      session_.GetModelLocation(), checkpointed_tensors,
+      [this](const NameMLValMap& name_to_ort_value) -> Status {
+        ORT_RETURN_IF_ERROR(session_.SetStateTensors(name_to_ort_value, true));
+        return Status::OK();
+      }));
+
+  ORT_RETURN_IF_ERROR(LoadCheckpointProperties(checkpointed_properties));
 
   return Status::OK();
 }

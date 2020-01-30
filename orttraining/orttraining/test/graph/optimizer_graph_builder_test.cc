@@ -130,7 +130,7 @@ static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph&
   OptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
 
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
@@ -141,7 +141,7 @@ static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph&
     ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
-    ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+    ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
   }
 
   // verify mixed precision operations exist
@@ -195,7 +195,7 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
   AllreduceOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
 
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
@@ -206,7 +206,7 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
     ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
     ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
-    ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+    ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
   }
 
   // verify mixed precision operations exist
@@ -311,7 +311,7 @@ static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& gr
   ZeROOptimizerGraphBuilder optimizer_graph_builder(
       GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
 
-  std::unordered_map<std::string, std::string> opt_graph_outputs;
+  OptimizerOutputKeyMap<std::string> opt_graph_outputs;
   std::unordered_set<std::string> opt_initializer_names;
   ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
 
@@ -322,7 +322,7 @@ static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& gr
     ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
-    ASSERT_GT(opt_graph_outputs.count(kGradientAccumulationOutputKey), 0);
+    ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
   }
 
   // verify mixed precision operations exist

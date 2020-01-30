@@ -335,7 +335,7 @@ OptimizerGraphBuilder::OptimizerGraphBuilder(
 Status OptimizerGraphBuilder::Build(
     Graph& graph,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
-    std::unordered_map<std::string, std::string>& optimizer_graph_outputs) {
+    OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
   if (weight_names_.empty()) {
     // nothing to do
     return Status::OK();
@@ -361,7 +361,7 @@ Status OptimizerGraphBuilder::Build(
   if (is_gradient_accumulation_enabled) {
     ArgDef group_accumulate_gradient_output =
         AddGradientAccumulationNodes(nodearg_name_generator, gradient_argdefs, gradient_accumulation_buffers, graph_defs);
-    optimizer_graph_outputs[kGradientAccumulationOutputKey] = group_accumulate_gradient_output.name;
+    optimizer_graph_outputs[OptimizerOutputKey::GradientAccumulation] = group_accumulate_gradient_output.name;
   }
 
   // add configuration-specific graph changes
@@ -385,7 +385,7 @@ Status OptimizerGraphBuilder::BuildInternal(
     std::vector<ArgDef>& weight_argdefs,
     std::vector<ArgDef>& gradient_argdefs,
     std::unordered_set<std::string>& optimizer_state_initializer_names,
-    std::unordered_map<std::string, std::string>& optimizer_graph_outputs) {
+    OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs) {
 
   auto nodearg_name_generator = [&graph](const std::string& base_name) {
     return graph.GenerateNodeArgName(base_name);
@@ -407,11 +407,11 @@ Status OptimizerGraphBuilder::BuildInternal(
   if (opt_graph_config_.use_mixed_precision) {
     ORT_RETURN_IF_ERROR(AddGradientNorm(
         nodearg_name_generator, gradient_argdefs, graph_defs, global_grad_norm_argdef));
-    optimizer_graph_outputs[kGlobalGradientNormOutputKey] = global_grad_norm_argdef.name;
+    optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
         nodearg_name_generator, global_grad_norm_argdef, graph_defs, global_grad_norm_finite_argdef));
-    optimizer_graph_outputs[kGradientAllIsFiniteOutputKey] = global_grad_norm_finite_argdef.name;
+    optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 
   // add weight update

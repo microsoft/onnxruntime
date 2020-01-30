@@ -33,4 +33,39 @@ struct OrtCallbackInvoker {
     }
   }
 };
+
+/**
+ * Invokes the contained OrtCallback upon destruction or being assigned to.
+ */
+class ScopedOrtCallbackInvoker {
+ public:
+  explicit ScopedOrtCallbackInvoker(OrtCallback callback)
+      : callback_(callback) {}
+
+  ScopedOrtCallbackInvoker(ScopedOrtCallbackInvoker&& other)
+      : callback_(other.callback_) {
+    other.callback_.f = nullptr;
+    other.callback_.param = nullptr;
+  }
+
+  ScopedOrtCallbackInvoker& operator=(ScopedOrtCallbackInvoker&& other) {
+    if (callback_.f) callback_.f(callback_.param);
+
+    callback_ = other.callback_;
+    other.callback_.f = nullptr;
+    other.callback_.param = nullptr;
+
+    return *this;
+  }
+
+  ~ScopedOrtCallbackInvoker() {
+    if (callback_.f) callback_.f(callback_.param);
+  }
+
+ private:
+  ScopedOrtCallbackInvoker(const ScopedOrtCallbackInvoker&) = delete;
+  ScopedOrtCallbackInvoker& operator=(const ScopedOrtCallbackInvoker&) = delete;
+
+  OrtCallback callback_;
+};
 }  // namespace onnxruntime

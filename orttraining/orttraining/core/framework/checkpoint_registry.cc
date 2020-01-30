@@ -9,6 +9,7 @@
 #include "re2/re2.h"
 
 #include "core/framework/path_lib.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace training {
@@ -78,17 +79,19 @@ bool CheckpointRegistry::TryGetLatestCheckpoint(PathString& latest_checkpoint_pa
 CheckpointRegistry::CheckpointIdToPathMap CheckpointRegistry::GetCheckpointsFromDirectory(
     const PathString& checkpoints_directory_path) {
   CheckpointIdToPathMap checkpoints{};
-  LoopDir(
-      checkpoints_directory_path,
-      [&checkpoints_directory_path, &checkpoints](
-          const PathString& file_name, OrtFileType /*file_type*/) {
-        CheckpointId id;
-        if (ParseCheckpointFileName(file_name, id)) {
-          checkpoints.emplace(
-              id, ConcatPathComponent(checkpoints_directory_path, file_name));
-        }
-        return true;
-      });
+  if (Env::Default().FolderExists(checkpoints_directory_path)) {
+    LoopDir(
+        checkpoints_directory_path,
+        [&checkpoints_directory_path, &checkpoints](
+            const PathString& file_name, OrtFileType /*file_type*/) {
+          CheckpointId id;
+          if (ParseCheckpointFileName(file_name, id)) {
+            checkpoints.emplace(
+                id, ConcatPathComponent(checkpoints_directory_path, file_name));
+          }
+          return true;
+        });
+  }
 
   return checkpoints;
 }

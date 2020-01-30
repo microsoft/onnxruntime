@@ -149,12 +149,9 @@ class TrainingRunner {
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader);
   Status Evaluate(InferenceSession& session, IDataLoader& data_loader);
   Status LoadAndEvaluate(const PathString& model_path, IDataLoader& data_loader);
-  Status SetupOptimizerParams(const std::unordered_set<std::string>& weights_to_train,
-                              const std::unordered_map<std::string, NodeArg*>& fp16_weights_map,
-                              const std::string& loss_scale_input_name,
-                              OptimizerGraphConfig& opt_graph_config,
-                              std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs);
 
+  Status SaveCheckpoint(const PathString& checkpoint_path);
+  Status LoadCheckpoint(const PathString& checkpoint_path);
   Status SaveCheckpointProperties(std::unordered_map<std::string, std::string>& properties) const;
   Status LoadCheckpointProperties(const std::unordered_map<std::string, std::string>& properties);
 
@@ -162,7 +159,7 @@ class TrainingRunner {
   size_t round_;
   size_t weight_update_step_count_;
   size_t training_data_set_index_;
-  std::unordered_map<std::string, std::string> opt_graph_outputs_;
+  OptimizerOutputKeyMap<std::string> opt_graph_outputs_;
 
   std::unique_ptr<LossScaler> loss_scaler_ = nullptr;
 

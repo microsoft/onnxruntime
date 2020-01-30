@@ -1274,7 +1274,6 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   auto add_inputs = [this](const InputDefList& inputs) {
     input_def_map_.reserve(inputs.size());
-    model_input_names_.reserve(inputs.size());
     for (auto elem : inputs) {
       auto elem_type = utils::GetMLDataType(*elem);
       auto elem_shape_proto = elem->Shape();
@@ -1283,8 +1282,6 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
            InputDefMetaData(
                elem, elem_type,
                elem_shape_proto ? utils::GetTensorShapeFromTensorShapeProto(*elem_shape_proto) : TensorShape())});
-
-      model_input_names_.insert(elem->Name());
     }
   };
 

@@ -11,13 +11,10 @@
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_config.h"
+#include "orttraining/core/graph/optimizer_graph_output_key.h"
 
 namespace onnxruntime {
 namespace training {
-
-constexpr const char* kGradientAccumulationOutputKey = "GRADIENT_ACCUMULATION_OUTPUT";
-constexpr const char* kGradientAllIsFiniteOutputKey = "GRADIENT_ALL_IS_FINITE";
-constexpr const char* kGlobalGradientNormOutputKey = "Global_GRADIENT_NORM";
 
 // given a base name, return a name suitable for a graph NodeArg
 using NodeArgNameGeneratorFn = std::function<std::string(const std::string&)>;
@@ -65,7 +62,7 @@ class OptimizerGraphBuilder {
   Status Build(
       Graph& graph,
       std::unordered_set<std::string>& optimizer_state_initializer_names,
-      std::unordered_map<std::string, std::string>& optimizer_graph_outputs);
+      OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
  protected:
   virtual Status BuildInternal(
@@ -74,7 +71,7 @@ class OptimizerGraphBuilder {
       std::vector<ArgDef>& weight_argdefs,
       std::vector<ArgDef>& gradient_argdefs,
       std::unordered_set<std::string>& optimizer_state_initializer_names,
-      std::unordered_map<std::string, std::string>& optimizer_graph_outputs);
+      OptimizerOutputKeyMap<std::string>& optimizer_graph_outputs);
 
   Status AddGradientScalingNodes(
       const NodeArgNameGeneratorFn& nodearg_name_generator,

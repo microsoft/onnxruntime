@@ -3,8 +3,10 @@
 
 #pragma once
 #include <memory>
+#include "orttraining/core/common/optional.h"
 #include "orttraining/core/graph/loss_func/loss_func_common.h"
 #include "orttraining/core/graph/loss_function_registry.h"
+#include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "core/platform/path_string.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
@@ -14,10 +16,191 @@ namespace training {
 
 class TrainingSession : public InferenceSession {
  public:
+  typedef std::unordered_map<std::string /*OpType*/,
+                             std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
+      ImmutableWeights;
+
   explicit TrainingSession(const SessionOptions& session_options,
                            logging::LoggingManager* logging_manager = nullptr)
       : InferenceSession(session_options, logging_manager) {}
 
+  /**
+   * The training configuration options.
+   */
+  struct TrainingConfiguration {
+    // The path at which to save the intermediate model with the added loss function.
+    optional<PathString> model_with_loss_function_path{};
+    // The path at which to save the intermediate model with the whole training graph.
+    optional<PathString> model_with_training_graph_path{};
+
+    // The names of the weights to train.
+    // If empty, a default set is used.
+    std::unordered_set<std::string> weight_names_to_train{};
+    // The names of the weights to not train.
+    // These are removed from the set of names of weights to train.
+    std::unordered_set<std::string> weight_names_to_not_train{};
+
+    // The immutable weights specification.
+    ImmutableWeights immutable_weights;
+
+    // Whether to set the gradients as graph outputs.
+    bool set_gradients_as_graph_outputs{false};
+
+    // The number of gradient accumulation steps.
+    int gradient_accumulation_steps{1};
+
+    struct DistributedConfiguration {
+      // The rank of the node.
+      int world_rank{0};
+      // The number of nodes.
+      int world_size{1};
+    };
+    // The distributed training configuration.
+    DistributedConfiguration distributed_config{};
+
+    struct MixedPrecisionConfiguration {
+      // Whether to add loss scaling.
+      bool add_loss_scaling{};
+      // The initial loss scaling factor.
+      float initial_loss_scale_value{};
+      // Whether to use FP16 initializers.
+      bool use_fp16_initializers{};
+    };
+    // The mixed precision configuration.
+    // If not provided, mixed precision is disabled.
+    optional<MixedPrecisionConfiguration> mixed_precision_config{};
+
+    struct LossFunctionConfiguration {
+      // The loss function configuration options.
+      LossFunctionInfo loss_function_info{};
+    };
+    // The loss function configuration.
+    // If not provided, no loss function is added and an external one is expected.
+    // Exactly one of loss_function_config or loss_name should be given.
+    optional<LossFunctionConfiguration> loss_function_config{};
+    // The name of the external loss function's output.
+    // Exactly one of loss_function_config or loss_name should be given.
+    optional<std::string> loss_name{};
+
+    struct GistConfiguration {};
+    // The GIST configuration.
+    // If not provided, GIST is disabled.
+    optional<GistConfiguration> gist_config{};
+
+    struct TensorboardConfiguration {
+      // The summary name.
+      std::string summary_name{};
+      // The names of the scalar nodes.
+      std::vector<std::string> scalar_node_names{};
+      // The names of the histogram nodes.
+      std::vector<std::string> histogram_node_names{};
+      // The names of the norm nodes.
+      std::vector<std::string> norm_node_names{};
+      // Whether to dump the convergence metrics.
+      bool dump_convergence_metrics{};
+    };
+    // The TensorBoard configuration.
+    // If not provided, TensorBoard output is disabled.
+    optional<TensorboardConfiguration> tensorboard_config{};
+
+    struct OptimizerConfiguration {
+      // The optimizer name.
+      std::string name{};
+      // The learning rate input name.
+      std::string learning_rate_input_name{};
+      // The per-weight attribute map generator.
+      // It should accept a weight name and return the appropriate attribute map.
+      std::function<std::unordered_map<std::string, float>(const std::string&)> weight_attributes_generator{};
+      // Whether to use FP16 moments.
+      bool use_fp16_moments{};
+      // Whether to use FP16 for the all reduce.
+      bool do_all_reduce_in_fp16{};
+      // Whether to use NCCL.
+      bool use_nccl{};
+      // Whether to partition the optimizer state.
+      bool partition_optimizer{};
+    };
+    // The optimizer configuration.
+    // If not provided, no optimizer is added.
+    optional<OptimizerConfiguration> optimizer_config{};
+  };
+
+  /**
+   * The training configuration output.
+   */
+  struct TrainingConfigurationResult {
+    struct MixedPrecisionConfigurationResult {
+      // The name of the loss scaling factor input if loss scaling was added.
+      optional<std::string> loss_scale_input_name;
+    };
+    // The mixed precision configuration output.
+    // This is only set if mixed precision is enabled.
+    optional<MixedPrecisionConfigurationResult> mixed_precision_config_result;
+
+    struct OptimizerConfigurationResult {
+      // The mapping of optimizer output key to graph output name.
+      OptimizerOutputKeyMap<std::string> output_key_to_graph_output_name;
+    };
+    // The optimizer configuration output.
+    // This is only set if an optimizer is added.
+    optional<OptimizerConfigurationResult> opt_config_result;
+  };
+
+  /**
+   * Configures the session for training.
+   * Note: This is known to NOT be thread-safe.
+   * @param config The training configuration.
+   * @param[out] config_result The configuration output.
+   * @return The status of the configuration.
+   */
+  common::Status ConfigureForTraining(
+      const TrainingConfiguration& config, TrainingConfigurationResult& config_result);
+
+  /**
+   * Overrides the graph outputs with the specified output names.
+   * @param outputs The new output names.
+   * @return The status of the operation.
+   */
+  common::Status OverrideGraphOutputs(const std::vector<std::string>& outputs);
+
+  /** Save a model, 3 options:
+  1. save with updated weights
+  2. save with updated weights and loss function
+  3. save with updated weights, loss function and gradients
+  */
+  enum class SaveOption {
+    NO_RELOAD,
+    WITH_UPDATED_WEIGHTS,
+    WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC,
+    WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS
+  };
+
+  /** Save the new model.
+  @param model_uri the path for the new model.
+  @param opt see SaveOption.
+  */
+  common::Status Save(const PathString& model_uri, SaveOption opt);
+
+  /** Update the session initializers with passed-in state tensors
+   * @param state_tensors A map of state tensors to set, usually loaded from a checkpoint.
+   * @param strict Whether entries in state_tensors which are unknown or not present in the model are treated as an error or ignored.
+   */
+  common::Status SetStateTensors(const NameMLValMap& state_tensors, bool strict = false);
+
+  /**
+   * Gets the state tensors.
+   * @param[out] The state tensors.
+   * @return The status of the operation.
+   */
+  common::Status GetStateTensors(NameMLValMap& state_tensors);
+
+  /** Gets the DataTransferManager instance. */
+  const DataTransferManager& GetDataTransferManager() const;
+
+  /** Gets the model location. */
+  const PathString& GetModelLocation() const { return model_location_; }
+
+ private:
   /** Add a graph input suitable for use as a scaling factor for loss scaling.
   It will be a scalar float tensor.
   @param loss_scale_input_name The name of the added graph input.
@@ -89,7 +272,7 @@ class TrainingSession : public InferenceSession {
   common::Status BuildOptimizer(
       const OptimizerGraphConfig& opt_graph_config,
       const std::unordered_map<std::string, OptimizerNodeConfig>& opt_configs,
-      std::unordered_map<std::string, std::string>& opt_graph_outputs);
+      OptimizerOutputKeyMap<std::string>& opt_graph_outputs);
 
   /** Enable mixed precision training
   @param weights_to_train a set of weights to be training.
@@ -100,67 +283,11 @@ class TrainingSession : public InferenceSession {
                                       bool use_fp16_initializer,
                                       std::unordered_map<std::string, NodeArg*>& fp32_weight_name_to_fp16_node_arg);
 
-  common::Status OverrideGraphOutputs(const std::vector<std::string>& outputs);
-
-  /** Save a model, 3 options:
-  1. save with updated weights
-  2. save with updated weights and loss function
-  3. save with updated weights, loss function and gradients
-  */
-  enum class SaveOption {
-    NO_RELOAD,
-    WITH_UPDATED_WEIGHTS,
-    WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC,
-    WITH_UPDATED_WEIGHTS_AND_LOSS_FUNC_AND_GRADIENTS
-  };
-
-  /** Save the new model.
-  @param model_uri the path for the new model.
-  @param opt see SaveOption.
-  */
-  common::Status Save(const PathString& model_uri, SaveOption opt);
-
-  /** Saves a model checkpoint.
-  @param checkpoint_path The path to the model checkpoint.
-  @param properties The checkpoint properties to save.
-  */
-  common::Status SaveCheckpoint(
-      const PathString& checkpoint_path,
-      const std::unordered_map<std::string, std::string>& properties);
-
-  /** Loads a model checkpoint.
-  @param checkpoint_path The path to the model checkpoint.
-  @param properties[out] The loaded checkpoint properties.
-  */
-  common::Status LoadCheckpointAndUpdateInitializedTensors(
-      const PathString& checkpoint_path,
-      std::unordered_map<std::string, std::string>& properties);
-
-  /** Update the session initializers with passed-in state tensors
-  @param state_tensors, a map of previous state, usually load from checkpoint
-  @param strict, if it is true, it require current session has exact the same set of initializers as the checkpoint.
-         if false, it allow some initializers are missing in checkpoints, or some initializers in checkpoint are missing in current session
-  */
-  common::Status UpdateInitializedTensors(const NameMLValMap& state_tensors, bool strict = false);
-
-  // TODO: remove or refine below temp interfaces.
-  NameMLValMap GetWeights() const;
-
-  common::Status GetStateTensors(NameMLValMap& state_tensors);
-
-  const DataTransferManager& GetDataTransferManager();
-
-  // (To be deprecated)
-  // Update the weights when updater is not part of the training graph
-  common::Status UpdateWeightsInSessionState(const NameMLValMap& new_weights);
-  std::unordered_set<std::string> GetModelInputNames() const;
-  std::unordered_set<std::string> GetModelOutputNames() const;
-
-  typedef std::unordered_map<std::string /*OpType*/,
-                             std::vector<std::pair<size_t /*InputIndex*/, float /*value*/>>>
-      ImmutableWeights;
-
   std::unordered_set<std::string> GetTrainableModelInitializers(const ImmutableWeights& immutable_weights) const;
+
+  std::unordered_set<std::string> GetStateTensorNames() const;
+
+  NameMLValMap GetWeights() const;
 
   static bool IsImmutableWeight(const ImmutableWeights& immutable_weights,
                                 const Node* node,
@@ -171,7 +298,8 @@ class TrainingSession : public InferenceSession {
                             const std::string& initializer_name,
                             const logging::Logger* logger = nullptr);
 
- private:
+  bool is_configured_{false};
+
   std::unordered_set<std::string> weights_to_train_;
   // names of additional initializers to be included in checkpoints
   std::unordered_set<std::string> opt_state_initializer_names_;
