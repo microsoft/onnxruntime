@@ -8,7 +8,7 @@
 #include "Featurizers/L1NormalizeFeaturizer.h"
 #include "Featurizers/L2NormalizeFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace NS = Microsoft::Featurizer;
 namespace dft = NS::Featurizers;

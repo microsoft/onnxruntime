@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/MaxAbsScalarFeaturizer.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {

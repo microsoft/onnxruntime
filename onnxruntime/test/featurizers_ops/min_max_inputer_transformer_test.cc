@@ -6,7 +6,7 @@
 
 #include "Featurizers/MinMaxImputerFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace NS = Microsoft::Featurizer;
 namespace dft = NS::Featurizers;

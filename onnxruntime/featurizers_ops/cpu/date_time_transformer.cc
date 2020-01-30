@@ -7,7 +7,7 @@
 #include "core/framework/op_kernel.h"
 
 #include "Featurizers/DateTimeFeaturizer.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {

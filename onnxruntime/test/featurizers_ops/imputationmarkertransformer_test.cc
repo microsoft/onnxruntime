@@ -7,6 +7,7 @@
 #include "test/providers/provider_test_utils.h"
 
 #include "Featurizers/ImputationMarkerFeaturizer.h"
+#include "Featurizers/../Archive.h"
 
 namespace ft = Microsoft::Featurizer;
 
