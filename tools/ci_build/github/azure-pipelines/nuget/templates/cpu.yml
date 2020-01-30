@@ -1,8 +1,3 @@
-# Defined as pipeline variables
-# variables:
-#   AgentPoolLinux : 'Linux-CPU'
-#   AgentPoolMacOS : 'macOS-10.13'
-
 parameters:
   DoEsrp: 'false'
   PackageName: 'Microsoft.ML.OnnxRuntime'

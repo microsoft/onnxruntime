@@ -96,7 +96,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &OrtApis::ReleaseSequenceTypeInfo};
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
-  if (GetVersion1Api() == ort_api) {
+  if (OrtApis::GetApi(1) == ort_api) {
     return &winml_adapter_api_1;
   }
 
