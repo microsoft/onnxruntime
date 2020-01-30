@@ -5,17 +5,18 @@
 #include "test/providers/provider_test_utils.h"
 
 #include "Featurizers/CatImputerFeaturizer.h"
+#include "Featurizers/../Archive.h"
 
-namespace dft = Microsoft::Featurizer::Featurizers;
+namespace NS = Microsoft::Featurizer;
+namespace dft = NS::Featurizers;
 
 namespace onnxruntime {
 namespace test {
 
 TEST(FeaturizersTests, CategoryImputer_float_values) {
-
   OpTester test("CatImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
-  
-  // State from when the transformer was trained. Corresponds to a 
+
+  // State from when the transformer was trained. Corresponds to a
   // most frequent value during training of 1.5 and version of 1
   test.AddInput<uint8_t>("State", {8}, {1, 0, 0, 0, 0, 0, 192, 63});
 

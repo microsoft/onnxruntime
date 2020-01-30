@@ -9,7 +9,7 @@
 #include <limits>
 
 #include "Featurizers/TimeSeriesImputerFeaturizer.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace ft = Microsoft::Featurizer::Featurizers;
 

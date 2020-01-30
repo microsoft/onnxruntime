@@ -6,7 +6,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 #include "Featurizers/LabelEncoderFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
 

@@ -4,8 +4,8 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Archive.h"
 #include "Featurizers/DateTimeFeaturizer.h"
+#include "Featurizers/../Archive.h"
 
 namespace dft = Microsoft::Featurizer::Featurizers;
 

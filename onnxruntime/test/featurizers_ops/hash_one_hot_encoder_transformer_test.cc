@@ -6,7 +6,7 @@
 
 #include "Featurizers/HashOneHotVectorizerFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace NS = Microsoft::Featurizer;
 
