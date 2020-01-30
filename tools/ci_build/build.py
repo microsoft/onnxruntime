@@ -177,7 +177,7 @@ def get_linux_distro():
 
 def is_ubuntu_1604():
     dist, ver = get_linux_distro()
-    return dist == 'Ubuntu'
+    return dist == 'Ubuntu' and ver.startswith('16.04')
 
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
@@ -900,9 +900,9 @@ def main():
             if (args.arm or args.arm64):
                 raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
             install_ubuntu_deps(args)
-        #    if not is_docker():
-        #        install_python_deps()
-        #if (args.enable_pybind and is_windows()):
+            if not is_docker():
+                install_python_deps()
+        if (args.enable_pybind and is_windows()):
             install_python_deps(args.numpy_version)
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)

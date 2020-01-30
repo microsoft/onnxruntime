@@ -13,6 +13,7 @@ apt-get update && apt-get install -y --no-install-recommends \
 # Dependencies: conda
 wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda
 rm ~/miniconda.sh
+pip install numpy
 #/opt/miniconda/bin/conda clean -ya
 
 #/opt/miniconda/bin/conda install -y numpy
