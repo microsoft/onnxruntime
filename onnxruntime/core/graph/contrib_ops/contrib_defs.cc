@@ -1682,7 +1682,7 @@ Computes the mean of the low-precision input tensor's element along the provided
 The resulting tensor has the same rank as the input if keepdims equal 1. If keepdims equal 0,
 then the resulting tensor have the reduced dimension pruned. The above behavior is similar to numpy,
 with the exception that numpy default keepdims to False instead of True.
-Input and Output scales and zero points are used to requantize the output in a new range. 
+Input and Output scales and zero points are used to requantize the output in a new range.
 This helps to improve accuracy as after ReduceMean operation the range of the output is expected to decrease.
 
 ```
@@ -1861,7 +1861,7 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
  ```
  pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
  ```
- 
+
 The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
 
 Input and output scales and zero points are used to convert the output to a new quantization range.
@@ -2514,6 +2514,43 @@ Example 4:
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+
+  static const char* Gelu_ver1_doc =
+      R"DOC(Gaussian Error Linear Unit.
+A high-performing neural network activation function.The GELU nonlinearity is
+the expected transformation of a stochastic regularizer which randomly applies
+the identity or zero map to a neuron's input. The GELU nonlinearity weights
+inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(Gelu_ver1_doc)
+      .Input(0, "X", "The input data as Tensor.", "T")
+      .Output(0, "Y", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* BiasGelu_ver1_doc =
+      R"DOC(Bias Gelu.
+It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(BiasGelu_ver1_doc)
+      .Input(0, "A", "The normal input data.", "T")
+      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
+      .Output(0, "C", "The output.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   RegisterBertSchemas();
 }

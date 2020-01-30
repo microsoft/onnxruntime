@@ -989,26 +989,6 @@ void RegisterGradientSchemas() {
         updateOutputShape(ctx, 0, {});
       });
 
-  static const char* Gelu_ver1_doc =
-      R"DOC(Gaussian Error Linear Unit.
-A high-performing neural network activation function.The GELU nonlinearity is
-the expected transformation of a stochastic regularizer which randomly applies
-the identity or zero map to a neuron's input. The GELU nonlinearity weights
-inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(Gelu_ver1_doc)
-      .Input(0, "X", "The input data as Tensor.", "T")
-      .Output(0, "Y", "The output.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(GeluGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1018,23 +998,6 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
       .Input(0, "dY", "The gradient tensor from output.", "T")
       .Input(1, "X", "The input tensor. ", "T")
       .Output(0, "dX", "Gradient of the input.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  static const char* BiasGelu_ver1_doc =
-      R"DOC(Bias Gelu.
-It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(BiasGelu_ver1_doc)
-      .Input(0, "A", "The normal input data.", "T")
-      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
-      .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},

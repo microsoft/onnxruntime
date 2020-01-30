@@ -66,7 +66,6 @@ struct OP_Gelu : public CtxGelu {
 UNARY_CONTRIB_ACTIVATION_OPS()
 #undef UNARY_ACTIVATION_OP_NAME
 
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
