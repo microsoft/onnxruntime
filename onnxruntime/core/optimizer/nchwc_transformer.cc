@@ -118,6 +118,7 @@ class NchwcTransformerImpl {
   void TransformAdd(Node& node);
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
+  void TransformBatchNormalization(Node& node);
 
   Graph& graph_;
 
@@ -310,7 +311,6 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
   }
 
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
-
   const int64_t nchwc_output_channels = (output_channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
 
   bool do_reorder_input = true;
@@ -386,9 +386,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       nchwc_conv_W_tensor_proto.add_dims(conv_W->dims()[i]);
     }
 
-    graph_.AddInitializedTensor(nchwc_conv_W_tensor_proto);
-
-    nchwc_conv_W_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_W_tensor_proto.name(), nullptr);
+    nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
     filters_map->emplace(input_defs[1], nchwc_conv_W_arg);
   }
 
@@ -409,13 +407,11 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
       nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
-      nchwc_conv_B_tensor_proto.set_raw_data(aligned_bias.data(), aligned_bias.size() * sizeof(float));
+      nchwc_conv_B_tensor_proto.set_raw_data(aligned_bias.data(), nchwc_output_channels * sizeof(float));
 
       nchwc_conv_B_tensor_proto.add_dims(nchwc_output_channels);
 
-      graph_.AddInitializedTensor(nchwc_conv_B_tensor_proto);
-
-      nchwc_conv_B_arg = &graph_.GetOrCreateNodeArg(nchwc_conv_B_tensor_proto.name(), nullptr);
+      nchwc_conv_B_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_B_tensor_proto);
       aligned_biases_.emplace(input_defs[2], nchwc_conv_B_arg);
     }
   }
@@ -666,6 +662,126 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
   }
 }
 
+// Transform BatchNormalization to a depthwise separable 1x1 convolution. This
+// enables reuse of the existing NCHWc convolution operator and other fusions
+// such as BatchNormalization+Relu using Conv+Relu.
+void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // Bail out if the node has the optional training outputs specified.
+  if (output_defs.size() > 1) {
+    return;
+  }
+
+  // Don't transform the node if the input is not already in NCHWc format.
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it == nchwc_args_.end()) {
+    return;
+  }
+  auto* nchwc_input = it->second.get();
+
+  // Require that BatchNormalization-7 uses spatial normalization.
+  const auto* spatial_attr = graph_utils::GetNodeAttribute(node, "spatial");
+  if (spatial_attr != nullptr && utils::HasInt(*spatial_attr) && spatial_attr->i() != 1) {
+    return;
+  }
+
+  const auto* epsilon_attr = graph_utils::GetNodeAttribute(node, "epsilon");
+  if (epsilon_attr == nullptr || !utils::HasFloat(*epsilon_attr)) {
+    return;
+  }
+  float epsilon = static_cast<float>(epsilon_attr->f());
+
+  const int64_t channels = nchwc_input->channels_;
+
+  auto get_bn_tensor_proto = [this, channels](const std::string& input_name) {
+    const auto* tensor_proto = graph_utils::GetConstantInitializer(graph_, input_name);
+    if (tensor_proto != nullptr) {
+      if ((tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) ||
+          (tensor_proto->dims_size() != 1) ||
+          (tensor_proto->dims(0) != channels)) {
+        tensor_proto = nullptr;
+      }
+    }
+    return tensor_proto;
+  };
+
+  const auto* bn_scale_tensor_proto = get_bn_tensor_proto(input_defs[1]->Name());
+  if (bn_scale_tensor_proto == nullptr) {
+    return;
+  }
+  const auto* bn_B_tensor_proto = get_bn_tensor_proto(input_defs[2]->Name());
+  if (bn_B_tensor_proto == nullptr) {
+    return;
+  }
+  const auto* bn_mean_tensor_proto = get_bn_tensor_proto(input_defs[3]->Name());
+  if (bn_mean_tensor_proto == nullptr) {
+    return;
+  }
+  const auto* bn_var_tensor_proto = get_bn_tensor_proto(input_defs[4]->Name());
+  if (bn_var_tensor_proto == nullptr) {
+    return;
+  }
+
+  auto bn_scale = onnxruntime::make_unique<Initializer>(*bn_scale_tensor_proto);
+  auto bn_B = onnxruntime::make_unique<Initializer>(*bn_B_tensor_proto);
+  auto bn_mean = onnxruntime::make_unique<Initializer>(*bn_mean_tensor_proto);
+  auto bn_var = onnxruntime::make_unique<Initializer>(*bn_var_tensor_proto);
+
+  // Calculate the scale and bias for the replacement convolution.
+  bn_var->add(epsilon);
+  bn_var->sqrt();
+  bn_scale->div(*bn_var);
+  bn_mean->mul(*bn_scale);
+  bn_B->sub(*bn_mean);
+
+  const size_t nchwc_block_size = MlasNchwcGetBlockSize();
+  const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+
+  std::vector<float> padded_buffer(nchwc_channels);
+
+  std::copy_n(bn_scale->data<float>(), channels, padded_buffer.data());
+
+  ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
+  nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_scale"));
+  nchwc_conv_W_tensor_proto.set_raw_data(padded_buffer.data(), nchwc_channels * sizeof(float));
+  nchwc_conv_W_tensor_proto.add_dims(nchwc_channels);
+  nchwc_conv_W_tensor_proto.add_dims(1);
+  nchwc_conv_W_tensor_proto.add_dims(1);
+  nchwc_conv_W_tensor_proto.add_dims(1);
+
+  auto* nchwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_W_tensor_proto);
+
+  std::copy_n(bn_B->data<float>(), channels, padded_buffer.data());
+
+  ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
+  nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_B"));
+  nchwc_conv_B_tensor_proto.set_raw_data(padded_buffer.data(), nchwc_channels * sizeof(float));
+  nchwc_conv_B_tensor_proto.add_dims(nchwc_channels);
+
+  auto* nchwc_conv_B_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_B_tensor_proto);
+
+  // Create the replacement node.
+  std::string nchwc_node_name = graph_.GenerateNodeName(output_defs[0]->Name() + "_bn_nchwc");
+  Node& nchwc_node = graph_.AddNode(nchwc_node_name,
+                                    "Conv",
+                                    nchwc_node_name,
+                                    {nchwc_input->nchwc_arg_, nchwc_conv_W_arg, nchwc_conv_B_arg},
+                                    output_defs,
+                                    nullptr,
+                                    kMSNchwcDomain);
+  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.AddAttribute("group", nchwc_channels);
+
+  nchwc_input->remaining_original_uses_--;
+
+  CreateNchwcArgument(node, nchwc_node, channels, nchwc_input->shape_);
+  removed_nodes_.push_front(node.Index());
+}
+
 void NchwcTransformerImpl::Transform(Node& node) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Conv", {1, 11}) ||
       graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedConv", {1}, kMSDomain)) {
@@ -688,6 +804,8 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6})) {
       TransformActivation(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
+      TransformBatchNormalization(node);
     }
   }
 
@@ -713,8 +831,8 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
                                                  {output_original_arg},
                                                  nullptr,
                                                  kMSNchwcDomain);
-      reorder_output_node.AddAttribute("channels", nchwc_output.second->channels_);
       reorder_output_node.SetExecutionProviderType(kCpuExecutionProvider);
+      reorder_output_node.AddAttribute("channels", nchwc_output.second->channels_);
     }
   }
 

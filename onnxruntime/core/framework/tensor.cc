@@ -10,13 +10,13 @@
 namespace onnxruntime {
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-               int64_t offset)
+               ptrdiff_t offset)
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);
   Init(p_type, shape, p_data, nullptr, offset);
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset)
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, ptrdiff_t offset)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   int64_t shape_size = shape.Size();
@@ -47,7 +47,7 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, int64_t offset) {
+void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, ptrdiff_t offset) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
   dtype_ = p_type->AsPrimitiveDataType();

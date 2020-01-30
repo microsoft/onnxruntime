@@ -1,8 +1,8 @@
 # BERT Model Optimization Tool Overview
 
-This tool converts a BERT ONNX model exported from PyTorch, and generates an optimized model to run faster in NVidia GPU.
+This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensorFlow, and generates an optimized model to run faster with OnnxRuntime.
 
-Currently, this script **cannot** process BERT models exported from Tensorflow since the graph has some difference.
+Note that OnnxRuntime can fuse the Bert ONNX model exported from PyTorch automatically. You don't need this tool to fuse the model. It is only required for Bert Model converted from Tensorflow. 
 
 ## Export an BERT model from PyTorch
 For example, after using https://github.com/huggingface/transformers to train a BERT model in PyTorch 1.3, you can use the following function to export ONNX model. 
@@ -31,6 +31,10 @@ def export_onnx(args, model, output_path):
                                     'segment_ids' : {0 : 'batch_size'},
                                     'output' : {0 : 'batch_size'}})
 ```
+
+## Convert an BERT model from Tensorflow
+Please refer to this notebook: https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb
+
 ## Model Optimization
 
 Example of using the script bert_model_optimization.py to convert a BERT-large model to run in V100 GPU:
@@ -44,6 +48,8 @@ See below for description of all the options:
 
 - **input**: input model path
 - **output**: output model path
+- **framework**:
+    Original framework. Only support TensorFlow and PyTorch
 - **num_heads**: (*default: 12*)
     Number of attention heads, like 24 for BERT-large model.
 - **hidden_size**: (*default: 768*)
@@ -51,6 +57,8 @@ See below for description of all the options:
     Maximum sequence length.
 - **input_int32**: (*optional*)
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
+- **gpu_only**: (*optional*)
+    Specify the option if running on GPU only.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)

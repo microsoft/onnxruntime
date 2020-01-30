@@ -266,7 +266,7 @@ class ONNXQuantizer:
             if self.nodes_to_quantize is not None and node.name not in self.nodes_to_quantize:
                 new_list +=self._handle_other_ops(node, new_list)
             # only onnx domain ops can be quantized today
-            elif node.domain != "ai.onnx" or node.domain != "":
+            elif node.domain != "ai.onnx" and node.domain != '':
                 new_list +=self._handle_other_ops(node, new_list)
             else:
                 if node.op_type == 'Conv':
@@ -1206,7 +1206,9 @@ def check_opset_version(org_model, force_fusions):
     if opset_version < 11 and force_fusions == True:
         print("Warning: The original model opset version is {}, which does not support node fusions.\n\
             Forcing fusions can break other nodes in the model.".format(opset_version))
+        onnx_op_set_version = 11
         fuse_dynamic_quant = True
+        return fuse_dynamic_quant
 
     if opset_version < 10:
         print("Warning: The original model opset version is {}, which does not support quantized operators.\n\
@@ -1215,7 +1217,6 @@ def check_opset_version(org_model, force_fusions):
     elif opset_version == 10:
         onnx_op_set_version = 10
     else:
-        onnx_op_set_version > 10
         fuse_dynamic_quant = True
     return fuse_dynamic_quant
 

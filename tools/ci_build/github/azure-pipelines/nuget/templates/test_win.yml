@@ -15,13 +15,25 @@ jobs:
     value: '$(Build.BinariesDirectory)'
 
   steps:
-  - template: set-test-data-variables-step.yml
-  - template: ../../templates/windows-build-tools-setup-steps.yml
-    parameters:
-      EnvSetupScript: 'setup_env.bat'
-      buildArch: 'x64'
-      setVcvars: true
-      DoDataDownload: false
+  - task: UsePythonVersion@0
+    inputs: 
+      versionSpec: '3.7' 
+      addToPath: true 
+      architecture: x64
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 4.9
+    inputs:
+      versionSpec: 4.9.4
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - template: set-test-data-variables-step.yml  
   - template: win-download-test-data.yml
 
   - task: BatchScript@1
@@ -99,8 +111,8 @@ jobs:
     displayName: 'Run End to End Test (C++ API) '
     timeoutInMinutes: 30
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: always()
+  - template: ../../templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'always'
 
   - template: ../../templates/clean-agent-build-directory-step.yml
