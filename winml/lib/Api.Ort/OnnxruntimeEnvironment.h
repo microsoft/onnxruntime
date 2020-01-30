@@ -8,8 +8,6 @@
 
 namespace Windows::AI ::MachineLearning {
 
-using UniqueOrtEnv = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
-
 class OnnxruntimeEnvironment {
  public:
   OnnxruntimeEnvironment(const OrtApi* ort_api);

@@ -11,8 +11,8 @@ using namespace Windows::AI ::MachineLearning;
 
 static bool debug_output_ = false;
 
-static void WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
-                                    const char* logger_id, const char* code_location, const char* message) {
+static void __stdcall WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
+                                    const char* logger_id, const char* code_location, const char* message) noexcept {
   UNREFERENCED_PARAMETER(param);
   UNREFERENCED_PARAMETER(logger_id);
   // ORT Fatal and Error Messages are logged as Telemetry, rest are non-telemetry.
@@ -89,7 +89,7 @@ static void WinmlOrtLoggingCallback(void* param, OrtLoggingLevel severity, const
   }
 }
 
-static void WinmlOrtProfileEventCallback(const OrtProfilerEventRecord* profiler_record) {
+static void __stdcall WinmlOrtProfileEventCallback(const OrtProfilerEventRecord* profiler_record) noexcept {
   if (profiler_record->category_ == OrtProfilerEventCategory::NODE_EVENT) {
     TraceLoggingWrite(
         winml_trace_logging_provider,

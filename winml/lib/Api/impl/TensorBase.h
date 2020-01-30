@@ -223,7 +223,7 @@ struct TensorBase : TBase {
   static int64_t ShapeSize(std::vector<int64_t> shape) {
     // for each dim
     int64_t size = 1;
-    for (int i = 0; i < shape.size(); i++) {
+    for (size_t i = 0; i < shape.size(); i++) {
       // find out it's total size
       size *= shape[i];
       // make sure there are no invalid dimensions (-1 or any invalid shape)

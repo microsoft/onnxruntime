@@ -12,7 +12,7 @@ class TypeProto;
 
 struct OrtSequenceTypeInfo {
  public:
-  std::unique_ptr<OrtTypeInfo, void (*)(OrtTypeInfo*)> sequence_key_type_;
+  std::unique_ptr<OrtTypeInfo, decltype(OrtApi::ReleaseTypeInfo)> sequence_key_type_;
 
   OrtStatus* Clone(OrtSequenceTypeInfo** out);
 
