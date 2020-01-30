@@ -82,7 +82,7 @@ struct Base {
   ~Base() { OrtRelease(p_); }
 
   operator T*() { return p_; }
-  operator const T*() const { return p_; }
+  operator const T *() const { return p_; }
 
   T* release() {
     T* p = p_;
@@ -187,6 +187,20 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 };
 
+struct ModelMetadata : Base<OrtModelMetadata> {
+  explicit ModelMetadata(std::nullptr_t) {}
+  explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}
+
+  /*
+  char* GetProducerName() const;
+  char* GetGraphName() const;
+  char* GetDomain() const;
+  char* GetDescription() const;
+  int64_t GetVersion() const;
+  std::unordered_map<char*, char*> GetCustomMetadataMap() const;
+  */
+};
+
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
@@ -207,25 +221,11 @@ struct Session : Base<OrtSession> {
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
   char* EndProfiling(OrtAllocator* allocator) const;
-  // ModelMetadata GetModelMetadata() const;
+  ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;
-};
-
-struct ModelMetadata : Base<OrtModelMetadata> {
-  explicit ModelMetadata(std::nullptr_t) {}
-  explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}
-
-  /*
-  char* GetProducerName() const;
-  char* GetGraphName() const;
-  char* GetDomain() const;
-  char* GetDescription() const;
-  int64_t GetVersion() const;
-  std::unordered_map<char*, char*> GetCustomMetadataMap() const;
-  */
 };
 
 struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
@@ -291,7 +291,7 @@ struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
   operator OrtAllocator*() { return p_; }
-  operator const OrtAllocator*() const { return p_; }
+  operator const OrtAllocator *() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);

@@ -284,13 +284,11 @@ inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   return out;
 }
 
-/*
 inline ModelMetadata Session::GetModelMetadata() const {
   OrtModelMetadata* out;
   ThrowOnError(Global<void>::api_.SessionGetModelMetadata(p_, &out));
   return ModelMetadata{out};
 }
-*/
 
 inline TypeInfo Session::GetInputTypeInfo(size_t index) const {
   OrtTypeInfo* out;
