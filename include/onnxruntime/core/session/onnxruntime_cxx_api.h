@@ -191,14 +191,12 @@ struct ModelMetadata : Base<OrtModelMetadata> {
   explicit ModelMetadata(std::nullptr_t) {}
   explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}
 
-  /*
-  char* GetProducerName() const;
-  char* GetGraphName() const;
-  char* GetDomain() const;
-  char* GetDescription() const;
+  char* GetProducerName(OrtAllocator* allocator) const;
+  char* GetGraphName(OrtAllocator* allocator) const;
+  char* GetDomain(OrtAllocator* allocator) const;
+  char* GetDescription(OrtAllocator* allocator) const;
+  char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
   int64_t GetVersion() const;
-  std::unordered_map<char*, char*> GetCustomMetadataMap() const;
-  */
 };
 
 struct Session : Base<OrtSession> {

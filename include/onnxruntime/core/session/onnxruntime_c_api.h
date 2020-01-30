@@ -649,7 +649,7 @@ struct OrtApi {
   ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
   ORT_CLASS_RELEASE(SessionOptions);
   ORT_CLASS_RELEASE(CustomOpDomain);
-
+  ORT_CLASS_RELEASE(ModelMetadata);
   /**
    * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
    */
@@ -662,7 +662,25 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* SessionGetModelMetadata)(_In_ const OrtSession* sess,
                                                     _Outptr_ OrtModelMetadata** out)NO_EXCEPTION;
 
-  ORT_CLASS_RELEASE(ModelMetadata);
+  /**
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetProducerName)(_In_ const OrtModelMetadata* model_metadata,
+                                                         _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetGraphName)(_In_ const OrtModelMetadata* model_metadata,
+                                                      _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetDomain)(_In_ const OrtModelMetadata* model_metadata,
+                                                   _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetDescription)(_In_ const OrtModelMetadata* model_metadata,
+                                                        _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+  /**
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * 'value' will be a nullptr if the given key is not found in the custom metadata map.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataLookupCustomMetadataMap)(_In_ const OrtModelMetadata* model_metadata, _Inout_ OrtAllocator* allocator,
+                                                                 _In_ const char* key, _Out_ char* value)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
 };
 
 /*
