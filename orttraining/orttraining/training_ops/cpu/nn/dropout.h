@@ -3,14 +3,7 @@
 
 #pragma once
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
 #include "core/common/common.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 #include <random>
 #include "core/framework/op_kernel.h"
 

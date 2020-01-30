@@ -120,10 +120,7 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 add_library(onnxruntime_providers ${onnxruntime_providers_src})
-onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto tensorboard protobuf::libprotobuf)
-if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-   target_compile_options(onnxruntime_providers PRIVATE "/wd4244")   
-endif()
+onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 
 if (onnxruntime_USE_FEATURIZERS)
   add_dependencies(onnxruntime_providers onnxruntime_featurizers)
@@ -145,17 +142,21 @@ endif()
 
 set(re2_src ${ONNXRUNTIME_ROOT}/../cmake/external/re2)
 target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${gemmlowp_src} ${re2_src})
+add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
+  add_dependencies(onnxruntime_providers tensorboard)
+  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
+
+  if (onnxruntime_USE_HOROVOD)
+    target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
+  endif()
 endif()
-add_dependencies(onnxruntime_providers onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
-
-if (onnxruntime_USE_HOROVOD)
-  target_include_directories(onnxruntime_providers PRIVATE ${HOROVOD_INCLUDE_DIRS})
-endif()
 
 if (onnxruntime_USE_CUDA)
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
@@ -220,9 +221,9 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT})
-  endif()
-  if (onnxruntime_USE_HOROVOD)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
+    if (onnxruntime_USE_HOROVOD)
+      target_include_directories(onnxruntime_providers_cuda PRIVATE ${HOROVOD_INCLUDE_DIRS})
+    endif()
   endif()
 
   if (WIN32)

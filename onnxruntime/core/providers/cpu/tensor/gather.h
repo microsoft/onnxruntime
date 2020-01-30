@@ -34,5 +34,4 @@ class Gather final : public OpKernel, public GatherBase {
 
   Status Compute(OpKernelContext* context) const override;
 };
-
 }  // namespace onnxruntime

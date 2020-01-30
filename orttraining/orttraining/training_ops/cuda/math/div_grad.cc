@@ -1,13 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// there's no way to use a raw pointer as the copy destination with std::copy_n
-// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
-// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
-#ifdef _MSC_VER
-#pragma warning(disable : 4996)
-#endif
-
 #include "div_grad.h"
 #include "div_grad_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
@@ -99,16 +92,16 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<CudaT*>(temp_da_data),
           reinterpret_cast<CudaT*>(db_data));
 
-      if (da_output_tensor){
-          std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-          ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
-              temp_da_data,
-              dy_shape,
-              da_data,
-              TensorShape({}),
-              CUDNN_REDUCE_TENSOR_ADD,
-              a_output_dims);
-        }
+      if (da_output_tensor) {
+        std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
+        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+            temp_da_data,
+            dy_shape,
+            da_data,
+            TensorShape({}),
+            CUDNN_REDUCE_TENSOR_ADD,
+            a_output_dims);
+      }
       break;
     }
     case static_cast<int32_t>(SimpleBroadcast::RightScalar): {
