@@ -105,6 +105,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
   OnnxruntimeEngineFactory* GetEngineFactory();
+  HRESULT CreateTensorValue(const int64_t* shape, size_t count, winml::TensorKind kind, OrtAllocator* ort_allocator, _Out_ IValue** out);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
