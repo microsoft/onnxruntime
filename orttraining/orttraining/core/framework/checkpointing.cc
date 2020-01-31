@@ -54,7 +54,7 @@ Status SaveRuntimeTensor(
 
   ONNX_NAMESPACE::TensorProto saved_tensor_proto{};
 
-  for (const auto dim : tensor.Shape()) {
+  for (const auto dim : tensor.Shape().GetDims()) {
     saved_tensor_proto.add_dims(dim);
   }
 

@@ -175,7 +175,8 @@ if (onnxruntime_USE_CUDA)
     )
   endif()
 
-  if (NOT onnxruntime_USE_NCCL)
+  # NCCL is not support in Windows build
+  if (WIN32)
     list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"

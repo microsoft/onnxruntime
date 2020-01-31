@@ -154,7 +154,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
     parser.add_argument("--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument("--use_horovod", action='store_true', help="Enable Horovod.")
-    parser.add_argument("--use_nccl", action='store_true', help="Build with NCCL for distributed training.")
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests. Note: Use --skip_tests to skip all tests.")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
@@ -338,7 +337,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
                  "-Donnxruntime_USE_HOROVOD=" + ("ON" if args.use_horovod else "OFF"),
-                 "-Donnxruntime_USE_NCCL=" + ("ON" if args.use_nccl else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  # enable pyop if it is nightly build
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
@@ -351,11 +349,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.use_cuda:
             if "-Donnxruntime_USE_HOROVOD=OFF" in cmake_args:
                cmake_args.remove("-Donnxruntime_USE_HOROVOD=OFF")
-            if "-Donnxruntime_USE_NCCL=OFF" in cmake_args:
-               cmake_args.remove("-Donnxruntime_USE_NCCL=OFF")
             cmake_args += [
                 "-Donnxruntime_USE_HOROVOD=ON",
-                "-Donnxruntime_USE_NCCL=ON",
                 "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     if args.use_llvm:

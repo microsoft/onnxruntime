@@ -80,8 +80,8 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
-    TensorShape shape = first_tensor.Shape();
-    if (shape.Size() > 1) {
+    std::vector<int64_t> shape = first_tensor.Shape().GetDims();
+    if (shape.size() > 1) {
       shape.insert(shape.begin(), batch_size);
     } else {
       shape.clear();

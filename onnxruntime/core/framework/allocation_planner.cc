@@ -160,18 +160,18 @@ class PlannerImpl {
     return result;
   }
 
-  int& UseCount(const OrtValueIndex n) {
+  int& UseCount(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
 
-  OrtValueIndex& Buffer(const OrtValueIndex n) {
+  OrtValueIndex& Buffer(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
     return ort_value_info_[n].reused_buffer_index;
   }
 
-  AllocPlanPerValue& AllocPlan(const OrtValueIndex n) {
+  AllocPlanPerValue& AllocPlan(OrtValueIndex n) {
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < plan_.allocation_plan.size());
     return plan_.allocation_plan[static_cast<size_t>(n)];
   }
@@ -179,7 +179,7 @@ class PlannerImpl {
   AllocPlanPerValue& AllocPlan(const OrtValueName& name) { return AllocPlan(Index(name)); }
 
   // Initialize state for a given ml-value at its definition site:
-  void ProcessDef(const OrtValueIndex id, const onnxruntime::NodeArg* p_def_site) {
+  void ProcessDef(OrtValueIndex id, const onnxruntime::NodeArg* p_def_site) {
     ORT_ENFORCE(id >= 0 && static_cast<size_t>(id) < ort_value_info_.size());
     OrtValueInfo& info = ort_value_info_[id];
     info.usecount = 0;
@@ -188,7 +188,7 @@ class PlannerImpl {
   }
 
   // Reuse/Alias/Share between two OrtValue indexes
-  void Reuse(const OrtValueIndex reused, const OrtValueIndex reused_for, const AllocKind alloc_kind) {
+  void Reuse(OrtValueIndex reused, OrtValueIndex reused_for, const AllocKind alloc_kind) {
     ORT_ENFORCE(reused != reused_for);
     // find original buffer underlying ml-value we want to reuse:
     OrtValueIndex original = Buffer(reused);
@@ -204,7 +204,7 @@ class PlannerImpl {
   }
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
-  bool FindReusableInput(const onnxruntime::Node& node, const int output_arg_num, OrtValueIndex* reusable_input) {
+  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo* ci;
     Status st = kernel_registry_.SearchKernelRegistry(node, &ci);

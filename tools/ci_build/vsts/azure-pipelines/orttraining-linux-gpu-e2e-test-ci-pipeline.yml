@@ -11,7 +11,7 @@ jobs:
     submodules: recursive
 
   - script: >
-      training/ci_test/download_e2e_test_data.py $(Build.BinariesDirectory)/training_e2e_test_data
+      orttraining/tools/ci_test/download_e2e_test_data.py $(Build.BinariesDirectory)/training_e2e_test_data
     displayName: 'Download training E2E test data'
 
   - script: >

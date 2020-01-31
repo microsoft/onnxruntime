@@ -1086,10 +1086,10 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
 
   // without weight
   {
-    TensorShape logit_shape(index_shape);
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
     logit_shape.emplace_back(D);
 
-    TensorInfo x_info({logit_shape});
+    TensorInfo x_info(logit_shape);
     TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
     gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
@@ -1100,10 +1100,10 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
 
   // with weight
   {
-    TensorShape logit_shape(index_shape);
+    std::vector<int64_t> logit_shape(index_shape.GetDims());
     logit_shape.emplace_back(D);
 
-    TensorInfo x_info({logit_shape});
+    TensorInfo x_info(logit_shape);
     TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo weight_info(index_shape, false, &transformer_weight);
 

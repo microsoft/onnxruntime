@@ -254,7 +254,7 @@ Status SummaryTextOp::Compute(OpKernelContext* context) const {
   // Copy input string tensor to tensorboard tensor.
   tensorboard::TensorProto* summary_tensor = summary_value->mutable_tensor();
   summary_tensor->set_dtype(tensorboard::DataType::DT_STRING);
-  for (int64_t dim : shape) {
+  for (int64_t dim : shape.GetDims()) {
     summary_tensor->mutable_tensor_shape()->add_dim()->set_size(dim);
   }
   for (int64_t i = 0; i < shape.Size(); i++) {

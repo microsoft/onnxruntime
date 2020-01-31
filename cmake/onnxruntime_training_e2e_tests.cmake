@@ -13,7 +13,7 @@ find_package(Python3 3.5 REQUIRED COMPONENTS Interpreter)
 add_test(
   NAME onnxruntime_training_bert_convergence_e2e_test
   COMMAND
-    ${Python3_EXECUTABLE} ${REPO_ROOT}/training/ci_test/run_convergence_test.py
+    ${Python3_EXECUTABLE} ${REPO_ROOT}/orttraining/tools/ci_test/run_convergence_test.py
       --binary_dir $<TARGET_FILE_DIR:onnxruntime_training_bert>
       --training_data_root ${onnxruntime_TRAINING_E2E_TEST_DATA_ROOT}/data
       --model_root ${onnxruntime_TRAINING_E2E_TEST_DATA_ROOT}/models
