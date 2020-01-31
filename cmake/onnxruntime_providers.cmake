@@ -96,9 +96,9 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
 
 if (onnxruntime_USE_FEATURIZERS)
-  add_dependencies(onnxruntime_providers onnxruntime_featurizers)
+  add_dependencies(onnxruntime_providers onnxruntime_featurizers onnxruntime_featurizers_comp)
   onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
-  target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
+  target_link_libraries(onnxruntime_providers onnxruntime_featurizers onnxruntime_featurizers_comp)
 endif()
 
 if(HAS_DEPRECATED_COPY)

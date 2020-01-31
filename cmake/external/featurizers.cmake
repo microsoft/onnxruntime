@@ -12,13 +12,21 @@ set_target_properties(FeaturizersCode PROPERTIES FOLDER "External/FeaturizersLib
 add_library(onnxruntime_featurizers STATIC IMPORTED)
 add_dependencies(onnxruntime_featurizers FeaturizersCode)
 
+add_library(onnxruntime_featurizers_comp STATIC IMPORTED)
+add_dependencies(onnxruntime_featurizers_comp FeaturizersCode)
+
+
 target_include_directories(onnxruntime_featurizers INTERFACE ${featurizers_ROOT}/src)
 if(MSVC)
   set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
     ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersCode.lib)
+  set_property(TARGET onnxruntime_featurizers_comp PROPERTY IMPORTED_LOCATION
+    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/${CMAKE_BUILD_TYPE}/FeaturizersComponentsCode.lib)
 else()
   set_property(TARGET onnxruntime_featurizers PROPERTY IMPORTED_LOCATION
     ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/libFeaturizersCode.a)
+  set_property(TARGET onnxruntime_featurizers_comp PROPERTY IMPORTED_LOCATION
+    ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref}/libFeaturizersComponentsCode.a)
 endif()
 
 
