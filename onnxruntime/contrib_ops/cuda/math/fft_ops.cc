@@ -34,8 +34,51 @@ REGISTER_KERNEL_TYPED(double)
 //REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Status FFTBase<T>::DoFFT(const FFTParams& params, const Tensor* X, Tensor* Y, bool complex_input, bool complex_output, bool inverse) const {
+Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex_input, bool complex_output, bool inverse) const {
   typedef typename ::onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
+
+  ORT_ENFORCE((complex_input || complex_output) && (complex_input != complex_output),
+              "Only support RFFT and IRFFT, so either input or output has to be complex type and the other is real type. Got complex input:",
+              complex_input, " complex output: ", complex_output);
+
+  TensorShape input_shape = X->Shape();
+  int64_t input_ndim = input_shape.NumDimensions();
+  ORT_ENFORCE(input_ndim >= signal_ndim_, "signal_ndim cannot be greater than the dimension of Input: ", signal_ndim_, " > ", input_ndim);
+  auto signal_tensor_ndim = signal_ndim_ + static_cast<int64_t>(complex_input);  // add complex dim
+
+  //calculate batch size
+  int64_t batch_ndim = input_ndim - signal_tensor_ndim;
+  int64_t batch_size = (batch_ndim == 0 ? 1 : input_shape.SizeToDimension(batch_ndim));
+
+  //infer output shape
+  //copy the input shape up to the second last dimention
+  std::vector<int64_t> output_dims, signal_dims;
+  int i = 0;
+  for (; i < batch_ndim + signal_ndim_ - 1; ++i) {
+    output_dims.push_back(input_shape[i]);
+    if (i >= batch_ndim) {
+      signal_dims.push_back(input_shape[i]);
+    }
+  }
+
+  //process the last dim(s)
+  if (onesided_) {
+    if (complex_input && !complex_output) {  //IRFFT
+      int64_t inferred_size = input_shape[i] * 2 - 1;
+      output_dims.push_back(inferred_size);
+      signal_dims.push_back(inferred_size);
+    } else if (!complex_input && complex_output) {  // RFFT
+      output_dims.push_back(input_shape[i] / 2 + 1);
+      signal_dims.push_back(input_shape[i]);
+    }
+  } else {  // not onesided
+    output_dims.push_back(input_shape[i]);
+    signal_dims.push_back(input_shape[i]);
+  }
+
+  if (complex_output) {
+    output_dims.push_back(2);
+  }
 
   //Making plan
   //TODO: add plan cache
@@ -64,14 +107,15 @@ Status FFTBase<T>::DoFFT(const FFTParams& params, const Tensor* X, Tensor* Y, bo
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFFT does not support tensor type: ", X->DataType());
   }
 
-  result = cufftXtMakePlanMany(plan, static_cast<int>(signal_ndim_), const_cast<int64_t*>(params.signal_dims.data()),
+  result = cufftXtMakePlanMany(plan, static_cast<int>(signal_ndim_), const_cast<int64_t*>(signal_dims.data()),
                                /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, itype,
                                /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, otype,
-                               params.batch_size, &ws_size_t, exec_type);
+                               batch_size, &ws_size_t, exec_type);
 
   //TODO: replace it with a util func
   ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
 
+  Tensor* Y = const_cast<OpKernelContext*>(context)->Output(0, TensorShape(output_dims));
   auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
@@ -79,81 +123,27 @@ Status FFTBase<T>::DoFFT(const FFTParams& params, const Tensor* X, Tensor* Y, bo
 
   ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to exec the cuFFT plan: ", result);
 
+  cufftDestroy(plan);
+
   if (inverse) {
-    PostProcess(params, Y, y_data);
+    PostProcess(signal_dims, Y, y_data);
   }
 
   return Status::OK();
 }
 
-void Prepare(FFTParams* params, bool complex_input, bool complex_output, bool one_sided, int64_t signal_ndim) {
-  ORT_ENFORCE((complex_input || complex_output) && (complex_input != complex_output),
-              "Only support RFFT and IRFFT, so either input or output has to be complex type and the other is real type. Got complex input:",
-              complex_input, " complex output: ", complex_output);
-
-  TensorShape input_shape = TensorShape(params->input_dims);
-  int64_t input_ndim = input_shape.NumDimensions();
-  ORT_ENFORCE(input_ndim >= signal_ndim, "signal_ndim cannot be greater than the dimension of Input: ", signal_ndim, " > ", input_ndim);
-  auto signal_tensor_ndim = signal_ndim + static_cast<int64_t>(complex_input);  // add complex dim
-
-  //calculate batch size
-  int64_t batch_ndim = input_ndim - signal_tensor_ndim;
-  params->batch_size = (batch_ndim == 0 ? 1 : input_shape.SizeToDimension(batch_ndim));
-
-  //infer output shape
-  //copy the input shape up to the second last dimention
-  int i = 0;
-  for (; i < batch_ndim + signal_ndim - 1; ++i) {
-    params->output_dims.push_back(input_shape[i]);
-    if (i >= batch_ndim) {
-      params->signal_dims.push_back(input_shape[i]);
-    }
-  }
-
-  //process the last dim(s)
-  if (one_sided) {
-    if (complex_input && !complex_output) {  //IRFFT
-      int64_t inferred_size = input_shape[i] * 2 - 1;
-      params->output_dims.push_back(inferred_size);
-      params->signal_dims.push_back(inferred_size);
-    } else if (!complex_input && complex_output) {  // RFFT
-      params->output_dims.push_back(input_shape[i] / 2 + 1);
-      params->signal_dims.push_back(input_shape[i]);
-    }
-  } else {  // not onesided
-    params->output_dims.push_back(input_shape[i]);
-    params->signal_dims.push_back(input_shape[i]);
-  }
-
-  if (complex_output) {
-    params->output_dims.push_back(2);
-  }
-}
-
 template <typename T>
 Status Rfft<T>::ComputeInternal(OpKernelContext* context) const {
-  FFTParams params;
   const Tensor* X = context->Input<Tensor>(0);
-  params.input_dims = X->Shape().GetDims();
 
-  Prepare(&params, false, true, onesided_, signal_ndim_);
-
-  Tensor* Y = context->Output(0, TensorShape(params.output_dims));
-
-  return FFTBase::DoFFT(params, X, Y, false, true, false);
+  return FFTBase::DoFFT(context, X, false, true, false);
 }
 
 template <typename T>
 Status Irfft<T>::ComputeInternal(OpKernelContext* context) const {
-  FFTParams params;
   const Tensor* X = context->Input<Tensor>(0);
-  params.input_dims = X->Shape().GetDims();
 
-  Prepare(&params, true, false, onesided_, signal_ndim_);
-
-  Tensor* Y = context->Output(0, TensorShape(params.output_dims));
-
-  return FFTBase::DoFFT(params, X, Y, true, false, true);
+  return FFTBase::DoFFT(context, X, true, false, true);
 }
 
 }  // namespace cuda

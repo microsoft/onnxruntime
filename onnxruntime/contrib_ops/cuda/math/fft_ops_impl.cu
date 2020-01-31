@@ -22,8 +22,8 @@ __global__ void _Normalize(
 }
 
 template <typename T>
-void PostProcess(const FFTParams params, Tensor* Y, T* output_data) {
-  int64_t scale = (std::accumulate(params.signal_dims.begin(), params.signal_dims.end(), 1ll, std::multiplies<int64_t>()));
+void PostProcess(const std::vector<int64_t>& signal_dims, Tensor* Y, T* output_data) {
+  int64_t scale = (std::accumulate(signal_dims.begin(), signal_dims.end(), 1ll, std::multiplies<int64_t>()));
 
   TensorShape output_shape = Y->Shape();
   int64_t N = output_shape.Size();
@@ -32,7 +32,7 @@ void PostProcess(const FFTParams params, Tensor* Y, T* output_data) {
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void PostProcess<T>(const FFTParams, Tensor* Y, T* output_data);
+  template void PostProcess<T>(const std::vector<int64_t>& signal_dims, Tensor* Y, T* output_data);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

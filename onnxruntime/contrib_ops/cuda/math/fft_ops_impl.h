@@ -10,10 +10,8 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-void PostProcess(
-    const FFTParams params,
-    Tensor* Y,
-    T* output_data);
+void PostProcess(const std::vector<int64_t>& signal_dims, Tensor* Y, T* output_data);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

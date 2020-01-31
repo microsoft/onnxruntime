@@ -9,12 +9,6 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-struct FFTParams {
-  int64_t batch_size;
-  std::vector<int64_t> input_dims;
-  std::vector<int64_t> output_dims;
-  std::vector<int64_t> signal_dims;
-};
 
 template <typename T>
 class FFTBase : public ::onnxruntime::cuda::CudaKernel {
@@ -30,7 +24,7 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
 
  protected:
   int64_t signal_ndim_, normalized_, onesided_;
-  Status DoFFT(const FFTParams& params, const Tensor* X, Tensor* Y, bool complex_input, bool complex_output, bool inverse) const;
+  Status DoFFT(OpKernelContext* context, const Tensor* X, bool complex_input, bool complex_output, bool inverse) const;
 };
 
 template <typename T>
