@@ -1,10 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _WIN32
-#pragma warning(disable : 4267)
-#endif
-
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -164,9 +160,6 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          logging::LoggingManager* logging_manager) {
-  ORT_ENFORCE(Environment::IsInitialized(),
-              "Environment must be initialized before creating an InferenceSession.");
-
   auto status = FinalizeSessionOptions(session_options, model_proto_.get(), session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
@@ -879,7 +872,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
 
-  std::vector<int> invalid_dim_indices;
+  std::vector<size_t> invalid_dim_indices;
   for (size_t i = 0; i < input_shape_sz; ++i) {
     if (expected_shape[i] < 0) {
       continue;  // this represents a symbolic shape dimension
@@ -893,7 +886,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
     std::ostringstream ostr;
     ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
     for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
-      int idx = invalid_dim_indices[i];
+      size_t idx = invalid_dim_indices[i];
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
     ostr << " Please fix either the inputs or the model.";

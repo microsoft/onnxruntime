@@ -16,10 +16,12 @@
 #include "onnx_protobuf.h"
 
 struct Input {
-  const char* name;
+  const char* name = nullptr;
   std::vector<int64_t> dims;
   std::vector<float> values;
 };
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 template <typename OutT>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
@@ -135,11 +137,9 @@ static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_sy
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
 #endif
 
-class CApiTestWithProvider : public CApiTest,
-                             public ::testing::WithParamInterface<int> {
+class CApiTestWithProvider : public testing::Test, public ::testing::WithParamInterface<int> {
 };
 
-// Tests that the Foo::Bar() method does Abc.
 TEST_P(CApiTestWithProvider, simple) {
   // simple inference test
   // prepare inputs
@@ -153,12 +153,12 @@ TEST_P(CApiTestWithProvider, simple) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
-  TestInference<PATH_TYPE, float>(env_, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, GetParam(), nullptr, nullptr);
 }
 
-TEST_F(CApiTest, dim_param) {
+TEST(CApiTest, dim_param) {
   Ort::SessionOptions session_options;
-  Ort::Session session(env_, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
+  Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
   auto in0 = session.GetInputTypeInfo(0);
   auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
@@ -241,7 +241,7 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
 
-TEST_F(CApiTest, custom_op_handler) {
+TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
 
   std::vector<Input> inputs(1);
@@ -258,10 +258,10 @@ TEST_F(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-  TestInference<PATH_TYPE, float>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 }
 
-TEST_F(CApiTest, DISABLED_test_custom_op_library) {
+TEST(CApiTest, DISABLED_test_custom_op_library) {
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);
@@ -292,13 +292,13 @@ TEST_F(CApiTest, DISABLED_test_custom_op_library) {
     lib_name = "libcustom_op_library.so";
   #endif
 
-  TestInference<PATH_TYPE, int32_t>(env_, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+    TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
 
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
-TEST_F(CApiTest, DISABLED_test_pyop) {
+TEST(CApiTest, DISABLED_test_pyop) {
   std::cout << "Test model with pyop" << std::endl;
   std::ofstream module("mymodule.py");
   module << "class MyKernel:" << std::endl;
@@ -318,19 +318,19 @@ TEST_F(CApiTest, DISABLED_test_pyop) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> expected_dims_y = {2, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f};
-  TestInference<PATH_TYPE, float>(env_, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
+  TestInference<PATH_TYPE, float>(*ort_env, PYOP_FLOAT_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, nullptr, nullptr);
 }
 #endif
 
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-TEST_F(CApiTest, create_session_without_session_option) {
+TEST(CApiTest, create_session_without_session_option) {
   constexpr PATH_TYPE model_uri = TSTR("../models/opset8/test_squeezenet/model.onnx");
-  Ort::Session ret(env_, model_uri, Ort::SessionOptions{nullptr});
+  Ort::Session ret(*ort_env, model_uri, Ort::SessionOptions{nullptr});
   ASSERT_NE(nullptr, ret);
 }
 #endif
 
-TEST_F(CApiTest, create_tensor) {
+TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
@@ -350,7 +350,7 @@ TEST_F(CApiTest, create_tensor) {
   tensor.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
 }
 
-TEST_F(CApiTest, create_tensor_with_data) {
+TEST(CApiTest, create_tensor_with_data) {
   float values[] = {3.0f, 1.0f, 2.f, 0.f};
   constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
 
@@ -369,7 +369,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
 }
 
-TEST_F(CApiTest, override_initializer) {
+TEST(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   // CreateTensor which is not owning this ptr
@@ -385,7 +385,7 @@ TEST_F(CApiTest, override_initializer) {
   Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
 
   Ort::SessionOptions session_options;
-  Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
+  Ort::Session session(*ort_env, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
 
   // Get Overrideable initializers
   size_t init_count = session.GetOverridableInitializerCount();
@@ -422,14 +422,4 @@ TEST_F(CApiTest, override_initializer) {
   ASSERT_EQ(type_info.GetElementCount(), 1U);
   float* output_data = ort_outputs[2].GetTensorMutableData<float>();
   ASSERT_EQ(*output_data, f11_input_data[0]);
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  int ret = RUN_ALL_TESTS();
-  //TODO: Linker on Mac OS X is kind of strange. The next line of code will trigger a crash
-#ifndef __APPLE__
-  ::google::protobuf::ShutdownProtobufLibrary();
-#endif
-  return ret;
 }
