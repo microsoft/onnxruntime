@@ -64,7 +64,7 @@ TEST(SplitOperatorTest, Axis0EqualSplitFloat) {
   RunTest<float>(axis, {}, input, outputs, false);  //TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
-template <typename T, typename = std::enable_if<std::is_integral<T>::value, T>::type>
+template <typename T, typename = typename std::enable_if<std::is_integral<T>::value, T>::type>
 static void SplitTestInt() {
   const int64_t axis = 0;
   std::vector<ShapeAndData<T>> outputs;
