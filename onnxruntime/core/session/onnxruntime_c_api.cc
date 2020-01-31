@@ -766,11 +766,11 @@ static OrtStatus* GetNodeDefNameImpl(_In_ const OrtSession* sess, size_t index,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
-                    _Out_ char* out) {
+                    _Out_ char** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   auto profile_file_name = session->EndProfiling();
-  out = StrDup(profile_file_name, allocator);
+  *out = StrDup(profile_file_name, allocator);
   return nullptr;
   API_IMPL_END
 }
@@ -789,40 +789,40 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* ses
 
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetProducerName,
                     _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value) {
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
   auto producer_name = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
-  value = StrDup(producer_name, allocator);
+  *value = StrDup(producer_name, allocator);
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetGraphName,
                     _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value) {
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
   auto graph_name = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
-  value = StrDup(graph_name, allocator);
+  *value = StrDup(graph_name, allocator);
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDomain,
                     _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value) {
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
   auto domain = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
-  value = StrDup(domain, allocator);
+  *value = StrDup(domain, allocator);
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
                     _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value) {
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
   auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
-  value = StrDup(description, allocator);
+  *value = StrDup(description, allocator);
   return nullptr;
   API_IMPL_END
 }
@@ -830,7 +830,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
 ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap,
                     _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator,
-                    _In_ const char* key, _Out_ char* value) {
+                    _In_ const char* key, _Outptr_ char** value) {
   API_IMPL_BEGIN
   auto custom_metadata_map =
       reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->custom_metadata_map;
@@ -840,9 +840,9 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataLookupCustomMetadataMap,
   auto iter = custom_metadata_map.find(temp);
 
   if (iter == custom_metadata_map.end()) {
-    value = nullptr;
+    *value = nullptr;
   } else {
-    value = StrDup(iter->second, allocator);
+    *value = StrDup(iter->second, allocator);
   }
 
   return nullptr;

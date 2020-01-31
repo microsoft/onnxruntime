@@ -73,21 +73,21 @@ ORT_API_STATUS_IMPL(SessionGetOutputName, _In_ const OrtSession* sess, size_t in
 ORT_API_STATUS_IMPL(SessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
-                    _Outptr_ char* out);
+                    _Outptr_ char** out);
 ORT_API_STATUS_IMPL(SessionGetModelMetadata, _In_ const OrtSession* sess,
                     _Outptr_ OrtModelMetadata** out);
 
 ORT_API_STATUS_IMPL(ModelMetadataGetProducerName, _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value);
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataGetGraphName, _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value);
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value);
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
-                    _Inout_ OrtAllocator* allocator, _Out_ char* value);
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator,
-                    _In_ const char* key, _Out_ char* value);
+                    _In_ const char* key, _Outptr_ char** value);
 
 ORT_API_STATUS_IMPL(ModelMetadataGetVersion, _In_ const OrtModelMetadata* model_metadata,
                     _Out_ int64_t* value);

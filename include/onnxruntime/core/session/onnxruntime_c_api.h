@@ -654,7 +654,7 @@ struct OrtApi {
    * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
    */
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
-                                                _Out_ char* out)NO_EXCEPTION;
+                                                _Outptr_ char** out)NO_EXCEPTION;
 
   /**
    * \param out is a pointer to the newly created object. The pointer should be freed by calling ReleaseModelMetadata after use.
@@ -666,19 +666,19 @@ struct OrtApi {
    * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
    */
   OrtStatus*(ORT_API_CALL* ModelMetadataGetProducerName)(_In_ const OrtModelMetadata* model_metadata,
-                                                         _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+                                                         _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelMetadataGetGraphName)(_In_ const OrtModelMetadata* model_metadata,
-                                                      _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+                                                      _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelMetadataGetDomain)(_In_ const OrtModelMetadata* model_metadata,
-                                                   _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+                                                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* ModelMetadataGetDescription)(_In_ const OrtModelMetadata* model_metadata,
-                                                        _Inout_ OrtAllocator* allocator, _Out_ char* value)NO_EXCEPTION;
+                                                        _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
   /**
    * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
    * 'value' will be a nullptr if the given key is not found in the custom metadata map.
    */
   OrtStatus*(ORT_API_CALL* ModelMetadataLookupCustomMetadataMap)(_In_ const OrtModelMetadata* model_metadata, _Inout_ OrtAllocator* allocator,
-                                                                 _In_ const char* key, _Out_ char* value)NO_EXCEPTION;
+                                                                 _In_ const char* key, _Outptr_ char** value)NO_EXCEPTION;
 
   OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
 };
