@@ -3,12 +3,15 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
+import logging
 import onnx
 import sys
 import argparse
 import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
+
+logger = logging.getLogger(__name__)
 
 class OnnxModel:
     def __init__(self, model, verbose):
@@ -113,18 +116,57 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude=[]):
+    def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):
+        '''
+        Find parent node based on constraints on op_type.
+
+        Args:
+            node (str): current node name.
+            parent_op_type (str): constraint of parent node op_type.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            exclude (list): list of nodes that are excluded (not allowed to match as parent).
+
+        Returns:
+            parent: The matched parent node. None if not found.
+            index: The input index of matched parent node. None if not found.
+        '''
+        for i, input in enumerate(node.input):
+            if input in output_name_to_node:
+                parent = output_name_to_node[input]
+                if parent.op_type == parent_op_type and parent not in exclude:
+                    return parent, i
+
+        return None, None
+
+    def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude=[], return_indice=None):
+        '''
+        Find parent node based on constraints on op_type and index.
+        When input_index is None, we will find the first parent node based on constraints, and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            parent_op_type (str): constraint of parent node op_type.
+            input_index (int or None): only check the parent given input index of current node.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            exclude (list): list of nodes that are excluded (not allowed to match as parent).
+            return_indice (list): a list to append the input index when input_index is None.
+
+        Returns:
+            parent: The matched parent node.
+        '''
+        assert node is not None
+        assert input_index is None or input_index >= 0
+
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
         if input_index is None:
-            parents = self.get_parents(node, output_name_to_node)
-            for parent in parents:
-                if parent.op_type == parent_op_type and parent not in exclude:
-                    return parent
-            return None
+            parent, index = self.match_first_parent(node, parent_op_type, output_name_to_node, exclude)
+            if return_indice is not None:
+                return_indice.append(index)
+            return parent
 
-        if input_index < 0 or input_index >= len(node.input):
+        if input_index >= len(node.input):
             return None
 
         parent = self.get_parent(node, input_index, output_name_to_node)
@@ -133,7 +175,21 @@ class OnnxModel:
 
         return None
 
-    def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None):
+    def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None, return_indice=None):
+        '''
+        Find a sequence of input edges based on constraints on parent op_type and index.
+        When input_index is None, we will find the first parent node based on constraints, and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            parent_op_types (str): constraint of parent node op_type of each input edge.
+            parent_input_index (list): constraint of input index of each input edge. None means no constraint.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            return_indice (list): a list to append the input index when there is no constraint on input index of an edge.
+
+        Returns:
+            parents: a list of matched parent node.
+        '''
         assert(len(parent_input_index) == len(parent_op_types))
 
         if output_name_to_node is None:
@@ -142,7 +198,7 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
-            matched_parent = self.match_parent(current_node, op_type, parent_input_index[i], output_name_to_node, exclude=[])
+            matched_parent = self.match_parent(current_node, op_type, parent_input_index[i], output_name_to_node, exclude=[], return_indice=return_indice)
             if matched_parent is None:
                 return None
 
@@ -345,7 +401,44 @@ class OnnxModel:
         self.remove_nodes(unused_nodes)
 
         if len(unused_nodes) > 0:
-            print("Removed unused constant nodes:", len(unused_nodes))
+            logger.info(f"Removed unused constant nodes: {len(unused_nodes)}")
+
+    def compact_graph(self, outputs):
+        '''
+        Compact graph by removing nodes that are not linked (directly or indirectly) to any output.
+
+        Args:
+            node (str): current node name.
+            parent_op_types (str): constraint of parent node op_type of each input edge.
+            parent_input_index (list): constraint of input index of each input edge. None means no constraint.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            return_indice (list): a list to append the input index when there is no constraint on input index of an edge.
+
+        Returns:
+            parents: a list of matched parent node.
+        '''
+        output_name_to_node = self.output_name_to_node()
+        all_nodes = []
+        for output in outputs:
+            if output in output_name_to_node:
+                nodes = self.get_parent_subgraph_nodes(output_name_to_node[output], [])
+                all_nodes.append(output_name_to_node[output])
+                all_nodes.extend(nodes)
+
+        nodes_to_remove = []
+        for node in self.model.graph.node:
+            if node not in all_nodes:
+                nodes_to_remove.append(node)
+        self.remove_nodes(nodes_to_remove)
+
+        output_to_remove=[]
+        for output in self.model.graph.output:
+            if output.name not in outputs:
+                output_to_remove.append(output)
+        for output in output_to_remove:
+            self.model.graph.output.remove(output)
+
+        logger.info(f"Reducing output: remove {len(output_to_remove)} outputs and {len(nodes_to_remove)} nodes")
 
     def update_graph(self):
         graph = self.model.graph
@@ -357,7 +450,7 @@ class OnnxModel:
                     if input_name not in remaining_input_names:
                         remaining_input_names.append(input_name)
         if self.verbose:
-            print("remaining input names", remaining_input_names)
+            logger.info(f"remaining input names: {remaining_input_names}" )
 
         # remove graph input that is not used
         inputs_to_remove = []
@@ -367,7 +460,8 @@ class OnnxModel:
         for input in inputs_to_remove:
             graph.input.remove(input)
         if self.verbose:
-            print("remove unused input ", len(inputs_to_remove), [input.name for input in inputs_to_remove])
+            names_to_remove = [input.name for input in inputs_to_remove]
+            logger.info(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
         
         # remove weights that are not used
         weights_to_remove = []
@@ -381,21 +475,22 @@ class OnnxModel:
             graph.initializer.remove(initializer)
 
         if self.verbose:
-            print("remove unused initializers:", len(weights_to_remove), [initializer.name for initializer in weights_to_remove])
-            print("remaining initializers:", weights_to_keep)
+            names_to_remove = [initializer.name for initializer in weights_to_remove]
+            logger.info(f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}")
+            logger.info(f"remaining initializers:{weights_to_keep}")
 
         self.remove_unused_constant()
 
     def is_safe_to_fuse_nodes(self, nodes_to_remove, keep_outputs, input_name_to_nodes, output_name_to_node):
-        for node in nodes_to_remove:
-            for output in node.output:
-                if output in keep_outputs:
+        for node_to_remove in nodes_to_remove:
+            for output_to_remove in node_to_remove.output:
+                if output_to_remove in keep_outputs:
                     continue
 
-                if output in input_name_to_nodes:
-                    for node in input_name_to_nodes[output]:
-                        if node not in nodes_to_remove:
+                if output_to_remove in input_name_to_nodes:
+                    for impacted_node in input_name_to_nodes[output_to_remove]:
+                        if impacted_node not in nodes_to_remove:
                             if self.verbose:
-                                print("warning: it is not safe to remove nodes since output", output, "used by", node)
+                                logger.warning(f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}")
                             return False
         return True
