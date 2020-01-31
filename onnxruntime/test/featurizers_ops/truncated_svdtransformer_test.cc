@@ -46,17 +46,17 @@ void TruncatedSVDTransformerTestRowMajStandard() {
   OpTester test("TruncatedSVDTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   test.AddInput<uint8_t>("State", {dim}, stream);
   test.AddInput<T>("Input", {3, 3}, {-1, -1, 0, 0, -2, -1, -3, 0, -2});
-  test.AddOutput<T>("Output", {3, 3}, {-1.009107f, 0.626315f, -0.767745f, -0.965105f, 1.995869f, 0.291682f, -3.529165f, -0.724887f, 0.139759f});
+  test.AddOutput<T>("Output", {3, 3}, {1.009107f, 0.626315f, 0.767745f, 0.965105f, 1.995869f, -0.291682f, 3.529165f, -0.724887f, -0.139759f});
   test.Run();
 }
 
-//TEST(FeaturizersTests, TruncatedSVDTransformer_double) {
-//  TruncatedSVDTransformerTestRowMajStandard<double>();
-//}
-//
-//TEST(FeaturizersTests, TruncatedSVDTransformer_float) {
-//  TruncatedSVDTransformerTestRowMajStandard<float>();
-//}
+TEST(FeaturizersTests, TruncatedSVDTransformer_double) {
+  TruncatedSVDTransformerTestRowMajStandard<double>();
+}
+
+TEST(FeaturizersTests, TruncatedSVDTransformer_float) {
+  TruncatedSVDTransformerTestRowMajStandard<float>();
+}
 
 }  // namespace test
 }  // namespace onnxruntime
