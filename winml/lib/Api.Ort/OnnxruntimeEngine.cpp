@@ -514,6 +514,20 @@ OnnxruntimeEngineFactory* OnnxruntimeEngine::GetEngineFactory() {
   return engine_factory_.Get();
 }
 
+HRESULT OnnxruntimeEngine::CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
+  auto ort_api = engine_factory_->UseOrtApi();
+
+  OrtAllocator* ort_allocator;
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetAllocatorWithDefaultOptions(&ort_allocator), ort_api);  // This should not be freed as this owned by ort
+
+  OrtValue* ort_value;
+  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateTensorAsOrtValue(ort_allocator, shape, count, ONNXTensorElementDataTypeFromTensorKind(kind), &ort_value),
+                          ort_api);
+  auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)));
+  return S_OK;
+}
+
 /*
 * OnnxruntimeEngine::CreateTensorValue
 * 
@@ -626,7 +640,8 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
 */
 HRESULT OnnxruntimeEngine::CreateStringTensorValueFromDataWithCopy(const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
-  RETURN_IF_FAILED(CreateTensorValue(shape, count, winml::TensorKind::String, out));
+
+  RETURN_IF_FAILED(CreateTensorValueFromDefaultAllocator(shape, count, winml::TensorKind::String, out));
 
   auto ort_value = reinterpret_cast<WinML::OnnxruntimeValue*>(*out)->UseOrtValue();
   RETURN_HR_IF_NOT_OK_MSG(ort_api->FillStringTensor(ort_value, reinterpret_cast<const char* const*>(data), num_elements),
@@ -862,11 +877,11 @@ HRESULT CreateMapValue(OnnxruntimeEngine* engine, IInspectable* map_insp, winml:
   std::vector<int64_t> shape = {static_cast<int64_t>(map.Size())};
 
   winrt::com_ptr<WinML::IValue> key_value;
-  RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), key_kind, key_value.put()));
+  RETURN_IF_FAILED(engine->CreateTensorValueFromDefaultAllocator(shape.data(), shape.size(), key_kind, key_value.put()));
   auto keys_ort_value = static_cast<OnnxruntimeValue*>(key_value.get())->UseOrtValue();
 
   winrt::com_ptr<WinML::IValue> value_value;
-  RETURN_IF_FAILED(engine->CreateTensorValue(shape.data(), shape.size(), value_kind, value_value.put()));
+  RETURN_IF_FAILED(engine->CreateTensorValueFromDefaultAllocator(shape.data(), shape.size(), value_kind, value_value.put()));
   auto values_ort_value = static_cast<OnnxruntimeValue*>(value_value.get())->UseOrtValue();
 
   auto hr = FillMapTensors<TAbiKey, TAbiValue>::Run(ort_api, map_insp, keys_ort_value, values_ort_value);
@@ -1192,7 +1207,7 @@ HRESULT OnnxruntimeEngineFactory::EnsureEnvironment() {
     std::lock_guard lock(mutex_);
     if (environment_ == nullptr) {
       environment_ = PheonixSingleton<OnnxruntimeEnvironment>(ort_api_);
-	}
+    }
   }
   return S_OK;
 }
