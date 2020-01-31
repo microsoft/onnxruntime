@@ -403,43 +403,6 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.info(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def compact_graph(self, outputs):
-        '''
-        Compact graph by removing nodes that are not linked (directly or indirectly) to any output.
-
-        Args:
-            node (str): current node name.
-            parent_op_types (str): constraint of parent node op_type of each input edge.
-            parent_input_index (list): constraint of input index of each input edge. None means no constraint.
-            output_name_to_node (dict): dictionary with output name as key, and node as value.
-            return_indice (list): a list to append the input index when there is no constraint on input index of an edge.
-
-        Returns:
-            parents: a list of matched parent node.
-        '''
-        output_name_to_node = self.output_name_to_node()
-        all_nodes = []
-        for output in outputs:
-            if output in output_name_to_node:
-                nodes = self.get_parent_subgraph_nodes(output_name_to_node[output], [])
-                all_nodes.append(output_name_to_node[output])
-                all_nodes.extend(nodes)
-
-        nodes_to_remove = []
-        for node in self.model.graph.node:
-            if node not in all_nodes:
-                nodes_to_remove.append(node)
-        self.remove_nodes(nodes_to_remove)
-
-        output_to_remove=[]
-        for output in self.model.graph.output:
-            if output.name not in outputs:
-                output_to_remove.append(output)
-        for output in output_to_remove:
-            self.model.graph.output.remove(output)
-
-        logger.info(f"Reducing output: remove {len(output_to_remove)} outputs and {len(nodes_to_remove)} nodes")
-
     def update_graph(self):
         graph = self.model.graph
 
