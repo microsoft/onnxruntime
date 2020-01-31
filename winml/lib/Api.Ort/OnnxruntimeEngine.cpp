@@ -139,9 +139,11 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
                       ort_api);
 
   std::vector<int64_t> shape(size);
-  THROW_IF_NOT_OK_MSG(ort_api->GetDimensions(type_and_shape_info, &shape[0], size),
-                      ort_api);
 
+  if (size > 0) {
+    THROW_IF_NOT_OK_MSG(ort_api->GetDimensions(type_and_shape_info, &shape[0], size),
+                        ort_api);
+  }
   auto length = ShapeSize(shape.data(), shape.size());
 
   // make a big buffer to hold all the string data
@@ -256,8 +258,10 @@ HRESULT OnnxruntimeValue::GetTensorShape(std::vector<int64_t>& shape_vector) {
                           ort_api);
 
   std::vector<int64_t> shape(size);
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->GetDimensions(type_and_shape_info.get(), &shape[0], size),
-                          ort_api);
+  if (size > 0) {
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->GetDimensions(type_and_shape_info.get(), &shape[0], size),
+                            ort_api);
+  }
 
   shape_vector = std::move(shape);
   return S_OK;
