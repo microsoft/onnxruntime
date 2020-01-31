@@ -6,25 +6,31 @@
 #include "reduction_functions.h"
 #include "reduction_utils.cuh"
 
-#define MAX_BLOCK_COUNT 256
-#define ONE_THREAD_LOAD_COUNT 4
-#define WARP_THREAD_COUNT 32
-#define MAX_BLOCK_WARP_COUNT 8
+#define NUM_ELEMENTS_PER_THREAD 4
+#define NUM_THREADS_PER_WARP 32
+#define NUM_WARPS_PER_BLOCK 8
+#define MAX_NUM_BLOCKS 256
+
 #define ALL_ONE_MASK 0xFFFFFFFF
 #define ONE_MASK 0x00000001
 
 namespace onnxruntime {
 namespace cuda {
 
-int compute_block_number(int size) {
-  return std::min(
-    MAX_BLOCK_COUNT,
-    std::max(1, size / WARP_THREAD_COUNT / MAX_BLOCK_WARP_COUNT));
+std::pair<int, int> compute_block_size(int size) {
+  int x = NUM_THREADS_PER_WARP;
+  int y = std::min(NUM_WARPS_PER_BLOCK, std::max(1, size / (NUM_ELEMENTS_PER_THREAD * NUM_THREADS_PER_WARP)));
+  return std::make_pair(x, y);
+}
+
+int compute_grid_size(int size) {
+  const auto block = compute_block_size(size);
+  return std::min(MAX_NUM_BLOCKS, std::max(1, size / (NUM_ELEMENTS_PER_THREAD * block.first * block.second)));
 }
 
 int compute_reduction_buffer_size(int element_size, int size) {
-  const int block_count = compute_block_number(size);
-  return static_cast<int>(block_count * element_size + sizeof(int));
+  const int num_blocks = compute_grid_size(size);
+  return static_cast<int>(num_blocks * element_size + sizeof(int));
 }
 
 template<typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
@@ -35,15 +41,15 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // Linear index of thread in block.
   const int tid_in_block = threadIdx.y * blockDim.x + threadIdx.x;
   // Total number of threads in a 2-D block.
-  const int thread_count_in_block = blockDim.x * blockDim.y;
+  const int num_threads_in_block = blockDim.x * blockDim.y;
 
   // Warp-level indexes:
   // Warp index of thread.
-  const int wid_in_block = tid_in_block / WARP_THREAD_COUNT;
+  const int wid_in_block = tid_in_block / NUM_THREADS_PER_WARP;
   // Lane index of thread.
-  const int lid_in_block = tid_in_block % WARP_THREAD_COUNT;
+  const int lid_in_block = tid_in_block % NUM_THREADS_PER_WARP;
   // Warp count per block.
-  const int warp_count_in_block = thread_count_in_block / WARP_THREAD_COUNT;
+  const int num_warps_in_block = num_threads_in_block / NUM_THREADS_PER_WARP;
 
   // Grid-level indexes:
   // Linear index of block in grid.
@@ -51,64 +57,53 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // Linear index of thread in grid.
   const int tid_in_grid = bid_in_grid * (blockDim.x * blockDim.y) + tid_in_block;
   // Total number of blocks in a 2-D grid.
-  const int block_count_in_grid = gridDim.x * gridDim.y;
+  const int num_blocks_in_grid = gridDim.x * gridDim.y;
   // Total number of threads in a 2-D grid with 2-D blocks.
-  const int thread_count_in_grid = block_count_in_grid * thread_count_in_block;
+  const int num_threads_in_grid = num_blocks_in_grid * num_threads_in_block;
 
   // Thread-level reduction (storage change: global memory -> register).
-  // One thread reduces ONE_THREAD_LOAD_COUNT elements to a thread register
+  // One thread reduces NUM_ELEMENTS_PER_THREAD elements to a thread register
   // in one iteration.
-  const int total_thread_launch_count = size / ONE_THREAD_LOAD_COUNT;
   TOut value = 0;
-  for (int thread_launch_count = 0; thread_launch_count < total_thread_launch_count; thread_launch_count += thread_count_in_grid) {
-    const int offset = (thread_launch_count + tid_in_grid) * ONE_THREAD_LOAD_COUNT;
-    if (thread_launch_count + tid_in_grid < total_thread_launch_count) {
-      const TIn* addr = data + offset;
-#pragma unroll
-      for (int i = 0; i < ONE_THREAD_LOAD_COUNT; ++i) {
-        value += TOp()(addr[i]);
-      }
-    }
-  }
+  for (int id = tid_in_grid; id < size; id += NUM_ELEMENTS_PER_THREAD * num_threads_in_grid) {
+    TOut v[NUM_ELEMENTS_PER_THREAD];
 
-  if (tid_in_grid == 0) {
-    const int rest_thread_launch_count = size % ONE_THREAD_LOAD_COUNT;
-#pragma unroll(4)
-    for (int thread_launch_count = 0; thread_launch_count < rest_thread_launch_count; ++thread_launch_count) {
-      value += TOp()(data[size - thread_launch_count - 1]);
-    }
-  }
-
-  // If we have less than ONE_THREAD_LOAD_COUNT elements, the task is done.
-  if (size <= ONE_THREAD_LOAD_COUNT) {
-    if (tid_in_grid == 0) {
-      // Compilation time if-else branch controlled by template argument can be
-      // optimized out, so there will be no branch in real computation phase.
-      if (DivideResultBySize) {
-        output[0] = TFinalOp()(value / TOut(size));
+    #pragma unroll
+    for (int i = 0; i < NUM_ELEMENTS_PER_THREAD; i++) {
+      int offset = id + i * num_threads_in_grid;
+      if (offset < size) {
+        v[i] = TOut(TOp()(data[offset]));
       } else {
-        output[0] = TFinalOp()(value);
+        v[i] = TOut(0.0f);
       }
     }
-    return;
+
+    #pragma unroll
+    for (int i = 0; i < NUM_ELEMENTS_PER_THREAD; i++) {
+      value += v[i];
+    }
   }
 
+#if __CUDA_ARCH__ >= 700
+  __syncwarp();
+#else
   __syncthreads();
+#endif
 
   // Warp-level reduction (storage change: register -> register).
   // The values in a warp will be summed up to a scalar. After warp-level
-  // reduction, each block holds warp_count_in_block values in the shared
-  // memory.
+  // reduction, each block holds num_warps_in_block values in the shared memory.
   TOut value_ = value;
 #pragma unroll
-  for (int stride = WARP_THREAD_COUNT / 2; stride > 0; stride /= 2) {
+  for (int stride = NUM_THREADS_PER_WARP / 2; stride > 0; stride /= 2) {
     value_ += __shfl_down_sync(ALL_ONE_MASK, value_, stride);
   }
 
-  // If we have less than ONE_THREAD_LOAD_COUNT * WARP_THREAD_COUNT elements,
-  // the task is done because one warp can at most reduce
-  // ONE_THREAD_LOAD_COUNT * WARP_THREAD_COUNT values.
-  if (size <= ONE_THREAD_LOAD_COUNT * WARP_THREAD_COUNT) {
+  // Return early if only one warp is used for reduction.
+  // Given a fixed amount of threads, we perfer threads over warps over blocks so that we never have cases such as
+  // 1. two blocks and each of them has only 1 warp (32 threads).
+  // 2. two warps and each of them has only 2 threads.
+  if (num_warps_in_block == 1) {
     if (tid_in_grid == 0) {
       // Compilation time if-else branch controlled by template argument can be
       // optimized out, so there will be no branch in real computation phase.
@@ -131,21 +126,19 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   // The values in a block will be summed up to a scalar.
   // Note that the values are stored in the shared memory.
   // Here we assume that the size of shared_memory is smaller
-  // than warp_count_in_block, so we just keep halving the number
+  // than num_warps_in_block, so we just keep halving the number
   // of threads in each iteartion. Our assumption is always true because
   // the size of shared_memory equals to the number of warps.
 #pragma unroll
-  for (int stride = MAX_BLOCK_WARP_COUNT / 2; stride > 0; stride /= 2) {
-    if (tid_in_block + stride < warp_count_in_block) {
+  for (int stride = NUM_WARPS_PER_BLOCK / 2; stride > 0; stride /= 2) {
+    if (tid_in_block + stride < num_warps_in_block) {
       shared_memory[tid_in_block] += shared_memory[tid_in_block + stride];
     }
     __syncthreads();
   }
 
-  // If we have less than ONE_THREAD_LOAD_COUNT * thread_count_in_block elements,
-  // the task is done because one block can at most reduce
-  // ONE_THREAD_LOAD_COUNT * thread_count_in_block values.
-  if (size <= ONE_THREAD_LOAD_COUNT * thread_count_in_block) {
+  // Return early if only one block is used for reduction.
+  if (num_blocks_in_grid == 1) {
     if (tid_in_grid == 0) {
       // Compilation time if-else branch controlled by template argument can be
       // optimized out, so there will be no branch in real computation phase.
@@ -159,13 +152,7 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   }
 
   if (tid_in_block == 0) {
-    // Compilation time if-else branch controlled by template argument can be
-    // optimized out, so there will be no branch in real computation phase.
-    if (DivideResultBySize) {
-      buffer[bid_in_grid] = shared_memory[0];
-    } else {
-      buffer[bid_in_grid] = shared_memory[0];
-    }
+    buffer[bid_in_grid] = shared_memory[0];
   }
 
   __threadfence();
@@ -176,22 +163,23 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
   __shared__ bool is_last_block_done;
 
   if (tid_in_block == 0) {
-    int* p_lock = reinterpret_cast<int*>(buffer + block_count_in_grid);
+    int* p_lock = reinterpret_cast<int*>(buffer + num_blocks_in_grid);
     int count = atomicAdd(p_lock, 1);
-    is_last_block_done = (count == (block_count_in_grid - 1));
+    is_last_block_done = (count == (num_blocks_in_grid - 1));
   }
 
   // All threads in each block see if they belong the last active block 
   // (i.e., the value of is_last_block_done).
   __syncthreads();
 
-  // Only the block which saw that count equals to block_count_in_grid - 1 can
+  // Only the block which saw that count equals to num_blocks_in_grid - 1 can
   // enter the following block.
   if (is_last_block_done) {
-    const int pow2_bound = least_pow2_bound(block_count_in_grid);
+    const int pow2_bound = least_pow2_bound(num_blocks_in_grid);
     for (int stride = pow2_bound / 2; stride > 0; stride /= 2) {
-      if (tid_in_block < stride && tid_in_block + stride < block_count_in_grid)
+      if (tid_in_block < stride && tid_in_block + stride < num_blocks_in_grid) {
         buffer[tid_in_block] += buffer[tid_in_block + stride];
+      }
       __syncthreads();
     }
 
@@ -211,11 +199,18 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
 template<typename TIn, typename TOut, typename TOp, typename TFinalOp, bool DivideResultBySize>
 void call_reduce_all_kernel(const TIn *data, TOut *output, int size, TOut *buffer)
 {
-  const int block_count = compute_block_number(size);
-  cudaMemset(buffer + block_count, 0, sizeof(int));
-  const dim3 grid(block_count, 1, 1);
-  const dim3 block(WARP_THREAD_COUNT, MAX_BLOCK_WARP_COUNT, 1);
-  reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize><<<grid, block, MAX_BLOCK_WARP_COUNT * sizeof(TOut)>>>(size, data, output, buffer);
+  const auto block_size = compute_block_size(size);
+  const int num_blocks = compute_grid_size(size);
+  const dim3 block(block_size.first, block_size.second, 1);
+  const dim3 grid(num_blocks, 1, 1);
+
+  // If more than one blocks are used, then inter-blocks reduction is needed.
+  if (num_blocks != 1) {
+    cudaMemset(buffer + num_blocks, 0, sizeof(int));
+  }
+
+  const int shared_mem_size = sizeof(TOut) * block_size.first * block_size.second / NUM_THREADS_PER_WARP;
+  reduce_all_kernel<TIn, TOut, TOp, TFinalOp, DivideResultBySize><<<grid, block, shared_mem_size>>>(size, data, output, buffer);
 }
 
 template<typename TIn, typename TOut>
@@ -366,15 +361,15 @@ __global__ void reduce_matrix_rows_kernel(const TIn *input, TOut *output, int m,
 // It's implementation is in reduction_ops.cu and called in reduction_ops.cc.
 template<typename TIn, typename TOut, typename TBuf>
 void call_reduce_matrix_rows(const TIn *input, TOut *output, int m, int n) {
-  constexpr int max_thread_count_in_block = 512;
-  constexpr int max_block_count_in_grid = 512;
+  constexpr int max_num_threads_in_block = 512;
+  constexpr int max_num_blocks_in_grid = 512;
   constexpr int warp_size = 32;
   constexpr int load_count_per_thread = 4;
 
   const int block_x_dim = least_pow2_bound(std::max(1, std::min(n, warp_size)));
-  const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_thread_count_in_block / block_x_dim, m / load_count_per_thread)));
-  const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_block_count_in_grid));
-  const int grid_y_dim = std::max(1, std::min(max_block_count_in_grid / grid_x_dim, m / block_y_dim / 4));
+  const int block_y_dim = least_pow2_bound(std::max(1, std::min(max_num_threads_in_block / block_x_dim, m / load_count_per_thread)));
+  const int grid_x_dim = std::max(1, std::min(n / block_x_dim, max_num_blocks_in_grid));
+  const int grid_y_dim = std::max(1, std::min(max_num_blocks_in_grid / grid_x_dim, m / block_y_dim / 4));
 
   const dim3 grid(grid_x_dim, grid_y_dim, 1);
   const dim3 block(block_x_dim, block_y_dim, 1);
