@@ -2,7 +2,7 @@
 
 ## Preparation
 
-Tests validation depends on protobuf generated *_pb2.py. So we need to have a sucessful server application build to have it generated in the build folder under `server_test` subfolder. The following instruction assume you are in the folder. Otherwise, tests will fail due to `ModuleNotFoundError`.
+Tests validation depends on protobuf generated *_pb2.py. So we need to have a successful server application build to have it generated in the build folder under `server_test` subfolder. The following instruction assume you are in the folder. Otherwise, tests will fail due to `ModuleNotFoundError`.
 
 ## Functional Tests
 

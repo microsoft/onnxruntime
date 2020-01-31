@@ -54,7 +54,7 @@ jobs:
   workspace:
     clean: all
   pool: 
-    vmImage: 'macOS-10.13'
+    vmImage: 'macOS-10.14'
   steps:
     - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
