@@ -364,7 +364,62 @@ TEST_F(CApiTest, create_tensor_with_data) {
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
   ASSERT_NE(tensor_info, nullptr);
-  (1u, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
+}
+
+TEST_F(CApiTest, override_initializer) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  // CreateTensor which is not owning this ptr
+  bool Label_input[] = {true};
+  std::vector<int64_t> dims = {1, 1};
+  Ort::Value label_input_tensor = Ort::Value::CreateTensor<bool>(info, Label_input, 1U, dims.data(), dims.size());
+
+  std::string f2_data{"f2_string"};
+  // Place a string into Tensor OrtValue and assign to the
+  Ort::Value f2_input_tensor = Ort::Value::CreateTensor(allocator.get(), dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  // No C++ Api to either create a string Tensor or to fill one with string, so we use C
+  const char* const input_char_string[] = {f2_data.c_str()};
+  Ort::ThrowOnError(Ort::GetApi().FillStringTensor(static_cast<OrtValue*>(f2_input_tensor), input_char_string, 1U));
+
+  Ort::SessionOptions session_options;
+  Ort::Session session(env_, OVERRIDABLE_INITIALIZER_MODEL_URI, session_options);
+
+  // Get Overrideable initializers
+  size_t init_count = session.GetOverridableInitializerCount();
+  ASSERT_EQ(init_count, 1U);
+
+  char* f1_init_name = session.GetOverridableInitializerName(0, allocator.get());
+  ASSERT_TRUE(strcmp("F1", f1_init_name) == 0);
+  allocator->Free(f1_init_name);
+
+  Ort::TypeInfo init_type_info = session.GetOverridableInitializerTypeInfo(0);
+  ASSERT_EQ(ONNX_TYPE_TENSOR, init_type_info.GetONNXType());
+
+  // Let's override the initializer
+  float f11_input_data[] = {2.0f};
+  Ort::Value f11_input_tensor = Ort::Value::CreateTensor<float>(info, f11_input_data, 1U, dims.data(), dims.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(label_input_tensor));
+  ort_inputs.push_back(std::move(f2_input_tensor));
+  ort_inputs.push_back(std::move(f11_input_tensor));
+
+  std::vector<const char*> input_names = {"Label", "F2", "F1"};
+
+  const char* const output_names[] = {"Label0", "F20", "F11"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+
+  ASSERT_EQ(ort_outputs.size(), 3U);
+  // Expecting the last output would be the overridden value of the initializer
+  auto type_info = ort_outputs[2].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), dims);
+  ASSERT_EQ(type_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ASSERT_EQ(type_info.GetElementCount(), 1U);
+  float* output_data = ort_outputs[2].GetTensorMutableData<float>();
+  ASSERT_EQ(*output_data, f11_input_data[0]);
 }
 
 TEST_F(CApiTest, end_profiling) {
