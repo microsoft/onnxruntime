@@ -801,7 +801,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetGraphName,
                     _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
-  auto graph_name = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
+  auto graph_name = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->graph_name;
   *value = StrDup(graph_name, allocator);
   return nullptr;
   API_IMPL_END
@@ -811,7 +811,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDomain,
                     _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
-  auto domain = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
+  auto domain = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->domain;
   *value = StrDup(domain, allocator);
   return nullptr;
   API_IMPL_END
@@ -821,7 +821,7 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetDescription,
                     _In_ const OrtModelMetadata* model_metadata,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value) {
   API_IMPL_BEGIN
-  auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->producer_name;
+  auto description = reinterpret_cast<const ::onnxruntime::ModelMetadata*>(model_metadata)->description;
   *value = StrDup(description, allocator);
   return nullptr;
   API_IMPL_END
