@@ -6,7 +6,6 @@
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -88,17 +87,11 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so};
-<<<<<<< HEAD
-  CUDAExecutionProviderInfo xp_info{0};
-  session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
-  //session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
-=======
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
 
->>>>>>> origin/master
   status = session_object.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
@@ -110,25 +103,6 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
-<<<<<<< HEAD
-#ifdef ENABLE_TRAINING
-// The test graph is: X ---> TrainableDropout ---> Add ---> TrainableDropout ----> Y
-// TrainableDropout is not supported in TensorRT, so they will stay in cuda execution provider
-// While Add will be run by tensorrt. This test is to prove we could run a graph with TensorRT and Cuda together without any copy/sync.
-TEST(TensorrtExecutionProviderTest, DataTransferTest) {
-  std::string model_file_name = "testdata/tensor_rt_test_1.pb";
-
-  std::vector<int64_t> dims_mul_x = {1, 3, 2};
-  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  OrtValue ml_value_x;
-  CreateMLValue<float>(TestTensorrtExecutionProvider()->GetAllocator(0, OrtMemTypeCPU), dims_mul_x, values_mul_x, &ml_value_x);
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("X", ml_value_x));
-
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("Y");
-=======
 TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   onnxruntime::Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -213,41 +187,26 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   std::vector<std::string> output_names;
   output_names.push_back("M");
   output_names.push_back("N");
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   std::vector<OrtValue> fetches;
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
-<<<<<<< HEAD
-  std::vector<float> expected_values_mul_m = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
-
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderTest.FunctionTest";
-=======
   std::vector<bool> expected_values_mul_m = {true, false, true, false, true, false};
   std::vector<int64_t> expected_dims_mul_n = {1, 3, 2};
   std::vector<float> expected_values_mul_n = {0, 0, 0, 0, 0, 0};
 
   SessionOptions so;
   so.session_logid = "TensorrtExecutionProviderTest.NodeIndexMappingTest";
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
   InferenceSession session_object{so};
-<<<<<<< HEAD
-  CUDAExecutionProviderInfo xp_info{0};
-  session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info, true));
-  //session_object.RegisterExecutionProvider(std::make_unique<::onnxruntime::TensorrtExecutionProvider>());
-  auto status = session_object.Load(model_file_name);
-=======
 
   TensorrtExecutionProviderInfo epi;
   epi.device_id = 0;
   EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::TensorrtExecutionProvider>(epi)).IsOK());
 
   status = session_object.Load(model_file_name);
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -255,14 +214,8 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-<<<<<<< HEAD
-  VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
-}
-#endif
-=======
   std::vector<OrtValue> fetche {fetches.back()};
   VerifyOutputs(fetche, expected_dims_mul_n, expected_values_mul_n);
 }
->>>>>>> c767e264c52c3bac2c319b630d37f541f4d2a677
 }  // namespace test
 }  // namespace onnxruntime

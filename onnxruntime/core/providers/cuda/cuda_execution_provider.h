@@ -11,9 +11,6 @@
 #include "shared_inc/cuda_utils.h"
 #include <deque>
 
-#ifdef USE_TENSORRT
-#include "core/providers/trt_in_cuda/tensor_rt_compiler.h"
-#endif
 namespace onnxruntime {
 
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
@@ -26,7 +23,7 @@ struct CUDAExecutionProviderInfo {
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
-  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler = false, size_t cuda_mem_limit = std::numeric_limits<size_t>::max());
+  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, size_t cuda_mem_limit = std::numeric_limits<size_t>::max());
   virtual ~CUDAExecutionProvider();
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
@@ -76,9 +73,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   int GetDeviceId() const { return device_id_; }
-
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
   int device_id_;
@@ -165,12 +159,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   PerThreadContext& GetPerThreadContext() const;
   void ReleasePerThreadStuffs() const;
-
-  bool enable_compiler_;
-
-#ifdef USE_TENSORRT
-  TRTCompiler trt_compiler_;
-#endif
 };
 
 }  // namespace onnxruntime

@@ -183,13 +183,6 @@ if (onnxruntime_USE_CUDA)
     )
   endif()
 
-  if (onnxruntime_USE_TENSORRT)
-    list(APPEND onnxruntime_providers_cuda_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/trt_in_cuda/tensor_rt_compiler.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/trt_in_cuda/tensor_rt_compiler.cc"
-    )
-  endif()
-
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 

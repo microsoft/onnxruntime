@@ -8,17 +8,14 @@
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
-
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
 static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, const std::string& name) {
   auto it = std::find(std::begin(names), std::end(names), name);
-
   if (it == std::end(names)) {
     return {false, 0};
   }
-
   return {true, it - std::begin(names)};
 }
 

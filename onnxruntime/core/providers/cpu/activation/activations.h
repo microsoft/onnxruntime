@@ -6,14 +6,11 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
-#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 
 #define EIGEN_X ConstEigenVectorArrayMap<T>(X->template Data<T>(), X->Shape().Size())
 #define EIGEN_X_VAR(var) ConstEigenVectorArrayMap<T> var(X->template Data<T>(), X->Shape().Size())
-#define EIGEN_DY ConstEigenVectorArrayMap<T>(dY->template Data<T>(), dY->Shape().Size())
-#define EIGEN_DY_VAR(var) ConstEigenVectorArrayMap<T> var(dY->template Data<T>(), dY->Shape().Size())
 #define EIGEN_Y EigenVectorArrayMap<T>(Y->template MutableData<T>(), Y->Shape().Size())
 #define EIGEN_Y_VAR(var) EigenVectorArrayMap<T> var(Y->template MutableData<T>(), Y->Shape().Size())
 

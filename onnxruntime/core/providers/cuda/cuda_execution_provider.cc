@@ -15,10 +15,6 @@
 #include "contrib_ops/cuda_contrib_kernels.h"
 #endif
 
-#ifdef USE_TENSORRT
-#include "core/providers/trt_in_cuda/tensor_rt_compiler.h"
-#endif
-
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cuda_training_kernels.h"
 #endif
@@ -85,8 +81,8 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
-CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, bool enable_compiler, size_t cuda_mem_limit)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), enable_compiler_(enable_compiler), cuda_mem_limit_(cuda_mem_limit) {
+CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, size_t cuda_mem_limit)
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   size_t free = 0;
@@ -1349,9 +1345,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // cast is not compute heavy, and may be placed outside
     }
 
-    //Below rule only works for inference, for training, we can't do constant folding.
-    //We need find a better solution.
-    //Temporary disable the check here, the cost is all the cast will be on GPU now.
+//Below rule only works for inference, for training, we can't do constant folding.
+//We need find a better solution.
+//Temporary disable the check here, the cost is all the cast will be on GPU now.
 #ifndef ENABLE_TRAINING
     if (!not_supported && !force_inside) {
       // Note that nodes with only inputs from initializer would not be place on CUDA
@@ -1403,52 +1399,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
-  if (enable_compiler_) {
-#ifdef USE_TENSORRT
-    auto trt_result = CheckTensorRtCapability(graph);
-    if (!trt_result.empty() && !result.empty()) {
-      for (int i = result.size() - 1; i >= 0; i--) {
-        bool in_trt = false;
-        for (auto& capability : trt_result) {
-          for (auto& node : capability->sub_graph->nodes) {
-            if (node == result[i]->sub_graph->nodes[0]) {
-              in_trt = true;
-              break;
-            }
-          }
-        }
-        if (in_trt) {
-          result.erase(result.begin() + i);
-        }
-      }
-      for (auto& c : trt_result) {
-        result.push_back(std::move(c));
-      }
-    }
-#endif
-  }
   return result;
 }
-#ifdef USE_TENSORRT
-common::Status CUDAExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
-  if (enable_compiler_) {
-    int queue_id = 0;
-    for (auto* node : fused_nodes) {
-      NodeComputeInfo compute_info;
-      ORT_RETURN_IF_ERROR(trt_compiler_.Compile(node, streams_[queue_id], compute_info));
-      node_compute_funcs.push_back(compute_info);
-    }
-    return Status::OK();
-  } else {
-    return Status(ONNXRUNTIME, NOT_IMPLEMENTED);
-  }
-}
-#else
-common::Status CUDAExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_nodes*/,
-                                              std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
-  return Status(ONNXRUNTIME, NOT_IMPLEMENTED);
-}
-#endif
 
 }  // namespace onnxruntime

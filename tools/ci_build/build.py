@@ -43,7 +43,7 @@ Default behavior is --update --build for cross-compiled builds.
 
 The Update phase will update git submodules, and run cmake to generate makefiles.
 The Build phase will build all projects.
-The Test phase will run tests such as unit tests and ONNX tests.
+The Test phase will run all unit tests, and optionally the ONNX tests.
 
 Use the individual flags to only run the specified stages.
                                      ''')
@@ -327,8 +327,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_llvm else "OFF"),
                  "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
                  "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
-                 "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
-                 "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + ("ON" if args.enable_training_e2e_tests else "OFF"),
                  "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
                  "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
                   # By default - we currently support only cross compiling for ARM/ARM64 (no native compilation supported through this script)
@@ -336,12 +334,15 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.gen_doc else "OFF"),
                  "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
-                 "-Donnxruntime_USE_HOROVOD=" + ("ON" if args.use_horovod else "OFF"),
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  # enable pyop if it is nightly build
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
+                 # Training related flags
+                 "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
+                 "-Donnxruntime_ENABLE_TRAINING_E2E_TESTS=" + ("ON" if args.enable_training_e2e_tests else "OFF"),
+                 "-Donnxruntime_USE_HOROVOD=" + ("ON" if args.use_horovod else "OFF"),
                  ]
 
     # temp turn on only for linux gpu build

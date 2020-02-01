@@ -156,7 +156,7 @@ Status TrainingRunner::Initialize() {
     auto cuda_xp = onnxruntime::make_unique<CUDAExecutionProvider>(xp_info);
     pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
     if (params_.cuda_mem_limit_in_gb > 0)
-      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info, false, (size_t)(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024))));
+      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info, (size_t)(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024))));
     else
       ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
   }

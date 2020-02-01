@@ -7,8 +7,13 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 
+#include <unsupported/Eigen/SpecialFunctions>
+
 namespace onnxruntime {
 namespace contrib {
+
+#define EIGEN_DY ConstEigenVectorArrayMap<T>(dY->template Data<T>(), dY->Shape().Size())
+#define EIGEN_DY_VAR(var) ConstEigenVectorArrayMap<T> var(dY->template Data<T>(), dY->Shape().Size())
 
 template <typename T>
 class GeluGrad final : public OpKernel {

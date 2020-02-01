@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace test {
