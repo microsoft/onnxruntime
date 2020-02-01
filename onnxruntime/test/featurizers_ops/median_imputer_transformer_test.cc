@@ -16,9 +16,9 @@ namespace test {
 
 namespace {
 template <typename InputT, typename OutputT>
-std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<InputT>::nullable_type>& trainingBatches, size_t colIndex) {
-  dft::MedianImputerEstimator<InputT, OutputT> estimator(NS::CreateTestAnnotationMapsPtr(1), colIndex);
-  NS::TestHelpers::Train<dft::MedianImputerEstimator<InputT, OutputT>>(estimator, trainingBatches);
+std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<InputT>::nullable_type>& training_batches, size_t col_index) {
+  dft::MedianImputerEstimator<InputT, OutputT> estimator(NS::CreateTestAnnotationMapsPtr(1), col_index);
+  NS::TestHelpers::Train<dft::MedianImputerEstimator<InputT, OutputT>>(estimator, training_batches);
 
   auto pTransformer(estimator.create_transformer());
   NS::Archive ar;
@@ -29,14 +29,14 @@ std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<InputT>::nu
 
 TEST(FeaturizersTests, MedianImputerTransformer_float) {
   using InputType = float;
-  std::vector<float> trainingBatch = {
+  std::vector<float> training_batches = {
       10.0f,
       20.0f,
       NS::Traits<float>::CreateNullValue(),
       30.0f,
       NS::Traits<float>::CreateNullValue()};
 
-  auto stream = GetStream<InputType, double>(trainingBatch, 0);
+  auto stream = GetStream<InputType, double>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("MedianImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -49,14 +49,14 @@ TEST(FeaturizersTests, MedianImputerTransformer_float) {
 
 TEST(FeaturizersTests, MedianImputerTransformer_string) {
   using InputType = std::string;
-  std::vector<nonstd::optional<std::string>> trainingBatch = {
+  std::vector<nonstd::optional<std::string>> training_batches = {
       "10",
       "20",
       nonstd::optional<std::string>(),
       "30",
       nonstd::optional<std::string>()};
 
-  auto stream = GetStream<InputType, std::string>(trainingBatch, 0);
+  auto stream = GetStream<InputType, std::string>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("MedianImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);

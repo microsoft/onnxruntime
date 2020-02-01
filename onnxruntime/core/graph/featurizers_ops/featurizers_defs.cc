@@ -87,27 +87,26 @@ void RegisterMSFeaturizersSchemas() {
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 void RegisterCatImputerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Imputes (populates) values with the mode (most common value) encountered during
-        training. This featurizer supports float and double for most (if not all) frameworks
-        due to the existance of NaN in those types. Other types require 'optional' support
-        within the host frameworks and programming languages.
+  //static const char* doc = R"DOC(
+  //      Imputes (populates) values with the mode (most common value) encountered during
+  //      training. This featurizer supports float and double for most (if not all) frameworks
+  //      due to the existance of NaN in those types. Other types require 'optional' support
+  //      within the host frameworks and programming languages.
 
-        C++-style pseudo signature:
-          float execute(float const &value);
-          double execute(double const &value);
-          template <typename T> T execute(std::optional<T> const &value);
+  //      C++-style pseudo signature:
+  //        float execute(float const &value);
+  //        double execute(double const &value);
+  //        template <typename T> T execute(std::optional<T> const &value);
 
-        Examples (where 55.5 is the mode value):
-          execute(1.0) -> 1.0
-          execute(NaN) -> 55.5
-          execute(2.0) -> 2.0
-  )DOC";
+  //      Examples (where 55.5 is the mode value):
+  //        execute(1.0) -> 1.0
+  //        execute(NaN) -> 55.5
+  //        execute(2.0) -> 2.0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(CatImputerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -141,44 +140,43 @@ void RegisterCatImputerFeaturizerVer1() {
 }
 
 void RegisterDateTimeFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Extracts various datetime-related values from a UTC time_point.
+  //static const char* doc = R"DOC(
+  //      Extracts various datetime-related values from a UTC time_point.
 
-        C++-style pseudo signature:
-          TimePoint execute(std::chrono::system_clock::time_point const &value);
+  //      C++-style pseudo signature:
+  //        TimePoint execute(std::chrono::system_clock::time_point const &value);
 
-        Examples:
-          Given a time_point 'value' representing "November 17, 1976 12:27:04PM":
+  //      Examples:
+  //        Given a time_point 'value' representing "November 17, 1976 12:27:04PM":
 
-          "November 17, 1976 12:27:04PM" => {
-            "year": 1976,
-            "month": 11,
-            "day": 17,
-            "hour": 12,
-            "minute": 27,
-            "second": 04,
-            "amPm": 2,        // PM
-            "hour12": 12,
-            "dayOfWeek": 3,   // Wednesday
-            "dayOfQuarter": 48,
-            "dayOfYear": 321,
-            "weekOfMonth": 2,
-            "quarterOfYear": 4,
-            "halfOfYear": 2,
-            "weekIso": 47,
-            "yearIso": 1976,
-            "monthLabel": "November",
-            "amPmLabel": "pm",
-            "dayOfWeekLabel": "Wednesday",
-            "holidayName": "",
-            "isPaidTimeOff": 0
-          }
-  )DOC";
+  //        "November 17, 1976 12:27:04PM" => {
+  //          "year": 1976,
+  //          "month": 11,
+  //          "day": 17,
+  //          "hour": 12,
+  //          "minute": 27,
+  //          "second": 04,
+  //          "amPm": 2,        // PM
+  //          "hour12": 12,
+  //          "dayOfWeek": 3,   // Wednesday
+  //          "dayOfQuarter": 48,
+  //          "dayOfYear": 321,
+  //          "weekOfMonth": 2,
+  //          "quarterOfYear": 4,
+  //          "halfOfYear": 2,
+  //          "weekIso": 47,
+  //          "yearIso": 1976,
+  //          "monthLabel": "November",
+  //          "amPmLabel": "pm",
+  //          "dayOfWeekLabel": "Wednesday",
+  //          "holidayName": "",
+  //          "isPaidTimeOff": 0
+  //        }
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(DateTimeTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -342,23 +340,22 @@ void RegisterDateTimeFeaturizerVer1() {
 }
 
 void RegisterFromStringFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Converts from a string to a scalar type.
-        If destination type is a string, it is a passthrough.
+  //static const char* doc = R"DOC(
+  //      Converts from a string to a scalar type.
+  //      If destination type is a string, it is a passthrough.
 
-        C++-style pseudo signature:
-          int32 execute(std::string const &value);
-          bool execute(std::string const &value);
+  //      C++-style pseudo signature:
+  //        int32 execute(std::string const &value);
+  //        bool execute(std::string const &value);
 
-        Examples:
-          execute("True") -> true [bool]
-          execute("10") -> 10 [int32]
-  )DOC";
+  //      Examples:
+  //        execute("True") -> true [bool]
+  //        execute("10") -> 10 [int32]
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(FromStringTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Attr(
           "result_type",
           "This is an integer that must represent one of the types that are enumerated in the OutputT constraint",
@@ -432,30 +429,29 @@ void RegisterFromStringFeaturizerVer1() {
 }
 
 void RegisterHashOneHotVectorizerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Hashes the input to a categorical value, then produces a one hot encoded vector
-        based on that value.
+  //static const char* doc = R"DOC(
+  //      Hashes the input to a categorical value, then produces a one hot encoded vector
+  //      based on that value.
 
-        C++-style pseudo signature:
-            template <typename T> HashOneHotVectorizerStruct execute(T const &value);
+  //      C++-style pseudo signature:
+  //          template <typename T> HashOneHotVectorizerStruct execute(T const &value);
 
-        Examples:
-          Assuming the hashing algorithm...
-            "A" -> 1
-            "B" -> 2
-            "C" -> 5
+  //      Examples:
+  //        Assuming the hashing algorithm...
+  //          "A" -> 1
+  //          "B" -> 2
+  //          "C" -> 5
 
-          and 'numCols' set to 8:
+  //        and 'numCols' set to 8:
 
-            execute("A") -> [1, 0, 0, 0, 0, 0, 0, 0]
-            execute("B") -> [0, 1, 0, 0, 0, 0, 0, 0]
-            execute("C") -> [0, 0, 0, 0, 1, 0, 0, 0]
-  )DOC";
+  //          execute("A") -> [1, 0, 0, 0, 0, 0, 0, 0]
+  //          execute("B") -> [0, 1, 0, 0, 0, 0, 0, 0]
+  //          execute("C") -> [0, 0, 0, 0, 1, 0, 0, 0]
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(HashOneHotVectorizerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -507,26 +503,25 @@ void RegisterHashOneHotVectorizerFeaturizerVer1() {
 }
 
 void RegisterImputationMarkerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Returns true if the input is null, false if it is not.
+  //static const char* doc = R"DOC(
+  //      Returns true if the input is null, false if it is not.
 
-        C++-style pseudo signature:
-          bool execute(float const &value);
-          bool execute(double const &value);
-          template <typename T> bool execute(std::optional<T> const &value);
+  //      C++-style pseudo signature:
+  //        bool execute(float const &value);
+  //        bool execute(double const &value);
+  //        template <typename T> bool execute(std::optional<T> const &value);
 
-        Examples:
-          3.0 -> false
-          NaN -> true
-          "foo" -> false
-          std::optional<string>() -> true
-          std::optional<string>("bar") -> false
-  )DOC";
+  //      Examples:
+  //        3.0 -> false
+  //        NaN -> true
+  //        "foo" -> false
+  //        std::optional<string>() -> true
+  //        std::optional<string>("bar") -> false
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(ImputationMarkerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -560,25 +555,24 @@ void RegisterImputationMarkerFeaturizerVer1() {
 }
 
 void RegisterLabelEncoderFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Returns a unique id for the input based on all values encountered during training.
+  //static const char* doc = R"DOC(
+  //      Returns a unique id for the input based on all values encountered during training.
 
-        C++-style pseudo signature:
-          template <typename T> uint32 execute(T const &value);
+  //      C++-style pseudo signature:
+  //        template <typename T> uint32 execute(T const &value);
 
-        Examples:
-          Assuming the training data of ["A", "B", "C"]...
+  //      Examples:
+  //        Assuming the training data of ["A", "B", "C"]...
 
-          execute("A") -> 1
-          execute("B") -> 2
-          execute("C") -> 3
-          execute("This value was not seen during training") -> 0
-  )DOC";
+  //        execute("A") -> 1
+  //        execute("B") -> 2
+  //        execute("C") -> 3
+  //        execute("This value was not seen during training") -> 0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(LabelEncoderTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -612,26 +606,25 @@ void RegisterLabelEncoderFeaturizerVer1() {
 }
 
 void RegisterMaxAbsScalarFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Scales input based on the maximum absolute value of all data encountered during training.
+  //static const char* doc = R"DOC(
+  //      Scales input based on the maximum absolute value of all data encountered during training.
 
-        C++-style pseudo signature:
-          float execute(uint16 value);
-          double execute(uint32 value);
+  //      C++-style pseudo signature:
+  //        float execute(uint16 value);
+  //        double execute(uint32 value);
 
-        Examples:
-          Given a training set of [1.0, -2.0, 3.0, -4.0], where 4.0 is the absolute value of the
-          maximum value encountered...
+  //      Examples:
+  //        Given a training set of [1.0, -2.0, 3.0, -4.0], where 4.0 is the absolute value of the
+  //        maximum value encountered...
 
-          execute(1.0) -> 1.0 / 4.0
-          execute(-4.0) -> -4.0 / 4.0
-          execute(100.0) -> 100 / 4.0
-  )DOC";
+  //        execute(1.0) -> 1.0 / 4.0
+  //        execute(-4.0) -> -4.0 / 4.0
+  //        execute(100.0) -> 100 / 4.0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -685,25 +678,24 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
 }
 
 void RegisterMeanImputerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Imputes (populates) values with the mean (average) value encountered during
-        training.
+  //static const char* doc = R"DOC(
+  //      Imputes (populates) values with the mean (average) value encountered during
+  //      training.
 
-        C++-style pseudo signature:
-          float execute(float const &value);
-          double execute(double const &value);
-          template <typename T> T execute(std::optional<T> const &value);
+  //      C++-style pseudo signature:
+  //        float execute(float const &value);
+  //        double execute(double const &value);
+  //        template <typename T> T execute(std::optional<T> const &value);
 
-        Examples (where 123.4 is the mean value):
-          execute(1.0) -> 1.0
-          execute(NaN) -> 123.4
-          execute(2.0) -> 2.0
-  )DOC";
+  //      Examples (where 123.4 is the mean value):
+  //        execute(1.0) -> 1.0
+  //        execute(NaN) -> 123.4
+  //        execute(2.0) -> 2.0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MeanImputerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -737,25 +729,24 @@ void RegisterMeanImputerFeaturizerVer1() {
 }
 
 void RegisterMedianImputerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Imputes (populates) values with the median value encountered during
-        training.
+  //static const char* doc = R"DOC(
+  //      Imputes (populates) values with the median value encountered during
+  //      training.
 
-        C++-style pseudo signature:
-          float execute(float const &value);
-          double execute(double const &value);
-          template <typename T> T execute(std::optional<T> const &value);
+  //      C++-style pseudo signature:
+  //        float execute(float const &value);
+  //        double execute(double const &value);
+  //        template <typename T> T execute(std::optional<T> const &value);
 
-        Examples (where 123.4 is the median value):
-          execute(1.0) -> 1.0
-          execute(NaN) -> 123.4
-          execute(2.0) -> 2.0
-  )DOC";
+  //      Examples (where 123.4 is the median value):
+  //        execute(1.0) -> 1.0
+  //        execute(NaN) -> 123.4
+  //        execute(2.0) -> 2.0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MedianImputerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -802,26 +793,25 @@ void RegisterMedianImputerFeaturizerVer1() {
 }
 
 void RegisterMinMaxImputerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Imputes (populates) values with the minimum or maximum value encountered during
-        training.
+  //static const char* doc = R"DOC(
+  //      Imputes (populates) values with the minimum or maximum value encountered during
+  //      training.
 
-        C++-style pseudo signature:
-          float execute(float const &value);
-          double execute(double const &value);
-          template <typename T> T execute(std::optional<T> const &value);
+  //      C++-style pseudo signature:
+  //        float execute(float const &value);
+  //        double execute(double const &value);
+  //        template <typename T> T execute(std::optional<T> const &value);
 
-        Examples (where 123 is the minimum or maximum value (depending on configuration
-        parameters set when creating the estimator):
-          execute(1.0) -> 1.0
-          execute(NaN) -> 123.4
-          execute(2.0) -> 2.0
-  )DOC";
+  //      Examples (where 123 is the minimum or maximum value (depending on configuration
+  //      parameters set when creating the estimator):
+  //        execute(1.0) -> 1.0
+  //        execute(NaN) -> 123.4
+  //        execute(2.0) -> 2.0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MinMaxImputerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -855,27 +845,26 @@ void RegisterMinMaxImputerFeaturizerVer1() {
 }
 
 void RegisterMinMaxScalarFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Scales input based on the scale that results from the minimum and maximum values encountered
-        during training.
+  //static const char* doc = R"DOC(
+  //      Scales input based on the scale that results from the minimum and maximum values encountered
+  //      during training.
 
-        C++-style pseudo signature:
-            template <typeanem T> double(T const &value);
+  //      C++-style pseudo signature:
+  //          template <typeanem T> double(T const &value);
 
-        Examples:
-          Given the training data [1, 2, 3, 4, 5];
-            min: 1
-            max: 5
-            scale (<max> - <min>): 4
+  //      Examples:
+  //        Given the training data [1, 2, 3, 4, 5];
+  //          min: 1
+  //          max: 5
+  //          scale (<max> - <min>): 4
 
-          execute(2) = 2 / 4
-          execute(20) = 20 / 4
-  )DOC";
+  //        execute(2) = 2 / 4
+  //        execute(20) = 20 / 4
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MinMaxScalarTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -909,26 +898,25 @@ void RegisterMinMaxScalarFeaturizerVer1() {
 }
 
 void RegisterMissingDummiesFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Returns 1 if the input is null, 0 if it is not.
+  //static const char* doc = R"DOC(
+  //      Returns 1 if the input is null, 0 if it is not.
 
-        C++-style pseudo signature:
-            int8 execute(float const &value);
-            int8 execute(double const &value);
-            template <typename T> int8 execute(T const &value);
+  //      C++-style pseudo signature:
+  //          int8 execute(float const &value);
+  //          int8 execute(double const &value);
+  //          template <typename T> int8 execute(T const &value);
 
-        Examples:
-          1.0 -> 0
-          NaN -> 1
-          "foo" -> 0
-          std::optional<string>() -> 1
-          std::optional<string>("bar") -> 0
-  )DOC";
+  //      Examples:
+  //        1.0 -> 0
+  //        NaN -> 1
+  //        "foo" -> 0
+  //        std::optional<string>() -> 1
+  //        std::optional<string>("bar") -> 0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(MissingDummiesTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -962,26 +950,25 @@ void RegisterMissingDummiesFeaturizerVer1() {
 }
 
 void RegisterModeImputerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Imputes (populates) values with the mode (most frequent) value encountered during
-        training. The first value encountered with be used in the event that mutliple values
-        we found the most number of times.
+  //static const char* doc = R"DOC(
+  //      Imputes (populates) values with the mode (most frequent) value encountered during
+  //      training. The first value encountered with be used in the event that mutliple values
+  //      we found the most number of times.
 
-        C++-style pseudo signature:
-          float execute(float const &value);
-          double execute(double const &value);
-          template <typename T> T execute(std::optional<T> const &value);
+  //      C++-style pseudo signature:
+  //        float execute(float const &value);
+  //        double execute(double const &value);
+  //        template <typename T> T execute(std::optional<T> const &value);
 
-        Examples (where 123.4 is the mode value):
-          execute(1.0) -> 1.0
-          execute(NaN) -> 123.4
-          execute(2.0) -> 2.0
-  )DOC";
+  //      Examples (where 123.4 is the mode value):
+  //        execute(1.0) -> 1.0
+  //        execute(NaN) -> 123.4
+  //        execute(2.0) -> 2.0
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(ModeImputerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1015,25 +1002,24 @@ void RegisterModeImputerFeaturizerVer1() {
 }
 
 void RegisterNumericalizeFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        This is the LabelEncoder, but returns a null value for categories not encountered during training.
+  //static const char* doc = R"DOC(
+  //      This is the LabelEncoder, but returns a null value for categories not encountered during training.
 
-        C++-style pseudo signature:
-          template <typename T> std::optional<uint32_t> execute(T const &value);
+  //      C++-style pseudo signature:
+  //        template <typename T> std::optional<uint32_t> execute(T const &value);
 
-        Examples:
-          Assuming the training data of ["Oh", "Huh", "Heh"]...
-          execute("Oh") -> std::optional<uint32_t>(1)
-          execute("Huh") -> std::optional<uint32_t>(2)
-          execute("Heh") -> std::optional<uint32_t>(3)
-          # This value was not seeing at training time
-          execute("Oops") -> std::optional<uint32_t>()
-  )DOC";
+  //      Examples:
+  //        Assuming the training data of ["Oh", "Huh", "Heh"]...
+  //        execute("Oh") -> std::optional<uint32_t>(1)
+  //        execute("Huh") -> std::optional<uint32_t>(2)
+  //        execute("Heh") -> std::optional<uint32_t>(3)
+  //        # This value was not seeing at training time
+  //        execute("Oops") -> std::optional<uint32_t>()
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(NumericalizeTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1069,27 +1055,26 @@ void RegisterNumericalizeFeaturizerVer1() {
 }
 
 void RegisterOneHotEncoderFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Produces a one hot vector based on categories calculated during training.
+  //static const char* doc = R"DOC(
+  //      Produces a one hot vector based on categories calculated during training.
 
-        C++-style pseudo signature:
-          template <typename T> OneHotVector execute(T const &value);
+  //      C++-style pseudo signature:
+  //        template <typename T> OneHotVector execute(T const &value);
 
-        Examples:
-          Assuming the training data [10, 20, 30, 40]...
+  //      Examples:
+  //        Assuming the training data [10, 20, 30, 40]...
 
-          execute(10) -> [0, 1, 0, 0, 0]
-          execute(20) -> [0, 0, 1, 0, 0]
-          execute(30) -> [0, 0, 0, 1, 0]
-          execute(40) -> [0, 0, 0, 0, 1]
-          execute(200) -> [1, 0, 0, 0, 0]
-          execute(-1) -> [1, 0, 0, 0, 0]
-  )DOC";
+  //        execute(10) -> [0, 1, 0, 0, 0]
+  //        execute(20) -> [0, 0, 1, 0, 0]
+  //        execute(30) -> [0, 0, 0, 1, 0]
+  //        execute(40) -> [0, 0, 0, 0, 1]
+  //        execute(200) -> [1, 0, 0, 0, 0]
+  //        execute(-1) -> [1, 0, 0, 0, 0]
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(OneHotEncoderTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1141,23 +1126,22 @@ void RegisterOneHotEncoderFeaturizerVer1() {
 }
 
 void RegisterPCAFeaturizerVer1() {
-  static const char* doc = R"DOC(
-      Principal component analysis and matrix projection
+  //static const char* doc = R"DOC(
+  //    Principal component analysis and matrix projection
 
-      C++-style pseudo signature:
-        template <typename MatrixT> MatrixT execute(MatrixT const &value);
+  //    C++-style pseudo signature:
+  //      template <typename MatrixT> MatrixT execute(MatrixT const &value);
 
-      Examples:
-        Assuming the training matrix A
-        By applying PCA we get the eigenvector P[p, q].
-        P is obtained via State input to deserialize the transformer
-        the projecting matrix of an input matrix X[m][m] is X*P^T [m][p]
-  )DOC";
+  //    Examples:
+  //      Assuming the training matrix A
+  //      By applying PCA we get the eigenvector P[p, q].
+  //      P is obtained via State input to deserialize the transformer
+  //      the projecting matrix of an input matrix X[m][m] is X*P^T [m][p]
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(PCATransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1195,20 +1179,19 @@ void RegisterPCAFeaturizerVer1() {
 }
 
 void RegisterRobustScalarFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        MinMaxScalarEstimator + centering?
+  //static const char* doc = R"DOC(
+  //      MinMaxScalarEstimator + centering?
 
-        C++-style pseudo signature:
-            TODO
+  //      C++-style pseudo signature:
+  //          TODO
 
-        Examples:
-          TODO
-  )DOC";
+  //      Examples:
+  //        TODO
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(RobustScalarTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1262,30 +1245,29 @@ void RegisterRobustScalarFeaturizerVer1() {
 }
 
 void RegisterNormalizeFeaturizerVer1() {
-  static const char* doc = R"DOC(
-      Computes the L1 norm for a provided data set and normalize every row so that
-      its L1 norm is 1
+  //static const char* doc = R"DOC(
+  //    Computes the L1 norm for a provided data set and normalize every row so that
+  //    its L1 norm is 1
 
-      C++-style pseudo signature:
-        template <typename IteratorT> std::vector<std::double_t> execute(std::pair<IteratorT, IteratorT> const &value);
-        template <typename IteratorT> std::vector<std::double_t> execute(std::tuple<IteratorT, IteratorT> const &value);
+  //    C++-style pseudo signature:
+  //      template <typename IteratorT> std::vector<std::double_t> execute(std::pair<IteratorT, IteratorT> const &value);
+  //      template <typename IteratorT> std::vector<std::double_t> execute(std::tuple<IteratorT, IteratorT> const &value);
 
-      Examples:
-        Given the training data
-        [[4, 1, 2, 2],
-         [1, 3, 9, 3],
-         [5, 7, 5, 1]]
+  //    Examples:
+  //      Given the training data
+  //      [[4, 1, 2, 2],
+  //       [1, 3, 9, 3],
+  //       [5, 7, 5, 1]]
 
-        L1 norms for each row are: [9, 16, 18]
+  //      L1 norms for each row are: [9, 16, 18]
 
-        execute([4,1,2,2]) = [4/9, 1/9, 2/9, 2/9]
-        execute([1,3,9,3]) = [1/16, 3/16, 9/16, 3/16]
-  )DOC";
+  //      execute([4,1,2,2]) = [4/9, 1/9, 2/9, 2/9]
+  //      execute([1,3,9,3]) = [1/16, 3/16, 9/16, 3/16]
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(NormalizeTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1324,30 +1306,29 @@ void RegisterNormalizeFeaturizerVer1() {
 }
 
 void RegisterStandardScaleWrapperFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Standardize features by removing the mean and scaling to unit variance based on input flag with_mean and with_std
-        standard score of a sample x is calculated as
-          z = (x - u) / s
-        where u is the mean of the training samples or 0 if with_mean is false, and s is the standard deviation of the training samples or 1 if with_std is false
+  //static const char* doc = R"DOC(
+  //      Standardize features by removing the mean and scaling to unit variance based on input flag with_mean and with_std
+  //      standard score of a sample x is calculated as
+  //        z = (x - u) / s
+  //      where u is the mean of the training samples or 0 if with_mean is false, and s is the standard deviation of the training samples or 1 if with_std is false
 
-        C++-style pseudo signature:
-          template <typeanem T> double(T const &value);
+  //      C++-style pseudo signature:
+  //        template <typeanem T> double(T const &value);
 
-        Examples:
-          Given the training data [0, 0, 1, 1];
-            mean: 0.5
-            std: 0.5
+  //      Examples:
+  //        Given the training data [0, 0, 1, 1];
+  //          mean: 0.5
+  //          std: 0.5
 
-          execute(2) = (2 - 0.5) / 0.5 = 3 if with_mean is true and with_std is true
-          execute(2) = (2 - 0.5) / 1 = 1.5 if with_mean is true and with_std is false
-          execute(2) = (2 - 0) / 0.5 = 4 if with_mean is false and with_std is true
-          execute(2) = (2 - 0) / 1 = 2 if with_mean is false and with_std is false
-  )DOC";
+  //        execute(2) = (2 - 0.5) / 0.5 = 3 if with_mean is true and with_std is true
+  //        execute(2) = (2 - 0.5) / 1 = 1.5 if with_mean is true and with_std is false
+  //        execute(2) = (2 - 0) / 0.5 = 4 if with_mean is false and with_std is true
+  //        execute(2) = (2 - 0) / 1 = 2 if with_mean is false and with_std is false
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(StandardScaleWrapperTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1381,21 +1362,20 @@ void RegisterStandardScaleWrapperFeaturizerVer1() {
 }
 
 void RegisterStringFeaturizerVer1() {
-  static const char* doc = R"DOC(
-        Converts the input into a string representation based on the input's type.
+  //static const char* doc = R"DOC(
+  //      Converts the input into a string representation based on the input's type.
 
-        C++-style pseudo signature:
-          template <typename T> string execute(T const &value);
+  //      C++-style pseudo signature:
+  //        template <typename T> string execute(T const &value);
 
-        Examples:
-          execute(1) -> "1"
-          execute(3.14) -> "3.14"
-  )DOC";
+  //      Examples:
+  //        execute(1) -> "1"
+  //        execute(3.14) -> "3.14"
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(StringTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1429,78 +1409,77 @@ void RegisterStringFeaturizerVer1() {
 }
 
 void RegisterTimeSeriesImputerFeaturizerVer1() {
-  static const char* doc = R"DOC(
-    Imputes rows and column values such that the generated output does not contain any
-    time gaps per grain (based on the time gaps encountered during training) and that
-    all missing column values are populated according to a strategy (forward fill,
-    backward fill, mode, etc.).
+  //static const char* doc = R"DOC(
+  //  Imputes rows and column values such that the generated output does not contain any
+  //  time gaps per grain (based on the time gaps encountered during training) and that
+  //  all missing column values are populated according to a strategy (forward fill,
+  //  backward fill, mode, etc.).
 
-    This Featurizer is unique in that it will produce 0:N rows per invocation, depending upon the
-    input data.
+  //  This Featurizer is unique in that it will produce 0:N rows per invocation, depending upon the
+  //  input data.
 
-    C++-style pseudo signature:
-      template <typename... GrainColValueTs, typename... DataColValueTs>
-      std::vector<
-        std::tuple<
-          bool, // true if the row was added
-          std::chrono::system_clock::time_point,
-          std::tuple<GrainColValueTs...>,
-          std::tuple<DataColValueTs...>
-        >
-      > execute(
-        std::chrono::system_clock::time_point const &value,
-        std::tuple<GrainColValueTs...> const &grain,
-        std::tuple<DataColValueTs...> const &colData
-      );
+  //  C++-style pseudo signature:
+  //    template <typename... GrainColValueTs, typename... DataColValueTs>
+  //    std::vector<
+  //      std::tuple<
+  //        bool, // true if the row was added
+  //        std::chrono::system_clock::time_point,
+  //        std::tuple<GrainColValueTs...>,
+  //        std::tuple<DataColValueTs...>
+  //      >
+  //    > execute(
+  //      std::chrono::system_clock::time_point const &value,
+  //      std::tuple<GrainColValueTs...> const &grain,
+  //      std::tuple<DataColValueTs...> const &colData
+  //    );
 
-    Examples:
-      During training, the time period was found to be 1 day...
+  //  Examples:
+  //    During training, the time period was found to be 1 day...
 
-      Input:
-        +------+-------+------------------+-------------------+
-        | time | grain | forward fill col | backward fill col |
-        +======+=======+==================+===================+
-        | 1    | A     | 10               | None              |
-        +------+-------+------------------+-------------------+
-        | 2    | A     | None             | 200               |
-        +------+-------+------------------+-------------------+
-        | 1    | B     | -10              | -100              |
-        +------+-------+------------------+-------------------+
-        | 4    | A     | 40               | 400               |
-        +------+-------+------------------+-------------------+
-        | 6    | A     | 60               | 600               |
-        +------+-------+------------------+-------------------+
-        | 3    | B     | -30              | -300              |
-        +------+-------+------------------+-------------------+
+  //    Input:
+  //      +------+-------+------------------+-------------------+
+  //      | time | grain | forward fill col | backward fill col |
+  //      +======+=======+==================+===================+
+  //      | 1    | A     | 10               | None              |
+  //      +------+-------+------------------+-------------------+
+  //      | 2    | A     | None             | 200               |
+  //      +------+-------+------------------+-------------------+
+  //      | 1    | B     | -10              | -100              |
+  //      +------+-------+------------------+-------------------+
+  //      | 4    | A     | 40               | 400               |
+  //      +------+-------+------------------+-------------------+
+  //      | 6    | A     | 60               | 600               |
+  //      +------+-------+------------------+-------------------+
+  //      | 3    | B     | -30              | -300              |
+  //      +------+-------+------------------+-------------------+
 
-      Output:
-        +-------+------+-------+------------------+-------------------+
-        | Added | time | grain | forward fill col | backward fill col |
-        +=======+======+=======+==================+===================+
-        | false | 1    | A     | 10               | 200 (from 2)      |
-        +-------+------+-------+------------------+-------------------+
-        | false | 2    | A     | 10 (from 1)      | 200               |
-        +-------+------+-------+------------------+-------------------+
-        | true  | 3    | A     | 10 (from 2)      | 400 (from 4)      |
-        +-------+------+-------+------------------+-------------------+
-        | false | 4    | A     | 40               | 400               |
-        +-------+------+-------+------------------+-------------------+
-        | true  | 5    | A     | 40 (from 4)      | 600 (from 6)      |
-        +-------+------+-------+------------------+-------------------+
-        | false | 6    | A     | 60               | 600               |
-        +-------+------+-------+------------------+-------------------+
-        | false | 1    | B     | -10              | -100              |
-        +-------+------+-------+------------------+-------------------+
-        | true  | 2    | B     | -10 (from 1)     | -300 (from 3)     |
-        +-------+------+-------+------------------+-------------------+
-        | false | 3    | B     | -30              | -300              |
-        +-------+------+-------+------------------+-------------------+
-    )DOC";
+  //    Output:
+  //      +-------+------+-------+------------------+-------------------+
+  //      | Added | time | grain | forward fill col | backward fill col |
+  //      +=======+======+=======+==================+===================+
+  //      | false | 1    | A     | 10               | 200 (from 2)      |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | false | 2    | A     | 10 (from 1)      | 200               |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | true  | 3    | A     | 10 (from 2)      | 400 (from 4)      |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | false | 4    | A     | 40               | 400               |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | true  | 5    | A     | 40 (from 4)      | 600 (from 6)      |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | false | 6    | A     | 60               | 600               |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | false | 1    | B     | -10              | -100              |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | true  | 2    | B     | -10 (from 1)     | -300 (from 3)     |
+  //      +-------+------+-------+------------------+-------------------+
+  //      | false | 3    | B     | -30              | -300              |
+  //      +-------+------+-------+------------------+-------------------+
+  //  )DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(TimeSeriesImputerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",
@@ -1598,22 +1577,21 @@ void RegisterTimeSeriesImputerFeaturizerVer1() {
 }
 
 void RegisterTruncatedSVDFeaturizerVer1() {
-  static const char* doc = R"DOC(
-      Dimensionality reduction using truncated SVD algorithm
+  //static const char* doc = R"DOC(
+  //    Dimensionality reduction using truncated SVD algorithm
 
-      C++-style pseudo signature:
-        template <typename MatrixT> MatrixT execute(MatrixT const &value);
+  //    C++-style pseudo signature:
+  //      template <typename MatrixT> MatrixT execute(MatrixT const &value);
 
-      Examples:
-        Assuming the training matrix A
-        By applying TruncatedSVD we get the right singular vector P [P][Q]
-        the projecting matrix of an input matrix X is X*P[M][Q]
-  )DOC";
+  //    Examples:
+  //      Assuming the training matrix A
+  //      By applying TruncatedSVD we get the right singular vector P [P][Q]
+  //      the projecting matrix of an input matrix X is X*P[M][Q]
+  //)DOC";
 
   MS_FEATURIZERS_OPERATOR_SCHEMA(TruncatedSVDTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
-      .SetDoc(doc)
       .Input(
           0,
           "State",

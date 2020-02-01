@@ -16,13 +16,13 @@ namespace test {
 
 namespace {
 template <typename InputT>
-std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<InputT>::nullable_type>& trainingBatches, size_t colIndex) {
-  dft::ModeImputerEstimator<InputT> estimator(NS::CreateTestAnnotationMapsPtr(1), colIndex);
-  NS::TestHelpers::Train<dft::ModeImputerEstimator<InputT>>(estimator, trainingBatches);
+std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<InputT>::nullable_type>& training_batches, size_t col_index) {
+  dft::ModeImputerEstimator<InputT> estimator(NS::CreateTestAnnotationMapsPtr(1), col_index);
+  NS::TestHelpers::Train<dft::ModeImputerEstimator<InputT>>(estimator, training_batches);
 
-  auto pTransformer(estimator.create_transformer());
+  auto transformer(estimator.create_transformer());
   NS::Archive ar;
-  pTransformer->save(ar);
+  transformer->save(ar);
   return ar.commit();
 }
 }  // namespace
@@ -30,7 +30,7 @@ std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<InputT>::nu
 TEST(FeaturizersTests, ModeImputerTransformer_float) {
   using InputType = float;
 
-  std::vector<float> trainingBatch = {
+  std::vector<float> training_batches = {
       10.0f,
       20.0f,
       NS::Traits<float>::CreateNullValue(),
@@ -40,7 +40,7 @@ TEST(FeaturizersTests, ModeImputerTransformer_float) {
       NS::Traits<float>::CreateNullValue(),
       40.0f};
 
-  auto stream = GetStream<InputType>(trainingBatch, 0);
+  auto stream = GetStream<InputType>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("ModeImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -52,7 +52,7 @@ TEST(FeaturizersTests, ModeImputerTransformer_float) {
 
 TEST(FeaturizersTests, ModeImputerTransformer_string) {
   using InputType = std::string;
-  std::vector<nonstd::optional<std::string>> trainingBatch = {
+  std::vector<nonstd::optional<std::string>> training_batches = {
       "10",
       "20",
       nonstd::optional<std::string>(),
@@ -62,7 +62,7 @@ TEST(FeaturizersTests, ModeImputerTransformer_string) {
       nonstd::optional<std::string>(),
       "40"};
 
-  auto stream = GetStream<InputType>(trainingBatch, 0);
+  auto stream = GetStream<InputType>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("ModeImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);

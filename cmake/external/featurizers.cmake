@@ -2,12 +2,19 @@
 # Licensed under the MIT License.
 # This source code should not depend on the onnxruntime and may be built independently
 
+add_definitions(-DML_FEATURIZERS)
+
 set(featurizers_pref FeaturizersLibrary)
 set(featurizers_ROOT ${PROJECT_SOURCE_DIR}/external/${featurizers_pref})
 set(featurizers_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pref})
 
 add_subdirectory(external/FeaturizersLibrary/src/Featurizers ${featurizers_BINARY_DIR} EXCLUDE_FROM_ALL)
 set_target_properties(FeaturizersCode PROPERTIES FOLDER "External/FeaturizersLibrary")
+
+if(NOT MSVC)
+  target_compile_options(FeaturizersCode "-Wno-unknown-warning")
+endif()
+
 
 add_library(onnxruntime_featurizers STATIC IMPORTED)
 add_dependencies(onnxruntime_featurizers FeaturizersCode)

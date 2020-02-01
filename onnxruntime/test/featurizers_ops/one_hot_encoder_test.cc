@@ -15,11 +15,11 @@ namespace test {
 
 namespace {
 template <typename InputType>
-std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches, bool allowMissingValues) {
+std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& training_batches, bool allow_missing_values) {
   using Estimator = NS::Featurizers::OneHotEncoderEstimator<InputType>;
 
-  Estimator estimator(NS::CreateTestAnnotationMapsPtr(1), 0, allowMissingValues);
-  NS::TestHelpers::Train<Estimator, InputType>(estimator, trainingBatches);
+  Estimator estimator(NS::CreateTestAnnotationMapsPtr(1), 0, allow_missing_values);
+  NS::TestHelpers::Train<Estimator, InputType>(estimator, training_batches);
   typename Estimator::TransformerUniquePtr pTransformer(estimator.create_transformer());
 
   NS::Archive ar;
@@ -31,13 +31,13 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
 TEST(FeaturizersTests, OneHotEncoder_uint32_t) {
   using InputType = uint32_t;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>(10, 20, 10),
       NS::TestHelpers::make_vector<InputType>(30),
       NS::TestHelpers::make_vector<InputType>(10, 10, 11, 15),
       NS::TestHelpers::make_vector<InputType>(18, 8));
 
-  auto stream = GetStream<InputType>(trainingBatches, false);
+  auto stream = GetStream<InputType>(training_batches, false);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("OneHotEncoderTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -54,12 +54,12 @@ TEST(FeaturizersTests, OneHotEncoder_uint32_t) {
 TEST(FeaturizersTests, OneHotEncoder_string) {
   using InputType = std::string;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>("orange", "apple", "orange",
                                               "grape", "carrot", "carrot",
                                               "peach", "banana", "orange"));
 
-  auto stream = GetStream<InputType>(trainingBatches, false);
+  auto stream = GetStream<InputType>(training_batches, false);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("OneHotEncoderTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -76,12 +76,12 @@ TEST(FeaturizersTests, OneHotEncoder_string) {
 TEST(FeaturizersTests, OneHotEncoder_unseen_values) {
   using InputType = std::string;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>("orange", "apple", "orange",
                                               "grape", "carrot", "carrot",
                                               "peach", "banana", "orange"));
 
-  auto stream = GetStream<InputType>(trainingBatches, true);
+  auto stream = GetStream<InputType>(training_batches, true);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("OneHotEncoderTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -98,12 +98,12 @@ TEST(FeaturizersTests, OneHotEncoder_unseen_values) {
 TEST(FeaturizersTests, OneHotEncoder_unseen_values_throws) {
   using InputType = std::string;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>("orange", "apple", "orange",
                                               "grape", "carrot", "carrot",
                                               "peach", "banana", "orange"));
 
-  auto stream = GetStream<InputType>(trainingBatches, false);
+  auto stream = GetStream<InputType>(training_batches, false);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("OneHotEncoderTransformer", 1, onnxruntime::kMSFeaturizersDomain);

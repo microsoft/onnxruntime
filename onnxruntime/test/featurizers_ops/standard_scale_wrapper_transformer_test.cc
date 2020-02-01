@@ -16,11 +16,11 @@ namespace test {
 
 namespace {
 template <typename T>
-std::vector<uint8_t> GetStream(const std::vector<std::vector<T>>& trainingBatches,
-                               size_t colIndex, bool withMean, bool withStd) {
+std::vector<uint8_t> GetStream(const std::vector<std::vector<T>>& training_batches,
+                               size_t col_index, bool with_mean, bool with_std) {
   auto pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
-  dft::StandardScaleWrapperEstimator<T, double> estimator(pAllColumnAnnotations, colIndex, withMean, withStd);
-  NS::TestHelpers::Train<dft::StandardScaleWrapperEstimator<T, double>>(estimator, trainingBatches);
+  dft::StandardScaleWrapperEstimator<T, double> estimator(pAllColumnAnnotations, col_index, with_mean, with_std);
+  NS::TestHelpers::Train<dft::StandardScaleWrapperEstimator<T, double>>(estimator, training_batches);
   auto pTransformer(estimator.create_transformer());
   NS::Archive ar;
   pTransformer->save(ar);
@@ -31,10 +31,10 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<T>>& trainingBatche
 TEST(FeaturizersTests, StandardScaleWrapperFeaturizer_1_int_with_mean_with_std) {
   using InputType = int32_t;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>(10));
 
-  auto stream = GetStream<InputType>(trainingBatches, 0, true, true);
+  auto stream = GetStream<InputType>(training_batches, 0, true, true);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("StandardScaleWrapperTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -45,16 +45,16 @@ TEST(FeaturizersTests, StandardScaleWrapperFeaturizer_1_int_with_mean_with_std) 
 }
 
 TEST(FeaturizersTests, StandardScaleWrapperFeaturizer_5_ints_with_mean_without_std) {
-    using InputType       = int32_t;
+  using InputType = int32_t;
 
-    auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>(1),
       NS::TestHelpers::make_vector<InputType>(3),
       NS::TestHelpers::make_vector<InputType>(5),
       NS::TestHelpers::make_vector<InputType>(7),
       NS::TestHelpers::make_vector<InputType>(9));
 
-  auto stream = GetStream<InputType>(trainingBatches, 0, true, false);
+  auto stream = GetStream<InputType>(training_batches, 0, true, false);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("StandardScaleWrapperTransformer", 1, onnxruntime::kMSFeaturizersDomain);

@@ -21,10 +21,10 @@ namespace test {
 
 namespace {
 template <typename EstimatorT, typename InputType>
-std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches, size_t colIndex) {
+std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& training_batches, size_t col_index) {
   NS::AnnotationMapsPtr pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
-  EstimatorT estimator(pAllColumnAnnotations, colIndex);
-  NS::TestHelpers::Train<EstimatorT, InputType>(estimator, trainingBatches);
+  EstimatorT estimator(pAllColumnAnnotations, col_index);
+  NS::TestHelpers::Train<EstimatorT, InputType>(estimator, training_batches);
   auto pTransformer = estimator.create_transformer();
 
   NS::Archive ar;
@@ -36,15 +36,14 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& traini
 TEST(FeaturizersTests, Normalize_double_maxnorm) {
   using ValueType = std::double_t;
   using InputType = Range<ValueType>;
-  using TransformedType = std::vector<std::double_t>;
   using EstimatorT = NS::Featurizers::MaxNormalizeEstimator<InputType>;
 
   std::vector<ValueType> row1({7.9, 4.37, 6, 10});
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>(InputType(row1.begin(), row1.end())));
 
-  auto stream = GetStream<EstimatorT, InputType>(trainingBatches, 0);
+  auto stream = GetStream<EstimatorT, InputType>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("NormalizeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -57,19 +56,18 @@ TEST(FeaturizersTests, Normalize_double_maxnorm) {
 TEST(FeaturizersTests, Normalize_int16_l2_norm) {
   using ValueType = std::int16_t;
   using InputType = Range<ValueType>;
-  using TransformedType = std::vector<std::double_t>;
   using EstimatorT = NS::Featurizers::L2NormalizeEstimator<InputType>;
 
   std::vector<ValueType> row1({4, 1, 2, 2});
   std::vector<ValueType> row2({1, 3, 9, 3});
   std::vector<ValueType> row3({5, 7, 5, 1});
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>(InputType(row1.begin(), row1.end())),
       NS::TestHelpers::make_vector<InputType>(InputType(row2.begin(), row2.end())),
       NS::TestHelpers::make_vector<InputType>(InputType(row3.begin(), row3.end())));
 
-  auto stream = GetStream<EstimatorT, InputType>(trainingBatches, 0);
+  auto stream = GetStream<EstimatorT, InputType>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("NormalizeTransformer", 1, onnxruntime::kMSFeaturizersDomain);

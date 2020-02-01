@@ -16,9 +16,9 @@ namespace test {
 
 namespace {
 template <typename T>
-std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<T>::nullable_type>& trainingBatches, size_t colIndex, bool useMin) {
-  NS::Featurizers::MinMaxImputerEstimator<T> estimator(NS::CreateTestAnnotationMapsPtr(1), colIndex, useMin);
-  NS::TestHelpers::Train<dft::MinMaxImputerEstimator<T>>(estimator, trainingBatches);
+std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<T>::nullable_type>& training_batches, size_t col_index, bool use_min) {
+  NS::Featurizers::MinMaxImputerEstimator<T> estimator(NS::CreateTestAnnotationMapsPtr(1), col_index, use_min);
+  NS::TestHelpers::Train<dft::MinMaxImputerEstimator<T>>(estimator, training_batches);
 
   auto pTransformer(estimator.create_transformer());
   NS::Archive ar;
@@ -29,14 +29,14 @@ std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<T>::nullabl
 
 TEST(FeaturizersTests, MinMaxImputerTransformer_min_float) {
   using InputType = float;
-  std::vector<InputType> trainingBatches{
+  std::vector<InputType> training_batches{
       10.0f,
       20.0f,
       NS::Traits<float>::CreateNullValue(),
       30.0f,
       NS::Traits<float>::CreateNullValue()};
 
-  auto stream = GetStream<InputType>(trainingBatches, 0, true);
+  auto stream = GetStream<InputType>(training_batches, 0, true);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("MinMaxImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -48,13 +48,13 @@ TEST(FeaturizersTests, MinMaxImputerTransformer_min_float) {
 
 TEST(FeaturizersTests, MinMaxImputerTransformer_min_string) {
   using InputType = std::string;
-  std::vector<nonstd::optional<std::string>> trainingBatches = {"10",
+  std::vector<nonstd::optional<std::string>> training_batches = {"10",
                                                                 "20",
                                                                 nonstd::optional<std::string>(),
                                                                 "30",
                                                                 nonstd::optional<std::string>()};
 
-  auto stream = GetStream<InputType>(trainingBatches, 0, true);
+  auto stream = GetStream<InputType>(training_batches, 0, true);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("MinMaxImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);

@@ -333,6 +333,11 @@ add_subdirectory(external/date EXCLUDE_FROM_ALL)
 add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
 set_target_properties(re2 PROPERTIES FOLDER "External/re2")
 
+if(onnxruntime_USE_FEATURIZERS)
+  # Fetch and build featurizers
+  include(external/featurizers.cmake)
+endif()
+
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
@@ -725,12 +730,6 @@ include(onnxruntime_providers.cmake)
 include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
-
-if(onnxruntime_USE_FEATURIZERS)
-  add_definitions(-DML_FEATURIZERS)
-  # Fetch and build featurizers
-  include(external/featurizers.cmake)
-endif()
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)

@@ -16,8 +16,8 @@ namespace test {
 
 namespace {
 template <typename T>
-std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<T>::nullable_type>& trainingBatches, size_t colIndex) {
-  NS::Featurizers::MeanImputerEstimator<T> estimator(NS::CreateTestAnnotationMapsPtr(1), colIndex);
+std::vector<uint8_t> GetStream(const std::vector<typename NS::Traits<T>::nullable_type>& trainingBatches, size_t col_index) {
+  NS::Featurizers::MeanImputerEstimator<T> estimator(NS::CreateTestAnnotationMapsPtr(1), col_index);
   NS::TestHelpers::Train<dft::MeanImputerEstimator<T>>(estimator, trainingBatches);
 
   auto pTransformer(estimator.create_transformer());

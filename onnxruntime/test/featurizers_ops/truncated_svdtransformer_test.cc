@@ -14,13 +14,13 @@ namespace onnxruntime {
 namespace test {
 
 template <typename MatrixT>
-std::vector<uint8_t> GetStream(const MatrixT& trainingMatrix) {
+std::vector<uint8_t> GetStream(const MatrixT& training_matrix) {
   using EstimatorT = NS::Featurizers::TruncatedSVDEstimator<MatrixT>;
   NS::AnnotationMapsPtr const pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
   EstimatorT estimator(pAllColumnAnnotations, 0);
 
   std::vector<std::vector<MatrixT>> trainingBatches = NS::TestHelpers::make_vector<std::vector<MatrixT>>(
-      NS::TestHelpers::make_vector<MatrixT>(trainingMatrix));
+      NS::TestHelpers::make_vector<MatrixT>(training_matrix));
 
   NS::TestHelpers::Train<EstimatorT, MatrixT>(estimator, trainingBatches);
   auto pTransformer = estimator.create_transformer();

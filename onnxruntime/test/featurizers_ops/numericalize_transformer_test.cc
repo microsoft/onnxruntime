@@ -16,9 +16,9 @@ namespace test {
 
 namespace {
 template <typename T>
-std::vector<uint8_t> GetStream(const std::vector<std::vector<T>>& trainingBatches, size_t colIndex) {
-  NS::Featurizers::NumericalizeEstimator<T> estimator(NS::CreateTestAnnotationMapsPtr(1), colIndex);
-  NS::TestHelpers::Train<dft::NumericalizeEstimator<T>>(estimator, trainingBatches);
+std::vector<uint8_t> GetStream(const std::vector<std::vector<T>>& training_batches, size_t col_index) {
+  NS::Featurizers::NumericalizeEstimator<T> estimator(NS::CreateTestAnnotationMapsPtr(1), col_index);
+  NS::TestHelpers::Train<dft::NumericalizeEstimator<T>>(estimator, training_batches);
 
   auto pTransformer(estimator.create_transformer());
   NS::Archive ar;
@@ -30,13 +30,13 @@ std::vector<uint8_t> GetStream(const std::vector<std::vector<T>>& trainingBatche
 TEST(FeaturizersTests, NumericalizeTransformer_uint32_t) {
   using InputType = int32_t;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<InputType>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<InputType>>(
       NS::TestHelpers::make_vector<InputType>(10, 20, 10),
       NS::TestHelpers::make_vector<InputType>(30),
       NS::TestHelpers::make_vector<InputType>(10, 10, 11, 15),
       NS::TestHelpers::make_vector<InputType>(18, 8));
 
-  auto stream = GetStream<InputType>(trainingBatches, 0);
+  auto stream = GetStream<InputType>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("NumericalizeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
@@ -49,12 +49,12 @@ TEST(FeaturizersTests, NumericalizeTransformer_uint32_t) {
 TEST(FeaturizersTests, NumericalizeTransformer_string) {
   using InputType = std::string;
 
-  auto trainingBatches = NS::TestHelpers::make_vector<std::vector<std::string>>(
+  auto training_batches = NS::TestHelpers::make_vector<std::vector<std::string>>(
       NS::TestHelpers::make_vector<std::string>("orange", "apple", "orange",
                                                 "grape", "carrot", "carrot",
                                                 "peach", "banana", "orange"));
 
-  auto stream = GetStream<InputType>(trainingBatches, 0);
+  auto stream = GetStream<InputType>(training_batches, 0);
   auto dim = static_cast<int64_t>(stream.size());
 
   OpTester test("NumericalizeTransformer", 1, onnxruntime::kMSFeaturizersDomain);
