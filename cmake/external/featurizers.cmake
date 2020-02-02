@@ -11,11 +11,6 @@ set(featurizers_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/${featurizers_pr
 add_subdirectory(external/FeaturizersLibrary/src/Featurizers ${featurizers_BINARY_DIR} EXCLUDE_FROM_ALL)
 set_target_properties(FeaturizersCode PROPERTIES FOLDER "External/FeaturizersLibrary")
 
-if(NOT MSVC)
-  target_compile_options(FeaturizersCode "-Wno-unknown-warning")
-endif()
-
-
 add_library(onnxruntime_featurizers STATIC IMPORTED)
 add_dependencies(onnxruntime_featurizers FeaturizersCode)
 
