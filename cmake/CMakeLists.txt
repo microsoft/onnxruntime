@@ -781,7 +781,6 @@ endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
-
 foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
   include(${target_name}.cmake)
   if (MSVC)
@@ -790,6 +789,14 @@ foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework o
   endif()
 endforeach()
 
+foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
+  if(NOT provider_name STREQUAL "cpu")
+    if (MSVC)
+      target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+      target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
+    endif()
+  endif()
+endforeach()
 
 
 

@@ -267,7 +267,7 @@ if (onnxruntime_USE_TENSORRT)
   target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
   if (WIN32)
-    target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4996)
+    target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4996 /wd4244)
   endif()
 endif()
 
