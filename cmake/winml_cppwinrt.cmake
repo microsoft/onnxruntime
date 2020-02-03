@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 # This script adds cppwinrt support for VS-generated projects.
 #
 # target_cppwinrt(foo bar.idl)

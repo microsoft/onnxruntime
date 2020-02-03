@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 #include "pch.h"
 
 #include "OnnxruntimeEngine.h"
@@ -269,19 +271,18 @@ HRESULT OnnxruntimeValue::GetTensorShape(std::vector<int64_t>& shape_vector) {
 
 static bool EnsureMapTypeInfo(OnnxruntimeEngine* engine, OrtTypeInfo* type_info, winml::TensorKind key_kind, winml::TensorKind value_kind) {
   auto ort_api = engine->GetEngineFactory()->UseOrtApi();
-  auto winml_adapter_api = engine->GetEngineFactory()->UseWinmlAdapterApi();
 
   const OrtMapTypeInfo* map_info;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->CastTypeInfoToMapTypeInfo(type_info, &map_info),
+  THROW_IF_NOT_OK_MSG(ort_api->CastTypeInfoToMapTypeInfo(type_info, &map_info),
                       ort_api);
 
   ONNXTensorElementDataType map_key_type;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetMapKeyType(map_info, &map_key_type),
+  THROW_IF_NOT_OK_MSG(ort_api->GetMapKeyType(map_info, &map_key_type),
                       ort_api);
 
   if (map_key_type == ONNXTensorElementDataTypeFromTensorKind(key_kind)) {
     OrtTypeInfo* value_info;
-    THROW_IF_NOT_OK_MSG(winml_adapter_api->GetMapValueType(map_info, &value_info),
+    THROW_IF_NOT_OK_MSG(ort_api->GetMapValueType(map_info, &value_info),
                         ort_api);
     auto map_value_info = UniqueOrtTypeInfo(value_info, ort_api->ReleaseTypeInfo);
 
@@ -329,7 +330,6 @@ HRESULT OnnxruntimeValue::IsOfMapType(winml::TensorKind key_kind, winml::TensorK
 
 HRESULT OnnxruntimeValue::IsOfVectorMapType(winml::TensorKind key_kind, winml::TensorKind value_kind, bool* out) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
-  auto winml_adapter_api = engine_->GetEngineFactory()->UseWinmlAdapterApi();
 
   OrtTypeInfo* info = nullptr;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetTypeInfo(value_.get(), &info),
@@ -342,11 +342,11 @@ HRESULT OnnxruntimeValue::IsOfVectorMapType(winml::TensorKind key_kind, winml::T
 
   if (type == ONNXType::ONNX_TYPE_SEQUENCE) {
     const OrtSequenceTypeInfo* sequence_info;
-    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->CastTypeInfoToSequenceTypeInfo(unique_type_info.get(), &sequence_info),
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->CastTypeInfoToSequenceTypeInfo(unique_type_info.get(), &sequence_info),
                             ort_api);
 
     OrtTypeInfo* element_info;
-    RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetSequenceElementType(sequence_info, &element_info),
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->GetSequenceElementType(sequence_info, &element_info),
                             ort_api);
     auto unique_element_info = UniqueOrtTypeInfo(element_info, ort_api->ReleaseTypeInfo);
 

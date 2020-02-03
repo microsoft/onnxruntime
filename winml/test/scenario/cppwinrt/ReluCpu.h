@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"

@@ -5,6 +5,12 @@
 
 #include "core/session/onnxruntime_c_api.h"
 
+/**
+ * All APIs exported by winml_adapter_c_api.h are part of the private interface dedicated to supporting the WinML API.
+ * This contract is subject to change based on the needs of the WinML API and is not intended for direct use by callers 
+ * of the onnxruntime c-api and usage of APIs in this header are *not* supported by the onnxruntime product.
+  */
+
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 
@@ -54,59 +60,6 @@ struct WinmlAdapterApi {
 	 * Since WinML hooks the profiler events, we expose the profiler and an associated profiling function.
     */
   OrtStatus*(ORT_API_CALL* EnvConfigureCustomLoggerAndProfiler)(_In_ OrtEnv* env, OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, _In_opt_ void* logger_param, OrtLoggingLevel default_warning_level, _In_ const char* logid, _Outptr_ OrtEnv** out)NO_EXCEPTION;
-
-  /**
-    * GetDenotationFromTypeInfo
-	 * This api augments OrtTypeInfo to return denotations on the type.
-	 * This is used by WinML to determine if an input/output is intended to be an Image or a Tensor.
-    */
-  OrtStatus*(ORT_API_CALL* GetDenotationFromTypeInfo)(_In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len)NO_EXCEPTION;
-
-  // OrtTypeInfo Casting methods
-
-  /**
-    * CastTypeInfoToMapTypeInfo
-	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
-	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
-	 * This is used by WinML to support model reflection APIs.
-	 *
-	 * Don't free the 'out' value
-    */
-  OrtStatus*(ORT_API_CALL* CastTypeInfoToMapTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out)NO_EXCEPTION;
-
-  /**
-    * CastTypeInfoToSequenceTypeInfo
-	 * This api augments OrtTypeInfo to return an OrtSequenceTypeInfo when the type is a sequence.
-	 * The OrtSequenceTypeInfo has additional information about the sequence's element type.
-    * This is used by WinML to support model reflection APIs.
-	 *
-	 * Don't free the 'out' value
-    */
-  OrtStatus*(ORT_API_CALL* CastTypeInfoToSequenceTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out)NO_EXCEPTION;
-
-  // OrtMapTypeInfo Accessors
-
-  /**
-    * GetMapKeyType
-	 * This api augments get the key type of a map. Key types are restricted to being scalar types and use ONNXTensorElementDataType.
-	 * This is used by WinML to support model reflection APIs.
-    */
-  OrtStatus*(ORT_API_CALL* GetMapKeyType)(_In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out)NO_EXCEPTION;
-
-  /**
-    * GetMapValueType
-	 * This api augments get the value type of a map.
-    */
-  OrtStatus*(ORT_API_CALL* GetMapValueType)(_In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
-
-  // OrtSequenceTypeInfo Accessors
-
-  /**
-    * GetSequenceElementType
-	 * This api augments get the element type of a sequence.
-	 * This is used by WinML to support model reflection APIs.
-    */
-  OrtStatus*(ORT_API_CALL* GetSequenceElementType)(_In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   // OrtModel methods
 
@@ -464,6 +417,4 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* SessionGetInputRequiredDeviceId)(_In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id)NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(Model);
-  ORT_CLASS_RELEASE(MapTypeInfo);
-  ORT_CLASS_RELEASE(SequenceTypeInfo);
 };

@@ -20,18 +20,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     // OrtEnv methods
     &winmla::EnvConfigureCustomLoggerAndProfiler,
 
-    // OrtTypeInfo Casting methods
-    &OrtApis::GetDenotationFromTypeInfo,
-    &OrtApis::CastTypeInfoToMapTypeInfo,
-    &OrtApis::CastTypeInfoToSequenceTypeInfo,
-
-    // OrtMapTypeInfo Accessors
-    &OrtApis::GetMapKeyType,
-    &OrtApis::GetMapValueType,
-
-    // OrtSequenceTypeInfo Accessors
-    &OrtApis::GetSequenceElementType,
-
     // OrtModel methods
     &winmla::CreateModelFromPath,
     &winmla::CreateModelFromData,
@@ -91,9 +79,8 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::SessionGetInputRequiredDeviceId,
 
     // Release
-    &winmla::ReleaseModel,
-    &OrtApis::ReleaseMapTypeInfo,
-    &OrtApis::ReleaseSequenceTypeInfo};
+    &winmla::ReleaseModel
+};
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(const OrtApi* ort_api) NO_EXCEPTION {
   if (OrtApis::GetApi(1) == ort_api) {

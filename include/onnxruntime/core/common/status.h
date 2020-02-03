@@ -77,6 +77,7 @@ inline const char* StatusCodeToString(StatusCode status) noexcept {
       return "GENERAL ERROR";
   }
 }
+
 #ifdef _WIN32
 inline HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
     switch (status)

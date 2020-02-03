@@ -11,12 +11,10 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/status.h"
 #include "core/common/code_location.h"
 
 namespace onnxruntime {
-using common::Status;
-using common::StatusCode;
+
 class NotImplementedException : public std::logic_error {
  public:
   explicit NotImplementedException(const char* _Message = "Function not yet implemented") noexcept : std::logic_error(_Message){};
@@ -32,11 +30,6 @@ class OnnxRuntimeException : public std::exception {
  public:
   OnnxRuntimeException(const CodeLocation& location, const std::string& msg) noexcept
       : OnnxRuntimeException(location, nullptr, msg) {
-  }
-
-  OnnxRuntimeException(const CodeLocation& location, const Status& status) noexcept
-      : OnnxRuntimeException(location, nullptr, status.ToString()) {
-    status_ = status;
   }
 
   /**
@@ -65,9 +58,6 @@ class OnnxRuntimeException : public std::exception {
     what_ = ss.str();
   }
 
-  const Status GetStatus() const noexcept {
-    return status_;
-  }
   const char* what() const noexcept override {
     return what_.c_str();
   }
@@ -76,7 +66,6 @@ class OnnxRuntimeException : public std::exception {
   const CodeLocation location_;
   const std::vector<std::string> stacktrace_;
   std::string what_;
-  Status status_;
 };
 
 }  // namespace onnxruntime

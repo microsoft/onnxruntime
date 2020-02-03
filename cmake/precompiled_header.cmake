@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 # Configures sources on a target to use a precompiled header. This function takes a target and
 # header name as input. The function will generate a .cpp file that includes the header and is used
 # to generate the precompiled header; this source file is added to the target's sources.

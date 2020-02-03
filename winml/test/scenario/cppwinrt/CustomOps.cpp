@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "testPch.h"
 #include <wil/result.h>
 #include <D3d11_4.h>

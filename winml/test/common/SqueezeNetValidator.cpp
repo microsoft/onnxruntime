@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 #include "SqueezeNetValidator.h"
 #include "protobufHelpers.h"
 #include "fileHelpers.h"

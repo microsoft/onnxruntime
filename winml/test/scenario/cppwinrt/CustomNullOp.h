@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
 //
 // Implements a custom operator kernel which counts the number of calls to Compute(), but otherwise is a no-op.
 //
