@@ -42,11 +42,30 @@ final class OnnxRuntime {
       return;
     }
     Path tempDirectory = Files.createTempDirectory("onnxruntime-java");
-    tempDirectory.toFile().deleteOnExit();
-    load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
-    load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
-    ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
-    loaded = true;
+    try {
+      load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
+      load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
+      loaded = true;
+    } finally {
+      cleanUp(tempDirectory.toFile());
+    }
+  }
+
+  /**
+   * Attempt to remove a file and then mark for delete on exit if it cannot be deleted at this point in time.
+   *
+   * @param file The file to remove.
+   */
+  private static void cleanUp(File file) {
+    if (!file.exists()) {
+      return;
+    }
+    logger.log(Level.FINE, "Deleting " + file);
+    if (!file.delete()) {
+      logger.log(Level.FINE, "Deleting " + file + " on exit");
+      file.deleteOnExit();
+    }
   }
 
   /**
@@ -83,6 +102,7 @@ final class OnnxRuntime {
     // replace Mac's jnilib extension to dylib
     String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
     String resourcePath = "/ai/onnxruntime/native/" + libraryFileName;
+    File tempFile = tempDirectory.resolve(libraryFileName).toFile();
     try(InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)){
       if (is == null) {
         // 3a) Not found in resources, load from library path
@@ -91,8 +111,6 @@ final class OnnxRuntime {
         logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
       } else {
         // 3b) Found in resources, load via temporary file
-        File tempFile = tempDirectory.resolve(libraryFileName).toFile();
-        tempFile.deleteOnExit();
         logger.log(
             Level.FINE,
             "Attempting to load native library '" + library + "' from resource path " + resourcePath + " copying to " + tempFile);
@@ -106,6 +124,8 @@ final class OnnxRuntime {
         System.load(tempFile.getAbsolutePath());
         logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
       }
+    } finally {
+      cleanUp(tempFile);
     }
   }
 
