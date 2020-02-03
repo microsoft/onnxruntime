@@ -68,6 +68,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
 
+  enum class Arenas {
+    CudaArena = 1 << 0,
+    CpuArena = 1 << 1
+  };
+
  private:
   int device_id_;
   bool use_cuda_arena_;

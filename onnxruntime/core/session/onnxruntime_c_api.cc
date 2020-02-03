@@ -1400,8 +1400,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::DisableMemPattern,
     &OrtApis::EnableCpuMemArena,
     &OrtApis::DisableCpuMemArena,
-    &OrtApis::EnableCudaMemArena,
-    &OrtApis::DisableCudaMemArena,
     &OrtApis::SetSessionLogId,
     &OrtApis::SetSessionLogVerbosityLevel,
     &OrtApis::SetSessionLogSeverityLevel,
@@ -1496,6 +1494,8 @@ static constexpr OrtApi ort_api_1_to_2 = {
     // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 2 - In development, feel free to add/remove/rearrange here
+    &OrtApis::EnableCudaMemArena,
+    &OrtApis::DisableCudaMemArena,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

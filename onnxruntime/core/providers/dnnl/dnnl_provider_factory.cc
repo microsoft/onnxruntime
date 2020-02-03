@@ -32,6 +32,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(b
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(bool(use_arena)));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Dnnl(static_cast<bool>(use_arena)));
   return nullptr;
 }
