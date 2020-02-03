@@ -136,9 +136,6 @@ if(onnxruntime_USE_FEATURIZERS)
   list(APPEND onnxruntime_test_providers_src_patterns
     "${TEST_SRC_DIR}/featurizers_ops/*.h"
     "${TEST_SRC_DIR}/featurizers_ops/*.cc")
- if(NOT MSVC)
-  set_source_files_properties(${onnxruntime_test_providers_src_patterns} PROPERTIES COMPILE_FLAGS "-Wno-unknown-warning")    
- endif()
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
