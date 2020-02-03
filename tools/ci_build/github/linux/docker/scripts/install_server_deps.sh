@@ -3,7 +3,12 @@ set -e
 
 SYS_LONG_BIT=$(getconf LONG_BIT)
 
-apt-get remove -y libprotobuf-dev libprotobuf9v5 protobuf-compiler libprotobuf-lite9v5
+#see: https://docs.microsoft.com/en-us/dotnet/core/linux-prerequisites?tabs=netcore21
+if [ "$OS_VERSION" = "16.04" ]; then
+  apt-get remove -y libprotobuf9v5 libprotobuf-lite9v5
+else # ubuntu18.04
+  apt-get remove -y libprotobuf-dev libprotobuf10
+fi
 apt-get update && apt-get install -y --no-install-recommends libre2-dev
 rm -rf /var/lib/apt/lists/*
 
