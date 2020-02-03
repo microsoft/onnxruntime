@@ -65,6 +65,27 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
+- template: ../../templates/win-ci-2019.yml
+  parameters:
+    AgentPool : 'Win-CPU-2019'
+    ArtifactName: 'drop-win-arm-zip'
+    JobName: 'Windows_CI_Dev_arm'
+    BuildCommand: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_openmp --build_shared_lib --use_featurizers --enable_onnx_tests --arm --use_telemetry --use_winml --cmake_generator "Visual Studio 16 2019"'
+    BuildArch: 'x64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'arm'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /t:CreatePackage
+     cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
+     ren *.nupkg win-arm.zip
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
 - job: 'Linux_CI_Dev'
   workspace:
     clean: all
@@ -147,6 +168,18 @@ jobs:
     displayName: 'Download Pipeline Artifact - Win-x86'
     inputs:
       artifactName: 'drop-win-x86-zip'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Win-arm64'
+    inputs:
+      artifactName: 'drop-win-arm64-zip'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Win-arm'
+    inputs:
+      artifactName: 'drop-win-arm-zip'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - task: DownloadPipelineArtifact@0
