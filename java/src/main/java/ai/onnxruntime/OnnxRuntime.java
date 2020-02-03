@@ -83,28 +83,29 @@ final class OnnxRuntime {
     // replace Mac's jnilib extension to dylib
     String libraryFileName = System.mapLibraryName(library).replace("jnilib", "dylib");
     String resourcePath = "/ai/onnxruntime/native/" + libraryFileName;
-    InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath);
-    if (is == null) {
-      // 3a) Not found in resources, load from library path
-      logger.log(Level.FINE, "Attempting to load native library '" + library + "' from library path");
-      System.loadLibrary(library);
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
-    } else {
-      // 3b) Found in resources, load via temporary file
-      File tempFile = tempDirectory.resolve(libraryFileName).toFile();
-      tempFile.deleteOnExit();
-      logger.log(
-          Level.FINE,
-          "Attempting to load native library '" + library + "' from resource path " + resourcePath + " copying to " + tempFile);
-      byte[] buffer = new byte[1024];
-      int readBytes;
-      try (FileOutputStream os = new FileOutputStream(tempFile)) {
-        while ((readBytes = is.read(buffer)) != -1) {
-          os.write(buffer, 0, readBytes);
+    try(InputStream is = OnnxRuntime.class.getResourceAsStream(resourcePath)){
+      if (is == null) {
+        // 3a) Not found in resources, load from library path
+        logger.log(Level.FINE, "Attempting to load native library '" + library + "' from library path");
+        System.loadLibrary(library);
+        logger.log(Level.FINE, "Loaded native library '" + library + "' from library path");
+      } else {
+        // 3b) Found in resources, load via temporary file
+        File tempFile = tempDirectory.resolve(libraryFileName).toFile();
+        tempFile.deleteOnExit();
+        logger.log(
+            Level.FINE,
+            "Attempting to load native library '" + library + "' from resource path " + resourcePath + " copying to " + tempFile);
+        byte[] buffer = new byte[1024];
+        int readBytes;
+        try (FileOutputStream os = new FileOutputStream(tempFile)) {
+          while ((readBytes = is.read(buffer)) != -1) {
+            os.write(buffer, 0, readBytes);
+          }
         }
+        System.load(tempFile.getAbsolutePath());
+        logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
       }
-      System.load(tempFile.getAbsolutePath());
-      logger.log(Level.FINE, "Loaded native library '" + library + "' from resource path");
     }
   }
 
