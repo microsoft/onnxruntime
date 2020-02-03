@@ -850,6 +850,33 @@ Return Value:
 
     }
 
+    if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f))
+    {
+        // Both B and C are column-vectors that are contiguous in memory.
+        // Because transposition of such vectors doesn't change their layout, and
+        // Transpose(A*B) = Transpose(B) * Transpose(A), we can apply the same 'small-M'
+        // optimization as above, with A and B flipped.
+
+#if defined(MLAS_TARGET_AMD64)
+
+        PMLAS_SGEMM_KERNEL_M1_ROUTINE SgemmKernelM1Routine;
+
+        if (TransA == CblasNoTrans) {
+            SgemmKernelM1Routine = MlasPlatform.KernelM1TransposeBRoutine;
+        } else {
+            SgemmKernelM1Routine = MlasPlatform.KernelM1Routine;
+        }
+
+        if (SgemmKernelM1Routine != nullptr) {
+            SgemmKernelM1Routine(B, A, C, K, M, lda, beta);
+            return;
+        }
+
+#endif
+
+    }
+
+
     //
     // Compute the strides to step through slices of the input matrices.
     //
