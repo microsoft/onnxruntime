@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides, const size_t* perm,
+Status TransposeImpl(size_t element_size, int32_t shape_rank, const TArray<int64_t>& input_strides,
                      const void* input_data, const TArray<fast_divmod>& fdm_output_strides, void* output_data, int64_t N);
 
 }  // namespace cuda
