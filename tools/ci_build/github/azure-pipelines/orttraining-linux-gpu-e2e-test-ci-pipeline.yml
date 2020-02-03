@@ -1,0 +1,28 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Linux_GPU_Training_E2E_Test
+
+  timeoutInMinutes: 60
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - script: >
+      orttraining/tools/ci_test/download_e2e_test_data.py $(Build.BinariesDirectory)/training_e2e_test_data
+    displayName: 'Download training end-to-end test data'
+
+  - script: >
+      tools/ci_build/github/linux/run_dockerbuild.sh
+      -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
+      -x "
+      --config RelWithDebInfo
+      --enable_training
+      --enable_training_e2e_tests --training_e2e_test_data_path /build/training_e2e_test_data
+      --update --build --test --ctest_label_regex training_e2e
+      "
+    displayName: 'Build and run end-to-end tests'
+
+  - template: templates/clean-agent-build-directory-step.yml

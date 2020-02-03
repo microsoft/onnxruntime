@@ -1,0 +1,121 @@
+trigger: none
+
+jobs:
+- job: Onnxruntime_Win_GPU_Training
+
+  timeoutInMinutes: 180
+
+  strategy:
+    maxParallel: 2
+    matrix:
+      # TODO: Win-GPU-Debug build is failing due to warning 4996.
+      # Re-enable this when merge back to public master
+      # Debug:
+      #   buildConfig: Debug
+      Release:
+        buildConfig: Release
+
+  variables:
+  - name: CUDA_VERSION
+    value: '10.0'
+  - name: CUDA_PATH
+    value: 'C:/local/cuda_10.0.130_win10'
+  - name: CUDNN_PATH
+    value: 'C:/local/cudnn-10.0-windows10-x64-v7.3.1.20/cuda'
+  - name: BUILD_PY_COMMON_OPTIONS
+    value: >-
+      --build_dir $(Build.BinariesDirectory) --config $(buildConfig)
+      --cmake_path $(Build.BinariesDirectory)\packages\cmake\bin\cmake.exe
+      --ctest_path $(Build.BinariesDirectory)\packages\cmake\bin\ctest.exe
+      --build_shared_lib
+      --use_cuda --cudnn_home $(CUDNN_PATH) --cuda_home $(CUDA_PATH)
+      --use_dnnl
+      --use_mklml
+      --cmake_extra_defines CUDA_TOOLKIT_ROOT_DIR=$(CUDA_PATH)
+      --enable_training
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/set-test-data-variables-step.yml
+
+  - task: ms-vscs-artifact.build-tasks.artifactDropDownloadTask-1.artifactDropDownloadTask@0
+    displayName: 'Download python installer from Artifact Services Drop'
+    inputs:
+      dropServiceURI: 'https://aiinfra.artifacts.visualstudio.com/DefaultCollection'
+      buildNumber: miniconda3/4.4.10/x64
+      destinationPath: '$(Build.BinariesDirectory)\installer\python'
+
+  - task: ms-vscs-artifact.build-tasks.artifactDropDownloadTask-1.artifactDropDownloadTask@0
+    displayName: 'Download cmake'
+    inputs:
+      dropServiceURI: 'https://aiinfra.artifacts.visualstudio.com/DefaultCollection'
+      buildNumber: cmake/x64/3.13.4
+      destinationPath: '$(Build.BinariesDirectory)\packages\cmake'
+
+  - task: CmdLine@1
+    displayName: 'Run python installer'
+    inputs:
+      filename: '$(Build.BinariesDirectory)\installer\python\installer.exe'
+      arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
+
+  - task: PowerShell@1
+    displayName: 'Set CUDA path'
+    inputs:
+      scriptName: 'tools/ci_build/github/windows/set_cuda_path.ps1'
+      arguments: '-CudaMsbuildPath C:\local\cudaMsbuildIntegration-10.0.130-win10 -CudaVersion $(CUDA_VERSION)'
+
+  - task: BatchScript@1
+    displayName: 'Setup VS2017 env vars'
+    inputs:
+      filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
+      arguments: 'amd64 -vcvars_ver=14.11'
+      modifyEnvironment: true
+
+  - task: CmdLine@1
+    displayName: 'Generate build files'
+    inputs:
+      filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+      arguments: >-
+        $(Build.SourcesDirectory)\tools\ci_build\build.py
+        $(BUILD_PY_COMMON_OPTIONS)
+        --update --skip_submodule_sync
+
+  - task: CmdLine@1
+    displayName: 'Build'
+    inputs:
+      filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+      arguments: >-
+        $(Build.SourcesDirectory)\tools\ci_build\build.py
+        $(BUILD_PY_COMMON_OPTIONS)
+        --build --parallel
+
+  - task: CmdLine@1
+    displayName: 'Test'
+    inputs:
+      filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
+      arguments: >-
+        $(Build.SourcesDirectory)\tools\ci_build\build.py
+        $(BUILD_PY_COMMON_OPTIONS)
+        --test
+
+  - task: PowerShell@1
+    displayName: 'Clean up CUDA props files'
+    inputs:
+      scriptName: 'tools/ci_build/github/windows/clean_up_cuda_prop_files.ps1'
+      arguments: '-CudaVersion $(CUDA_VERSION)'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**\*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+
+  - template: templates/clean-agent-build-directory-step.yml

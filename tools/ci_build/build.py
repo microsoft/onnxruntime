@@ -146,7 +146,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_llvm", action="store_true", help="Build tvm with llvm")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
-    parser.add_argument("--azure_sas_key", help="Azure storage sas key, starts with '?'")
     parser.add_argument("--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument("--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")

@@ -5,9 +5,6 @@ jobs:
 
   timeoutInMinutes: 60
 
-  variables:
-  - group: AzureKeyVault # for $(AZURESASKEY)
-
   steps:
   - checkout: self
     clean: true
@@ -19,14 +16,11 @@ jobs:
       tools/ci_build/vsts/linux/run_dockerbuild.sh
       -o ubuntu16.04 -d cpu -r $(Build.BinariesDirectory)
       -x "
-      --azure_sas_key=$(AZURESASKEY)
       --test_data_url $(TestDataUrl) --test_data_checksum $(TestDataChecksum)
       --use_mklml --use_dnnl
       --build_wheel
       "
     displayName: 'Command Line Script'
-    env:
-      AZURESASKEY: $(AZURESASKEY)
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
