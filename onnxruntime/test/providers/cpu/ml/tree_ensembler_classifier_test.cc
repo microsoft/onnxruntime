@@ -78,7 +78,7 @@ TEST(MLOpTest, TreeEnsembleClassifierLabels) {
   std::vector<std::string> results = {"label1", "label0", "label0", "label0", "label0", "label1", "label0", "label0"};
   std::vector<float> probs = {};
   std::vector<float> log_probs = {};
-  std::vector<float> scores{-5, 5, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -3, 3};
+  std::vector<float> scores{-5, 5, 1, -1, 1, -1, 1, -1, 1, -1, -1, 1, 1, -1, 3, -3};
 
   //define the context of the operator call
   const int N = 8;

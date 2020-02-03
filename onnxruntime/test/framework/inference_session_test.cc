@@ -184,7 +184,7 @@ void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_di
 
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
                    const std::vector<float>& expected_values) {
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   VerifyOutputs(rtensor, expected_dims, expected_values);
 }
@@ -1309,7 +1309,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
@@ -1593,7 +1593,7 @@ TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTenso
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  ASSERT_EQ(3, fetches.size());
+  ASSERT_EQ(3u, fetches.size());
   VerifyOutputs(fetches[0].Get<Tensor>(), expected_dims_res, expected_values_res);
   VerifyOutputs(fetches[1].Get<Tensor>(), expected_dims_res2, expected_values_res2);
   VerifyOutputs(fetches[2].Get<Tensor>(), expected_dims_res3, expected_values_res3);

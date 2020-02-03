@@ -102,9 +102,9 @@ class AllocationPlanTestUtility {
     for (OrtValueIndex index : plan.to_be_freed) {
       // Every index should be in the valid range [0, num_ml_values-1]
       EXPECT_GE(index, 0);
-      EXPECT_LT(index, num_ml_values);
+      EXPECT_LT(static_cast<size_t>(index), num_ml_values);
       // An index should not be freed more than once
-      EXPECT_EQ(freed.count(index), 0) << "OrtValue " << index << " freed multiple times";
+      EXPECT_EQ(freed.count(index), 0u) << "OrtValue " << index << " freed multiple times";
       freed.insert(index);
     }
     // Check the free-index information for every execution step: they should cover the
@@ -437,7 +437,7 @@ TEST_F(PlannerTest, PlanOutputTest) {
     output << std::make_pair(&GetPlan(), &GetState());
     auto output_size = output.str().size();
     // Currently, we don't check details of the output, as it may change over time.
-    EXPECT_GT(output_size, 0);
+    EXPECT_GT(output_size, 0u);
   } catch (const std::exception& ex) {
     EXPECT_TRUE(false) << "Exception in producing output: " << ex.what();
   }

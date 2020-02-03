@@ -25,7 +25,10 @@ function(AddTest)
   endif(_UT_DEPENDS)
 
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
-
+  if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    #TODO: fix the warnings, they are dangerous
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd4244")
+  endif()
   source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -523,6 +526,8 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/sync_api.cc
   ${onnx_test_runner_src_dir}/callback.h
   ${onnx_test_runner_src_dir}/callback.cc
+  ${onnx_test_runner_src_dir}/pb_helper.h
+  ${onnx_test_runner_src_dir}/pb_helper.cc
   ${onnx_test_runner_src_dir}/mem_buffer.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
@@ -537,6 +542,10 @@ if(WIN32)
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    #TODO: fix the warnings, they are dangerous
+    target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
+endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework onnxruntime_test_utils onnx onnx_proto)
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT} ${REPO_ROOT}/cmake/external/re2)
@@ -546,9 +555,7 @@ set(onnx_test_libs
   onnxruntime_test_utils
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto
-  re2)
-
-list(APPEND onnx_test_libs ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
+  re2 ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
@@ -622,7 +629,7 @@ endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common re2
-          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES}
+          onnx_test_data_proto onnx_proto protobuf::libprotobuf ${GETOPT_LIB_WIDE} onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES}
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)

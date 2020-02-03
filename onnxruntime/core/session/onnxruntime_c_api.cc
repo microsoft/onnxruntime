@@ -910,7 +910,8 @@ struct CallGetValueImpl {
     const auto* tensor_data = tensor.Data<TensorElemType>();
     OrtStatus* st = OrtApis::CreateTensorAsOrtValue(allocator, shape.GetDims().data(), shape.NumDimensions(),
                                                     onnxruntime::utils::GetONNXTensorElementDataType<TensorElemType>(), out);
-    return st ? st : PopulateTensorWithData(*out, tensor_data, shape.Size(), sizeof(TensorElemType));
+    //TODO: check overflow before doing static_cast
+    return st ? st : PopulateTensorWithData(*out, tensor_data, static_cast<size_t>(shape.Size()), sizeof(TensorElemType));
   }
 };
 
@@ -1079,7 +1080,8 @@ static OrtStatus* OrtCreateValueImplSeqHelperTensor(const Tensor& tensor,
     return st;
   }
 
-  size_t num_elems = tensor.Shape().Size();
+  //TODO: check the cast below
+  size_t num_elems = static_cast<size_t>(tensor.Shape().Size());
   auto* out_data = out.MutableData<TensorElemType>();
   for (size_t i = 0; i < num_elems; ++i) {
     *out_data++ = *data++;
@@ -1332,7 +1334,49 @@ static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetVersionString,
 };
 
-static constexpr OrtApi ort_api_1 = {
+/* Rules on how to add a new Ort API version
+
+In general, NEVER remove or rearrange the members in this structure unless a new version is being created. The
+goal is for newer shared libraries of the Onnx Runtime to work with binaries targeting the previous versions.
+In order to do that we need to ensure older binaries get the older interfaces they are expecting.
+
+If the next version of the OrtApi only adds members, new members can be added at the end of the OrtApi structure
+without breaking anything. In this case, rename the ort_api_# structure in a way that shows the range of versions
+it supports, for example 'ort_api_1_to_2', and then GetApi can return the same structure for a range of versions.
+
+If methods need to be removed or rearranged, then make a copy of the OrtApi structure and name it 'OrtApi#to#'.
+The latest Api should always be named just OrtApi. Then make a copy of the latest ort_api_* structure below and
+name it ort_api_# to match the latest version number supported, you'll need to be sure the structure types match
+the API they're for (the compiler should complain if this isn't correct).
+
+If there is no desire to have the headers still expose the older APIs (clutter, documentation, etc) then the
+definition should be moved to a file included by this file so that it's still defined here for binary compatibility
+but isn't visible in public headers.
+
+So for example, if we wanted to just add some new members to the ort_api_1_to_2, we'd take the following steps:
+
+	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
+
+	In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
+	it to ort_api_1_to_3.
+
+	Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
+
+Second example, if we wanted to add and remove some members, we'd do this:
+
+	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
+	old one OrtApi1to2. In the new OrtApi we'd add or remove any members that we desire.
+
+	In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
+	made to the new OrtApi.
+
+	In GetApi we now make it return ort_api_3 for version 3.
+*/
+
+static constexpr OrtApi ort_api_1_to_2 = {
+    // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
+
+    // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
@@ -1449,13 +1493,20 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseTensorTypeAndShapeInfo,
     &OrtApis::ReleaseSessionOptions,
     &OrtApis::ReleaseCustomOpDomain,
+    // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 2 - In development, feel free to add/remove/rearrange here
 };
 
-ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version > 1)
-    return nullptr;
+// Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
+// If this assert hits, read the above 'Rules on how to add a new Ort API version'
+static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
-  return &ort_api_1;
+ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
+  if (version >= 1 && version <= 2)
+    return &ort_api_1_to_2;
+
+  return nullptr;  // Unsupported version
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {

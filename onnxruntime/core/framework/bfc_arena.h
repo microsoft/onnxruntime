@@ -63,7 +63,7 @@ class BFCArena : public IArenaAllocator {
   void* Reserve(size_t size) override;
 
   size_t Used() const override {
-    return stats_.bytes_in_use;
+    return static_cast<size_t>(stats_.bytes_in_use);
   }
 
   size_t Max() const override {
