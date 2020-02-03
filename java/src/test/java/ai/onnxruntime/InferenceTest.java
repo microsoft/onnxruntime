@@ -40,6 +40,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -110,6 +111,132 @@ public class InferenceTest {
       }
     }
   }
+
+    @Test
+    public void partialInputsTest() throws OrtException {
+        String modelPath = otherTestPath.resolve("partial-inputs-test.onnx").toString();
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("partialInputs");
+             OrtSession.SessionOptions options = new SessionOptions();
+             OrtSession session = env.createSession(modelPath, options)) {
+            assertNotNull(session);
+            assertEquals(3, session.getNumInputs());
+            assertEquals(3, session.getNumOutputs());
+
+            // Input and output collections.
+            Map<String,OnnxTensor> inputMap = new HashMap<>();
+            Set<String> requestedOutputs = new HashSet<>();
+
+            BiFunction<Result,String,Float> unwrapFunc = (r,s) -> {try {return ((float[])r.get(s).get().getValue())[0];} catch (OrtException e) { return Float.NaN;}};
+
+            // Graph has three scalar inputs, a, b, c, and three outputs, ab, bc, ab + bc.
+            OnnxTensor a = OnnxTensor.createTensor(env,new float[]{2.0f});
+            OnnxTensor b = OnnxTensor.createTensor(env,new float[]{3.0f});
+            OnnxTensor c = OnnxTensor.createTensor(env,new float[]{5.0f});
+
+            // Request all outputs, supply all inputs
+            inputMap.put("a:0",a);
+            inputMap.put("b:0",b);
+            inputMap.put("c:0",c);
+            requestedOutputs.add("ab:0");
+            requestedOutputs.add("bc:0");
+            requestedOutputs.add("abc:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(3,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+                float bcVal = unwrapFunc.apply(r,"bc:0");
+                assertEquals(15.0f,bcVal,1e-10);
+                float abcVal = unwrapFunc.apply(r,"abc:0");
+                assertEquals(21.0f,abcVal,1e-10);
+            }
+
+            // Don't specify an output, expect all of them returned.
+            try (Result r = session.run(inputMap)) {
+                assertEquals(3,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+                float bcVal = unwrapFunc.apply(r,"bc:0");
+                assertEquals(15.0f,bcVal,1e-10);
+                float abcVal = unwrapFunc.apply(r,"abc:0");
+                assertEquals(21.0f,abcVal,1e-10);
+            }
+
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request single output ab, supply all inputs
+            inputMap.put("a:0",a);
+            inputMap.put("b:0",b);
+            inputMap.put("c:0",c);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(1,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request single output abc, supply all inputs
+            inputMap.put("a:0",a);
+            inputMap.put("b:0",b);
+            inputMap.put("c:0",c);
+            requestedOutputs.add("abc:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(1,r.size());
+                float abcVal = unwrapFunc.apply(r,"abc:0");
+                assertEquals(21.0f,abcVal,1e-10);
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request single output ab, supply required inputs
+            inputMap.put("a:0",a);
+            inputMap.put("b:0",b);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(1,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request single output bc, supply required inputs
+            inputMap.put("b:0",b);
+            inputMap.put("c:0",c);
+            requestedOutputs.add("bc:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(1,r.size());
+                float bcVal = unwrapFunc.apply(r,"bc:0");
+                assertEquals(15.0f,bcVal,1e-10);
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request output but don't supply the inputs
+            inputMap.put("c:0",c);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                fail("Expected to throw OrtException due to incorrect inputs");
+            } catch (OrtException e) {
+                System.out.println(e.getMessage());
+                //pass
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request output but don't supply all the inputs
+            inputMap.put("b:0",b);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                fail("Expected to throw OrtException due to incorrect inputs");
+            } catch (OrtException e) {
+                System.out.println(e.getMessage());
+                //pass
+            }
+        }
+    }
 
   @Test
   public void createSessionFromByteArray() throws IOException, OrtException {
