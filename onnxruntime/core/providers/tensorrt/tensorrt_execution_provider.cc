@@ -90,7 +90,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
          return onnxruntime::make_unique<CUDAAllocator>(id, TRT);
        },
        std::numeric_limits<size_t>::max()});
-  allocator_ = CreateAllocator(default_memory_info, device_id_, info.use_cuda_arena);
+  allocator_ = CreateAllocator(default_memory_info, device_id_);
 
   InsertAllocator(allocator_);
 
@@ -101,7 +101,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
        },
        std::numeric_limits<size_t>::max()});
 
-  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_, info.use_cuda_arena));
+  InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
   const char* batch_env = getenv("ORT_TENSORRT_MAX_PARTITION_ITERATIONS");
   if (batch_env)

@@ -223,11 +223,6 @@ typedef struct OrtApiBase OrtApiBase;
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
 struct OrtApi {
-  // NOTE: The ordering of these fields MUST not change after that version has shipped
-  // since existing binaries depend on this ordering.
-  // See text in onnxruntime\core\session\onnxruntime_c_api.cc for more information
-
-  // Shipped as version 1 - DO NOT MODIFY
   /**
 * \param msg A null-terminated string. Its content will be copied into the newly created OrtStatus
 */
@@ -303,7 +298,7 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* EnableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
   OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 
-  // Enable a memory arena for CPU allocations.
+  // Enable the memory arena on CPU
   // Arena may pre-allocate memory for future usage.
   // set this option to false if you don't want it.
   OrtStatus*(ORT_API_CALL* EnableCpuMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
@@ -653,18 +648,6 @@ struct OrtApi {
   ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
   ORT_CLASS_RELEASE(SessionOptions);
   ORT_CLASS_RELEASE(CustomOpDomain);
-  //
-  // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
-  ///////////////////
-
-  ///////////////////
-  // Version 2 - In development, feel free to add/remove/rearrange here
-
-  // Enable a memory arena for CUDA allocations.
-  // Arena may pre-allocate memory for future usage.
-  // set this option to false if you don't want it.
-  OrtStatus*(ORT_API_CALL* EnableCudaMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
-  OrtStatus*(ORT_API_CALL* DisableCudaMemArena)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 };
 
 /*

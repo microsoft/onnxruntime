@@ -2,13 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocatormgr.h"
-#include "core/framework/arena.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_common.h"
 #include "test/framework/test_utils.h"
-#include "test/util/include/default_providers.h"
 #include "gtest/gtest.h"
 #include "cuda_runtime.h"
+#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace test {
@@ -19,8 +17,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
        [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
        std::numeric_limits<size_t>::max()});
 
-  bool use_arena = true;
-  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id, use_arena);
+  auto cuda_arena = CreateAllocator(default_memory_info, cuda_device_id);
 
   size_t size = 1024;
 
@@ -38,7 +35,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
        [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, CUDA_PINNED); },
        std::numeric_limits<size_t>::max()});
 
-  auto pinned_allocator = CreateAllocator(pinned_memory_info, 0, use_arena);
+  auto pinned_allocator = CreateAllocator(pinned_memory_info);
 
   EXPECT_STREQ(pinned_allocator->Info().name, CUDA_PINNED);
   EXPECT_EQ(pinned_allocator->Info().id, 0);
@@ -113,34 +110,6 @@ TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
 
   auto last_error = cudaGetLastError();
   EXPECT_EQ(last_error, cudaSuccess) << "Last error should be cleared if handled gracefully";
-}
-
-TEST(AllocatorTest, CUDAAllocatorNoArenaTest) {
-  int cuda_device_id = 0;
-
-  size_t free = 0;
-  size_t total = 0;
-
-  CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
-  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
-
-  DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault,
-       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); },
-       total});
-
-  bool use_arena = false;
-  auto allocator = CreateAllocator(default_memory_info, cuda_device_id, use_arena);
-
-  auto cuda_ep = DefaultCudaExecutionProvider(false);
-  auto cuda_alloc = cuda_ep->GetAllocator(0, OrtMemTypeDefault);
-  EXPECT_EQ(dynamic_cast<IArenaAllocator*>(cuda_alloc.get()), nullptr);
-
-  auto cuda_pinned_alloc = cuda_ep->GetAllocator(0, OrtMemTypeCPUOutput);
-  EXPECT_EQ(dynamic_cast<IArenaAllocator*>(cuda_pinned_alloc.get()), nullptr);
-
-  auto cpu_input_alloc = cuda_ep->GetAllocator(0, OrtMemTypeCPUInput);
-  EXPECT_EQ(dynamic_cast<IArenaAllocator*>(cuda_pinned_alloc.get()), nullptr);
 }
 }  // namespace test
 }  // namespace onnxruntime

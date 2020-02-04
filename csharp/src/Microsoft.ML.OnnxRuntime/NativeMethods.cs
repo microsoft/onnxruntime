@@ -16,7 +16,6 @@ namespace Microsoft.ML.OnnxRuntime
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
-        // OrtApi Version 1
         public IntPtr CreateStatus;
         public IntPtr GetErrorCode;
         public IntPtr GetErrorMessage;
@@ -128,10 +127,6 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseTensorTypeAndShapeInfo;
         public IntPtr ReleaseSessionOptions;
         public IntPtr ReleaseCustomOpDomain;
-        
-        // OrtApi Version 2
-        public IntPtr EnableCudaMemArena;
-        public IntPtr DisableCudaMemArena;
     }
 
     internal static class NativeMethods
@@ -229,10 +224,6 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
             OrtReleaseValue = (DOrtReleaseValue)Marshal.GetDelegateForFunctionPointer(api_.ReleaseValue, typeof(DOrtReleaseValue));
-
-            // OrtApi Version 2
-            OrtEnableCudaMemArena = (DOrtEnableCudaMemArena)Marshal.GetDelegateForFunctionPointer(api_.EnableCudaMemArena, typeof(DOrtEnableCudaMemArena));
-            OrtDisableCudaMemArena = (DOrtDisableCudaMemArena)Marshal.GetDelegateForFunctionPointer(api_.DisableCudaMemArena, typeof(DOrtDisableCudaMemArena));
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -670,13 +661,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate void DOrtReleaseValue(IntPtr /*(OrtValue*)*/ value);
         public static DOrtReleaseValue OrtReleaseValue;
-
-        // OrtApi Version 2
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtEnableCudaMemArena(IntPtr /* OrtSessionOptions* */ options);
-        public static DOrtEnableCudaMemArena OrtEnableCudaMemArena;
-
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtDisableCudaMemArena(IntPtr /* OrtSessionOptions* */ options);
-        public static DOrtDisableCudaMemArena OrtDisableCudaMemArena;
 
         #endregion
 

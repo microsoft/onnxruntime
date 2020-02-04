@@ -24,14 +24,14 @@ std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider() {
   return onnxruntime::make_unique<CPUExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(bool use_arena) {
-  return std::make_shared<onnxruntime::CpuProviderFactory>(use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena) {
+  return std::make_shared<onnxruntime::CpuProviderFactory>(use_arena != 0);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CPU, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CPU(static_cast<bool>(use_arena)));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CPU(use_arena));
   return nullptr;
 }
 

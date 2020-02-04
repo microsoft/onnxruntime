@@ -33,7 +33,6 @@ class TensorrtLogger : public nvinfer1::ILogger {
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
-  bool use_cuda_arena{true};
 };
 
 // Information to construct kernel function state.

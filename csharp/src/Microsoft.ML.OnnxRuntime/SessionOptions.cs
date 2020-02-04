@@ -268,31 +268,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private bool _enableCpuMemArena = true;
 
-        /// <summary>
-        /// Enables Arena allocator for the CUDA memory allocations. Default is true.
-        /// </summary>
-        public bool EnableCudaMemArena
-        {
-            get
-            {
-                return _enableCudaMemArena;
-            }
-            set
-            {
-                if (!_enableCudaMemArena && value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableCudaMemArena(_nativePtr));
-                    _enableCudaMemArena = true;
-                }
-                else if (_enableCudaMemArena && !value)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtDisableCudaMemArena(_nativePtr));
-                    _enableCudaMemArena = false;
-                }
-            }
-        }
-        private bool _enableCudaMemArena = true;
-
 
         /// <summary>
         /// Log Id to be used for the session. Default is empty string.

@@ -44,7 +44,6 @@ struct RunConfig {
   bool f_verbose{false};
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
-  bool enable_cuda_mem_arena{true};  // use mem arena for CUDA allocations
   ExecutionMode execution_mode{ExecutionMode::ORT_SEQUENTIAL};
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};
