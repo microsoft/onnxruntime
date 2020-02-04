@@ -16,6 +16,5 @@ The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/wi
 
 Windows ML and onnxruntime C APIs allow telemetry collection to be turned on/off (see API pages for details).
 In all Official builds:
-- Telemetry collection is *disabled* for calls to the ORT API.
-- Telemetry collection is *enabled* for calls to the Windows ML API.
-* [C API](./C_API.md#telemetry)
+1. Telemetry collection is *disabled* for calls to the ORT API. See additional information about how to enable and disable telemetry in the [C API: Telemetry](./C_API.md#telemetry) section on the C-API documentation page.
+2. Telemetry collection is *enabled* for calls to the Windows ML API.
