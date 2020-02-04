@@ -1,3 +1,4 @@
+
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
@@ -401,7 +402,6 @@ if(NOT TARGET re2::re2)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
   add_library(re2::re2 ALIAS re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
-endif()
 endif()
 
 # bounds checking behavior.
