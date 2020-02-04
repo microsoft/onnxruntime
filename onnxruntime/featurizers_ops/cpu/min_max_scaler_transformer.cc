@@ -6,23 +6,23 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/MinMaxScalarFeaturizer.h"
+#include "Featurizers/MinMaxScalerFeaturizer.h"
 #include "Featurizers/../Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {
 
 template <typename InputT>
-struct MinMaxScalarTransformerImpl {
+struct MinMaxScalerTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::MinMaxScalarTransformer<InputT> transformer(
+    Microsoft::Featurizer::Featurizers::MinMaxScalerTransformer<InputT> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::MinMaxScalarTransformer<InputT>(archive);
+          return Microsoft::Featurizer::Featurizers::MinMaxScalerTransformer<InputT>(archive);
         }());
 
     // Get the input
@@ -42,13 +42,13 @@ struct MinMaxScalarTransformerImpl {
   }
 };
 
-class MinMaxScalarTransformer final : public OpKernel {
+class MinMaxScalerTransformer final : public OpKernel {
  public:
-  explicit MinMaxScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit MinMaxScalerTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<MinMaxScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+    utils::MLTypeCallDispatcher<MinMaxScalerTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
                                 int64_t, uint64_t, float, double>
         t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
@@ -57,7 +57,7 @@ class MinMaxScalarTransformer final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    MinMaxScalarTransformer,
+    MinMaxScalerTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -73,6 +73,6 @@ ONNX_OPERATOR_KERNEL_EX(
                                    DataTypeImpl::GetTensorType<uint64_t>(),
                                    DataTypeImpl::GetTensorType<float>(),
                                    DataTypeImpl::GetTensorType<double>()}),
-    MinMaxScalarTransformer);
+    MinMaxScalerTransformer);
 }  // namespace featurizers
 }  // namespace onnxruntime

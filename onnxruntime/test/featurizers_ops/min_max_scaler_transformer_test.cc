@@ -4,13 +4,13 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Featurizers/MinMaxScalarFeaturizer.h"
+#include "Featurizers/MinMaxScalerFeaturizer.h"
 
 namespace onnxruntime {
 namespace test {
 
-TEST(FeaturizersTests, MinMaxScalarTransformer_int8) {
-  OpTester test("MinMaxScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, MinMaxScalerTransformer_int8) {
+  OpTester test("MinMaxScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {6}, {1, 0, 0, 0, 1, 9});
@@ -25,8 +25,8 @@ TEST(FeaturizersTests, MinMaxScalarTransformer_int8) {
 }
 
 
-TEST(FeaturizersTests, MinMaxScalarTransformer_float_t) {
-  OpTester test("MinMaxScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, MinMaxScalerTransformer_float_t) {
+  OpTester test("MinMaxScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 128, 191, 0, 0, 128, 63});
@@ -40,8 +40,8 @@ TEST(FeaturizersTests, MinMaxScalarTransformer_float_t) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(FeaturizersTests, MinMaxScalarTransformer_only_one_input) {
-  OpTester test("MinMaxScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, MinMaxScalerTransformer_only_one_input) {
+  OpTester test("MinMaxScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {6}, {1, 0, 0, 0, 255, 255});

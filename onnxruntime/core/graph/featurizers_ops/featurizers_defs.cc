@@ -38,18 +38,18 @@ static void RegisterFromStringFeaturizerVer1();
 static void RegisterHashOneHotVectorizerFeaturizerVer1();
 static void RegisterImputationMarkerFeaturizerVer1();
 static void RegisterLabelEncoderFeaturizerVer1();
-static void RegisterMaxAbsScalarFeaturizerVer1();
+static void RegisterMaxAbsScalerFeaturizerVer1();
 static void RegisterMeanImputerFeaturizerVer1();
 static void RegisterMedianImputerFeaturizerVer1();
 static void RegisterMinMaxImputerFeaturizerVer1();
-static void RegisterMinMaxScalarFeaturizerVer1();
+static void RegisterMinMaxScalerFeaturizerVer1();
 static void RegisterMissingDummiesFeaturizerVer1();
 static void RegisterModeImputerFeaturizerVer1();
 static void RegisterNumericalizeFeaturizerVer1();
 static void RegisterOneHotEncoderFeaturizerVer1();
 static void RegisterNormalizeFeaturizerVer1();
 static void RegisterPCAFeaturizerVer1();
-static void RegisterRobustScalarFeaturizerVer1();
+static void RegisterRobustScalerFeaturizerVer1();
 static void RegisterStandardScaleWrapperFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
 static void RegisterTimeSeriesImputerFeaturizerVer1();
@@ -65,17 +65,17 @@ void RegisterMSFeaturizersSchemas() {
   RegisterHashOneHotVectorizerFeaturizerVer1();
   RegisterImputationMarkerFeaturizerVer1();
   RegisterLabelEncoderFeaturizerVer1();
-  RegisterMaxAbsScalarFeaturizerVer1();
+  RegisterMaxAbsScalerFeaturizerVer1();
   RegisterMeanImputerFeaturizerVer1();
   RegisterMedianImputerFeaturizerVer1();
   RegisterMinMaxImputerFeaturizerVer1();
-  RegisterMinMaxScalarFeaturizerVer1();
+  RegisterMinMaxScalerFeaturizerVer1();
   RegisterMissingDummiesFeaturizerVer1();
   RegisterModeImputerFeaturizerVer1();
   RegisterNumericalizeFeaturizerVer1();
   RegisterOneHotEncoderFeaturizerVer1();
   RegisterPCAFeaturizerVer1();
-  RegisterRobustScalarFeaturizerVer1();
+  RegisterRobustScalerFeaturizerVer1();
   RegisterNormalizeFeaturizerVer1();
   RegisterStandardScaleWrapperFeaturizerVer1();
   RegisterStringFeaturizerVer1();
@@ -605,7 +605,7 @@ void RegisterLabelEncoderFeaturizerVer1() {
           });
 }
 
-void RegisterMaxAbsScalarFeaturizerVer1() {
+void RegisterMaxAbsScalerFeaturizerVer1() {
   //static const char* doc = R"DOC(
   //      Scales input based on the maximum absolute value of all data encountered during training.
 
@@ -622,7 +622,7 @@ void RegisterMaxAbsScalarFeaturizerVer1() {
   //        execute(100.0) -> 100 / 4.0
   //)DOC";
 
-  MS_FEATURIZERS_OPERATOR_SCHEMA(MaxAbsScalarTransformer)
+  MS_FEATURIZERS_OPERATOR_SCHEMA(MaxAbsScalerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
       .Input(
@@ -844,7 +844,7 @@ void RegisterMinMaxImputerFeaturizerVer1() {
           });
 }
 
-void RegisterMinMaxScalarFeaturizerVer1() {
+void RegisterMinMaxScalerFeaturizerVer1() {
   //static const char* doc = R"DOC(
   //      Scales input based on the scale that results from the minimum and maximum values encountered
   //      during training.
@@ -862,7 +862,7 @@ void RegisterMinMaxScalarFeaturizerVer1() {
   //        execute(20) = 20 / 4
   //)DOC";
 
-  MS_FEATURIZERS_OPERATOR_SCHEMA(MinMaxScalarTransformer)
+  MS_FEATURIZERS_OPERATOR_SCHEMA(MinMaxScalerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
       .Input(
@@ -1178,7 +1178,7 @@ void RegisterPCAFeaturizerVer1() {
           });
 }
 
-void RegisterRobustScalarFeaturizerVer1() {
+void RegisterRobustScalerFeaturizerVer1() {
   //static const char* doc = R"DOC(
   //      MinMaxScalarEstimator + centering?
 
@@ -1189,7 +1189,7 @@ void RegisterRobustScalarFeaturizerVer1() {
   //        TODO
   //)DOC";
 
-  MS_FEATURIZERS_OPERATOR_SCHEMA(RobustScalarTransformer)
+  MS_FEATURIZERS_OPERATOR_SCHEMA(RobustScalerTransformer)
       .SinceVersion(1)
       .SetDomain(kMSFeaturizersDomain)
       .Input(
