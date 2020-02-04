@@ -246,7 +246,9 @@ static Status AddLossFunctionInternal(Graph& graph,
         {NodeDef{
             "Mul",
             {ArgDef{loss_func_info.loss_name}, ArgDef{loss_scale_input_name, loss_type_proto}},
-            {ArgDef{actual_loss_name, loss_type_proto}}}});
+            {ArgDef{actual_loss_name, loss_type_proto}},
+            NodeAttributes(),
+            actual_loss_name}});
   } else {
     actual_loss_name = loss_func_info.loss_name;
   }
