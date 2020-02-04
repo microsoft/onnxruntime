@@ -1,12 +1,12 @@
 parameters:
-  AgentPool : 'Hosted macOS High Sierra'
   IsMacOS : 'true'
 
 jobs:
 - job: NuGet_Test_MacOS
   workspace:
     clean: all
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    vmImage: 'macOS-10.14'
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()

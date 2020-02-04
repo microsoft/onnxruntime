@@ -1,6 +1,6 @@
 # BERT Model Optimization Tool Overview
 
-This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensroFlow, and generates an optimized model to run faster with OnnxRuntime.
+This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensorFlow, and generates an optimized model to run faster with OnnxRuntime.
 
 Note that OnnxRuntime can fuse the Bert ONNX model exported from PyTorch automatically. You don't need this tool to fuse the model. It is only required for Bert Model converted from Tensorflow. 
 
