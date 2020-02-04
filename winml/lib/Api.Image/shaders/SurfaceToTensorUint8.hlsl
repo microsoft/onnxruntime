@@ -1,5 +1,5 @@
 //
-//  Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 //
 // This shader converts a DX texture (BGRA/BGRX) into NCHW UINT8 Tensor with channel order RGB
 // Note that this shader requires that width be a multiple of 4 because UAV loads are limited to UINT and it writes 4 UINT8 values per channel at a time
