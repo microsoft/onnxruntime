@@ -6,8 +6,8 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/MaxAbsScalarFeaturizer.h"
-#include "Archive.h"
+#include "Featurizers/RobustScalerFeaturizer.h"
+#include "Featurizers/../Archive.h"
 
 namespace onnxruntime {
 namespace featurizers {
@@ -36,16 +36,16 @@ template <>
 struct OutputTypeMapper<double> { using type = double; };
 
 template <typename InputT>
-struct MaxAbsScalarTransformerImpl {
+struct RobustScalerTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
+    Microsoft::Featurizer::Featurizers::RobustScalerTransformer<InputT, typename OutputTypeMapper<InputT>::type> transformer(
         [ctx](void) {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::MaxAbsScalarTransformer<InputT, typename OutputTypeMapper<InputT>::type>(archive);
+          return Microsoft::Featurizer::Featurizers::RobustScalerTransformer<InputT, typename OutputTypeMapper<InputT>::type>(archive);
         }());
 
     // Get the input
@@ -65,13 +65,13 @@ struct MaxAbsScalarTransformerImpl {
   }
 };
 
-class MaxAbsScalarTransformer final : public OpKernel {
+class RobustScalerTransformer final : public OpKernel {
  public:
-  explicit MaxAbsScalarTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit RobustScalerTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<MaxAbsScalarTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+    utils::MLTypeCallDispatcher<RobustScalerTransformerImpl, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
                                 int64_t, uint64_t, float, double>
         t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
@@ -80,7 +80,7 @@ class MaxAbsScalarTransformer final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    MaxAbsScalarTransformer,
+    RobustScalerTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -96,6 +96,7 @@ ONNX_OPERATOR_KERNEL_EX(
                                    DataTypeImpl::GetTensorType<uint64_t>(),
                                    DataTypeImpl::GetTensorType<float>(),
                                    DataTypeImpl::GetTensorType<double>()}),
-    MaxAbsScalarTransformer);
+    RobustScalerTransformer);
+
 }  // namespace featurizers
 }  // namespace onnxruntime

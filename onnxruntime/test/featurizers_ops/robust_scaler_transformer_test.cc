@@ -4,13 +4,13 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Featurizers/RobustScalarFeaturizer.h"
+#include "Featurizers/RobustScalerFeaturizer.h"
 
 namespace onnxruntime {
 namespace test {
 
-TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering) {
-  OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, RobustScalerTransformer_default_with_centering) {
+  OpTester test("RobustScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 160, 64, 0, 0, 128, 64});
@@ -26,7 +26,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering) {
 
 
 TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering) {
-  OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  OpTester test("RobustScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 64});
@@ -41,8 +41,8 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering) {
 }
 
 
-TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_zero_scale) {
-  OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, RobustScalerTransformer_default_no_centering_zero_scale) {
+  OpTester test("RobustScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
@@ -58,7 +58,7 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_zero_scale) 
 
 
 TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_no_scaling) {
-  OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  OpTester test("RobustScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 160, 64, 0, 0, 128, 63});
@@ -73,8 +73,8 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_no_scaling
 }
 
 
-TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_custom_scaling) {
-  OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, RobustScalerTransformer_default_with_centering_custom_scaling) {
+  OpTester test("RobustScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 160, 64, 0, 0, 0, 65});
@@ -89,8 +89,8 @@ TEST(FeaturizersTests, RobustScalarTransformer_default_with_centering_custom_sca
 }
 
 
-TEST(FeaturizersTests, RobustScalarTransformer_default_no_centering_custom_scaling) {
-  OpTester test("RobustScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+TEST(FeaturizersTests, RobustScalerTransformer_default_no_centering_custom_scaling) {
+  OpTester test("RobustScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // Add state input
   test.AddInput<uint8_t>("State", {12}, {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65});

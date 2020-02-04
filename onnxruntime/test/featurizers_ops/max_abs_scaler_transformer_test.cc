@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Featurizers/MaxAbsScalarFeaturizer.h"
+#include "Featurizers/MaxAbsScalerFeaturizer.h"
 
 namespace dft = Microsoft::Featurizer::Featurizers;
 
@@ -13,7 +13,7 @@ namespace test {
 
 TEST(FeaturizersTests, MaxAbsScaler_int8_values) {
 
-  OpTester test("MaxAbsScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  OpTester test("MaxAbsScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
   
   // State from when the transformer was trained. Corresponds to Version 1 and a 
   // scale of 0
@@ -29,7 +29,7 @@ TEST(FeaturizersTests, MaxAbsScaler_int8_values) {
 }
 
 TEST(FeaturizersTests, MaxAbsScaler_double_values) {
-  OpTester test("MaxAbsScalarTransformer", 1, onnxruntime::kMSFeaturizersDomain);
+  OpTester test("MaxAbsScalerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
   // State from when the transformer was trained. Corresponds to Version 1 and a
   // scale of 0
