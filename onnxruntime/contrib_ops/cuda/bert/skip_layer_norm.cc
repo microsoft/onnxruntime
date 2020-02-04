@@ -84,11 +84,9 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
                              "Last dimension of bias and input does not match");
     }
   }
-
-  int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
   int hidden_size = static_cast<int>(input_dims[2]);
-  int element_count = batch_size * sequence_length * hidden_size;
+  int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
 
   if (!LaunchSkipLayerNormKernel(
@@ -98,9 +96,8 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           gamma->template Data<T>(),
           beta->template Data<T>(),
           bias != nullptr ? bias->template Data<T>() : nullptr,
-          batch_size,
           hidden_size,
-          element_count,
+          static_cast<int>(element_count),  //TODO: check range
           element_size)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());

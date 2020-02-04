@@ -24,6 +24,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
@@ -48,6 +49,9 @@ using namespace onnxruntime;
     auto _status = (expr);            \
     if (_status) return _status;      \
   } while (0)
+
+
+
 
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
@@ -388,7 +392,9 @@ OrtStatus* LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSe
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
-      sess->RegisterExecutionProvider(std::move(provider));
+      status = sess->RegisterExecutionProvider(std::move(provider));
+      if (!status.IsOK())
+        return ToOrtStatus(status);
     }
   }
 

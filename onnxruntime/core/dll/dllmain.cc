@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef USE_ONNXRUNTIME_DLL
+#include <Windows.h>
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
@@ -31,30 +31,21 @@
 #else
 #pragma warning(pop)
 #endif
-#endif
 
-#include "core/session/onnxruntime_cxx_api.h"
-#include "gtest/gtest.h"
-#include "test/test_environment.h"
-
-std::unique_ptr<Ort::Env> ort_env;
-
-int main(int argc, char** argv) {
-  int status = 0;
-  try {
-    ::testing::InitGoogleTest(&argc, argv);
-    ort_env.reset(new Ort::Env(ORT_LOGGING_LEVEL_WARNING, "Default"));
-    status = RUN_ALL_TESTS();
-  } catch (const std::exception& ex) {
-    std::cerr << ex.what();
-    status = -1;
+// dllmain.cpp : Defines the entry point for the DLL application.
+BOOL APIENTRY DllMain(HMODULE /*hModule*/,
+                      DWORD ul_reason_for_call,
+                      LPVOID /*lpReserved*/
+) {
+  switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+    case DLL_THREAD_ATTACH:
+    case DLL_THREAD_DETACH:
+      break;
+    case DLL_PROCESS_DETACH:
+      //TODO: Don't do it when Protobuf_USE_STATIC_LIBS is OFF
+      ::google::protobuf::ShutdownProtobufLibrary();
+      break;
   }
-  //TODO: Fix the C API issue
-  ort_env.reset();  //If we don't do this, it will crash
-
-#ifndef USE_ONNXRUNTIME_DLL
-  //make memory leak checker happy
-  ::google::protobuf::ShutdownProtobufLibrary();
-#endif
-  return status;
+  return TRUE;
 }

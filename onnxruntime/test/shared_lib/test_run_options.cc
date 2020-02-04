@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "test_fixture.h"
+#include <gtest/gtest.h>
 
-TEST_F(CApiTest, run_options) {
+TEST(CApiTest, run_options) {
   Ort::RunOptions options;
   ASSERT_NE(options, nullptr);
   options.SetRunLogVerbosityLevel(1);
