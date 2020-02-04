@@ -166,11 +166,12 @@ jobs:
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
-      - template: esrp_dll.yml
-        parameters:
-          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-          DisplayName: 'ESRP - Sign C# dlls'
-          DoEsrp: ${{ parameters.DoEsrp }}
+      - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
+        - template: esrp_dll.yml
+          parameters:
+            FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+            DisplayName: 'ESRP - Sign C# dlls'
+            DoEsrp: ${{ parameters.DoEsrp }}
 
       - script: |
          ${{ parameters.NuPackScript }}
