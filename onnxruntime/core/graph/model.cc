@@ -414,8 +414,7 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
   }
 
 #if GOOGLE_PROTOBUF_VERSION >= 3002000
-  FileInputStream fs(fd);
-  const bool result = model_proto.ParseFromZeroCopyStream(&fs) && fs.GetErrno() == 0;
+  const bool result = model_proto.ParseFromFileDescriptor(fd);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
   }

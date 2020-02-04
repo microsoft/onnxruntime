@@ -103,10 +103,9 @@ bool LaunchSkipLayerNormKernel(
     const void* gamma,
     const void* beta,
     const void* bias,
-    const int batch_size,
-    const int hidden_size,
-    const int element_count,
-    const size_t element_size) {
+    int hidden_size,
+    int element_count,
+    size_t element_size) {
   // use default stream
   const cudaStream_t stream = nullptr;
 

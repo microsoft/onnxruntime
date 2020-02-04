@@ -24,6 +24,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
@@ -49,111 +50,8 @@ using namespace onnxruntime;
     if (_status) return _status;      \
   } while (0)
 
-class LoggingWrapper : public ISink {
- public:
-  LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
-      : logging_function_(logging_function), logger_param_(logger_param) {
-  }
 
-  void SendImpl(const Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
-                const Capture& message) override {
-    std::string s = message.Location().ToString();
-    logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
-                      logger_id.c_str(), s.c_str(), message.Message().c_str());
-  }
 
- private:
-  OrtLoggingFunction logging_function_;
-  void* logger_param_;
-};
-
-struct OrtEnv {
- public:
-  struct LoggingManagerConstructionInfo {
-    LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
-                                   void* logger_param1,
-                                   OrtLoggingLevel default_warning_level1,
-                                   const char* logid1)
-        : logging_function(logging_function1),
-          logger_param(logger_param1),
-          default_warning_level(default_warning_level1),
-          logid(logid1) {}
-    OrtLoggingFunction logging_function{};
-    void* logger_param{};
-    OrtLoggingLevel default_warning_level;
-    const char* logid{};
-  };
-
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, Status& status) {
-    std::lock_guard<OrtMutex> lock(m_);
-    if (!p_instance_) {
-      std::unique_ptr<Environment> env;
-      status = Environment::Create(env);
-      if (!status.IsOK()) {
-        return nullptr;
-      }
-
-      std::unique_ptr<LoggingManager> lmgr;
-      std::string name = lm_info.logid;
-      if (lm_info.logging_function) {
-        std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                                 lm_info.logger_param);
-        lmgr.reset(new LoggingManager(std::move(logger),
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      } else {
-        lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      }
-
-      p_instance_ = new OrtEnv(std::move(env), std::move(lmgr));
-    }
-    ++ref_count_;
-    return p_instance_;
-  }
-
-  static void Release(OrtEnv* env_ptr) {
-    if (!env_ptr) {
-      return;
-    }
-    std::lock_guard<OrtMutex> lock(m_);
-    ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
-    --ref_count_;
-    if (ref_count_ == 0) {
-      delete p_instance_;
-      p_instance_ = nullptr;
-    }
-  }
-
-  LoggingManager* GetLoggingManager() const {
-    return logging_manager_.get();
-  }
-
- private:
-  static OrtEnv* p_instance_;
-  static OrtMutex m_;
-  static int ref_count_;
-
-  std::unique_ptr<Environment> value_;
-  std::unique_ptr<LoggingManager> logging_manager_;
-
-  OrtEnv(std::unique_ptr<Environment> value1, std::unique_ptr<LoggingManager> logging_manager)
-      : value_(std::move(value1)), logging_manager_(std::move(logging_manager)) {
-  }
-
-  ~OrtEnv() = default;
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
-};
-
-OrtEnv* OrtEnv::p_instance_ = nullptr;
-int OrtEnv::ref_count_ = 0;
-OrtMutex OrtEnv::m_;
 
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
@@ -494,7 +392,9 @@ OrtStatus* LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSe
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
-      sess->RegisterExecutionProvider(std::move(provider));
+      status = sess->RegisterExecutionProvider(std::move(provider));
+      if (!status.IsOK())
+        return ToOrtStatus(status);
     }
   }
 

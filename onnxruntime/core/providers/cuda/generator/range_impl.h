@@ -7,7 +7,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
 
 template <typename T>
 bool RangeImpl(const T start, const T delta, const int count, T* output);
