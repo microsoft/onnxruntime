@@ -11,8 +11,7 @@
 // It creates & destroys itself in init_seg(lib) so it should scope all user code
 //
 #ifndef NDEBUG
-// TVM need to run with shared CRT, so won't work with debug heap alloc
-#if !(defined USE_TVM || (defined USE_NGRAPH && defined _WIN32))
+#ifdef ONNXRUNTIME_ENABLE_MEMLEAK_CHECK
 constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak trace
 #define VALIDATE_HEAP_EVERY_ALLOC 0    // Call HeapValidate on every new/delete
 
@@ -35,6 +34,10 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #include "debug_alloc.h"
 #include <DbgHelp.h>
 #pragma comment(lib, "Dbghelp.lib")
+
+//If you are seeing errors of 
+//"Error LNK2005: "void __cdecl operator delete(void *)" (??3@YAXPEAX@Z) already defined in LIBCMTD.lib(delete_scalar.obj)"
+//Please read:https://developercommunity.visualstudio.com/content/problem/534202/visual-studio-2017-msvcrtlib-link-error.html
 
 _Ret_notnull_ _Post_writable_byte_size_(size) void* operator new(size_t size) { return DebugHeapAlloc(size, 1); }
 _Ret_notnull_ _Post_writable_byte_size_(size) void* operator new[](size_t size) { return DebugHeapAlloc(size, 1); }

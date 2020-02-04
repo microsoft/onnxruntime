@@ -40,8 +40,10 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-#TODO(): enable cuda and test it
 add_library(onnxruntime_pybind11_state MODULE ${onnxruntime_pybind_srcs})
+if(MSVC)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
@@ -53,12 +55,13 @@ endif()
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
 endif()
+
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR})
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${pybind11_INCLUDE_DIRS})
+target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
@@ -88,6 +91,7 @@ set(onnxruntime_pybind11_state_libs
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
+    ${pybind11_lib}
 )
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
@@ -96,27 +100,26 @@ endif()
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
-    pybind11
+    ${pybind11_dep}
 )
-
+set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 
 if (MSVC)
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
   target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
-          ${PYTHON_LIBRARY_RELEASE} ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
+          ${PYTHON_LIBRARY_RELEASE} ${onnxruntime_EXTERNAL_LIBRARIES})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES}
-          ${ONNXRUNTIME_SO_LINK_FLAG})
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
+  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY}
-          ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_EXTERNAL_LIBRARIES})
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "-Xlinker -rpath=\$ORIGIN")
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY} ${onnxruntime_EXTERNAL_LIBRARIES})
+  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\$ORIGIN")
 endif()
 
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
@@ -151,12 +154,7 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
-# adjust based on what target/s onnxruntime_unittests.cmake created
-if (SingleUnitTestProject)
-  set(test_data_target onnxruntime_test_all)
-else()
-  set(test_data_target onnxruntime_test_ir)
-endif()
+set(test_data_target onnxruntime_test_all)
 
 add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD

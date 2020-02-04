@@ -17,6 +17,15 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 
+//Seems this workaround can be dropped when we drop support for VS2017 toolchains
+//https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+#ifdef _TlgPragmaUtf8Begin
+#undef _TlgPragmaUtf8Begin
+#undef _TlgPragmaUtf8End
+#define _TlgPragmaUtf8Begin
+#define _TlgPragmaUtf8End
+#endif
+
 namespace onnxruntime {
 
 namespace {

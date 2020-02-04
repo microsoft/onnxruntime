@@ -92,8 +92,6 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GatherElements op: Type of 'indices' must be int32 or int64");
   }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "String type is not supported yet for the GatherElements op");
 }
 
 }  // namespace cuda

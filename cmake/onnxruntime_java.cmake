@@ -54,7 +54,7 @@ file(GLOB onnxruntime4j_native_src
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src} ${onnxruntime4j_generated})
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/java/src/main/native)
-target_link_libraries(onnxruntime4j_jni PUBLIC ${JNI_LIBRARIES} onnxruntime onnxruntime4j_generated)
+target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime onnxruntime4j_generated)
 
 # Now the jar, jni binary and shared lib binary have been built, now to build the jar with the binaries added.
 

@@ -24,6 +24,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
@@ -49,111 +50,8 @@ using namespace onnxruntime;
     if (_status) return _status;      \
   } while (0)
 
-class LoggingWrapper : public ISink {
- public:
-  LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
-      : logging_function_(logging_function), logger_param_(logger_param) {
-  }
 
-  void SendImpl(const Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
-                const Capture& message) override {
-    std::string s = message.Location().ToString();
-    logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
-                      logger_id.c_str(), s.c_str(), message.Message().c_str());
-  }
 
- private:
-  OrtLoggingFunction logging_function_;
-  void* logger_param_;
-};
-
-struct OrtEnv {
- public:
-  struct LoggingManagerConstructionInfo {
-    LoggingManagerConstructionInfo(OrtLoggingFunction logging_function1,
-                                   void* logger_param1,
-                                   OrtLoggingLevel default_warning_level1,
-                                   const char* logid1)
-        : logging_function(logging_function1),
-          logger_param(logger_param1),
-          default_warning_level(default_warning_level1),
-          logid(logid1) {}
-    OrtLoggingFunction logging_function{};
-    void* logger_param{};
-    OrtLoggingLevel default_warning_level;
-    const char* logid{};
-  };
-
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, Status& status) {
-    std::lock_guard<OrtMutex> lock(m_);
-    if (!p_instance_) {
-      std::unique_ptr<Environment> env;
-      status = Environment::Create(env);
-      if (!status.IsOK()) {
-        return nullptr;
-      }
-
-      std::unique_ptr<LoggingManager> lmgr;
-      std::string name = lm_info.logid;
-      if (lm_info.logging_function) {
-        std::unique_ptr<ISink> logger = onnxruntime::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                                 lm_info.logger_param);
-        lmgr.reset(new LoggingManager(std::move(logger),
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      } else {
-        lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{new CLogSink{}},
-                                      static_cast<Severity>(lm_info.default_warning_level),
-                                      false,
-                                      LoggingManager::InstanceType::Default,
-                                      &name));
-      }
-
-      p_instance_ = new OrtEnv(std::move(env), std::move(lmgr));
-    }
-    ++ref_count_;
-    return p_instance_;
-  }
-
-  static void Release(OrtEnv* env_ptr) {
-    if (!env_ptr) {
-      return;
-    }
-    std::lock_guard<OrtMutex> lock(m_);
-    ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
-    --ref_count_;
-    if (ref_count_ == 0) {
-      delete p_instance_;
-      p_instance_ = nullptr;
-    }
-  }
-
-  LoggingManager* GetLoggingManager() const {
-    return logging_manager_.get();
-  }
-
- private:
-  static OrtEnv* p_instance_;
-  static OrtMutex m_;
-  static int ref_count_;
-
-  std::unique_ptr<Environment> value_;
-  std::unique_ptr<LoggingManager> logging_manager_;
-
-  OrtEnv(std::unique_ptr<Environment> value1, std::unique_ptr<LoggingManager> logging_manager)
-      : value_(std::move(value1)), logging_manager_(std::move(logging_manager)) {
-  }
-
-  ~OrtEnv() = default;
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
-};
-
-OrtEnv* OrtEnv::p_instance_ = nullptr;
-int OrtEnv::ref_count_ = 0;
-OrtMutex OrtEnv::m_;
 
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
@@ -494,7 +392,9 @@ OrtStatus* LoadAndInitializeSession(_In_ const OrtEnv* /*env*/, _In_ const OrtSe
   // register the providers
   for (auto& provider : provider_list) {
     if (provider) {
-      sess->RegisterExecutionProvider(std::move(provider));
+      status = sess->RegisterExecutionProvider(std::move(provider));
+      if (!status.IsOK())
+        return ToOrtStatus(status);
     }
   }
 
@@ -1334,7 +1234,49 @@ static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetVersionString,
 };
 
-static constexpr OrtApi ort_api_1 = {
+/* Rules on how to add a new Ort API version
+
+In general, NEVER remove or rearrange the members in this structure unless a new version is being created. The
+goal is for newer shared libraries of the Onnx Runtime to work with binaries targeting the previous versions.
+In order to do that we need to ensure older binaries get the older interfaces they are expecting.
+
+If the next version of the OrtApi only adds members, new members can be added at the end of the OrtApi structure
+without breaking anything. In this case, rename the ort_api_# structure in a way that shows the range of versions
+it supports, for example 'ort_api_1_to_2', and then GetApi can return the same structure for a range of versions.
+
+If methods need to be removed or rearranged, then make a copy of the OrtApi structure and name it 'OrtApi#to#'.
+The latest Api should always be named just OrtApi. Then make a copy of the latest ort_api_* structure below and
+name it ort_api_# to match the latest version number supported, you'll need to be sure the structure types match
+the API they're for (the compiler should complain if this isn't correct).
+
+If there is no desire to have the headers still expose the older APIs (clutter, documentation, etc) then the
+definition should be moved to a file included by this file so that it's still defined here for binary compatibility
+but isn't visible in public headers.
+
+So for example, if we wanted to just add some new members to the ort_api_1_to_2, we'd take the following steps:
+
+	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd just add the members to the end of the structure
+
+	In this file, we'd correspondingly add the member values to the end of the ort_api_1_to_2 structure, and also rename
+	it to ort_api_1_to_3.
+
+	Then in GetApi we'd make it return ort_api_1_to_3 for versions 1 through 3.
+
+Second example, if we wanted to add and remove some members, we'd do this:
+
+	In include\onnxruntime\core\session\onnxruntime_c_api.h we'd make a copy of the OrtApi structure and name the
+	old one OrtApi1to2. In the new OrtApi we'd add or remove any members that we desire.
+
+	In this file, we'd create a new copy of ort_api_1_to_2 called ort_api_3 and make the corresponding changes that were
+	made to the new OrtApi.
+
+	In GetApi we now make it return ort_api_3 for version 3.
+*/
+
+static constexpr OrtApi ort_api_1_to_2 = {
+    // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
+
+    // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
     &OrtApis::CreateStatus,
     &OrtApis::GetErrorCode,
     &OrtApis::GetErrorMessage,
@@ -1449,13 +1391,20 @@ static constexpr OrtApi ort_api_1 = {
     &OrtApis::ReleaseTensorTypeAndShapeInfo,
     &OrtApis::ReleaseSessionOptions,
     &OrtApis::ReleaseCustomOpDomain,
+    // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 2 - In development, feel free to add/remove/rearrange here
 };
 
-ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
-  if (version > 1)
-    return nullptr;
+// Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
+// If this assert hits, read the above 'Rules on how to add a new Ort API version'
+static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
 
-  return &ort_api_1;
+ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
+  if (version >= 1 && version <= 2)
+    return &ort_api_1_to_2;
+
+  return nullptr;  // Unsupported version
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
