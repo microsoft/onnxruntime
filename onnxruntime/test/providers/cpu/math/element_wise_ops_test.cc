@@ -493,6 +493,14 @@ TEST(MathOpTest, Neg_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: Int32 not allowed as input to this layer
 }
 
+TEST(MathOpTest, Neg_int64) {
+  OpTester test("Neg");
+  std::vector<int64_t> dims{4};
+  test.AddInput<int64_t>("X", dims, {1, -2, 0, -10});
+  test.AddOutput<int64_t>("Y", dims, {-1, 2, 0, 10});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT parser: Int64 not allowed as input to this layer
+}
+
 TEST(MathOpTest, Floor) {
   OpTester test("Floor");
   std::vector<int64_t> dims{2, 2};

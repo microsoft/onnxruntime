@@ -66,8 +66,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--enable_onnx_tests", action='store_true',
                         help='''When running the Test phase, run onnx_test_running against available test data directories.''')
     parser.add_argument("--path_to_protoc_exe", help="Path to protoc exe. ")
-    parser.add_argument("--test_data_url", help="Test data URL.")
-    parser.add_argument("--test_data_checksum", help="Test data checksum (MD5 digest).")
 
     # generate documentaiton
     parser.add_argument("--gen_doc", action='store_true', help="Generate documentation on contrib ops")
