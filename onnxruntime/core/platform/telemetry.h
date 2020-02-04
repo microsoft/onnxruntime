@@ -10,7 +10,8 @@
 #include "core/common/status.h"
 #include "core/common/common.h"
 
-typedef struct _LUID LUID;
+struct _LUID;
+using LUID = _LUID;
 
 namespace onnxruntime {
 

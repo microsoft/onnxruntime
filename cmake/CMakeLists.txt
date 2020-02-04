@@ -84,7 +84,6 @@ option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output 
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
-option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
@@ -201,6 +200,8 @@ if (MSVC)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
+  # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
+  # WinML performs spectre mitigation differently.
   if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
     check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
     if (HAS_QSPECTRE)

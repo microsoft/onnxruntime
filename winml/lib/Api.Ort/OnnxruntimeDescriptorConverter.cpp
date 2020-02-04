@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "pch.h"
@@ -315,7 +315,7 @@ GetTensorType(
     const std::unordered_map<std::string, std::string>& metadata) {
   const char* denotation;
   size_t len;
-  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetDenotationFromTypeInfo(type_info, &denotation, &len),
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetDenotationFromTypeInfo(type_info, &denotation, &len),
                       engine_factory->UseOrtApi());
 
   constexpr char c_image[] = "IMAGE";
@@ -499,17 +499,17 @@ CreateMapFeatureDescriptor(
   auto type_info = feature_descriptor->type_info_.get();
 
   const OrtMapTypeInfo* map_info;
-  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->CastTypeInfoToMapTypeInfo(type_info, &map_info),
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->CastTypeInfoToMapTypeInfo(type_info, &map_info),
                       engine_factory->UseOrtApi());
 
   ONNXTensorElementDataType map_key_data_type;
-  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetMapKeyType(map_info, &map_key_data_type),
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetMapKeyType(map_info, &map_key_data_type),
                       engine_factory->UseOrtApi());
 
   auto key_kind = WinML::TensorKindFromONNXTensorElementDataType(map_key_data_type);
 
   OrtTypeInfo* map_value_type_info;
-  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetMapValueType(map_info, &map_value_type_info),
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetMapValueType(map_info, &map_value_type_info),
                       engine_factory->UseOrtApi());
 
   UniqueOrtTypeInfo unique_map_value_type_info(map_value_type_info, engine_factory->UseOrtApi()->ReleaseTypeInfo);
@@ -541,11 +541,11 @@ CreateSequenceFeatureDescriptor(
   auto type_info = feature_descriptor->type_info_.get();
 
   const OrtSequenceTypeInfo* sequence_info;
-  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->CastTypeInfoToSequenceTypeInfo(type_info, &sequence_info),
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->CastTypeInfoToSequenceTypeInfo(type_info, &sequence_info),
                       engine_factory->UseOrtApi());
 
   OrtTypeInfo* sequence_element_type_info;
-  THROW_IF_NOT_OK_MSG(engine_factory->UseWinmlAdapterApi()->GetSequenceElementType(sequence_info, &sequence_element_type_info),
+  THROW_IF_NOT_OK_MSG(engine_factory->UseOrtApi()->GetSequenceElementType(sequence_info, &sequence_element_type_info),
                       engine_factory->UseOrtApi());
 
   UniqueOrtTypeInfo unique_sequence_element_type_info(sequence_element_type_info, engine_factory->UseOrtApi()->ReleaseTypeInfo);

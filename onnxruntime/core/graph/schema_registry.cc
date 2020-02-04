@@ -202,13 +202,7 @@ static bool IsDomainVersionBeyondSupportedRange(
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
 
   auto it = onnx_domain_version_map.find(domain);
-  if (it != onnx_domain_version_map.end() && op_set_version > it->second.second) {
-    // The domain is beyond what is registered.
-    return true;
-  }
-
-  // Either all ONNX domains were within range, or the domains were not ONNX.
-  return false;
+  return it != onnx_domain_version_map.end() && op_set_version > it->second.second;
 }
 
 // Return the schema with biggest version, which is not greater than specified

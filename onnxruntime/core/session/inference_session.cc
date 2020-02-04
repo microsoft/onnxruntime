@@ -198,6 +198,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     StartProfiling(session_options_.profile_file_prefix);
   }
 
+  telemetry_ = {};
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
 }
@@ -381,7 +382,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // (free up the resource if applicable - if the unique_ptr is a nullptr, reset() doesn't do anything)
     model_proto_.reset();
 
-    event_name_ = event_name;
+    telemetry_.event_name_ = event_name;
 
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -879,7 +880,7 @@ common::Status InferenceSession::Initialize() {
     bool model_use_fp16 = ModelUseFP16(model_->ToProto());
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
                                                   model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), event_name_, execution_providers_.GetIds(), model_use_fp16);
+                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_use_fp16);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
@@ -1070,11 +1071,11 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     }
 
     // check the frequency to send Evalutaion Stop event
-    if (TimeDiffMicroSeconds(time_sent_last_evalutation_start_) > kDurationBetweenSendingEvaluationStart) {
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_evalutation_start_) > telemetry_.kDurationBetweenSendingEvaluationStart) {
       env.GetTelemetryProvider().LogEvaluationStart();
       // reset counters
-      time_sent_last_evalutation_start_ = std::chrono::high_resolution_clock::now();
-      isEvaluationStart = true;
+      telemetry_.time_sent_last_evalutation_start_ = std::chrono::high_resolution_clock::now();
+      telemetry_.isEvaluationStart = true;
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
@@ -1132,23 +1133,23 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   --current_num_runs_;
 
   // keep track of telemetry
-  ++total_runs_since_last_;
-  total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+  ++telemetry_.total_runs_since_last_;
+  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(time_sent_last_) > kDurationBetweenSending) {
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
     // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, total_runs_since_last_, total_run_duration_since_last_);
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
     // reset counters
-    time_sent_last_ = std::chrono::high_resolution_clock::now();
-    total_runs_since_last_ = 0;
-    total_run_duration_since_last_ = 0;
+    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+    telemetry_.total_runs_since_last_ = 0;
+    telemetry_.total_run_duration_since_last_ = 0;
   }
 
   // check the frequency to send Evalutaion Stop event
-  if (isEvaluationStart) {
+  if (telemetry_.isEvaluationStart) {
     env.GetTelemetryProvider().LogEvaluationStop();
-    isEvaluationStart = false;
+    telemetry_.isEvaluationStart = false;
   }
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {

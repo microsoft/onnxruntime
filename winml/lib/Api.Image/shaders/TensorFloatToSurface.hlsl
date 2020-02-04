@@ -1,5 +1,5 @@
 //
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 //
 // This shader converts an NCHW FLOAT Tensor (BGR/RGB/GRAY) into a DX texture with channel order BGRA/BGRX/RGBA/GRAY
 //

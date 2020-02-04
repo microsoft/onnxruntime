@@ -101,10 +101,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_THROW(...) \
   throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__))
 
-// Throw an exception with optional message and status code.
-#define ORT_THROW_WITH_STATUS(status) \
-  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, status)
-
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...) \
   throw ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__))
@@ -165,7 +161,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     auto _status = (expr);                     \
     if ((!_status.IsOK())) {                   \
       ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
-      ORT_THROW_WITH_STATUS(_status);                      \
+      ORT_THROW(_status);                      \
     }                                          \
   } while (0)
 
