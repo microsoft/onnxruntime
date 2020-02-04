@@ -22,6 +22,12 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 
+//See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+#undef _TlgPragmaUtf8Begin
+#undef _TlgPragmaUtf8End
+#define _TlgPragmaUtf8Begin
+#define _TlgPragmaUtf8End
+
 namespace onnxruntime {
 namespace logging {
 

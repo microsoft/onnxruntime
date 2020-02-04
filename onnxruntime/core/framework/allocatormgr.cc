@@ -19,7 +19,7 @@ namespace onnxruntime {
 
 using namespace ::onnxruntime::common;
 
-AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, int device_id) {
+AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, OrtDevice::DeviceId device_id) {
   auto device_allocator = std::unique_ptr<IDeviceAllocator>(info.factory(device_id));
   if (device_allocator->AllowsArena()) {
     return std::shared_ptr<IArenaAllocator>(
