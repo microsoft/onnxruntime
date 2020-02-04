@@ -2,13 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/allocator.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
-#include "test_fixture.h"
+#include <gtest/gtest.h>
 
-using namespace onnxruntime;
 
-TEST_F(CApiTest, allocation_info) {
+TEST(CApiTest, allocation_info) {
   OrtMemoryInfo *info1, *info2;
   Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info1));
   Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &info2));
@@ -19,7 +17,7 @@ TEST_F(CApiTest, allocation_info) {
   Ort::GetApi().ReleaseMemoryInfo(info2);
 }
 
-TEST_F(CApiTest, DefaultAllocator) {
+TEST(CApiTest, DefaultAllocator) {
   Ort::AllocatorWithDefaultOptions default_allocator;
   char* p = (char*)default_allocator.Alloc(100);
   ASSERT_NE(p, nullptr);

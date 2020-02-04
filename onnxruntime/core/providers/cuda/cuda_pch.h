@@ -2,9 +2,17 @@
 // Licensed under the MIT License.
 
 #pragma once
+#if defined(_MSC_VER)
+#pragma warning(push)
+//cuda_fp16.hpp(394,38): warning C4505: '__float2half_rz': unreferenced local function has been removed
+#pragma warning(disable : 4505)
+#endif
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
