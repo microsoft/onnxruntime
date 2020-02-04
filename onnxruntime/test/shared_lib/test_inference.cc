@@ -426,17 +426,29 @@ TEST_F(CApiTest, end_profiling) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
-  // Create session
-  Ort::SessionOptions session_options;
+  // Create session with profiling enabled (profiling is automatically turned on)
+  Ort::SessionOptions session_options_1;
 #ifdef _WIN32
-  session_options.EnableProfiling(L"profile_prefix");
+  session_options_1.EnableProfiling(L"profile_prefix");
 #else
-  session_options.EnableProfiling("profile_prefix");
+  session_options_1.EnableProfiling("profile_prefix");
 #endif
-  Ort::Session session(env_, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
-  char* profile_file = session.EndProfiling(allocator.get());
+  Ort::Session session_1(env_, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
+  char* profile_file = session_1.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
+
+  // Create session with profiling disabled
+  Ort::SessionOptions session_options_2;
+#ifdef _WIN32
+  session_options_2.DisableProfiling();
+#else
+  session_options_2.DisableProfiling();
+#endif
+  Ort::Session session_2(env_, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
+  profile_file = session_2.EndProfiling(allocator.get());
+
+  ASSERT_TRUE(std::string(profile_file) == std::string());
 }
 
 TEST_F(CApiTest, model_metadata) {

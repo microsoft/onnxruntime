@@ -652,6 +652,8 @@ struct OrtApi {
   ORT_CLASS_RELEASE(ModelMetadata);
   /**
    * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * Profiling is started automatically if enabled for the particular session by invoking EnableProfiling() 
+   * on the SessionOptions instance used to create the session.  
    */
   OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
                                                 _Outptr_ char** out)NO_EXCEPTION;
