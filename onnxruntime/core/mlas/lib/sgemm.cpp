@@ -850,12 +850,13 @@ Return Value:
 
     }
 
-    if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f))
-    {
-        // Both B and C are column-vectors that are contiguous in memory.
-        // Because transposition of such vectors doesn't change their layout, and
-        // Transpose(A*B) = Transpose(B) * Transpose(A), we can apply the same 'small-M'
-        // optimization as above, with A and B flipped.
+    //
+    // Handle the case when both B and C are column-vectors that are contiguous in memory.
+    // Because transposition of such vectors doesn't change their layout, and
+    // Transpose(A*B) = Transpose(B) * Transpose(A), we can apply the same 'small-M'
+    // optimization as above, with A and B flipped.
+    //
+    if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
 #if defined(MLAS_TARGET_AMD64)
 
