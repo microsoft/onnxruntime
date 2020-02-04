@@ -241,7 +241,7 @@ if(onnxruntime_USE_NNAPI)
 endif()
 
 if(onnxruntime_USE_FEATURIZERS)
-   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers onnxruntime_featurizers_comp)
 endif()
 
 if(onnxruntime_USE_DML)

@@ -6,7 +6,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 
-#include "Featurizers/CatImputerFeaturizer.h"
+#include "Featurizers/MinMaxImputerFeaturizer.h"
 #include "Featurizers/../Archive.h"
 
 namespace onnxruntime {
@@ -27,17 +27,26 @@ inline nonstd::optional<std::string> PreprocessOptional(std::string value) {
   return value.empty() ? nonstd::optional<std::string>() : nonstd::optional<std::string>(std::move(value));
 }
 
+// Hack
+namespace FeatDetails = Microsoft::Featurizer::Featurizers::Details;
+
 template <typename T>
-struct CatImputerTransformerImpl {
+struct MinMaxImputerTransformerT : public FeatDetails::MinMaxImputerEstimatorImpl<T, std::numeric_limits<size_t>::max()>::TransformerType {
+  using BaseType = typename FeatDetails::MinMaxImputerEstimatorImpl<T, std::numeric_limits<size_t>::max()>::TransformerType;
+  explicit MinMaxImputerTransformerT(Microsoft::Featurizer::Archive& ar) : BaseType(ar) {}
+};
+
+template <typename T>
+struct MinMaxImputerTransformerImpl {
   void operator()(OpKernelContext* ctx) const {
     // Create the transformer
-    Microsoft::Featurizer::Featurizers::CatImputerTransformer<T> transformer(
-        [ctx](void) {
+    MinMaxImputerTransformerT<T> transformer(
+        [ctx]() {
           const auto* state_tensor(ctx->Input<Tensor>(0));
           const uint8_t* const state_data(state_tensor->Data<uint8_t>());
 
           Microsoft::Featurizer::Archive archive(state_data, state_tensor->Shape().GetDims()[0]);
-          return Microsoft::Featurizer::Featurizers::CatImputerTransformer<T>(archive);
+          return MinMaxImputerTransformerT<T>(archive);
         }());
 
     // Get the input
@@ -57,20 +66,20 @@ struct CatImputerTransformerImpl {
   }
 };
 
-class CatImputerTransformer final : public OpKernel {
+class MinMaxImputerTransformer final : public OpKernel {
  public:
-  explicit CatImputerTransformer(const OpKernelInfo& info) : OpKernel(info) {
+  explicit MinMaxImputerTransformer(const OpKernelInfo& info) : OpKernel(info) {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<CatImputerTransformerImpl, float, double, std::string> t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    utils::MLTypeCallDispatcher<MinMaxImputerTransformerImpl, float, double, std::string> t_disp(ctx->Input<Tensor>(1)->GetElementType());
     t_disp.Invoke(ctx);
     return Status::OK();
   }
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    CatImputerTransformer,
+    MinMaxImputerTransformer,
     kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
@@ -79,7 +88,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<std::string>()}),
-    CatImputerTransformer);
+    MinMaxImputerTransformer);
 
 }  // namespace featurizers
 }  // namespace onnxruntime
