@@ -8,7 +8,7 @@
 #include "core/session/ort_apis.h"
 #include "winml_adapter_apis.h"
 #include "core/framework/error_code_helper.h"
-#include "core/session/onnxruntime_env.h"
+#include "core/session/ort_env.h"
 
 #ifdef USE_DML
 #include "abi_custom_registry_impl.h"

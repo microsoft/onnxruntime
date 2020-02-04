@@ -11,7 +11,7 @@
 
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
-#include "core/session/onnxruntime_env.h"
+#include "core/session/ort_env.h"
 
 #include "winml_adapter_model.h"
 #include "core/framework/utils.h"

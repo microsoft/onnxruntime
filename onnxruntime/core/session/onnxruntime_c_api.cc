@@ -18,7 +18,6 @@
 #include "core/framework/tensor.h"
 #include "core/framework/ml_value.h"
 #include "core/session/environment.h"
-#include "core/session/onnxruntime_env.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"

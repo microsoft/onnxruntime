@@ -798,7 +798,7 @@ foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework o
 endforeach()
 
 foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
-  if(NOT provider_name STREQUAL "cpu")
+  if(NOT provider_name STREQUAL "cpu" AND NOT provider_name STREQUAL "winml")
     if (MSVC)
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")

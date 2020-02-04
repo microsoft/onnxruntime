@@ -85,12 +85,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
-<<<<<<< HEAD
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} ${ONNXRUNTIME_LINKER_FLAGS}")
-
-=======
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
->>>>>>> master
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
 if(onnxruntime_ENABLE_LTO)
   set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
