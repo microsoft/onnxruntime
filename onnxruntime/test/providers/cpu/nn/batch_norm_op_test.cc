@@ -44,6 +44,9 @@ void TestBatchNorm(const InputDataMap& input_data_map,
     excluded_eps.insert(kNGraphExecutionProvider);
     excluded_eps.insert(kIntelExecutionProvider);
   }
+  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+    excluded_eps.insert(kIntelExecutionProvider);
+  #endif
   test.Run(expect_result, err_str, excluded_eps);
 }
 

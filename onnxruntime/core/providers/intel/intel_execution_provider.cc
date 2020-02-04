@@ -138,8 +138,12 @@ bool IsUnsupportedOp(std::string name, std::string device) {
 
   std::set<std::string> unsupported_ops_gpu = {
       "Cos",
+      "Atanh",
       "Cosh",
       "SinFloat",
+      "Sign",
+      "Softsign",
+      "Mod",
       "Sinh"};
 
   std::set<std::string> unsupported_ops_vpu = {
@@ -416,7 +420,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
   return false;
 }
 
-static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
+static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const std::string &device_id) {
   const auto* type_proto = node_arg->TypeAsProto();
   if (!type_proto) {
     return false;
@@ -442,18 +446,42 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer) {
         return false;
     }
   } else {
-    switch (type_proto->tensor_type().elem_type()) {
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16:
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8:
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8:
+
+    std::set<int> supported_types_cpu = {
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8
+    };
+
+    std::set<int> supported_types_gpu = {
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32
+    };
+    auto dtype = type_proto->tensor_type().elem_type();
+
+    if(device_id == "CPU" || device_id == "VPU"){
+
+      if(supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
-      default:
+      else{
         if (intel_ep::IsDebugEnabled())
           std::cout << "I/O data type is not supported" << std::endl;
         return false;
+      }
     }
+    else if (device_id == "GPU"){
+
+      if(supported_types_gpu.find(dtype) != supported_types_gpu.end())
+        return true;
+      else{
+        if (intel_ep::IsDebugEnabled())
+          std::cout << "I/O data type is not supported" << std::endl;
+        return false;
+      }
+    }
+    return true;
   }
 }
 
@@ -496,13 +524,13 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 1
   bool are_types_supported = true;
 
-  node->ForEachDef([&are_types_supported, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
+  node->ForEachDef([&are_types_supported, &graph_viewer, &device_id](const onnxruntime::NodeArg& node_arg, bool is_input) {
     bool is_initializer = false;
     if (is_input) {
       if (graph_viewer.IsConstantInitializer(node_arg.Name(), true))
         is_initializer = true;
     }
-    are_types_supported &= IsTypeSupported(&node_arg, is_initializer);
+    are_types_supported &= IsTypeSupported(&node_arg, is_initializer,device_id);
   });
 
   if (!are_types_supported) {

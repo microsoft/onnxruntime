@@ -42,6 +42,15 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
   }
 #endif
 
+//Disabled because of accuracy issues for GPU
+#if defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
+  int leaky = strcmp(szOp, "LeakyRelu");
+  if (leaky == 0) {
+    excluded_providers.insert(kIntelExecutionProvider);
+  }
+#endif
+
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
