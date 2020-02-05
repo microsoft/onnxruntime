@@ -29,5 +29,7 @@ class NcclReduceScatter final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+std::vector<std::pair<int, int>> AliasRange(int start, int end);
+
 }  // namespace cuda
 }  // namespace onnxruntime

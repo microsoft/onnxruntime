@@ -1427,6 +1427,31 @@ Return true if all elements are true and false otherwise.
           propagateElemTypeFromAttributeToOutput(ctx, "element_type", 1);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "input", "The input data as Tensor.", "T", OpSchema::Variadic)
+      .Output(0, "output", "The output.", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronG)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "input", "The input data as Tensor.", "T", OpSchema::Variadic)
+      .Output(0, "output", "The output.", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
 }
 }  // namespace training
 }  // namespace onnxruntime

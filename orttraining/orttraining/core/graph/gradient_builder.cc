@@ -868,5 +868,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetBatchNormalizationGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetMegatronFGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("NcclAllReduce",
+              {GO(0)},
+              {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetMegatronGGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Identity",
+              {GO(0)},
+              {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
