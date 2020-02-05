@@ -650,7 +650,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
 
     trt_config->addOptimizationProfile(trt_profile);
     if (fp16_en_ && trt_builder->platformHasFastFp16()) {
-      std::cout << "FP16 is enabled in compile" << std::endl;
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }
 
