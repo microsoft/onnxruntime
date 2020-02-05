@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
 #include "fft_ops.h"
 #include "fft_ops_impl.h"
 
@@ -107,7 +106,7 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFFT does not support tensor type: ", X->DataType());
   }
 
-  result = cufftXtMakePlanMany(plan, static_cast<int>(signal_ndim_), const_cast<int64_t*>(signal_dims.data()),
+  result = cufftXtMakePlanMany(plan, static_cast<int>(signal_ndim_), signal_dims.data(),
                                /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, itype,
                                /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, otype,
                                batch_size, &ws_size_t, exec_type);
@@ -136,14 +135,14 @@ template <typename T>
 Status Rfft<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
-  return FFTBase::DoFFT(context, X, false, true, false);
+  return FFTBase<T>::DoFFT(context, X, false, true, false);
 }
 
 template <typename T>
 Status Irfft<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
-  return FFTBase::DoFFT(context, X, true, false, true);
+  return FFTBase<T>::DoFFT(context, X, true, false, true);
 }
 
 }  // namespace cuda
