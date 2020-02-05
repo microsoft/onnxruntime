@@ -11,13 +11,13 @@
 namespace onnxruntime {
 
 // Information needed to construct amdmigraphx execution providers.
-struct MiGraphXExecutionProviderInfo {
+struct MIGraphXExecutionProviderInfo {
   std::string target_device;
   int device_id {0};
 };
 
 // Information to construct kernel function state.
-struct MiGraphXFuncState {
+struct MIGraphXFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocate_handle = nullptr;
@@ -29,10 +29,10 @@ struct MiGraphXFuncState {
 };
 
 // Logical device representation.
-class MiGraphXExecutionProvider : public IExecutionProvider {
+class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
-  explicit MiGraphXExecutionProvider(const MiGraphXExecutionProviderInfo& info);
-  ~MiGraphXExecutionProvider() = default;
+  explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
+  ~MIGraphXExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,

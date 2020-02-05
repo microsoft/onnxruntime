@@ -125,7 +125,7 @@ namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MiGraphX(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Mkldnn(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
@@ -278,7 +278,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
-  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kMiGraphXExecutionProvider, kCudaExecutionProvider, 
+  static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kMIGraphXExecutionProvider, kCudaExecutionProvider, 
                                                    kDnnlExecutionProvider, kNGraphExecutionProvider, kOpenVINOExecutionProvider, 
                                                    kNupharExecutionProvider, kBrainSliceExecutionProvider, kCpuExecutionProvider};
   return all_providers;
@@ -291,7 +291,7 @@ const std::vector<std::string>& GetAvailableProviders() {
     available_providers.push_back(kTensorrtExecutionProvider);
 #endif
 #ifdef USE_MIGRAPHX
-    available_providers.push_back(kMiGraphXExecutionProvider);
+    available_providers.push_back(kMIGraphXExecutionProvider);
 #endif
 #ifdef USE_CUDA
     available_providers.push_back(kCudaExecutionProvider);
@@ -325,9 +325,9 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #ifdef USE_TENSORRT
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(0));
 #endif
-    } else if (type == kMiGraphXExecutionProvider) {
+    } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_MiGraphX(0));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_MIGraphX(0));
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
@@ -441,7 +441,7 @@ void addGlobalMethods(py::module& m) {
             onnxruntime::CreateExecutionProviderFactory_Tensorrt(0),
 #endif
 #ifdef USE_MIGRAPHX
-            onnxruntime::CreateExecutionProviderFactory_MiGraphX(0)
+            onnxruntime::CreateExecutionProviderFactory_MIGraphX(0)
 #endif
         };
 

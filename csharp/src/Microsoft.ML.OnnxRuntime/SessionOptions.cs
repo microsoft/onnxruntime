@@ -117,9 +117,9 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
 
 #if USE_MIGRAPHX
-        public void AppendExecutionProvider_MiGraphX(int deviceId)
+        public void AppendExecutionProvider_MIGraphX(int deviceId)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MiGraphX(_nativePtr, deviceId));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_MIGraphX(_nativePtr, deviceId));
         }
 #endif
 

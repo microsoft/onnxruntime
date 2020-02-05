@@ -37,7 +37,7 @@ ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
     1,
-    kMiGraphXExecutionProvider,
+    kMIGraphXExecutionProvider,
     KernelDefBuilder()
         .InputMemoryType<OrtMemTypeCPUInput>(0)
         .ExecQueueId(kHipStreamCopyIn)
@@ -48,20 +48,20 @@ ONNX_OPERATOR_KERNEL_EX(
     MemcpyToHost,
     kOnnxDomain,
     1,
-    kMiGraphXExecutionProvider,
+    kMIGraphXExecutionProvider,
     KernelDefBuilder()
         .OutputMemoryType<OrtMemTypeCPUOutput>(0)
         .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMiGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMiGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-static void RegisterMiGraphXKernels(KernelRegistry& kernel_registry) {
+static void RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMiGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMiGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -69,20 +69,20 @@ static void RegisterMiGraphXKernels(KernelRegistry& kernel_registry) {
   }
 }
 
-std::shared_ptr<KernelRegistry> GetMiGraphXKernelRegistry() {
+std::shared_ptr<KernelRegistry> GetMIGraphXKernelRegistry() {
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
-  RegisterMiGraphXKernels(*kernel_registry);
+  RegisterMIGraphXKernels(*kernel_registry);
 
   return kernel_registry;
 }
 
-std::shared_ptr<KernelRegistry> MiGraphXExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetMiGraphXKernelRegistry();
+std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() const {
+  static std::shared_ptr<KernelRegistry> kernel_registry = onnxruntime::GetMIGraphXKernelRegistry();
   return kernel_registry;
 }
 
-MiGraphXExecutionProvider::MiGraphXExecutionProvider(const MiGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMiGraphXExecutionProvider} {
+MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider} {
 
   // Set GPU device to be used
   hipSetDevice(info.device_id);
@@ -110,7 +110,7 @@ MiGraphXExecutionProvider::MiGraphXExecutionProvider(const MiGraphXExecutionProv
   t_ = migraphx::target(info.target_device.c_str());
 }
 
-AllocatorPtr MiGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
     return allocator_;
   } else {
@@ -118,7 +118,7 @@ AllocatorPtr MiGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   }
 }
 
-std::unique_ptr<onnxruntime::IDataTransfer> MiGraphXExecutionProvider::GetDataTransfer() const {
+std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
   return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
@@ -204,7 +204,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       return true;
     }
 
-    // ceil_mode and dilations attrs are not supported in MiGraphX
+    // ceil_mode and dilations attrs are not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
     const auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
@@ -257,7 +257,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
     if (node->InputDefs().size() > 1) {
       return true;
     }
-    //MiGraphX does not properly handle the situation where any 
+    //MIGraphX does not properly handle the situation where any 
     //value of the "starts" attribute is higher than a corresponding 
     // value in the "ends"
     const auto& attributes = node->GetAttributes();
@@ -273,7 +273,7 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
   } else if (optype == "AveragePool") {
-    // ceil_mode attribute is not supported in MiGraphX
+    // ceil_mode attribute is not supported in MIGraphX
     const auto& attributes = node->GetAttributes();
     const auto ceil_attr = attributes.find("ceil_mode");
     // default value of ceil_mode (0) is supported.
@@ -370,14 +370,14 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       }
     }
   } else if (optype == "Expand") {
-    // MiGraphX only supports constant shape input values
+    // MIGraphX only supports constant shape input values
     const auto& shape_input = node->InputDefs()[1];
     return !graph_viewer.IsConstantInitializer(shape_input->Name(), true);
   } else if (optype == "Clip") {
-    // MiGraphX only support opset6 with 1 input
+    // MIGraphX only support opset6 with 1 input
     return (node->InputDefs().size() != 1);
   } else if (optype == "Reshape") {
-    // MiGraphX only support opset6 with 1 input
+    // MIGraphX only support opset6 with 1 input
     const auto& shape_arg = node->InputDefs()[1];
     return initializers.find(shape_arg->Name()) == initializers.end();
   } else if (optype == "Conv") {
@@ -487,7 +487,7 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
 
   auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
   meta_def->name = "MIGraphX_" + std::to_string(++op_counter);
-  meta_def->domain = kMiGraphXDomain;
+  meta_def->domain = kMIGraphXDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   meta_def->inputs = inputs;
@@ -501,7 +501,7 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
 
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer, /*out*/ std::unordered_set<std::string>& mgx_required_initializers) {
-  // const auto mgx_supported_ops = GetMiGraphXSupportedOps();
+  // const auto mgx_supported_ops = GetMIGraphXSupportedOps();
   static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Add", "ArgMax", "ArgMin", "Asin", "Atan",
       "AveragePool", "BatchNormalization", "Cast", "Ceil", "Clip", "Concat", "Constant", "ConstantFill",
       "ConstantOfShape", "Conv", "Cos", "Cosh", "Div", "Dropout", "Elu", "Erf", "Exp", "Expand", 
@@ -648,7 +648,7 @@ static void GetInputsOutputsOfSubgraph(const GraphViewer& graph_viewer,
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-MiGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -719,7 +719,7 @@ MiGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     {
       if (not d.has_dim_value())
       {
-        LOGS_DEFAULT(WARNING) << "MiGraphX, model input " << in_node.name(); 
+        LOGS_DEFAULT(WARNING) << "MIGraphX, model input " << in_node.name(); 
         LOGS_DEFAULT(WARNING) << "is dynamic shape, not supported. Fallback";
         LOGS_DEFAULT(WARNING) << "to default CPU execution!" << std::endl;
 
@@ -801,7 +801,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
   return model_proto;
 }
 
-Status MiGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
   // std::size_t fused_node_index = 0;
   for (const auto& fused_node : fused_nodes) {
@@ -865,7 +865,7 @@ Status MiGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      std::unique_ptr<MiGraphXFuncState> p = onnxruntime::make_unique<MiGraphXFuncState>();
+      std::unique_ptr<MIGraphXFuncState> p = onnxruntime::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name], t_,
             map_input_index_[context->node_name], map_output_index_[context->node_name], &mgx_mu_};
       *state = p.release();
@@ -874,12 +874,12 @@ Status MiGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
-        delete static_cast<MiGraphXFuncState*>(state);
+        delete static_cast<MIGraphXFuncState*>(state);
     };
 
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
-      MiGraphXFuncState* mgx_state = reinterpret_cast<MiGraphXFuncState*>(state);
+      MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
       std::unordered_map<std::size_t, std::size_t>& map_input_index = mgx_state->input_indexes;
       std::unordered_map<std::size_t, std::size_t>& map_output_index = mgx_state->output_indexes;
       migraphx::target t = mgx_state->t;

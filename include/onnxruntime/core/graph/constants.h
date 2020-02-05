@@ -22,7 +22,7 @@ constexpr const char* kMSNchwcDomain = "com.microsoft.nchwc";
 constexpr const char* kMSFeaturizersDomain = "com.microsoft.mlfeaturizers";
 constexpr const char* kMSDmlDomain = "com.microsoft.dml";
 constexpr const char* kNGraphDomain = "com.intel.ai";
-constexpr const char* kMiGraphXDomain = "";
+constexpr const char* kMIGraphXDomain = "";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
@@ -33,6 +33,6 @@ constexpr const char* kBrainSliceExecutionProvider = "BrainSliceExecutionProvide
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";
 constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
-constexpr const char* kMiGraphXExecutionProvider = "MiGraphXExecutionProvider";
+constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 }  // namespace onnxruntime

@@ -440,7 +440,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 #if USE_MIGRAPHX
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MiGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 #endif
 
 #if USE_NNAPI

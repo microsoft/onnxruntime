@@ -1,1 +1,1 @@
-OrtSessionOptionsAppendExecutionProvider_MiGraphX
+OrtSessionOptionsAppendExecutionProvider_MIGraphX
