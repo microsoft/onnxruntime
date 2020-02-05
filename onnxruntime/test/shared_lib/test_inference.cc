@@ -422,7 +422,7 @@ TEST(CApiTest, override_initializer) {
   ASSERT_EQ(*output_data, f11_input_data[0]);
 }
 
-TEST_F(CApiTest, end_profiling) {
+TEST(CApiTest, end_profiling) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
@@ -433,7 +433,7 @@ TEST_F(CApiTest, end_profiling) {
 #else
   session_options_1.EnableProfiling("profile_prefix");
 #endif
-  Ort::Session session_1(env_, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
+  Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
   char* profile_file = session_1.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
@@ -445,19 +445,19 @@ TEST_F(CApiTest, end_profiling) {
 #else
   session_options_2.DisableProfiling();
 #endif
-  Ort::Session session_2(env_, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
+  Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
   profile_file = session_2.EndProfiling(allocator.get());
 
   ASSERT_TRUE(std::string(profile_file) == std::string());
 }
 
-TEST_F(CApiTest, model_metadata) {
+TEST(CApiTest, model_metadata) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
 
   // Create session
   Ort::SessionOptions session_options;
-  Ort::Session session(env_, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
+  Ort::Session session(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options);
 
   // Fetch model metadata
   // The following all tap into the c++ APIs which internally wrap over C APIs
@@ -485,14 +485,4 @@ TEST_F(CApiTest, model_metadata) {
   // key doesn't exist in custom metadata map
   lookup_value = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
   ASSERT_TRUE(lookup_value == nullptr);
-}
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  int ret = RUN_ALL_TESTS();
-  //TODO: Linker on Mac OS X is kind of strange. The next line of code will trigger a crash
-#ifndef __APPLE__
-  ::google::protobuf::ShutdownProtobufLibrary();
-#endif
-  return ret;
 }
