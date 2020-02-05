@@ -27,7 +27,7 @@ extern "C" struct ExperimentalDataContainer {
   // by the client code
   OrtValue* str_;
 };
-
+extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 // A new Opaque type representation
 extern const char kMsTestDomain[] = "com.microsoft.test";
@@ -190,22 +190,13 @@ std::string CreateModel() {
   return serialized_model;
 }
 
-class OpaqueApiTest : public ::testing::Test {
- protected:
-  Ort::Env env_{nullptr};
-
-  void SetUp() override {
-    env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
-  }
-};
-
-TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
+TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
   std::string model_str = CreateModel();
 
   try {
     // initialize session options if needed
     Ort::SessionOptions session_options;
-    Ort::Session session(env_, model_str.data(), model_str.size(), session_options);
+    Ort::Session session(*ort_env.get(), model_str.data(), model_str.size(), session_options);
 
     Ort::AllocatorWithDefaultOptions allocator;
 
@@ -273,8 +264,3 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

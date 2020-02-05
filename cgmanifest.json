@@ -390,7 +390,7 @@
             "type": "git"
          }
       },
-      {  
+      {
          "component": {
             "git": {
               "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
@@ -399,8 +399,8 @@
             "type": "git"
           }
       },
-      {  
-         "component":{  
+      {
+         "component":{
             "type": "other",
             "Other": {
                "Name": "Go",
@@ -450,7 +450,7 @@
       {
          "component": {
             "git": {
-               "commitHash": "ebec32ef06859b6399bf8854f18b91158c87760b",
+               "commitHash": "afebe4c9d49ed74918bf8879aaa7aa93ccc7e47c",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"

@@ -19,7 +19,7 @@ set(mlas_common_srcs
 )
 
 if(MSVC)
-  if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+  if(onnxruntime_target_platform STREQUAL "ARM64")
     set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm)
     set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.i)
     set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.obj)
@@ -38,11 +38,11 @@ if(MSVC)
             armasm64.exe ${ARMASM_FLAGS} ${pre_filename} ${obj_filename}
     )
     set(mlas_platform_srcs ${obj_filename})
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
+  elseif(onnxruntime_target_platform STREQUAL "ARM")
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_GENERATOR MATCHES "Win64")
+  elseif(onnxruntime_target_platform STREQUAL "x64")
     enable_language(ASM_MASM)
 
     set(mlas_platform_srcs

@@ -55,6 +55,14 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
+          Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.DirectML'"
+          PackagePath="\build\native\include"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
+          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
@@ -74,6 +82,32 @@
     />
     <None Include="$(NativeBuildOutputDir)\onnxruntime.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.pdb')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.dll')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(NativeBuildOutputDir)\DirectML.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\DirectML.dll')
+                     And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
           CopyToOutputDirectory="Always"

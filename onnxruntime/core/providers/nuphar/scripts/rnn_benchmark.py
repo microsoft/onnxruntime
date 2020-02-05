@@ -13,11 +13,14 @@ import onnx
 import onnxruntime
 from onnx import helper, numpy_helper
 from onnx import shape_inference
+from onnx import IR_VERSION
 import os
 from timeit import default_timer as timer
 
 def generate_model(rnn_type, input_dim, hidden_dim, bidirectional, layers, model_name, batch_one=True, has_seq_len=False):
     model = onnx.ModelProto()
+    model.ir_version = IR_VERSION
+    
     opset = model.opset_import.add()
     opset.domain == 'onnx'
     opset.version = 7
