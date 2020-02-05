@@ -376,6 +376,33 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if is_windows():
         cmake_args += cmake_extra_args
 
+    # ADO pipelines will store the pipeline build number (e.g. 191101-2300.1.master) and 
+    # source version in environment variables. If present, use these values to define the 
+    # WinML/DML DLL versions.
+    build_number = os.getenv('Build_BuildNumber')
+    source_version = os.getenv('Build_SourceVersion')
+    if build_number and source_version:
+        print('found env vars')
+        matches = re.match(r"^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)\.(\d)\.(\S+)$", build_number)
+        if matches:
+            print('matched build number')
+            YY = matches.group(1)
+            MM = matches.group(2)
+            DD = matches.group(3)
+            HH = matches.group(4)
+
+            # Example (BuildNumber: 191101-2300.1.master, SourceVersion: 0bce7ae6755c792eda558e5d27ded701707dc404)
+            # MajorPart = 1
+            # MinorPart = 0
+            # BuildPart = 1911
+            # PrivatePart = 123
+            # String = 191101-2300.1.master.0bce7ae
+            cmake_args += ["-DWINML_VERSION_MAJOR_PART=1",
+                        "-DWINML_VERSION_MINOR_PART=0",
+                        f"-DWINML_VERSION_BUILD_PART={YY}{MM}",
+                        f"-DWINML_VERSION_PRIVATE_PART={DD}{HH}",
+                        f"-DWINML_VERSION_STRING=1.0.{build_number}.{source_version[0:7]}"]
+    
     for config in configs:                
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)

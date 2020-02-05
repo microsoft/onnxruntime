@@ -26,15 +26,28 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 if(WIN32)
-    add_library(onnxruntime SHARED ${SYMBOL_FILE} "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc")
+    add_library(onnxruntime SHARED 
+      ${SYMBOL_FILE}
+      "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
+      ${PROJECT_SOURCE_DIR}/onnxruntime.rc
+    )
 else()
-    add_library(onnxruntime SHARED ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+    add_library(onnxruntime SHARED 
+      ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
+      ${PROJECT_SOURCE_DIR}/onnxruntime.rc
+    )
 endif()
 
 set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime)
+
+target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${WINML_VERSION_MAJOR_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${WINML_VERSION_MINOR_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${WINML_VERSION_BUILD_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${WINML_VERSION_PRIVATE_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${WINML_VERSION_STRING}\")
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
