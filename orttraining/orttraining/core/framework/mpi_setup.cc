@@ -59,5 +59,6 @@ void shutdown_horovod() {
   }
 }
 #endif
+
 }  // namespace training
 }  // namespace onnxruntime

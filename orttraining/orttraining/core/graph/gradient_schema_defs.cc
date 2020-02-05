@@ -1350,6 +1350,83 @@ Return true if all elements are true and false otherwise.
           "TOut",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain scale types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Send)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Send data tensor to the specified destination.")
+      .Input(0, "InputSignal", "Input control signal.", "TBool")
+      .Input(1, "Data", "Tensor to send.", "T")
+      .Output(0, "OutputSignal", "Output control signal.", "TBool")
+      .Attr("src",
+            "Abstractive memory ID of Data's source.",
+            AttributeProto::INT)
+      .Attr("dst",
+            "Abstractive memory ID of Data's destination.",
+            AttributeProto::INT)
+      .Attr("tag", "The tag of the message carrying Data.",
+            AttributeProto::INT)
+      .Attr("element_type", "Element type of the sent tensor.",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "TBool",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx){
+          if (ctx.getNumInputs() != 2)
+            fail_shape_inference("Send must have two inputs.");
+          if (ctx.getNumOutputs() != 1)
+            fail_shape_inference("Send must have one output.");
+          
+          auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
+          output_element_type->set_elem_type(TensorProto::BOOL);
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          updateOutputShape(ctx, 0, {});
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Recv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Receive a tensor from the the specified source.")
+      .Input(0, "InputSignal", "Input control signal.", "TBool")
+      .Output(0, "OutputSignal", "Output control signal.", "TBool")
+      .Output(1, "Data", "The Received tensor.", "T")
+      .Attr("src",
+            "Abstractive memory ID of Data's source.",
+            AttributeProto::INT)
+      .Attr("dst",
+            "Abstractive memory ID of Data's destination.",
+            AttributeProto::INT)
+      .Attr("tag", "The tag of the message carrying Data.",
+            AttributeProto::INT)
+      .Attr("element_type", "Element type of the received tensor.",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "TBool",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx){
+          if (ctx.getNumInputs() != 1)
+            fail_shape_inference("Recv must have one inputs.");
+          if (ctx.getNumOutputs() != 2)
+            fail_shape_inference("Recv must have two output.");
+
+          updateOutputShape(ctx, 0, {});
+          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+          propagateElemTypeFromAttributeToOutput(ctx, "element_type", 1);
+      });
+
 }
 }  // namespace training
 }  // namespace onnxruntime
