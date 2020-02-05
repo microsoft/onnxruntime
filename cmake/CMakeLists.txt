@@ -90,6 +90,7 @@ option(tensorflow_C_PACKAGE_PATH "Path to tensorflow C package installation dir"
 option(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS "Enable operator implemented in language other than cpp" OFF)
 option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output data to standard output when executing the model." OFF)
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
+option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
@@ -210,10 +211,14 @@ if (MSVC)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
   endif()
-  check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
-  if (HAS_QSPECTRE)
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
+  # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
+  # WinML performs spectre mitigation differently.
+  if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
+    check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
+    if (HAS_QSPECTRE)
+      SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
+    endif()
   endif()
   SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
   check_cxx_compiler_flag(-guard:cf HAS_GUARD_CF)
@@ -547,9 +552,12 @@ if (WIN32)
 
     # set linker flags to minimize the binary size.
     if (MSVC)
-      foreach(type EXE SHARED)
-        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
-        set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+      foreach(type EXE STATIC SHARED)
+        if (NOT type MATCHES STATIC)
+          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
+          set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+          #TODO: the "/LTCG" switch should be controlled by onnxruntime_ENABLE_LTO
+        endif()
         if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
@@ -791,7 +799,7 @@ foreach(target_name onnxruntime_common onnxruntime_graph onnxruntime_framework o
 endforeach()
 
 foreach(provider_name ${ONNXRUNTIME_PROVIDER_NAMES})
-  if(NOT provider_name STREQUAL "cpu")
+  if(NOT provider_name STREQUAL "cpu" AND NOT provider_name STREQUAL "winml")
     if (MSVC)
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
       target_compile_options(onnxruntime_providers_${provider_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
@@ -816,6 +824,18 @@ else()
 endif()
 
 
+
+if (onnxruntime_USE_WINML)
+  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
+  # CPU only WINML
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    message(
+        FATAL_ERROR 
+        "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
+  endif()
+  include(wil.cmake)
+  include(winml.cmake)
+endif() # if(onnxruntime_USE_WINML)
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
