@@ -140,7 +140,7 @@
             "type": "git",
             "git": {
                "commitHash": "899973df982f2d389659d9e4266efabb3da1ecc8",
-               "repositoryUrl": "https://github.com/eigenteam/eigen-git-mirror.git"
+               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
             }
          }
       },
