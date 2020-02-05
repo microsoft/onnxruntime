@@ -390,7 +390,7 @@
             "type": "git"
          }
       },
-      {  
+      {
          "component": {
             "git": {
               "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
@@ -399,8 +399,8 @@
             "type": "git"
           }
       },
-      {  
-         "component":{  
+      {
+         "component":{
             "type": "other",
             "Other": {
                "Name": "Go",

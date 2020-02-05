@@ -2,13 +2,28 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
-#include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
-#include "core/session/environment.h"
+#include <atomic>
+#include <string>
 #include "core/session/onnxruntime_c_api.h"
+#include "core/common/logging/isink.h"
+#include "core/platform/ort_mutex.h"
+#include "core/common/status.h"
+
+namespace onnxruntime {
+class Environment;
+}
+
+class LoggingWrapper : public onnxruntime::logging::ISink {
+ public:
+  LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param);
+
+  void SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
+                const onnxruntime::logging::Capture& message) override;
+
+ private:
+  OrtLoggingFunction logging_function_;
+  void* logger_param_;
+};
 
 struct OrtEnv {
  public:
@@ -26,24 +41,14 @@ struct OrtEnv {
     OrtLoggingLevel default_warning_level;
     const char* logid{};
   };
+
   static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info, onnxruntime::common::Status& status);
 
-  static void Release(OrtEnv* env_ptr) {
-    if (!env_ptr) {
-      return;
-    }
-    std::lock_guard<onnxruntime::OrtMutex> lock(m_);
-    ORT_ENFORCE(env_ptr == p_instance_);  // sanity check
-    --ref_count_;
-    if (ref_count_ == 0) {
-      delete p_instance_;
-      p_instance_ = nullptr;
-    }
-  }
+  static void Release(OrtEnv* env_ptr);
 
-  onnxruntime::logging::LoggingManager* GetLoggingManager() const {
-    return logging_manager_.get();
-  }
+  onnxruntime::logging::LoggingManager* GetLoggingManager() const;
+
+  void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
  private:
   static OrtEnv* p_instance_;
@@ -53,10 +58,7 @@ struct OrtEnv {
   std::unique_ptr<onnxruntime::Environment> value_;
   std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager_;
 
-  OrtEnv(std::unique_ptr<onnxruntime::Environment> value1, std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager)
-      : value_(std::move(value1)), logging_manager_(std::move(logging_manager)) {
-  }
-
+  OrtEnv(std::unique_ptr<onnxruntime::Environment> value1, std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
   ~OrtEnv() = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
