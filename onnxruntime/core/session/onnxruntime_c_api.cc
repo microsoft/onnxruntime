@@ -12,7 +12,6 @@
 #include <sstream>
 
 #include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/status.h"
 #include "core/graph/graph.h"
 #include "core/framework/allocator.h"
@@ -1394,6 +1393,14 @@ static constexpr OrtApi ort_api_1_to_2 = {
     // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 2 - In development, feel free to add/remove/rearrange here
+    &OrtApis::GetDenotationFromTypeInfo,
+    &OrtApis::CastTypeInfoToMapTypeInfo,
+    &OrtApis::CastTypeInfoToSequenceTypeInfo,
+    &OrtApis::GetMapKeyType,
+    &OrtApis::GetMapValueType,
+    &OrtApis::GetSequenceElementType,
+    &OrtApis::ReleaseMapTypeInfo,
+    &OrtApis::ReleaseSequenceTypeInfo
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

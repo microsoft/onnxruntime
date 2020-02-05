@@ -13,7 +13,8 @@
 
 using namespace Microsoft::WRL;
 
-namespace winrt::Windows::AI::MachineLearning::implementation {
+namespace Windows::AI::MachineLearning::Adapter
+{
 
 size_t AttributeValue::ElementCount() const {
   switch (type) {
@@ -91,8 +92,8 @@ bool IsAllocationInterface(const ::OrtMemoryInfo& info) {
 // the ABI. The translation is determined by the provider and based on options with which the
 // kernels are registered.
 void TranslateAllocationDataToAbi(
-    winrt::Windows::AI::MachineLearning::implementation::IWinmlExecutionProvider* winmlProvider,
-    bool isInternalOperator,
+    IWinmlExecutionProvider* winmlProvider, 
+    bool isInternalOperator, 
     const ::OrtMemoryInfo& allocInfo,
     IUnknown* allocation,
     IUnknown** abiAllocation) {
@@ -1669,17 +1670,20 @@ EdgeShapes AbiOpKernel::GetInputShapes(onnxruntime::OpKernelContext* context) co
 
 void AbiOpKernel::InferAndVerifyOutputSizes(
     gsl::span<const uint32_t> requiredConstantCpuInputs,
-    MLOperatorTensorGetter& constantInputGetter,
-    const EdgeShapes* inputShapes,
-    EdgeShapes& outputShapes) const {
-  winrt::Windows::AI::MachineLearning::implementation::InferAndVerifyOutputSizes(
-      Node(),
-      m_defaultAttributes,
-      m_shapeInferrer.Get(),
-      requiredConstantCpuInputs,
-      constantInputGetter,
-      inputShapes,
-      outputShapes);
+    MLOperatorTensorGetter& constantInputGetter, 
+    const EdgeShapes* inputShapes, 
+    EdgeShapes& outputShapes) const
+{
+    // call the non member function (below)
+    Windows::AI::MachineLearning::Adapter::InferAndVerifyOutputSizes(
+        Node(),
+        m_defaultAttributes, 
+        m_shapeInferrer.Get(), 
+        requiredConstantCpuInputs,
+        constantInputGetter,
+        inputShapes, 
+        outputShapes
+    );
 }
 
 void InferAndVerifyOutputSizes(

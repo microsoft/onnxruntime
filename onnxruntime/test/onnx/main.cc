@@ -606,8 +606,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif
 
-#ifdef DISABLE_CONTRIB_OPS
+  // Disable mask_rcnn_keras as this model currently has an invalid contrib op version set to 10
   broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
+
+#ifdef DISABLE_CONTRIB_OPS
   broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
