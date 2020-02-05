@@ -31,7 +31,7 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
-//REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex_input, bool complex_output, bool inverse) const {

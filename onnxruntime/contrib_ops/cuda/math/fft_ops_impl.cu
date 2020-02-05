@@ -3,32 +3,36 @@
 
 #pragma once
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
+
 #include "fft_ops_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+using namespace onnxruntime::cuda;
+
 template <typename T>
 __global__ void _Normalize(
     T* data,
     const int64_t N,
     const int64_t scale) {
-  CUDA_LONG id = ::onnxruntime::cuda::GridDim::GetLinearThreadId();
-  if (id >= N)
-    return;
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)
 
   int index = static_cast<int>(id);
-  data[index] = data[index] / scale;
+  data[index] = data[index] / static_cast<T>(scale);
 }
 
 template <typename T>
 void PostProcess(const std::vector<int64_t>& signal_dims, Tensor* Y, T* output_data) {
-  int64_t scale = (std::accumulate(signal_dims.begin(), signal_dims.end(), 1ll, std::multiplies<int64_t>()));
+  int64_t scale = std::accumulate(signal_dims.begin(), signal_dims.end(), 1ll, std::multiplies<int64_t>());
 
   TensorShape output_shape = Y->Shape();
   int64_t N = output_shape.Size();
-  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / ::onnxruntime::cuda::GridDim::maxThreadsPerBlock));
-  _Normalize<T><<<blocksPerGrid, ::onnxruntime::cuda::GridDim::maxThreadsPerBlock, 0>>>(output_data, N, scale);
+  int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  _Normalize<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output_data, N, scale);
 }
 
 #define SPECIALIZED_IMPL(T) \
@@ -36,7 +40,7 @@ void PostProcess(const std::vector<int64_t>& signal_dims, Tensor* Y, T* output_d
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)
-//SPECIALIZED_IMPL(half)
+SPECIALIZED_IMPL(half)
 
 }  // namespace cuda
 }  // namespace contrib
