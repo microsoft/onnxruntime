@@ -30,14 +30,14 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
 template <typename T>
 class Rfft final : public FFTBase<T> {
  public:
-  Rfft(const OpKernelInfo info) : FFTBase{info} {}
+  Rfft(const OpKernelInfo info) : FFTBase<T>{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 template <typename T>
 class Irfft final : public FFTBase<T> {
  public:
-  Irfft(const OpKernelInfo info) : FFTBase{info} {}
+  Irfft(const OpKernelInfo info) : FFTBase<T>{info} {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 

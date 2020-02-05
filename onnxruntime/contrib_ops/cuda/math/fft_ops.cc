@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
 #include "fft_ops.h"
 #include "fft_ops_impl.h"
 
@@ -136,14 +135,14 @@ template <typename T>
 Status Rfft<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
-  return FFTBase::DoFFT(context, X, false, true, false);
+  return FFTBase<T>::DoFFT(context, X, false, true, false);
 }
 
 template <typename T>
 Status Irfft<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
-  return FFTBase::DoFFT(context, X, true, false, true);
+  return FFTBase<T>::DoFFT(context, X, true, false, true);
 }
 
 }  // namespace cuda
