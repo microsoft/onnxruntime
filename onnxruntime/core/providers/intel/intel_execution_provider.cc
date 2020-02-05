@@ -763,11 +763,10 @@ std::vector<std::unique_ptr<ComputeCapability>>
 IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                       const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
-  std::cout << "In the Intel EP" << std::endl;
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  //TODO:(nivas) Handle If and Loop operators
+  //TODO: Handle If and Loop operators
   if (graph_viewer.IsSubgraph()) {
     return result;
   }
