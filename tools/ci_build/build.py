@@ -397,11 +397,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             # BuildPart = 1911
             # PrivatePart = 123
             # String = 191101-2300.1.master.0bce7ae
-            cmake_args += ["-DWINML_VERSION_MAJOR_PART=1",
-                        "-DWINML_VERSION_MINOR_PART=0",
-                        f"-DWINML_VERSION_BUILD_PART={YY}{MM}",
-                        f"-DWINML_VERSION_PRIVATE_PART={DD}{HH}",
-                        f"-DWINML_VERSION_STRING=1.0.{build_number}.{source_version[0:7]}"]
+            cmake_args += ["-DFILEINFO_VERSION_MAJOR_PART=1",
+                        "-DFILEINFO_VERSION_MINOR_PART=0",
+                        f"-DFILEINFO_VERSION_BUILD_PART={YY}{MM}",
+                        f"-DFILEINFO_VERSION_PRIVATE_PART={DD}{HH}",
+                        f"-DFILEINFO_VERSION_STRING=1.0.{build_number}.{source_version[0:7]}"]
     
     for config in configs:                
         config_build_dir = get_config_build_dir(build_dir, config)
