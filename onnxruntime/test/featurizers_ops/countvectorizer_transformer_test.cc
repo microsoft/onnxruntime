@@ -28,7 +28,6 @@ std::vector<uint8_t> GetStream(EstimatorT& estimator, const std::vector<std::vec
 
 // string - without binary with decorator, analyze word, maxdf = 1, mindf = 0, topk = null, empty vocabulary, ngram_min = 1, ngram_max = 1"
 TEST(FeaturizersTests, CountVectorizerTransformer_string_nobinary_with_decorator) {
-  using TransformedType = NS::Featurizers::SparseVectorEncoding<std::uint32_t>;
 
   EstimatorT estimator(NS::CreateTestAnnotationMapsPtr(1), 0, true, AnalyzerMethod::Word, "",
                        1.0, 0, nonstd::optional<std::uint32_t>(), 1, 1, false);
@@ -50,7 +49,6 @@ TEST(FeaturizersTests, CountVectorizerTransformer_string_nobinary_with_decorator
 
 // string - with binary with decorator, analyze word, maxdf = 1, mindf = 0, topk = null, empty vocabulary, ngram_min = 1, ngram_max = 1
 TEST(FeaturizersTests, CountVectorizerTransformer_string_withbinary_withdecorator) {
-  using TransformedType = NS::Featurizers::SparseVectorEncoding<std::uint32_t>;
 
   EstimatorT estimator(NS::CreateTestAnnotationMapsPtr(1), 0, false, AnalyzerMethod::Word, "",
                        1.0, 0, nonstd::optional<std::uint32_t>(), 1, 1, true);
