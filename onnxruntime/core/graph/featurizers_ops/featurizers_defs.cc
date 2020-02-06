@@ -33,6 +33,7 @@ using ONNX_NAMESPACE::OPTIONAL;
 
 // Forward declarations
 static void RegisterCatImputerFeaturizerVer1();
+static void RegisterCountVectorizerFeaturizerVer1();
 static void RegisterDateTimeFeaturizerVer1();
 static void RegisterFromStringFeaturizerVer1();
 static void RegisterHashOneHotVectorizerFeaturizerVer1();
@@ -52,6 +53,7 @@ static void RegisterPCAFeaturizerVer1();
 static void RegisterRobustScalerFeaturizerVer1();
 static void RegisterStandardScaleWrapperFeaturizerVer1();
 static void RegisterStringFeaturizerVer1();
+static void RegisterTfidfVectorizerFeaturizerVer1();
 static void RegisterTimeSeriesImputerFeaturizerVer1();
 static void RegisterTruncatedSVDFeaturizerVer1();
 
@@ -60,6 +62,7 @@ static void RegisterTruncatedSVDFeaturizerVer1();
 // ----------------------------------------------------------------------
 void RegisterMSFeaturizersSchemas() {
   RegisterCatImputerFeaturizerVer1();
+  RegisterCountVectorizerFeaturizerVer1();
   RegisterDateTimeFeaturizerVer1();
   RegisterFromStringFeaturizerVer1();
   RegisterHashOneHotVectorizerFeaturizerVer1();
@@ -79,6 +82,7 @@ void RegisterMSFeaturizersSchemas() {
   RegisterNormalizeFeaturizerVer1();
   RegisterStandardScaleWrapperFeaturizerVer1();
   RegisterStringFeaturizerVer1();
+  RegisterTfidfVectorizerFeaturizerVer1();
   RegisterTimeSeriesImputerFeaturizerVer1();
   RegisterTruncatedSVDFeaturizerVer1();
 }
@@ -136,6 +140,70 @@ void RegisterCatImputerFeaturizerVer1() {
             if (hasInputShape(ctx, 1)) {
               propagateShapeFromInputToOutput(ctx, 1, 0);
             }
+          });
+}
+
+void RegisterCountVectorizerFeaturizerVer1() {
+  static const char* doc = R"DOC(
+      Returns the count of the number of occurrances of each distinct item according to a
+      vocabulary established during training.
+
+      C++-style pseudo signature:
+        CountVector execute(std::string const &value);
+
+      Examples:
+        Assuming the training data is...
+        ["orange apple orange grape", "grape carrot carrot apple", "peach banana orange banana"]
+
+        The input data is...
+        "banana grape grape apple apple apple orange"
+
+        The result will be computed by...
+          categorize and compute each word's number of apperance in input data, we have "apple -> 3", "banana -> 1", "grape -> 2", "orange -> 1"
+          construct a dictionary and assign id for each unique word using training data, we have "apple -> 0", "banana -> 1", "grape -> 3", "orange -> 4"
+          generate TFStruct by combining <word's id, word's number of apperance>
+
+        The result is...
+        [3, 1, 0, 2, 1]
+  )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(CountVectorizerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "T")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "T1")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint32)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_UINT32, 0);
+            ONNX_NAMESPACE::TensorShapeProto shape_0;
+            shape_0.add_dim();  // unknown at this time
+            ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape_0);
           });
 }
 
@@ -1405,6 +1473,78 @@ void RegisterStringFeaturizerVer1() {
             if (hasInputShape(ctx, 1)) {
               propagateShapeFromInputToOutput(ctx, 1, 0);
             }
+          });
+}
+
+void RegisterTfidfVectorizerFeaturizerVer1() {
+  static const char* doc = R"DOC(
+      Convert a collection of raw documents to a matrix of TF-IDF features
+
+      C++-style pseudo signature:
+        TfidfVector execute(std::string const &value);
+
+      Examples:
+        Assuming the training data is...
+        ["this is the first document", "this document is the second document", "and this is the third one", "is this the first document"]
+
+        Assuming the input data is...
+        "this is the first document"
+        The default result will be...
+        [0. , 0.469791f, 0.580286f, 0.384085f, 0. , 0. , 0.384085f, 0. , 0.384085f]
+
+        Assuming the input data is...
+        "this document is the second document"
+        The default result will be...
+        [0. , 0.687624f, 0. , 0.281089f, 0. , 0.538648f, 0.281089f, 0. , 0.281089f]
+
+        Assuming the input data is...
+        "and this is the third one"
+        The default result will be...
+        [0.511849f, 0. , 0. , 0.267104f, 0.511849f, 0. , 0.267104f, 0.511849f, 0.267104f]
+
+        Assuming the input data is...
+        "is this the first document"
+        The default result will be...
+        [0. , 0.469791f, ,0.580286f, 0.384085f, 0. , 0. , 0.384085f, 0. , 0.384085f]
+  )DOC";
+
+  MS_FEATURIZERS_OPERATOR_SCHEMA(TfidfVectorizerTransformer)
+      .SinceVersion(1)
+      .SetDomain(kMSFeaturizersDomain)
+      .SetDoc(doc)
+      .Input(
+          0,
+          "State",
+          "State generated during training that is used for prediction",
+          "T0")
+      .Input(
+          1,
+          "Input",
+          "No information is available",
+          "T")
+      .Output(
+          0,
+          "Output",
+          "No information is available",
+          "T1")
+      .TypeConstraint(
+          "T0",
+          {"tensor(uint8)"},
+          "No information is available")
+      .TypeConstraint(
+          "T",
+          {"tensor(string)"},
+          "No information is available")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "No information is available")
+      .TypeAndShapeInferenceFunction(
+          [](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 0);
+            ONNX_NAMESPACE::TensorShapeProto shape_0;
+            shape_0.add_dim();  // unknown at this time
+            ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape_0);
           });
 }
 
