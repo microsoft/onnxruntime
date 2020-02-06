@@ -162,7 +162,7 @@
           Visible="false"
     />
     <!-- Some tools to be packaged in nightly build only, should not be released -->
-    <!-- These are copied to the runtimes folder for coveniennce of loading with the dlls -->
+    <!-- These are copied to the runtimes folder for covenience of loading with the dlls -->
     <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe"
           Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
