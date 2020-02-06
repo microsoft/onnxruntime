@@ -93,21 +93,27 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<CUDAPinnedAllocator>(0, TRT_PINNED); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(pinned_allocator_info, device_id_));
 
-  const char* batch_env = getenv("ORT_TENSORRT_MAX_PARTITION_ITERATIONS");
-  if (batch_env)
-    max_partition_iterations_ = atoi(batch_env);
+  // Get environment variables
+  const Env& env_instance = Env::Default();
+  const std::string max_partition_iterations_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
+  if (!max_partition_iterations_env.empty()) {
+    max_partition_iterations_ = stoi(max_partition_iterations_env);
+  }
 
-  const char* subgraph_size_env = getenv("ORT_TENSORRT_MIN_SUBGRAPH_SIZE");
-  if (subgraph_size_env)
-    min_subgraph_size_ = atoi(subgraph_size_env);
+  const std::string min_subgraph_size_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kMinSubgraphSize);
+  if (!min_subgraph_size_env.empty()) {
+    min_subgraph_size_ = stoi(min_subgraph_size_env);
+  }
 
-  const char* workspace_env = getenv("ORT_TENSORRT_MAX_WORKSPACE_SIZE");
-  if (workspace_env)
-    max_workspace_size_ = atoi(workspace_env);
+  const std::string max_workspace_size_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
+  if (!max_workspace_size_env.empty()) {
+    max_workspace_size_ = stoi(max_workspace_size_env);
+  }
 
-  const char* fp16_env = getenv("ORT_TENSORRT_FP16_ENABLE");
-  if (fp16_env)
-    fp16_en_ = (atoi(fp16_env) == 0 ? false : true);
+  const std::string fp16_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
+  if (!fp16_enable_env.empty()) {
+    fp16_enable_ = (stoi(fp16_enable_env) == 0 ? false : true);
+  }  
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -649,7 +655,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
     }
 
     trt_config->addOptimizationProfile(trt_profile);
-    if (fp16_en_ && trt_builder->platformHasFastFp16()) {
+    if (fp16_enable_ && trt_builder->platformHasFastFp16()) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }
 
@@ -736,7 +742,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_en_};
+            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_};
       *state = p.release();
       return 0;
     };
@@ -761,7 +767,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int total_bindings = num_binding_inputs + num_binding_outputs;
       std::vector<void*> buffers(total_bindings);
 
-      //TODO: check shape tensor inputs by allInputShapesSpecified()
       bool dynamic_shape = false;
       auto trt_context = trt_state->context;
       if (!trt_context->allInputDimensionsSpecified() || !trt_context->allInputShapesSpecified()) {
@@ -843,7 +848,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       if (dimension_update) {
         auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->addOptimizationProfile(trt_profile);
-        if (*(trt_state->fp16_en_ptr) && trt_builder->platformHasFastFp16()) {
+        if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
         }
         trt_state->engine = trt_builder->buildEngineWithConfig(*trt_state->network, *trt_config);

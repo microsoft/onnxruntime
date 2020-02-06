@@ -505,7 +505,7 @@ def setup_tensorrt_vars(args):
         os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
 
         # Set FP16 flag
-        os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
+        os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
 
     return tensorrt_home
 
