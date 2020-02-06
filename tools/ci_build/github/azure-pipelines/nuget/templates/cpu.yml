@@ -58,7 +58,7 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release /t:CreatePackage
      cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
      ren *.nupkg win-arm64.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
@@ -79,7 +79,7 @@ jobs:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /t:CreatePackage
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release /t:CreatePackage
      cd $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\
      ren *.nupkg win-arm.zip
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*zip $(Build.ArtifactStagingDirectory)
