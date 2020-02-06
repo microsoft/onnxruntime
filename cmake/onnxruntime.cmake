@@ -40,11 +40,11 @@ add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEP
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime)
 
-target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${FILEINFO_VERSION_MAJOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${FILEINFO_VERSION_MINOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${FILEINFO_VERSION_BUILD_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${FILEINFO_VERSION_PRIVATE_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${FILEINFO_VERSION_STRING}\")
+target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${ORT_VERSION_MAJOR_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${ORT_VERSION_MINOR_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${ORT_VERSION_STRING}\")
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
