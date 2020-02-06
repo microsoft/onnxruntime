@@ -824,14 +824,11 @@ else()
 endif()
 
 # Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds 
-set(WINML_VERSION_MAJOR_PART 0 CACHE STRING "First part of numeric file/product version.")
-set(WINML_VERSION_MINOR_PART 0 CACHE STRING "Second part of numeric file/product version.")
-set(ORT_VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
-set(ORT_VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
+set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
+set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
 set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
 set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
-set(WINML_VERSION_STRING     "Internal Build" CACHE STRING "String representation of file/product version.")
-set(ORT_VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
+set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 if (onnxruntime_USE_WINML)
   # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
