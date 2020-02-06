@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #pragma once
+#include "test/providers/provider_test_utils.h"
 #include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
@@ -82,12 +83,26 @@ class GradientChecker {
                        const std::vector<TensorInfo>& y_infos,
                        std::vector<std::vector<JAC_T>>* jacobians);
 
-  std::vector<OrtValue> EvaluateFunctionAtInput(const training::OpDef& op_def,
-                                                const std::vector<TensorInfo>& x_infos,
-                                                const std::vector<TensorInfo>& y_infos,
-                                                std::vector<std::vector<X_T>>* x_datas,
-                                                std::vector<std::vector<Y_T>>* y_datas,
-                                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
+  std::vector<OrtValue> EvaluateFunctionAtInput(OpTester& op_tester, 
+                                                 const std::vector<TensorInfo>& x_infos,
+                                                 const std::vector<TensorInfo>& y_infos,
+                                                 std::vector<std::vector<X_T>>* x_datas,
+                                                 std::vector<std::vector<Y_T>>* y_datas);
+
+  Status InitOpTesterWithGraph(OpTester& op_tester,
+                               const std::vector<TensorInfo>& x_infos,
+                               const std::vector<TensorInfo>& y_infos,
+                               std::vector<std::vector<X_T>>* x_datas,
+                               std::vector<std::vector<Y_T>>* y_datas,
+                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+                               const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+
+  Status InitOpTesterWithGradGraph(OpTester& op_tester,
+                               const std::vector<TensorInfo>& x_infos,
+                               const std::vector<TensorInfo>& y_infos,
+                               std::vector<std::vector<X_T>>* x_datas,
+                               std::vector<std::vector<Y_T>>* y_datas,
+                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
   Status ComputeTheoreticalJacobianTranspose(const training::OpDef& op_def,
                                              const std::vector<TensorInfo>& x_infos,

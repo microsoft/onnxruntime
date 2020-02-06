@@ -453,6 +453,24 @@ class OpTester {
 
   std::vector<MLValue> GetFetches() { return fetches_; }
 
+  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+
+  // storing p_model as cache
+  void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
+     cached_model_ = model;
+  }
+
+  std::shared_ptr<onnxruntime::Model> GetModelCache() {
+    return cached_model_;
+  }
+
+  // clear input/output data, fetches will be cleared in Run()
+  void ClearData() {
+    input_data_.clear();
+    output_data_.clear();
+    initializer_index_.clear();
+  }
+
   struct Data {
     onnxruntime::NodeArg def_;
     OrtValue data_;
@@ -470,6 +488,14 @@ class OpTester {
     Data& operator=(Data&&) = default;
   };
 
+  std::vector<Data>& GetInputData() {
+    return input_data_;
+  }
+
+  std::vector<Data>& GetOutputData() {
+    return output_data_;
+  }
+
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
@@ -479,8 +505,6 @@ class OpTester {
 
   void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names);
-
-  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 
   template <class SessionType>
   std::vector<MLValue> ExecuteModel(Model& model,
@@ -497,6 +521,9 @@ class OpTester {
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
+
+  // for gradient unit tests only 
+  std::shared_ptr<onnxruntime::Model> cached_model_;
 
 #ifndef NDEBUG
   bool run_called_{};

@@ -26,55 +26,57 @@ void GradientOpTester::Run(
     fetches_.clear();
 
     std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
-    auto p_model = BuildGraph(extra_domain_to_version);
+    bool cacheEnabled = cached_model_ != nullptr;
+    auto p_model = !cacheEnabled ? BuildGraph(extra_domain_to_version) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
-    if (expect_result == ExpectResult::kExpectFailure) {
-      // capture possible exceptions from shape inference for invalid testcase
-      try {
-        status = graph.Resolve();
-      } catch (const std::exception& ex) {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      }
-    } else {
-      status = graph.Resolve();
-    }
-
-    if (!status.IsOK()) {
+    if (!cacheEnabled) {
       if (expect_result == ExpectResult::kExpectFailure) {
-        EXPECT_TRUE(!status.IsOK());
-        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+        // capture possible exceptions from shape inference for invalid testcase
+        try {
+          status = graph.Resolve();
+        } catch (const std::exception& ex) {
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        }
       } else {
-        LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
-        EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+        status = graph.Resolve();
       }
-    }
 
-    // TODO: We will need finer control over both inputs and ouptuts
-    // Not all inputs/outputs reqiures/have a gradient, e.g.index in gather
-    std::unordered_set<std::string> weights_to_train;
-    for (size_t i = 0; i < input_data_.size(); i++) {
-      if (input_infos_[i].has_gradient) {
-        weights_to_train.insert(input_data_[i].def_.Name());
+      if (!status.IsOK()) {
+        if (expect_result == ExpectResult::kExpectFailure) {
+          EXPECT_TRUE(!status.IsOK());
+          EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+        } else {
+          LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
+          EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+        }
       }
-    }
 
-    std::unordered_set<std::string> dy_values;
-    for (size_t i = 0; i < output_data_.size(); i++) {
-      if (output_infos_[i].has_gradient) {
-        dy_values.insert(output_data_[i].def_.Name());
+      // TODO: We will need finer control over both inputs and ouptuts
+      // Not all inputs/outputs reqiures/have a gradient, e.g.index in gather
+      std::unordered_set<std::string> weights_to_train;
+      for (size_t i = 0; i < input_data_.size(); i++) {
+        if (input_infos_[i].has_gradient) {
+          weights_to_train.insert(input_data_[i].def_.Name());
+        }
       }
-    }
 
-    training::GradientGraphBuilder grad_graph_builder(&graph,
-                                                      dy_values,
-                                                      weights_to_train,
-                                                      "",
-                                                      true);
-    status = grad_graph_builder.Build();
-    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    ;
+      std::unordered_set<std::string> dy_values;
+      for (size_t i = 0; i < output_data_.size(); i++) {
+        if (output_infos_[i].has_gradient) {
+          dy_values.insert(output_data_[i].def_.Name());
+        }
+      }
+
+      training::GradientGraphBuilder grad_graph_builder(&graph,
+                                                        dy_values,
+                                                        weights_to_train,
+                                                        "",
+                                                        true);
+      status = grad_graph_builder.Build();
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
 
     // Hookup the inputs and outputs
     std::unordered_map<std::string, MLValue> feeds;
@@ -83,6 +85,7 @@ void GradientOpTester::Run(
 
     // Add new inputs to the graph.
     std::vector<const NodeArg*> new_input_args = graph.GetInputs();  // Make a copy of existing input args.
+    auto input_size = new_input_args.size();
     for (const auto& feed : feeds) {
       const auto* input_arg = graph.GetNodeArg(feed.first);
       EXPECT_TRUE(input_arg != nullptr);
@@ -90,12 +93,14 @@ void GradientOpTester::Run(
         new_input_args.emplace_back(input_arg);
       }
     }
-    graph.SetInputs(new_input_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the input as expected.
-    graph.SetGraphResolveNeeded();
-    graph.SetGraphProtoSyncNeeded();
+    if (new_input_args.size() != input_size) {
+      graph.SetInputs(new_input_args);  // By setting this, Graph::SetGraphInputsOutputs could infer the input as expected.
+      graph.SetGraphResolveNeeded();
+      graph.SetGraphProtoSyncNeeded();
 
-    status = graph.Resolve();
-    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      status = graph.Resolve();
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    }
 
     // Run the model
     SessionOptions so;

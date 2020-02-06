@@ -565,33 +565,36 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
     run_called_ = true;
 #endif
     fetches_.clear();
-    auto p_model = BuildGraph();
+    bool cacheEnabled = cached_model_ != nullptr;
+    auto p_model = !cacheEnabled ? BuildGraph() : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
-    if (add_shape_to_tensor_data_ && expect_result == ExpectResult::kExpectFailure) {
-      // capture possible exceptions from shape inference for invalid testcase
-      try {
-        status = graph.Resolve();
-      } catch (const std::exception& ex) {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      }
-    } else {
-      status = graph.Resolve();
-    }
-
-    if (!status.IsOK()) {
-      if (expect_result == ExpectResult::kExpectFailure) {
-        EXPECT_TRUE(!status.IsOK());
-        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+    if (!cacheEnabled) {
+      if (add_shape_to_tensor_data_ && expect_result == ExpectResult::kExpectFailure) {
+        // capture possible exceptions from shape inference for invalid testcase
+        try {
+          status = graph.Resolve();
+        } catch (const std::exception& ex) {
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        }
       } else {
-        LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
-        EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+        status = graph.Resolve();
       }
-    }
 
-    if (!status.IsOK()) {
-      return;
+      if (!status.IsOK()) {
+        if (expect_result == ExpectResult::kExpectFailure) {
+          EXPECT_TRUE(!status.IsOK());
+          EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+        } else {
+          LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
+          EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+        }
+      }
+
+      if (!status.IsOK()) {
+        return;
+      }
     }
 
     // Hookup the inputs and outputs
