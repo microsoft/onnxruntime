@@ -6,7 +6,7 @@
 
 #include "Featurizers/TimeSeriesImputerFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace NS = Microsoft::Featurizer;
 
@@ -34,30 +34,32 @@ using TransformedType = std::vector<
         std::vector<std::string>,
         std::vector<nonstd::optional<std::string>>>>;
 
-std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& trainingBatches,
-                               const std::vector<NS::TypeId>& colsToImputeDataTypes,
-                               bool supressError, NS::Featurizers::Components::TimeSeriesImputeStrategy tsImputeStrategy) {
+namespace {
+std::vector<uint8_t> GetStream(const std::vector<std::vector<InputType>>& training_batches,
+                               const std::vector<NS::TypeId>& col_to_impute_data_types,
+                               bool suppress_error, NS::Featurizers::Components::TimeSeriesImputeStrategy impute_strategy) {
   using TSImputerEstimator = NS::Featurizers::TimeSeriesImputerEstimator;
 
   NS::AnnotationMapsPtr const pAllColumnAnnotations(NS::CreateTestAnnotationMapsPtr(1));
-  TSImputerEstimator estimator(pAllColumnAnnotations, colsToImputeDataTypes, supressError, tsImputeStrategy);
+  TSImputerEstimator estimator(pAllColumnAnnotations, col_to_impute_data_types, suppress_error, impute_strategy);
 
-  NS::TestHelpers::Train<TSImputerEstimator, InputType>(estimator, trainingBatches);
+  NS::TestHelpers::Train<TSImputerEstimator, InputType>(estimator, training_batches);
   TSImputerEstimator::TransformerUniquePtr pTransformer(estimator.create_transformer());
 
   NS::Archive ar;
   pTransformer->save(ar);
   return ar.commit();
 }
+}  // namespace
 
-static void AddInputs(OpTester& test, const std::vector<std::vector<InputType>>& trainingBatches,
-                      const std::vector<InputType>& inferenceBatches, const std::vector<NS::TypeId>& colsToImputeDataTypes,
-                      bool supressError, NS::Featurizers::Components::TimeSeriesImputeStrategy tsImputeStrategy) {
+static void AddInputs(OpTester& test, const std::vector<std::vector<InputType>>& training_batches,
+                      const std::vector<InputType>& inference_batches, const std::vector<NS::TypeId>& cols_to_impute_data_types,
+                      bool suppress_error, NS::Featurizers::Components::TimeSeriesImputeStrategy impute_strategy) {
   auto stream = GetStream(
-      trainingBatches,
-      colsToImputeDataTypes,
-      supressError,
-      tsImputeStrategy);
+      training_batches,
+      cols_to_impute_data_types,
+      suppress_error,
+      impute_strategy);
 
   auto dim = static_cast<int64_t>(stream.size());
   test.AddInput<uint8_t>("State", {dim}, stream);
@@ -67,7 +69,7 @@ static void AddInputs(OpTester& test, const std::vector<std::vector<InputType>>&
   std::vector<std::string> data;
 
   using namespace std::chrono;
-  for (const auto& infb : inferenceBatches) {
+  for (const auto& infb : inference_batches) {
     times.push_back(time_point_cast<seconds>(std::get<0>(infb)).time_since_epoch().count());
     keys.insert(keys.end(), std::get<1>(infb).cbegin(), std::get<1>(infb).cend());
     std::transform(std::get<2>(infb).cbegin(), std::get<2>(infb).cend(), std::back_inserter(data),
@@ -108,13 +110,13 @@ TEST(FeaturizersTests, RowImputation_1_grain_no_gaps) {
   auto tuple_2 = std::make_tuple(tp_1, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{nonstd::optional<std::string>{}, "12"});
   auto tuple_3 = std::make_tuple(tp_2, std::vector<std::string>{"a"}, std::vector<nonstd::optional<std::string>>{"15.0", nonstd::optional<std::string>{}});
 
-  std::vector<InputType> inferenceBatches = {tuple_1,
+  std::vector<InputType> inference_batches = {tuple_1,
                                              tuple_2,
                                              tuple_3};
 
   OpTester test("TimeSeriesImputerTransformer", 1, onnxruntime::kMSFeaturizersDomain);
 
-  AddInputs(test, {inferenceBatches}, inferenceBatches,
+  AddInputs(test, {inference_batches}, inference_batches,
             {NS::TypeId::Float64, NS::TypeId::Float64}, false, NS::Featurizers::Components::TimeSeriesImputeStrategy::Forward);
   AddOutputs(test, {false, false, false}, {tp_0, tp_1, tp_2},
              {"a", "a", "a"}, {"14.5", "18", "14.5", "12", "15.0", "12"});

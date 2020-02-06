@@ -396,6 +396,7 @@ public:
                 for (size_t a = 0; a < _countof(multipliers); a++) {
                     for (size_t b = 0; b < _countof(multipliers); b++) {
                         Test(1, N, K, multipliers[a], multipliers[b]);
+                        Test(N, 1, K, multipliers[a], multipliers[b]);
                     }
                 }
             }
