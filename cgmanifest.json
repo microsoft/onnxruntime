@@ -139,8 +139,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "899973df982f2d389659d9e4266efabb3da1ecc8",
-               "repositoryUrl": "https://github.com/eigenteam/eigen-git-mirror.git"
+               "commitHash": "efd9867ff0e8df23016ac6c9828d0d7bf8bec1b1",
+               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
             }
          }
       },
