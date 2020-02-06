@@ -115,10 +115,17 @@ jobs:
         command: build
         projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         configuration: 'RelWithDebInfo'
-        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:ProtocDirectory=$(ProtocDirectory) -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
+      - task: PythonScript@0
+        displayName: 'Download test data'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+          arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+          workingDirectory: $(Build.BinariesDirectory)
+
       - task: DotNetCoreCLI@2
         displayName: 'Test C#'
         inputs:
@@ -127,13 +134,6 @@ jobs:
           configuration: 'RelWithDebInfo'
           arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - task: PythonScript@0
-        displayName: 'Download test data'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
-          arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
-          workingDirectory: $(Build.BinariesDirectory)
 
       - script: |
          mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
@@ -170,12 +170,11 @@ jobs:
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
-      - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
-        - template: esrp_dll.yml
-          parameters:
-            FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-            DisplayName: 'ESRP - Sign C# dlls'
-            DoEsrp: ${{ parameters.DoEsrp }}
+      - template: esrp_dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign C# dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
 
       - script: |
          ${{ parameters.NuPackScript }}
