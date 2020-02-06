@@ -18,7 +18,7 @@ template <typename T>
 __global__ void _Normalize(
     T* data,
     const int64_t N,
-    const int64_t scale) {
+    const int scale) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N)
 
   int index = static_cast<int>(id);
