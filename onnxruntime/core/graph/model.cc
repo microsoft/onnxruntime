@@ -96,7 +96,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
   }
 
   if (!model_proto->has_ir_version() || model_proto->ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-      throw std::invalid_argument("Unknown model file format version.");
+    throw std::invalid_argument("Unknown model file format version.");
   }
 
   model_proto_ = std::move(model_proto);
@@ -139,11 +139,18 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
 
   auto domain_map = schema_registry->GetLatestOpsetVersions(false);
   for (const auto& domain : domain_map) {
-    if (domain_to_version.find(domain.first) == domain_to_version.end()) {
+    auto iter = domain_to_version.find(domain.first);
+    if (iter == domain_to_version.end()) {
       domain_to_version[domain.first] = domain.second;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_->add_opset_import()};
       opset_id_proto->set_domain(domain.first);
       opset_id_proto->set_version(domain.second);
+    } else {
+      if (iter->second > domain.second) {
+        std::ostringstream oss;
+        oss << "For domain " << domain.first << ", onnxruntime currently only support opset up to " << domain.second;
+        ORT_THROW(oss.str());
+      }
     }
   }
 
