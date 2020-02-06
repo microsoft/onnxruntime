@@ -3,10 +3,10 @@
 
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
-#include "test_fixture.h"
 #include <functional>
 #include <set>
 #include "test_allocator.h"
+#include <gtest/gtest.h>
 #include <iostream>
 
 template <typename T>
@@ -25,12 +25,12 @@ struct RelAllocations {
   }
 };
 
-TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
+TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int N = 3;
+  const size_t N = 3;
   const int NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   std::vector<int64_t> keys{3, 1, 2, 0};
@@ -85,12 +85,12 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
   }
 }
 
-TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
+TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int N = 3;
+  const size_t N = 3;
   const int64_t NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};
@@ -150,7 +150,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output t
   }
 }
 
-TEST_F(CApiTest, CreateGetSeqTensors) {
+TEST(CApiTest, CreateGetSeqTensors) {
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);

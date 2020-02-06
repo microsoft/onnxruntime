@@ -1,10 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _WIN32
-#pragma warning(disable : 4267)
-#endif
-
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -164,9 +160,6 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          logging::LoggingManager* logging_manager) {
-  ORT_ENFORCE(Environment::IsInitialized(),
-              "Environment must be initialized before creating an InferenceSession.");
-
   auto status = FinalizeSessionOptions(session_options, model_proto_.get(), session_options_);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
@@ -198,6 +191,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     StartProfiling(session_options_.profile_file_prefix);
   }
 
+  telemetry_ = {};
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
 }
@@ -381,7 +375,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // (free up the resource if applicable - if the unique_ptr is a nullptr, reset() doesn't do anything)
     model_proto_.reset();
 
-    event_name_ = event_name;
+    telemetry_.event_name_ = event_name;
 
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -588,8 +582,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
   // registered (aside from the CPU EP, which is always registered by default.)
   if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
-    auto dml_registry = execution_providers_.Get(kDmlExecutionProvider)->GetKernelRegistry();
-    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, std::move(dml_registry));
+    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider, execution_providers_.Get(kDmlExecutionProvider));
 
     bool modified = false;
     dml_transformer.Apply(graph, modified, *session_logger_);
@@ -744,6 +737,48 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   return Status::OK();
 }
 
+static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
+  switch (type_proto.value_case()) {
+    case ::onnx::TypeProto::ValueCase::kTensorType: {
+      if (type_proto.has_tensor_type()) {
+        auto& tensor_type = type_proto.tensor_type();
+        if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+          return true;
+        }
+      }
+      break;
+    }
+    case ::onnx::TypeProto::ValueCase::kSequenceType: {
+      if (type_proto.has_sequence_type()) {
+        auto& sequence_type = type_proto.sequence_type();
+        return ModelUseFP16Helper(sequence_type.elem_type());
+      }
+      break;
+    }
+    case ::onnx::TypeProto::ValueCase::kMapType: {
+      if (type_proto.has_map_type()) {
+        auto& map_type = type_proto.map_type();
+        return ModelUseFP16Helper(map_type.value_type());
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return false;
+}
+
+static bool ModelUseFP16(const onnx::ModelProto& model_proto) {
+  auto& graph = model_proto.graph();
+  auto& inputs = graph.input();
+  for (auto& input : inputs) {
+    if (input.has_name() && input.has_type() && ModelUseFP16Helper(input.type())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -754,6 +789,8 @@ common::Status InferenceSession::Initialize() {
   try {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreationStart();
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
@@ -833,10 +870,10 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // and log telemetry
-    const Env& env = Env::Default();
+    bool model_use_fp16 = ModelUseFP16(model_->ToProto());
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
                                                   model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), event_name_, execution_providers_.GetIds());
+                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_use_fp16);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
@@ -880,7 +917,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
   }
 
-  std::vector<int> invalid_dim_indices;
+  std::vector<size_t> invalid_dim_indices;
   for (size_t i = 0; i < input_shape_sz; ++i) {
     if (expected_shape[i] < 0) {
       continue;  // this represents a symbolic shape dimension
@@ -894,7 +931,7 @@ common::Status InferenceSession::CheckShapes(const std::string& input_name,
     std::ostringstream ostr;
     ostr << "Got invalid dimensions for input: " << input_name << " for the following indices\n";
     for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
-      int idx = invalid_dim_indices[i];
+      size_t idx = invalid_dim_indices[i];
       ostr << " index: " << idx << " Got: " << input_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
     }
     ostr << " Please fix either the inputs or the model.";
@@ -1015,11 +1052,23 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   TraceLoggingWriteStart(ortrun_activity, "OrtRun");
 #endif
   Status retval = Status::OK();
+  const Env& env = Env::Default();
+
+  std::vector<IExecutionProvider*> exec_providers_to_stop;
+  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
   try {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    // check the frequency to send Evalutaion Stop event
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_evalutation_start_) > telemetry_.kDurationBetweenSendingEvaluationStart) {
+      env.GetTelemetryProvider().LogEvaluationStart();
+      // reset counters
+      telemetry_.time_sent_last_evalutation_start_ = std::chrono::high_resolution_clock::now();
+      telemetry_.isEvaluationStart = true;
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
@@ -1044,7 +1093,16 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     // info all execution providers InferenceSession:Run started
     // TODO: only call OnRunStart for all providers in-use
     for (auto& xp : execution_providers_) {
-      ORT_CHECK_AND_SET_RETVAL(xp->OnRunStart());
+      // call OnRunStart and add to exec_providers_to_stop if successful
+      auto start_func = [&xp, &exec_providers_to_stop]() {
+        auto status = xp->OnRunStart();
+        if (status.IsOK())
+          exec_providers_to_stop.push_back(xp.get());
+
+        return status;
+      };
+
+      ORT_CHECK_AND_SET_RETVAL(start_func());
     }
 
     // execute the graph
@@ -1060,27 +1118,32 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   }
 
   // info all execution providers InferenceSession:Run ended
-  for (auto& xp : execution_providers_) {
-    ORT_CHECK_AND_SET_RETVAL(xp->OnRunEnd());
+  for (auto* xp : exec_providers_to_stop) {
+    auto status = xp->OnRunEnd();
+    ORT_CHECK_AND_SET_RETVAL(status);
   }
 
   --current_num_runs_;
 
   // keep track of telemetry
-  ++total_runs_since_last_;
-  total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+  ++telemetry_.total_runs_since_last_;
+  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(time_sent_last_) > kDurationBetweenSending) {
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
     // send the telemetry
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, total_runs_since_last_, total_run_duration_since_last_);
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
     // reset counters
-    time_sent_last_ = std::chrono::high_resolution_clock::now();
-    total_runs_since_last_ = 0;
-    total_run_duration_since_last_ = 0;
+    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+    telemetry_.total_runs_since_last_ = 0;
+    telemetry_.total_run_duration_since_last_ = 0;
   }
 
+  // check the frequency to send Evalutaion Stop event
+  if (telemetry_.isEvaluationStart) {
+    env.GetTelemetryProvider().LogEvaluationStop();
+    telemetry_.isEvaluationStart = false;
+  }
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);

@@ -1,8 +1,3 @@
-# Defined as pipeline variables
-# variables:
-#   AgentPoolLinux : 'Linux-CPU'
-#   AgentPoolMacOS : 'macOS-10.13'
-
 parameters:
   DoEsrp: 'false'
 
@@ -13,7 +8,6 @@ jobs:
     JobName: 'Windows_CI_Dev'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_mklml --build_shared_lib --enable_onnx_tests  --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
-    msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'

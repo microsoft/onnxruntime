@@ -7,8 +7,11 @@
 #include <assert.h>
 #ifdef _WIN32
 
+#if defined(USE_PATHCCH_LIB)
+#include <PathCch.h>
+#pragma comment(lib, "PathCch.lib")
 // Desktop apps need to support back to Windows 7, so we can't use PathCch.lib as it was added in Windows 8
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include <shlwapi.h>
 #pragma comment(lib, "Shlwapi.lib")
 #else
@@ -24,7 +27,7 @@ namespace onnxruntime {
 namespace {
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) && !defined(USE_PATHCCH_LIB)
   (void)cchPath;
   for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
     ;

@@ -13,6 +13,7 @@
 #pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
 #pragma warning(disable : 4100)
 #pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
+#pragma warning(disable : 4127)
 #pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
 #pragma warning(disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
 #pragma warning(disable : 4267) /*'var' : conversion from 'size_t' to 'type', possible loss of data*/

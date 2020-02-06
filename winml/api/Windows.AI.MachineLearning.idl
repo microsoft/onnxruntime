@@ -1,0 +1,726 @@
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+//! \file Windows.AI.MachineLearning.idl
+import "Windows.Foundation.idl";
+import "windows.graphics.idl";
+import "windows.media.idl";
+
+#ifndef WINDOWSAI_RAZZLE_BUILD
+// Pull in definition for DualApiPartitionAttribute, because the WinML IDL
+// does not build in the OS Repo, and needs to access internal definitions for
+// various custom attirbute definitions.
+import "dualapipartitionattribute.idl";
+import "windows.graphics.directx.direct3d11.idl";
+import "windows.graphics.imaging.idl";
+import "windows.storage.idl";
+#endif
+
+#include <sdkddkver.h>
+
+namespace Windows.AI.MachineLearning 
+{
+    [contractversion(3)]
+    apicontract MachineLearningContract{};
+
+    //! Forward declarations
+    runtimeclass LearningModelBinding;
+
+    //! \enum LearningModelFeatureKind
+    //! \brief Defines the list of input and output feature types for a machine learning model. 
+    //! Each of these maps to a corresponding FeatureDescriptor that you can use to learn more 
+    //! about how to pass the feature into and out of the the model.
+    [contract(MachineLearningContract, 1)]
+    enum LearningModelFeatureKind
+    {
+        //! The feature is a tensor, use TensorFeatureDescriptor
+        Tensor = 0,
+        //! The feature is a sequence, use SequenceFeatureDescriptor
+        Sequence,
+        //! The feature is a map, use MapFeatureDescriptor
+        Map,
+        //! The feature is an image, use ImageFeatureDescriptor
+        Image
+    };
+
+    //! \brief Describes the common properties that all features have.
+    [uuid(bc08cf7c-6ed0-4004-97ba-b9a2eecd2b4f)]
+    [contract(MachineLearningContract, 1)]
+    interface ILearningModelFeatureDescriptor
+    {
+        //! \brief The name you use to bind values to this feature.
+        //! This property is required and will always be there.  All features have a name as 
+        //! primary key for the model.  Usually as a single word.   You use this name when 
+        //! enumerating the features of the model and then later when binding a value to one 
+        //! those feature using a LearningModelBinding.  It will be unique across all features.
+        String Name{ get; };
+        //! \brief A description of what this feature is used for in the model
+        //! This property is optional.  If provided by an author model it will be a description
+        //! of what the feature is for the model.
+        String Description{ get; };
+        //! \brief The kind of feature - use this to know which derived class to use.
+        LearningModelFeatureKind Kind{ get; };
+        //! \brief If true, you must bind a value to this feature before calling Evalaute().
+        Boolean IsRequired{ get; };
+    }
+
+    [uuid(2a222e5d-afb1-47ed-bfad-b5b3a459ec04)]
+    [contract(MachineLearningContract, 1)]
+    interface ILearningModelOperatorProvider : IInspectable
+    {
+    }
+
+    //! \interface LearningModel
+    //! \brief Represents a trained machine learning model.
+    //! \details This is the main object you use to interact with Windows Machine Learning.  You use 
+    //! it to load, bind, and evaluate trained ONNX models.   To load the model you use 
+    //! one of the Load constructors.  You can then enumerate the InputFeatures and 
+    //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ILearningModelStatics", e3b977e8-6952-4e47-8ef4-1f7f07897c6d)]
+    [interface_name("Windows.AI.MachineLearning.ILearningModel", 5b8e4920-489f-4e86-9128-265a327b78fa)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModel : Windows.Foundation.IClosable
+    {
+        //! Loads an ONNX model from a StorageFile asynchronously.
+        [remote_async]
+        static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStorageFileAsync(Windows.Storage.IStorageFile modelFile);
+        //! Loads an ONNX model from a stream asynchronously.
+        [remote_async]
+        static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStreamAsync(Windows.Storage.Streams.IRandomAccessStreamReference modelStream);
+        //! Loads an ONNX model from a file on disk.
+        static LearningModel LoadFromFilePath(String filePath);
+        //! Loads an ONNX model from a stream.
+        static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream);
+
+        //! Loads an ONNX model from a StorageFile asynchronously.
+        [remote_async]
+        [method_name("LoadFromStorageFileWithOperatorProviderAsync")] static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStorageFileAsync(Windows.Storage.IStorageFile modelFile, ILearningModelOperatorProvider operatorProvider);
+        //! Loads an ONNX model from a stream asynchronously.
+        [remote_async]
+        [method_name("LoadFromStreamWithOperatorProviderAsync")] static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStreamAsync(Windows.Storage.Streams.IRandomAccessStreamReference modelStream, ILearningModelOperatorProvider operatorProvider);
+        //! Loads an ONNX model from a file on disk.
+        [method_name("LoadFromFilePathWithOperatorProvider")] static LearningModel LoadFromFilePath(String filePath, ILearningModelOperatorProvider operatorProvider);
+        //! Loads an ONNX model from a stream.
+        [method_name("LoadFromStreamWithOperatorProvider")] static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream, ILearningModelOperatorProvider operatorProvider);
+
+        //! The name of the model author.
+        String Author{ get; };
+        //! The name of the model.
+        String Name{ get; };
+        //! The namespace of the imported model operator set. All models implicitly import the default ONNX operator set. 
+        String Domain{ get; };
+        //! A description of the model.
+        String Description{ get; };
+        //! The ONNX version assumed by the model.
+        Int64 Version{ get; };
+        //! The raw ONNX model provided <string,string> metadata.
+        Windows.Foundation.Collections.IMapView <String, String> Metadata{ get; };
+        //! All of the input features.
+        Windows.Foundation.Collections.IVectorView<ILearningModelFeatureDescriptor > InputFeatures{ get; };
+        //! All of the output features.
+        Windows.Foundation.Collections.IVectorView<ILearningModelFeatureDescriptor > OutputFeatures{ get; };
+    }
+
+    //! \enum LearningModelDeviceKind
+    //! \brief Defines the list of devices that can evaluate a machine learning model. 
+    [contract(MachineLearningContract, 1)]
+    enum LearningModelDeviceKind
+    {
+        //! Let the system decide which device to use.
+        Default = 0,
+        //! Use the CPU to evaluate the model.
+        Cpu,
+        //! Use a GPU or other DirectX device to evaluate the model.
+        DirectX,
+        //! Use the system policy defined device for high performance.
+        DirectXHighPerformance,
+        //! Use the system policy defined device for minimum power.
+        DirectXMinPower
+    };
+
+
+    //! \class LearningModelDevice
+    //! \brief Create an instance specific to which device you want to evaluate the machine learning model on. 
+    //! \namespace Windows.AI.MachineLearning
+    [contract(MachineLearningContract, 1)]
+    [constructor_name("Windows.AI.MachineLearning.ILearningModelDeviceFactory", 9cffd74d-b1e5-4f20-80ad-0a56690db06b)]
+    [static_name("Windows.AI.MachineLearning.ILearningModelDeviceStatics", 49f32107-a8bf-42bb-92c7-10b12dc5d21f)]
+    [interface_name("Windows.AI.MachineLearning.ILearningModelDevice", f5c2c8fe-3f56-4a8c-ac5f-fdb92d8b8252)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelDevice
+    {
+        //! Create a LearningModelDevice from the specified IDirect3DDevice. 
+        //! During evaluation, the specified IDirect3DDevice will be used to create resources and queue work during execution.
+        static LearningModelDevice CreateFromDirect3D11Device(Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice device);
+        //! Create a LearningModelDevice from the specified list of devices enumerated in LearningModelDeviceKind.
+        [method_name("Create")] LearningModelDevice(LearningModelDeviceKind deviceKind);
+
+        // BUGBUG: this needs to be Windows.Graphics.DisplayAdapterId which is only there in the RS4 winmd
+        //! Returns the unique identifier for the chosen adapter for model 
+        Windows.Graphics.DisplayAdapterId AdapterId{ get; };
+        //! Returns the chosen IDirect3DDevice for model evaluation.
+        Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice Direct3D11Device{ get; };
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [interface_name("Windows.AI.MachineLearning.ILearningModelEvaluationResult", b2f9bfcd-960e-49c0-8593-eb190ae3eee2)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelEvaluationResult
+    {
+        //! The optional user supplied string that was attached to the Evaluate() call to connect the output results.
+        String CorrelationId{ get; };
+        //! If the evaluation failed, returns an error code for what caused the failure. 
+        Int32 ErrorStatus{ get; };
+        //! True if the evaluation completed successfully.
+        //! If False, use ErrorStatus to find out what caused the failure. 
+        Boolean Succeeded{ get; };
+        //! A set of features representing the output prediction along with probabilities.
+        Windows.Foundation.Collections.IMapView<String, IInspectable> Outputs{ get; };
+    }
+
+    //! \class LearningModelSessionOptions
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 2)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelSessionOptions
+    {
+        // default constructor
+        LearningModelSessionOptions();
+
+        //! The BatchSizeOverride option will allow the model compiler to use constant batch size performance optimizations when setting up the LearningModelSession.
+        //! The default value for the BatchSizeOverride will be 1 indicating a static batch size of 1.
+        //! BatchSizeOverride = 0 indicates that the batch size present in the model should be honored.
+        //! BatchSizeOverride > 0 indicates the size of batch that will be used to override the model batch size and optimize evaluations.
+        UInt32 BatchSizeOverride { get; set; };
+
+        [contract(MachineLearningContract, 3)]
+        {
+            //! The CloseModelOnSessionCreation option will allow the LearningModelSession to take ownership of the LearningModel's
+            //! internal model representation. This will defunct the LearningModel session, but decreases the necessary peak working set. 
+            //! CloseModelOnSessionCreation = True indicates that the model's internal data will be moved into the session during construction.
+            //! CloseModelOnSessionCreation = False indicates that the model's internal data will be copied into the session during construction.
+            Boolean CloseModelOnSessionCreation { get; set; };
+        }
+    }
+
+    //! \class LearningModelSession
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 1)]
+    [constructor_name("Windows.AI.MachineLearning.ILearningModelSessionFactory", 0f6b881d-1c9b-47b6-bfe0-f1cf62a67579)]
+    [interface_name("Windows.AI.MachineLearning.ILearningModelSession", 8e58f8f6-b787-4c11-90f0-7129aeca74a9)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelSession : Windows.Foundation.IClosable
+    {
+        //! Create a session, on the system default device, to evaluate the specified model on.
+        [method_name("CreateFromModel")] LearningModelSession(LearningModel model);
+        //! Create a session, on the provided device, to evaluate the specified model on.
+        [method_name("CreateFromModelOnDevice")] LearningModelSession(LearningModel model, LearningModelDevice deviceToRunOn);
+
+        //! Returns the machine learning model attached to the session.
+        LearningModel Model{ get; };
+        //! Returns the evaluation device that the session was created on.
+        LearningModelDevice Device{ get; };
+        //! Returns the list of properties set for model evaluation.
+        Windows.Foundation.Collections.IPropertySet EvaluationProperties{ get; };
+        //! Evaluate the machine learning model using the feature values already bound in 'bindings'. (asynchronous)
+        [remote_async]
+        Windows.Foundation.IAsyncOperation<LearningModelEvaluationResult> EvaluateAsync(LearningModelBinding bindings, String correlationId);
+        //! Evaluate the machine learning model using the feature values in the map 'features'. (asynchronous)
+        //! This method is an alternative to the separated bind then eval form that takes a LearningModelBinding. 
+        //! It will take the passed in features, create a LearningModelBinding for you, bind the features, and then evaluate the model.
+        [remote_async]
+        Windows.Foundation.IAsyncOperation<LearningModelEvaluationResult> EvaluateFeaturesAsync(Windows.Foundation.Collections.IMap<String, IInspectable> features, String correlationId);
+        //! Evaluate the machine learning model using the feature values bound in 'bindings'.
+        LearningModelEvaluationResult Evaluate(LearningModelBinding bindings, String correlationId);
+        //! Evaluate the machine learning model using the feature values in the map 'features'.
+        //! This method is an alternative to the separated bind then eval form that takes a LearningModelBinding.
+        //! It will take the passed in features, create a LearningModelBinding for you, bind the features, and then evaluate the model.
+        LearningModelEvaluationResult EvaluateFeatures(Windows.Foundation.Collections.IMap<String, IInspectable> features, String correlationId);
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Create a session, on the provided device, with the desired model compilation options, to evaluate the specified model on.
+            [method_name("CreateFromModelOnDeviceWithSessionOptions")] LearningModelSession(LearningModel model, LearningModelDevice deviceToRunOn, LearningModelSessionOptions learningModelSessionOptions);
+        }
+    }
+
+    //! \interface ILearningModelFeatureValue
+    //! \brief The instantiated value for a feature.
+    [contract(MachineLearningContract, 1)]
+    [uuid(f51005db-4085-4dfe-9fed-95eb0c0cf75c)]
+    interface ILearningModelFeatureValue
+    {
+        //! The data type of the feature.
+        LearningModelFeatureKind Kind{ get; };
+    };
+
+    //! \class LearningModelBinding
+    //! \brief Holder for associations between model inputs/outputs and variable instances.
+    [contract(MachineLearningContract, 1)]
+    [constructor_name("Windows.AI.MachineLearning.ILearningModelBindingFactory", c95f7a7a-e788-475e-8917-23aa381faf0b)]
+    [interface_name("Windows.AI.MachineLearning.ILearningModelBinding", ea312f20-168f-4f8c-94fe-2e7ac31b4aa8)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass LearningModelBinding : Windows.Foundation.Collections.IMapView <String, IInspectable>
+    {
+        //! Create a LearningModelBinding from the specified LearningModelSession. 
+        //! During evaluation, the specified adapter will be used to create resources and queue work during execution.
+        [method_name("CreateFromSession")] LearningModelBinding(LearningModelSession session);
+        //! Bind a value to the specified feature.
+        void Bind(String name, IInspectable value);
+        //! TODO:Docs
+        [method_name("BindWithProperties")] void Bind(String name, IInspectable value, Windows.Foundation.Collections.IPropertySet props);
+        //! Remove all bindings.
+        void Clear();
+    }
+
+    //! \enum TensorKind
+    //! \brief Defines the list of supported tensor data types.
+    [contract(MachineLearningContract, 1)]
+    enum TensorKind
+    {
+        //! Supported by ONNX, but should never happen and is invalid for Windows ML.
+        Undefined = 0,
+        //! The tensor type is 32bit float.
+        Float,
+        //! The tensor type is 8bit unsigned int.
+        UInt8,
+        //! The tensor type is 8bit signed int.
+        Int8,
+        //! The tensor type is 16bit unsigned int.
+        UInt16,
+        //! The tensor type is 16bit signed int.
+        Int16,
+        //! The tensor type is 32bit signed int.
+        Int32,
+        //! The tensor type is 64bit signed int.
+        Int64,
+        //! The tensor type is String.
+        String,
+        //! The tensor type is Boolean.
+        Boolean,
+        //! The tensor type is 16bit float.
+        Float16,
+        //! The tensor type is 64bit float.
+        Double,
+        //! The tensor type is 32bit unsigned int.
+        UInt32,
+        //! The tensor type is 64bit unsigned int.
+        UInt64,
+        //! Supported by ONNX, but is not supported by Windows ML.
+        Complex64,
+        //! Supported by ONNX, but is not supported by Windows ML.
+        Complex128
+    };
+
+    //! \class MapFeatureDescriptor
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 1)]
+    [interface_name("Windows.AI.MachineLearning.IMapFeatureDescriptor", 530424bd-a257-436d-9e60-c2981f7cc5c4)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass MapFeatureDescriptor : ILearningModelFeatureDescriptor
+    {
+        //! Returns the data type of the map's key.
+        TensorKind KeyKind{ get; };
+        //! Returns the properties of the map's value.
+        ILearningModelFeatureDescriptor  ValueDescriptor{ get; };
+    }
+
+    //! \class SequenceFeatureDescriptor
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 1)]
+    [interface_name("Windows.AI.MachineLearning.ISequenceFeatureDescriptor", 84f6945a-562b-4d62-a851-739aced96668)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass SequenceFeatureDescriptor : ILearningModelFeatureDescriptor
+    {
+        //! Gets the properties of the specified feature.
+        ILearningModelFeatureDescriptor  ElementDescriptor{ get; };
+    }
+
+    //! \class TensorFeatureDescriptor
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 1)]
+    [interface_name("Windows.AI.MachineLearning.ITensorFeatureDescriptor", 74455c80-946a-4310-a19c-ee0af028fce4)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorFeatureDescriptor : ILearningModelFeatureDescriptor
+    {
+        //! Returns the data type of the tensor.
+        TensorKind TensorKind{ get; };
+        //! Returns the count and size of each dimension.
+        Windows.Foundation.Collections.IVectorView<Int64> Shape{ get; };
+    }
+
+    //! \class ImageFeatureDescriptor
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 1)]
+    [interface_name("Windows.AI.MachineLearning.IImageFeatureDescriptor", 365585a5-171a-4a2a-985f-265159d3895a)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass ImageFeatureDescriptor : ILearningModelFeatureDescriptor
+    {
+        //! Specifies the pixel format (channel ordering, bit depth, and data type) of the pixel data.
+        Windows.Graphics.Imaging.BitmapPixelFormat BitmapPixelFormat{ get; };
+        //! Specifies the alpha mode of the pixel data.
+        Windows.Graphics.Imaging.BitmapAlphaMode BitmapAlphaMode{ get; };
+        //! The width of the image.
+        UInt32 Width{ get; };
+        //! The height of the image.
+        UInt32 Height{ get; };
+    }
+
+    //! \interface ITensor
+    //! \brief TODO:Docs
+    [contract(MachineLearningContract, 1)]
+    [uuid(05489593-a305-4a25-ad09-440119b4b7f6)]
+    interface ITensor : IInspectable requires ILearningModelFeatureValue
+    {
+        //! Returns the data type of the tensor.
+        TensorKind TensorKind{ get; };
+        //! TODO:Docs
+        Windows.Foundation.Collections.IVectorView<Int64> Shape{ get; };
+    }
+
+    //! \class TensorFloat
+    //! \brief A 32bit float tensor object.
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorFloatStatics", dbcd395b-3ba3-452f-b10d-3c135e573fa9)]
+    [interface_name("Windows.AI.MachineLearning.ITensorFloat", f2282d82-aa02-42c8-a0c8-df1efc9676e1)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorFloat : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        //! Creates a tensor object without allocating a buffer.
+        static TensorFloat Create();
+        //! Creates a tensor object and allocates a buffer of size 'shape'.
+        static TensorFloat Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+        static TensorFloat CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Single[] data);
+        //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+        static TensorFloat CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Single> data);
+        //! Returns a read only view of the data.
+        Windows.Foundation.Collections.IVectorView <Single> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)] 
+
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorFloat CreateFromShapeArrayAndDataArray(Int64[] shape, Single[] data);
+
+            //! Creates a tensor object of size 'shape', and uses the data in 'buffer'.
+            static TensorFloat CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorFloat16BitStatics", a52db6f5-318a-44d4-820b-0cdc7054a84a)]
+    [interface_name("Windows.AI.MachineLearning.ITensorFloat16Bit", 0ab994fc-5b89-4c3c-b5e4-5282a5316c0a)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorFloat16Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorFloat16Bit Create();
+        static TensorFloat16Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorFloat16Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Single[] data);
+        static TensorFloat16Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Single> data);
+        Windows.Foundation.Collections.IVectorView <Single> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorFloat16Bit CreateFromShapeArrayAndDataArray(Int64[] shape, Single[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            //! 'buffer' contains a packed array of 16bit floating point values.
+            static TensorFloat16Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorUInt8BitStatics", 05f67583-bc24-4220-8a41-2dcd8c5ed33c)]
+    [interface_name("Windows.AI.MachineLearning.ITensorUInt8Bit", 58e1ae27-622b-48e3-be22-d867aed1daac)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorUInt8Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorUInt8Bit Create();
+        static TensorUInt8Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorUInt8Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, UInt8[] data);
+        static TensorUInt8Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<UInt8> data);
+        Windows.Foundation.Collections.IVectorView <UInt8> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorUInt8Bit CreateFromShapeArrayAndDataArray(Int64[] shape, UInt8[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            //! 'buffer' contains a packed array of 8bit uint8 values.
+            static TensorUInt8Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorInt8BitStatics", b1a12284-095c-4c76-a661-ac4cee1f3e8b)]
+    [interface_name("Windows.AI.MachineLearning.ITensorInt8Bit", cddd97c5-ffd8-4fef-aefb-30e1a485b2ee)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorInt8Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorInt8Bit Create();
+        static TensorInt8Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorInt8Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, BYTE[] data);
+        static TensorInt8Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<BYTE> data);
+        Windows.Foundation.Collections.IVectorView <BYTE> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorInt8Bit CreateFromShapeArrayAndDataArray(Int64[] shape, BYTE[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorInt8Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorUInt16BitStatics", 5df745dd-028a-481a-a27c-c7e6435e52dd)]
+    [interface_name("Windows.AI.MachineLearning.ITensorUInt16Bit", 68140f4b-23c0-42f3-81f6-a891c011bc3f)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorUInt16Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorUInt16Bit Create();
+        static TensorUInt16Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorUInt16Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, UInt16[] data);
+        static TensorUInt16Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<UInt16> data);
+        Windows.Foundation.Collections.IVectorView <UInt16> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorUInt16Bit CreateFromShapeArrayAndDataArray(Int64[] shape, UInt16[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorUInt16Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorInt16BitStatics", 98646293-266e-4b1a-821f-e60d70898b91)]
+    [interface_name("Windows.AI.MachineLearning.ITensorInt16Bit", 98a32d39-e6d6-44af-8afa-baebc44dc020)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorInt16Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorInt16Bit Create();
+        static TensorInt16Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorInt16Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Int16[] data);
+        static TensorInt16Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Int16> data);
+        Windows.Foundation.Collections.IVectorView <Int16> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorInt16Bit CreateFromShapeArrayAndDataArray(Int64[] shape, Int16[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorInt16Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorUInt32BitStatics", 417c3837-e773-4378-8e7f-0cc33dbea697)]
+    [interface_name("Windows.AI.MachineLearning.ITensorUInt32Bit", d8c9c2ff-7511-45a3-bfac-c38f370d2237)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorUInt32Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorUInt32Bit Create();
+        static TensorUInt32Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorUInt32Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, UInt32[] data);
+        static TensorUInt32Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<UInt32> data);
+        Windows.Foundation.Collections.IVectorView <UInt32> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorUInt32Bit CreateFromShapeArrayAndDataArray(Int64[] shape, UInt32[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorUInt32Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorInt32BitStatics", 6539864b-52fa-4e35-907c-834cac417b50)]
+    [interface_name("Windows.AI.MachineLearning.ITensorInt32Bit", 2c0c28d3-207c-4486-a7d2-884522c5e589)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorInt32Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorInt32Bit Create();
+        static TensorInt32Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorInt32Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Int32[] data);
+        static TensorInt32Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Int32> data);
+        Windows.Foundation.Collections.IVectorView <Int32> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorInt32Bit CreateFromShapeArrayAndDataArray(Int64[] shape, Int32[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorInt32Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorUInt64BitStatics", 7a7e20eb-242f-47cb-a9c6-f602ecfbfee4)]
+    [interface_name("Windows.AI.MachineLearning.ITensorUInt64Bit", 2e70ffad-04bf-4825-839a-82baef8c7886)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorUInt64Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorUInt64Bit Create();
+        static TensorUInt64Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorUInt64Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, UInt64[] data);
+        static TensorUInt64Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<UInt64> data);
+        Windows.Foundation.Collections.IVectorView <UInt64> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorUInt64Bit CreateFromShapeArrayAndDataArray(Int64[] shape, UInt64[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorUInt64Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorInt64BitStatics", 9648ad9d-1198-4d74-9517-783ab62b9cc2)]
+    [interface_name("Windows.AI.MachineLearning.ITensorInt64Bit", 499665ba-1fa2-45ad-af25-a0bd9bda4c87)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorInt64Bit : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorInt64Bit Create();
+        static TensorInt64Bit Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorInt64Bit CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Int64[] data);
+        static TensorInt64Bit CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Int64> data);
+        Windows.Foundation.Collections.IVectorView <Int64> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorInt64Bit CreateFromShapeArrayAndDataArray(Int64[] shape, Int64[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorInt64Bit CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorBooleanStatics", 2796862c-2357-49a7-b476-d0aa3dfe6866)]
+    [interface_name("Windows.AI.MachineLearning.ITensorBoolean", 50f311ed-29e9-4a5c-a44d-8fc512584eed)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorBoolean : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorBoolean Create();
+        static TensorBoolean Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorBoolean CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Boolean[] data);
+        static TensorBoolean CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Boolean> data);
+        Windows.Foundation.Collections.IVectorView <Boolean> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorBoolean CreateFromShapeArrayAndDataArray(Int64[] shape, Boolean[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            //! 'buffer' represents a byte packed array of boolean values.
+            static TensorBoolean CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorDoubleStatics", a86693c5-9538-44e7-a3ca-5df374a5a70c)]
+    [interface_name("Windows.AI.MachineLearning.ITensorDouble", 91e41252-7a8f-4f0e-a28f-9637ffc8a3d0)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorDouble : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorDouble Create();
+        static TensorDouble Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorDouble CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, Double[] data);
+        static TensorDouble CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<Double> data);
+        Windows.Foundation.Collections.IVectorView <Double> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorDouble CreateFromShapeArrayAndDataArray(Int64[] shape, Double[] data);
+
+            //! Creates a tensor object, creates a tensor of size 'shape', and uses the data in 'buffer'.
+            static TensorDouble CreateFromBuffer(Int64[] shape, Windows.Storage.Streams.IBuffer buffer);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.ITensorStringStatics", 83623324-cf26-4f17-a2d4-20ef8d097d53)]
+    [interface_name("Windows.AI.MachineLearning.ITensorString", 582335c8-bdb1-4610-bc75-35e9cbf009b7)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass TensorString : ITensor, [contract(MachineLearningContract, 2)]Windows.Foundation.IMemoryBuffer
+    {
+        static TensorString Create();
+        static TensorString Create(Windows.Foundation.Collections.IIterable<Int64> shape);
+        static TensorString CreateFromArray(Windows.Foundation.Collections.IIterable<Int64> shape, String[] data);
+        static TensorString CreateFromIterable(Windows.Foundation.Collections.IIterable<Int64> shape, Windows.Foundation.Collections.IIterable<String> data);
+        Windows.Foundation.Collections.IVectorView <String> GetAsVectorView();
+
+        [contract(MachineLearningContract, 2)]
+        {
+            //! Creates a tensor object, allocates a buffer of size 'shape', and copies all of 'data' into it.
+            static TensorString CreateFromShapeArrayAndDataArray(Int64[] shape, String[] data);
+        }
+    }
+
+    [contract(MachineLearningContract, 1)]
+    [static_name("Windows.AI.MachineLearning.IImageFeatureValueStatics", 1bc317fd-23cb-4610-b085-c8e1c87ebaa0)]
+    [interface_name("Windows.AI.MachineLearning.IImageFeatureValue", f0414fd9-c9aa-4405-b7fb-94f87c8a3037)]
+    [threading(both)]
+    [marshaling_behavior(agile)]
+    [dualapipartition(1)]
+    runtimeclass ImageFeatureValue : ILearningModelFeatureValue
+    {
+        static ImageFeatureValue CreateFromVideoFrame(Windows.Media.VideoFrame image);
+        Windows.Media.VideoFrame VideoFrame{ get; };
+    }
+}

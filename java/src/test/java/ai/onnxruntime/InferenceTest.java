@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -68,6 +69,17 @@ public class InferenceTest {
             resourcePath = Paths.get("csharp","testdata");
             otherTestPath = Paths.get("onnxruntime","test", "testdata");
         }
+    }
+
+    @Test
+    public void repeatedCloseTest() throws OrtException {
+        OrtEnvironment env = OrtEnvironment.getEnvironment("repeatedCloseTest");
+        try (OrtEnvironment otherEnv = OrtEnvironment.getEnvironment()) {
+            assertFalse(otherEnv.isClosed());
+        }
+        assertFalse(env.isClosed());
+        env.close();
+        assertTrue(env.isClosed());
     }
 
     @Test
@@ -794,7 +806,7 @@ public class InferenceTest {
             String inputName = session.getInputNames().iterator().next();
 
             Map<String,OnnxTensor> container = new HashMap<>();
-            String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test"}};
+            String[][] tensorIn = new String[][]{new String[] {"this", "is"}, new String[] {"identity", "test \u263A"}};
             OnnxTensor ov = OnnxTensor.createTensor(env,tensorIn);
             container.put(inputName,ov);
 
@@ -809,14 +821,14 @@ public class InferenceTest {
                 assertEquals("this", labelOutput[0]);
                 assertEquals("is", labelOutput[1]);
                 assertEquals("identity", labelOutput[2]);
-                assertEquals("test", labelOutput[3]);
+                assertEquals("test \u263A", labelOutput[3]);
                 assertEquals(4, labelOutput.length);
 
                 OnnxValue.close(container);
                 container.clear();
             }
 
-            String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test"};
+            String[] tensorInFlatArr = new String[]{"this", "is", "identity", "test \u263A"};
             ov = OnnxTensor.createTensor(env,tensorInFlatArr, new long[]{2,2});
             container.put(inputName,ov);
 
@@ -831,7 +843,7 @@ public class InferenceTest {
                 assertEquals("this", labelOutput[0]);
                 assertEquals("is", labelOutput[1]);
                 assertEquals("identity", labelOutput[2]);
-                assertEquals("test", labelOutput[3]);
+                assertEquals("test \u263A", labelOutput[3]);
                 assertEquals(4, labelOutput.length);
             }
         }

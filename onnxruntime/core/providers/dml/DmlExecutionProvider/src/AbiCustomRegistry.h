@@ -14,7 +14,7 @@ namespace WRL
         >;
 }
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 { 
 
 using namespace Microsoft::WRL;
@@ -110,4 +110,4 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
 };
 
-}    // namespace winrt::Windows::AI::MachineLearning::implementation
+}    // namespace Windows::AI::MachineLearning::Adapter
