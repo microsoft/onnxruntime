@@ -23,10 +23,27 @@
 #include <evntrace.h>
 
 //See: https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
+#ifdef _TlgPragmaUtf8Begin
 #undef _TlgPragmaUtf8Begin
-#undef _TlgPragmaUtf8End
 #define _TlgPragmaUtf8Begin
+#endif
+
+#ifdef _TlgPragmaUtf8End
+#undef _TlgPragmaUtf8End
 #define _TlgPragmaUtf8End
+#endif
+
+// Different versions of TraceLoggingProvider.h contain different macro variable names for the utf8 begin and end,
+// and we need to cover the lower case version as well.
+#ifdef _tlgPragmaUtf8Begin
+#undef _tlgPragmaUtf8Begin
+#define _tlgPragmaUtf8Begin
+#endif
+
+#ifdef _tlgPragmaUtf8End
+#undef _tlgPragmaUtf8End
+#define _tlgPragmaUtf8End
+#endif
 
 namespace onnxruntime {
 namespace logging {
