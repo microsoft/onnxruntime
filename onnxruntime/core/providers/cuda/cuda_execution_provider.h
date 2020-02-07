@@ -17,7 +17,7 @@ const int CPU_ALLOCATOR_DEVICE_ID = 0;
 
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
-  int device_id{0};
+  OrtDevice::DeviceId device_id{0};
 };
 
 // Logical device representation.
@@ -75,7 +75,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetDeviceId() const { return device_id_; }
 
  private:
-  int device_id_;
+  OrtDevice::DeviceId device_id_;
   size_t cuda_mem_limit_;
 
   struct DeferredReleaseCPUPtrs {
@@ -87,7 +87,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(int device_id, size_t cuda_mem_limit);
+    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit);
     ~PerThreadContext();
 
     cublasHandle_t CublasHandle() const {

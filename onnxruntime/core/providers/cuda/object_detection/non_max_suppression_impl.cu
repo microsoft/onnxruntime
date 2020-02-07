@@ -48,12 +48,9 @@ constexpr int kNmsBoxesPerThread = 8 * sizeof(int);
 // thread.
 __device__ constexpr int NumBits(int n) { return (n == 0) ? 0 : NumBits(n >> 1) + 1; }
 constexpr int kNmsBoxesPerThreadModuloMask = kNmsBoxesPerThread - 1;
-constexpr int kNmsBoxesPerThreadShiftBits =
-    NumBits(kNmsBoxesPerThreadModuloMask);
 
 constexpr int kNmsBlockDim = 16;
 constexpr int kNmsBlockDimMax = 128;
-constexpr int kNmsChunkSize = 2000;
 
 // Check whether two boxes have an IoU greater than threshold.
 template <typename T>

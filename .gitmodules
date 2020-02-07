@@ -24,7 +24,7 @@
 	url = https://github.com/google/re2.git
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
-	url = https://github.com/eigenteam/eigen-git-mirror.git
+	url = https://gitlab.com/libeigen/eigen.git
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary

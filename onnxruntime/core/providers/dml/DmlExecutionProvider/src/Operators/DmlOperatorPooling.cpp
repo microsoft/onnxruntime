@@ -134,7 +134,7 @@ public:
     }
 };
 
-void QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
+void CALLBACK QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool *isSupported)
 {
     *isSupported = false;
     

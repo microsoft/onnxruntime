@@ -27,45 +27,6 @@
 using namespace onnxruntime;
 using ::onnxruntime::common::Status;
 
-// Permanently exclude following tests because ORT support only opset staring from 7,
-// Please make no more changes to the list
-const std::set<std::string> immutable_broken_tests =
-    {
-        "AvgPool1d",
-        "AvgPool1d_stride",
-        "AvgPool2d",
-        "AvgPool2d_stride",
-        "AvgPool3d",
-        "AvgPool3d_stride",
-        "AvgPool3d_stride1_pad0_gpu_input",
-        "BatchNorm1d_3d_input_eval",
-        "BatchNorm2d_eval",
-        "BatchNorm2d_momentum_eval",
-        "BatchNorm3d_eval",
-        "BatchNorm3d_momentum_eval",
-        "GLU",
-        "GLU_dim",
-        "Linear",
-        "PReLU_1d",
-        "PReLU_1d_multiparam",
-        "PReLU_2d",
-        "PReLU_2d_multiparam",
-        "PReLU_3d",
-        "PReLU_3d_multiparam",
-        "PoissonNLLLLoss_no_reduce",
-        "Softsign",
-        "operator_add_broadcast",
-        "operator_add_size1_broadcast",
-        "operator_add_size1_right_broadcast",
-        "operator_add_size1_singleton_broadcast",
-        "operator_addconstant",
-        "operator_addmm",
-        "operator_basic",
-        "operator_mm",
-        "operator_non_float_params",
-        "operator_params",
-        "operator_pow"};
-
 void ORT_CALLBACK RunTestCase(ORT_CALLBACK_INSTANCE pci, void* context, ORT_WORK work) {
   OnnxRuntimeCloseThreadpoolWork(work);
   assert(context != nullptr);
@@ -502,11 +463,6 @@ void SeqTestRunner::Start(ORT_CALLBACK_INSTANCE pci, size_t) {
 }
 
 void RunSingleTestCase(ITestCase* info, Ort::Env& env, const Ort::SessionOptions& sf, size_t concurrent_runs, size_t repeat_count, PThreadPool tpool, ORT_CALLBACK_INSTANCE pci, TestCaseCallBack on_finished) {
-  //for test in immutable list, do not even run it
-  if (immutable_broken_tests.find(info->GetTestCaseName()) != immutable_broken_tests.end()) {
-    on_finished(std::make_shared<TestCaseResult>(0, EXECUTE_RESULT::NOT_SUPPORT, info->GetNodeName()), pci);
-    return;
-  }
 
   std::shared_ptr<TestCaseResult> ret;
   size_t data_count = info->GetDataCount();

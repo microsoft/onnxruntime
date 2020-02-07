@@ -11,13 +11,13 @@ using namespace onnxruntime;
 namespace onnxruntime {
 
 struct CUDAProviderFactory : IExecutionProviderFactory {
-  CUDAProviderFactory(int device_id, size_t cuda_mem_limit = std::numeric_limits<size_t>::max()) : device_id_(device_id), cuda_mem_limit_(cuda_mem_limit) {}
+  CUDAProviderFactory(OrtDevice::DeviceId device_id, size_t cuda_mem_limit = std::numeric_limits<size_t>::max()) : device_id_(device_id), cuda_mem_limit_(cuda_mem_limit) {}
   ~CUDAProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
-  int device_id_;
+  OrtDevice::DeviceId device_id_;
   size_t cuda_mem_limit_;
 };
 
@@ -27,13 +27,13 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return onnxruntime::make_unique<CUDAExecutionProvider>(info, cuda_mem_limit_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id, size_t cuda_mem_limit) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id, size_t cuda_mem_limit) {
   return std::make_shared<onnxruntime::CUDAProviderFactory>(device_id, cuda_mem_limit);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id, size_t cuda_mem_limit = std::numeric_limits<size_t>::max()) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(device_id, cuda_mem_limit));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(static_cast<OrtDevice::DeviceId>(device_id), cuda_mem_limit));
   return nullptr;
 }
