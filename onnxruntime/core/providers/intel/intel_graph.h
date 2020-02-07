@@ -8,13 +8,14 @@
 #include <inference_engine.hpp>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "ibackend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
 
 bool IsDebugEnabled();
 
-class IntelGraph {
+class IntelGraph : public IBackend {
  public:
   IntelGraph(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision);
 
