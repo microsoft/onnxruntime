@@ -207,7 +207,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -236,7 +236,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()  
+  endif()
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -297,7 +297,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
-  endif()  
+  endif()
 endif()
 
 if(onnxruntime_USE_NSYNC)
@@ -324,16 +324,16 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
   message("Use protobuf from preinstalled system lib")
   if (onnxruntime_USE_FULL_PROTOBUF)
     set(PROTOBUF_LIB protobuf::libprotobuf)
-    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS 
+    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a 
+      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
       #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
       message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
-  endif()  
+  endif()
 else()
   message("Use protobuf from submodule")
   # use protobuf as a submodule
@@ -400,7 +400,7 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)  
+  find_package(re2)
 endif()
 
 if(NOT TARGET re2::re2)
@@ -500,8 +500,8 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (APPLE)
-  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
-  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored.
   #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
   #TODO: fix the warning in ONNX and re-enable this flag
   string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
@@ -539,7 +539,7 @@ if (WIN32)
             # disable warning because there are many occurrences from test macros
             " /wd6326 " # potential comparison of a constant with another constant
         )
-    endif()  
+    endif()
 
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
@@ -695,12 +695,13 @@ endif()
 
 if(onnxruntime_USE_INTEL)
 
-  if (NOT onnxruntime_USE_FULL_PROTOBUF)
-    message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
-  endif()
+  #TODO: May need to be removed after we agree to use protobuf lite
+  # if (NOT onnxruntime_USE_FULL_PROTOBUF)
+  #   message(FATAL_ERROR "Please set onnxruntime_USE_FULL_PROTOBUF=ON for nGraph execution provider.")
+  # endif()
 
   if(WIN32)
-      message(FATAL_ERROR "Building on Windows using OpenVINO execution provider is not supported")
+      message(FATAL_ERROR "Building on Windows using Intel execution provider is not supported")
   endif()
 
   add_definitions(-DUSE_INTEL=1)
@@ -864,11 +865,11 @@ endif()
 
 
 if (onnxruntime_USE_WINML)
-  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
+  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
   # CPU only WINML
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     message(
-        FATAL_ERROR 
+        FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
   include(wil.cmake)
