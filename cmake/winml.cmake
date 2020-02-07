@@ -18,13 +18,6 @@ set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 
-# Version parts for Windows.AI.MachineLearning.dll.
-set(WINML_VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
-set(WINML_VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
-set(WINML_VERSION_BUILD_PART   0 CACHE STRING "Third part of numeric file/product version.")
-set(WINML_VERSION_PRIVATE_PART 0 CACHE STRING "Fourth part of numeric file/product version.")
-set(WINML_VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
-
 get_filename_component(exclusions "${winml_api_root}/exclusions.txt" ABSOLUTE)
 convert_forward_slashes_to_back(${exclusions} CPPWINRT_COMPONENT_EXCLUSION_LIST)
 
@@ -516,11 +509,11 @@ target_compile_definitions(winml_dll PRIVATE ONNX_ML)
 target_compile_definitions(winml_dll PRIVATE LOTUS_LOG_THRESHOLD=2)
 target_compile_definitions(winml_dll PRIVATE LOTUS_ENABLE_STDERR_LOGGING)
 target_compile_definitions(winml_dll PRIVATE PLATFORM_WINDOWS)
-target_compile_definitions(winml_dll PRIVATE VER_MAJOR=${WINML_VERSION_MAJOR_PART})
-target_compile_definitions(winml_dll PRIVATE VER_MINOR=${WINML_VERSION_MINOR_PART})
-target_compile_definitions(winml_dll PRIVATE VER_BUILD=${WINML_VERSION_BUILD_PART})
-target_compile_definitions(winml_dll PRIVATE VER_PRIVATE=${WINML_VERSION_PRIVATE_PART})
-target_compile_definitions(winml_dll PRIVATE VER_STRING=\"${WINML_VERSION_STRING}\")
+target_compile_definitions(winml_dll PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
+target_compile_definitions(winml_dll PRIVATE VER_MINOR=${VERSION_MINOR_PART})
+target_compile_definitions(winml_dll PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+target_compile_definitions(winml_dll PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+target_compile_definitions(winml_dll PRIVATE VER_STRING=\"${VERSION_STRING}\")
 
 # Specify the usage of a precompiled header
 target_precompiled_header(winml_dll pch.h)
