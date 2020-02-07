@@ -5,6 +5,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
 
 #ifdef USE_CUDA
