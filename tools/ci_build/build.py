@@ -376,6 +376,39 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if is_windows():
         cmake_args += cmake_extra_args
 
+    # ADO pipelines will store the pipeline build number (e.g. 191101-2300.1.master) and 
+    # source version in environment variables. If present, use these values to define the 
+    # WinML/ORT DLL versions.
+    build_number = os.getenv('Build_BuildNumber')
+    source_version = os.getenv('Build_SourceVersion')
+    if build_number and source_version:
+        build_matches = re.match(r"^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)\.(\d)\.(\S+)$", build_number)
+        if build_matches:
+            YY = build_matches.group(1)
+            MM = build_matches.group(2)
+            DD = build_matches.group(3)
+            HH = build_matches.group(4)
+            
+            # Get ORT major and minor number
+            with open(os.path.join(source_dir, 'VERSION_NUMBER')) as f:
+                first_line = f.readline()
+                ort_version_matches = re.match(r"(\d+).(\d+)", first_line)
+                if not ort_version_matches:
+                    raise BuildError("Couldn't read version from VERSION_FILE")
+                ort_major = ort_version_matches.group(1)
+                ort_minor = ort_version_matches.group(2)
+                # Example (BuildNumber: 191101-2300.1.master, SourceVersion: 0bce7ae6755c792eda558e5d27ded701707dc404)
+                # MajorPart = 1
+                # MinorPart = 0
+                # BuildPart = 1911
+                # PrivatePart = 123
+                # String = 191101-2300.1.master.0bce7ae
+                cmake_args += ["-DVERSION_MAJOR_PART={}".format(ort_major),
+                            "-DVERSION_MINOR_PART={}".format(ort_minor),
+                            "-DVERSION_BUILD_PART={}{}".format(YY, MM),
+                            "-DVERSION_PRIVATE_PART={}{}".format(DD, HH),
+                            "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7])]
+    
     for config in configs:                
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
