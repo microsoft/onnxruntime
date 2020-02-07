@@ -378,7 +378,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     # ADO pipelines will store the pipeline build number (e.g. 191101-2300.1.master) and 
     # source version in environment variables. If present, use these values to define the 
-    # WinML/DML DLL versions.
+    # WinML/ORT DLL versions.
     build_number = os.getenv('Build_BuildNumber')
     source_version = os.getenv('Build_SourceVersion')
     if build_number and source_version:
