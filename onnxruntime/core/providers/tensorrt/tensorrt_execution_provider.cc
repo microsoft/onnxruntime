@@ -178,6 +178,50 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map,
   return false;
 }
 
+// Remove nodes with empty shape (for example [1, 0]) because TensorRT 7 doens't support empty shape
+SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph) {
+  // Here only NonZero and NonMaxSuppression related empty shape nodes are removed, particularly for Faster-rcnn and Mask-rcnn models.
+  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around	
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();  
+  const std::string exclude_dim_name1 = "NonZero";
+  const std::string exclude_dim_name2 = "NonMaxSuppression";
+  SubGraphCollection_t parser_nodes_vector = {{{}, false}};
+  std::vector<size_t> nodes_vector(node_index.size());
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  for (const auto& index : nodes_vector) {
+    // Check if node has empty input shape
+    const auto& node = graph.GetNode(node_index[index]);
+    bool exclude_node = false;
+    for (const auto& input : node->InputDefs()) {
+      const auto& input_shape = input->Shape();
+      if (input_shape) {
+        for (const auto& dim : input_shape->dim()) {
+          std::string dim_name = dim.dim_param();
+          if (!dim_name.empty()) {
+            if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos)) {
+          	  exclude_node = true;
+          	  break;
+            }
+          }
+        }
+      }
+
+      if (exclude_node) {
+        break;
+      }
+    }
+
+    // Remove the node with empty input shape
+    if (!exclude_node) {
+  	  parser_nodes_vector.back().first.push_back(index);
+    } else if (!parser_nodes_vector.back().first.empty()) {
+  	  parser_nodes_vector.push_back({{},false});
+    }
+  }
+
+  return parser_nodes_vector;
+}
+
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, int& kernels_index, const onnxruntime::GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
@@ -396,67 +440,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
   return nodes_list_output;
 }
 
-std::vector<std::unique_ptr<ComputeCapability>>
-TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  // Remove nodes with empty shape (for example [1, 0]) because TensorRT 7 doens't support empty shape
-  // Here only NonZero and NonMaxSuppression related empty shape nodes are removed, particularly for Faster-rcnn and Mask-rcnn models.
-  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
+// Detect and remove cycles from supported node list
+void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t supported_nodes_vector, const onnxruntime::GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  const std::string exclude_dim_name1 = "NonZero";
-  const std::string exclude_dim_name2 = "NonMaxSuppression";
-  SubGraphCollection_t parser_nodes_vector = {{{}, false}};
-  std::vector<size_t> nodes_vector(node_index.size());
-  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  for (const auto& index : nodes_vector) {
-    // Check if node has empty input shape
-    const auto& node = graph.GetNode(node_index[index]);
-    bool exclude_node = false;
-    for (const auto& input : node->InputDefs()) {
-      const auto& input_shape = input->Shape();
-      if (input_shape) {
-        for (const auto& dim : input_shape->dim()) {
-          std::string dim_name = dim.dim_param();
-          if (!dim_name.empty()) {
-            if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos)) {
-              exclude_node = true;
-              break;
-            }
-          }
-        }
-      }
-
-      if (exclude_node) {
-        break;
-      }
-    }
-
-    // Remove the node with empty input shape
-    if (!exclude_node) {
-      parser_nodes_vector.back().first.push_back(index);
-    } else if (!parser_nodes_vector.back().first.empty()) {
-      parser_nodes_vector.push_back({{}, false});
-    }
-  }
-
-  // Get supported node list from TensorRT parser
-  SubGraphCollection_t supported_nodes_vector;
-  bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
-  if (early_termination) {
-    supported_nodes_vector.clear();
-  }
-
-  // Remove subgraphs if its size is less than the predefined minimal size
-  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
-    const int subgraph_size = it->first.size();
-    if (subgraph_size < min_subgraph_size_) {
-      supported_nodes_vector.erase(it--);
-    }
-  }
-
-  //Iteratively detect and remove cycles in the partitioned graph
-  std::vector<std::unique_ptr<ComputeCapability>> result;
   bool trt_cycle = true;
   while (trt_cycle) {
     trt_cycle = false;
@@ -464,11 +450,10 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     std::unordered_map<int, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
-    result.clear();
-    int counter = 0, id = 0;
+	int counter = 0, id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
-        // Construct subgraph capability from node list
+		// Construct subgraph from node list
         std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
 
         // Create node to inputs/outputs/index maps
@@ -480,25 +465,23 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         }
 
         if (meta_def != nullptr) {
-          for (const auto& input : meta_def->inputs) {
+          for (const auto& input: meta_def->inputs) {
             input_to_nodes_map[input].insert(node_name);
           }
-          for (const auto& output : meta_def->outputs) {
+          for (const auto& output: meta_def->outputs) {
             node_to_outputs_map[node_name].insert(output);
           }
         }
 
         // Remove TensorRT nodes from node index list
-        for (const auto& index : group.first) {
+        for (const auto& index: group.first) {
           non_trt_node_index.erase(node_index[index]);
         }
-
-        result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
 
     // Add non TensorRT nodes to the maps
-    for (const auto& index : non_trt_node_index) {
+    for (const auto& index: non_trt_node_index) {
       const auto& node = graph.GetNode(index);
       std::string node_name = node->Name();
       if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
@@ -517,13 +500,13 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
     // Create adjacency list
     int graph_size = node_to_index_map.size();
-    std::list<int>* adjacency_map = new std::list<int>[graph_size];
-    for (const auto& node : node_to_outputs_map) {
+    std::list<int> *adjacency_map = new std::list<int>[graph_size];
+    for (const auto& node: node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
         if (loc != input_to_nodes_map.end()) {
           int parent_node_index = node_to_index_map.find(node.first)->second;
-          for (auto child_node : loc->second) {
+          for (auto child_node: loc->second) {
             int child_node_index = node_to_index_map.find(child_node)->second;
             adjacency_map[parent_node_index].push_back(child_node_index);
           }
@@ -532,8 +515,8 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
 
     // Check cycle in the graph
-    bool* visited = new bool[graph_size];
-    bool* st = new bool[graph_size];
+    bool *visited = new bool[graph_size];
+    bool *st = new bool[graph_size];
     for (int i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
@@ -543,19 +526,19 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     bool has_cycle = false;
     for (int i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
-        has_cycle = true;
-        break;
+    	has_cycle = true;
+    	break;
       }
     }
 
-    // Remove TensorRT subgraph if it's part of the cycle
+	// Remove TensorRT subgraph from the supported node list if it's part of the cycle
     if (has_cycle) {
       for (int i = 0; i < static_cast<int>(cycles.size()); ++i) {
         auto loc = index_to_node_map.find(cycles[i]);
         if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
           int trt_node_index = std::stoi(loc->second.substr(10));
           supported_nodes_vector.erase(supported_nodes_vector.begin() + trt_node_index);
-          trt_cycle = true;
+	  	  trt_cycle = true;
           break;
         }
       }
@@ -565,7 +548,43 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     delete[] visited;
     delete[] st;
   }
+}
 
+std::vector<std::unique_ptr<ComputeCapability>>
+TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
+                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  // Remove nodes with empty shape
+  SubGraphCollection_t parser_nodes_vector = RemoveEmptyShapeNodes(graph);
+
+  // Get supported node list by TensorRT parser
+  SubGraphCollection_t supported_nodes_vector;
+  bool early_termination = false;
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  if (early_termination) {
+    supported_nodes_vector.clear();
+  }
+
+  // Remove subgraphs if its size is less than the predefined minimal size
+  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+    const int subgraph_size = it->first.size();
+    if (subgraph_size < min_subgraph_size_) {
+      supported_nodes_vector.erase(it--);
+    }
+  }
+
+  // Detect and remove cycles from supported node list
+  RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
+
+  // Construct subgraph capability from node list
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  int counter = 0;
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
+      result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+    }
+  }
+  
   return result;
 }
 

@@ -102,6 +102,7 @@ TEST(TensorOpTest, DepthToSpaceTest_1) {
        2.0f, 2.1f, 2.2f, 2.3f,
        3.0f, 3.1f, 3.2f, 3.3f};
   test.AddOutput<float>("output", {N, C / (blocksize * blocksize), H * blocksize, W * blocksize}, result);
+  // TensorRT output shape mismatches
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -145,6 +146,7 @@ TEST(TensorOpTest, DepthToSpaceTest_2) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  // TensorRT output shape mismatches 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -188,6 +190,7 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  // TensorRT output shape mismatches 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -232,6 +235,7 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
   test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  // TensorRT output shape mismatches 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -259,6 +263,7 @@ TEST(TensorOpTest, DepthToSpaceTest_5) {
                                     21., 30., 22., 31., 23., 32.};
 
   test.AddOutput<float>("output", {1, 1, 4, 6}, result);
+  // TensorRT output shape mismatches
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

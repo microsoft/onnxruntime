@@ -170,7 +170,7 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 7.0.0.11.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
