@@ -206,6 +206,8 @@ if (onnxruntime_USE_CUDA)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
   endif()
 
+  add_library(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+
   if (UNIX)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
