@@ -71,10 +71,9 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 
 ## Extensibility Options
   * [Add a custom operator/kernel](docs/AddingCustomOp.md)
-  * [Add a new graph
-transform](include/onnxruntime/core/optimizer/graph_transformer.h)
+  * [Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
   * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
-  *  [Add an execution provider](docs/AddingExecutionProvider.md)
+  * [Add an execution provider](docs/AddingExecutionProvider.md)
 
 ***
 
