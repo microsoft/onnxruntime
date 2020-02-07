@@ -14,7 +14,7 @@
 using namespace WinML;
 
 static const OrtApi* GetVersionedOrtApi() {
-  static const uint32_t ort_version = 1;
+  static const uint32_t ort_version = 2;
   const auto ort_api_base = OrtGetApiBase();
   return ort_api_base->GetApi(ort_version);
 }
