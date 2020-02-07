@@ -1066,9 +1066,6 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-  std::vector<IExecutionProvider*> exec_providers_to_stop;
-  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
-
   try {
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
