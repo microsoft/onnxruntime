@@ -444,7 +444,7 @@ static void RunBertTrainingWithChecks(
     }
 
     auto gradient_ref = BERT_TOY_FETCHES.at(name);
-    EXPECT_TRUE(tensor.Shape().Size() == gradient_ref.size());
+    EXPECT_TRUE(static_cast<size_t>(tensor.Shape().Size()) == gradient_ref.size());
 
     float max_diff = 0;
     float max_percent_diff = 0;
