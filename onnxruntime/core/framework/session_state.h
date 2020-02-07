@@ -184,6 +184,10 @@ class SessionState {
   */
   bool GetEnableMemoryPattern() const;
 
+  /**
+  Update enable_mem_pattern_ flag according to the presence of graph inputs' shape
+  If any one of the graph input is shapeless, enable_mem_pattern_ will be set to false
+  */
   void ResolveMemoryPatternFlag();
 
   struct NodeInfo {

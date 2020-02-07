@@ -68,7 +68,6 @@ static bool LoadQkvWeights(
     const ONNX_NAMESPACE::TensorProto*& q_tensor,
     const ONNX_NAMESPACE::TensorProto*& k_tensor,
     const ONNX_NAMESPACE::TensorProto*& v_tensor) {
-  
   if (!graph.GetInitializedTensor(q.InputDefs()[1]->Name(), q_tensor)) {
     return false;
   }
@@ -281,7 +280,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (node.GetOutputEdgesCount() == 4 &&
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1, 9}, kOnnxDomain) &&
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {9}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
       const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
@@ -334,17 +333,17 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                 LayerNormalization
             /       |        |     \     [Weights](WxW)
            /        |        |      \    /
-          |   q_MatMul    k_MatMul  v_MatMul  [Bias](W)    
+          |   q_MatMul    k_MatMul  v_MatMul  [Bias](W)
           |         |        |        |   /
           |     q_Add     k_Add     v_Add     [Shape=0,0,N,H]
           |         |        |        |      /
           | q_Reshape   k_Reshape   v_Reshape                [Mask] (BxS)
           |         |        |        |                          |
           |q_Transpose  k_Transpose v_Transpose            mask_Unsqueeze(axes=1)
-          |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              | 
-          |         \       /         |                    mask_Unsqueeze(axes=2) 
+          |  (0,2,1,3)  (0,2,3,1)    (perm=0,2,1,3)              |
+          |         \       /         |                    mask_Unsqueeze(axes=2)
           |      qk_MatMul            |                          |
-          |           |    [B=2]      |              [A=1] mask_Cast(to=1)        
+          |           |    [B=2]      |              [A=1] mask_Cast(to=1)
           |           |   /           |                   \     /
           |        qk_Div             |                 mask_Sub   [A=1000]
           |            \              |                        \   /
@@ -371,9 +370,9 @@ After Fusion:
       |        \      /   [Bias](3W)     |
       |         \    /   /               |
       |         Attention <------------ReduceSum
-      \          |        
-       \        MatMul    
-        \        |      
+      \          |
+       \        MatMul
+        \        |
          \      Add
           +------|---+
                  |   |
@@ -390,7 +389,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1, 9}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {9}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_after_layer_norm, true, parent_path, edges, logger)) {
@@ -533,7 +532,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1, 9}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {9}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(mask_add, true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
@@ -584,7 +583,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5}, kOnnxDomain},
       {0, 0, "Add", {7}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1, 9}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {9}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(qk_matmul, true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");

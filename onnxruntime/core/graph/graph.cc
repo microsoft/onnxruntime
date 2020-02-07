@@ -2807,14 +2807,15 @@ Status Graph::InlineFunction(Node& node) {
   }
   std::unordered_map<std::string, NodeArg*> remap_input_output;
   if (node.MutableInputDefs().size() != subgraph.GetInputsIncludingInitializers().size())
-    return Status(ONNXRUNTIME, FAIL);
+    return Status(ONNXRUNTIME, FAIL, "Node " + node.Name() + "'s number of inputs is different from function body graph's number of input.");
   for (size_t i = 0; i < subgraph.GetInputsIncludingInitializers().size(); ++i) {
     auto* input = subgraph.GetInputsIncludingInitializers()[i];
     if (input->Name() != node.MutableInputDefs()[i]->Name())
       remap_input_output[input->Name()] = node.MutableInputDefs()[i];
   }
 
-  ORT_ENFORCE(node.MutableOutputDefs().size() == subgraph.GetOutputs().size());
+  ORT_ENFORCE(node.MutableOutputDefs().size() == subgraph.GetOutputs().size(),
+              "Node ", node.Name(), "'s number of outputs is different from function body graph's number of outputs.");
   for (size_t i = 0; i < subgraph.GetOutputs().size(); ++i) {
     auto* output = subgraph.GetOutputs()[i];
     if (output->Name() != node.MutableOutputDefs()[i]->Name())
@@ -2831,7 +2832,7 @@ Status Graph::InlineFunction(Node& node) {
       *(tensor->mutable_name()) = subgraph_node.OutputDefs()[0]->Name();
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
-      std::vector<NodeArg*> inputs, outputs;
+      std::vector<NodeArg *> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
         auto it = remap_input_output.find(input->Name());
         if (it != remap_input_output.end())
@@ -2871,7 +2872,7 @@ void Graph::AddFunction(const ONNX_NAMESPACE::FunctionProto* func_proto) {
   this->model_functions_[func_proto->name()] = func_proto;
 }
 
-void Graph::SetType(NodeArg& arg, const onnx::TypeProto& type_proto) {
+void Graph::SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto) {
   arg.SetType(type_proto);
   graph_resolve_needed_ = true;
 }

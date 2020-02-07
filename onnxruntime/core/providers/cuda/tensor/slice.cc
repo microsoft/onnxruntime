@@ -103,7 +103,6 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     dimension_count = flattened_output_dims.size();
   }
 
-  ORT_ENFORCE(dimension_count <= MAX_ARRAY_SIZE);
   TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
   for (size_t i = 0; i < starts.size(); ++i) {
     starts_buffer.data_[i] = starts[i];

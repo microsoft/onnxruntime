@@ -553,14 +553,15 @@ class PlannerImpl {
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       SequentialExecutionPlan::NodeExecutionPlan step = execution_plan[program_counter];
       // the node (aka operator) which carries the considered program (aka computation).
-      const auto& pnode = graph_viewer_.GetNode(step.node_index);
+      const auto* pnode = graph_viewer_.GetNode(step.node_index);
       // node outputs.
       const auto& output_defs = pnode->OutputDefs();
       // output_arg_def_index is the index of ArgDefs in pnode's output list.
       // At the i-th iteration, we build the allocation plan for the i-th
       // NodeArg in pnode's output list. Allocation plan remains untouched for
       // optional-missing outputs (aka values with empty names).
-      for (int output_arg_def_index = 0; static_cast<size_t>(output_arg_def_index) < output_defs.size(); ++output_arg_def_index) {
+      const size_t num_outputs = output_defs.size();
+      for (size_t output_arg_def_index = 0; output_arg_def_index < num_outputs; ++output_arg_def_index) {
         const auto& node_output = output_defs[output_arg_def_index];
         if (!node_output->Exists()) continue;
         // OrtValue index of the considered output NodeArg.
@@ -588,7 +589,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-        } else if (FindReusableInput(*pnode, output_arg_def_index, &reused)) {
+        } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
         } else if (!context_.IsParallelExecutionEnabled() &&

@@ -201,9 +201,11 @@ Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, Te
     auto* shape = input->Shape();
     auto it = feeds.find(input->Name());
     if (it == feeds.end())
-      return Status(ONNXRUNTIME, FAIL);
+      return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() + " is not found in the feed list, unable to resolve the value for dynamic shape.");
     if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions()))
-      return Status(ONNXRUNTIME, FAIL);
+      return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
+                                           "'s shape is not present or its shape doesn't match feed's shape."
+                                           "Unable to resolve the value for dynamic shape");
     for (int k = 0; k < shape->dim_size(); ++k) {
       if (shape->dim()[k].has_dim_param()) {
         out.insert({shape->dim()[k].dim_param(), it->second.GetDims()[k]});
@@ -214,7 +216,9 @@ Status ResolveDimParams(const GraphViewer& graph, const std::map<std::string, Te
 }
 }  // namespace
 
-Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape, const std::vector<int>& feed_mlvalue_idxs, MemoryPatternGroup* output) const {
+Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+                                               const std::vector<int>& feed_mlvalue_idxs,
+                                               MemoryPatternGroup* output) const {
   std::map<std::string, TensorShape> feeds;
   for (size_t i = 0; i < feed_mlvalue_idxs.size(); ++i) {
     std::string name;
@@ -465,7 +469,7 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   if (to_be_executed_nodes_.find(fetch_mlvalue_idxs) != to_be_executed_nodes_.end())
     return;
 
-  const Graph* graph = this->GetGraphViewer()->GetGraph();
+  const Graph* graph = GetGraphViewer()->GetGraph();
 
   // Get the nodes generating the fetches.
   std::vector<const Node*> nodes;

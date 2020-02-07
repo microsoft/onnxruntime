@@ -196,7 +196,7 @@ static bool MatchPositionSubgraph(
           ^\^        ^/^                    |
             ^Concat^                     NonZero
                |                            |
-               |                        Transpose  
+               |                        Transpose
                |                            |
                |                         Squeeze
                |                            |
@@ -210,7 +210,7 @@ static bool MatchPositionSubgraph(
             Gather
 
  Note that position gather node is the node in the bottom of above sub-graph.
- Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found. 
+ Paths in ^^ are alternative path to be matched if path input_ids -> Shape -> Expand -> Gather is not found.
 */
 static bool MatchPositionEmbeddingSubgraph1(
     Graph& graph,
@@ -476,7 +476,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
 }
 
 /**
-Embed Layer Normalization will fuse embeddings and mask processing into one node : 
+Embed Layer Normalization will fuse embeddings and mask processing into one node :
 The embeddings before conversion:
   (input_ids) -------->  Gather ---------+       (segment_ids)
     |                                    |           |
@@ -498,7 +498,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& layer_norm_node = *p_layer_norm;
     ORT_RETURN_IF_ERROR(Recurse(layer_norm_node, modified, graph_level, logger));
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(layer_norm_node, "LayerNormalization", {1, 9}, kOnnxDomain) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(layer_norm_node, "LayerNormalization", {9}, kOnnxDomain) ||
         !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
       continue;
     }

@@ -15,7 +15,7 @@ __global__ void _TransposeKernel(int32_t shape_rank, const TArray<int64_t> input
   CUDA_LONG output_index = id;
 
   #pragma unroll
-  for (auto dim = 0; dim < MAX_ARRAY_SIZE; ++dim) {
+  for (auto dim = 0; dim < input_strides.GetCapacity(); ++dim) {
     if (dim >= shape_rank) {
       break;
     }

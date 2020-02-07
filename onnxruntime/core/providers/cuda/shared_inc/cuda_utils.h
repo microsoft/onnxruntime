@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 #include "fast_divmod.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -33,20 +34,23 @@ std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
 template <typename T>
 void Fill(T* output, T value, int64_t count);
 
-constexpr int32_t MAX_ARRAY_SIZE = 8;
-template <typename T>
+/*
+  This is a utility wrapper for arbitrary type array
+  Commonly used for passing small list of metadata during cuda kernel launch
+  It's better to pass the array by value than having another cuMemcpy to pass the data to device.
+*/
+template <typename T, int32_t capacity = 8>
 struct TArray {
-  TArray() {
-    size_ = 0;
-    memset(data_, 0, sizeof(data_));
+  TArray() : size_(0), data_() {
   }
 
-  TArray(int32_t size) {
-    size_ = size;
-    memset(data_, 0, sizeof(data_));
+  TArray(int32_t size) : size_(size), data_() {
+    ORT_ENFORCE(size <= capacity, "TArray size was set to ", size, ", exeeding the capacity limit of ", capacity);
   }
 
-  T data_[MAX_ARRAY_SIZE];
+  static constexpr int32_t GetCapacity() { return capacity; };
+
+  T data_[capacity];
   int32_t size_;
 };
 

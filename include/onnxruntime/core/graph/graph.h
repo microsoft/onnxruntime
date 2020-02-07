@@ -778,7 +778,7 @@ class Graph {
   Graph* MutableParentGraph() { return parent_graph_; }
 
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
-  void SetType(NodeArg& arg, const onnx::TypeProto& type_proto);
+  void SetNodeArgType(NodeArg& arg, const onnx::TypeProto& type_proto);
 
   const Node* GetProducerNode(const std::string& node_arg_name) const {
     auto iter = node_arg_to_producer_node_.find(node_arg_name);
@@ -791,7 +791,7 @@ class Graph {
   }
 
   Node* GetMutableProducerNode(const std::string& node_arg_name) {
-    return const_cast<Node*>(const_cast<const Graph*>(this)->GetProducerNode(node_arg_name));
+    return const_cast<Node*>(GetProducerNode(node_arg_name));
   }
 
   void UpdateProducerNode(const std::string& node_arg_name, NodeIndex node_index) {
@@ -862,7 +862,7 @@ class Graph {
     return Resolve(default_options);
   }
 
-  common::Status ResolveAfterTypeTranformation() {
+  common::Status ResolveAfterTypeTransformation() {
     ResolveOptions options;
     options.override_types = true;
     return Resolve(options);

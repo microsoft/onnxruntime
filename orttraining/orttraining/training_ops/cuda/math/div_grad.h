@@ -12,7 +12,7 @@ template <typename T>
 class DivGrad : public ReduceKernel<true> {  // TODO: not to derive from ReduceKernel.
                                              // Use a cudnn reduce sum simple helper instead.
  public:
-  DivGrad(const OpKernelInfo& info) : ReduceKernel<true>(info, /*keep_dims_override*/ onnxruntime::make_unique<int64_t>(0)) {}
+  DivGrad(const OpKernelInfo& info) : ReduceKernel<true>(info, /*keep_dims_override*/ int64_t(0)) {}
   Status ComputeInternal(OpKernelContext*) const override;
 };
 }  // namespace cuda

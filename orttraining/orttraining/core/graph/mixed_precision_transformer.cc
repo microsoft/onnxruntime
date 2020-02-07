@@ -236,7 +236,7 @@ Status TransformConstants(Graph& graph) {
 // fp16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16 tensor
 Status TransformStage2(Graph& graph) {
   // This pass does not require topological sort order: okay to visit nodes in any order.
-  std::unordered_set<NodeArg*> toFP16, toFP32;
+  std::unordered_set<NodeArg *> toFP16, toFP32;
   for (auto& node : graph.Nodes()) {
     if (IsFP32Node(&node)) {
       for (NodeArg* input : node.MutableInputDefs()) {
@@ -293,7 +293,7 @@ static Status HandleFunctionBody(const Function& node_func) {
     if (type.has_tensor_type() && type.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       if (!IsFP32(stage2_fp32_node_args, fn_name, argnum)) {
         type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-        graph.SetType(const_cast<NodeArg&>(*input), type);
+        graph.SetNodeArgType(const_cast<NodeArg&>(*input), type);
         // Introduce cast to full-precision if required:
         // TODO: fix const_cast; Graph doesn't provide us a method "GetMutableInputs".
         NodeArg* mutable_input = const_cast<NodeArg*>(input);

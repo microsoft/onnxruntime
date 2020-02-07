@@ -80,7 +80,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-  // Enable TRACE_EXECUTION compile flag to dump execution plan
+// Enable TRACE_EXECUTION compile flag to dump execution plan
 #if defined(TRACE_EXECUTION)
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
 #endif
@@ -194,7 +194,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       // Calculate total input sizes for this operation.
       input_activation_sizes = 0;
       input_parameter_sizes = 0;
-      for (auto i = 0; i < op_kernel_context.InputCount(); i++) {
+      const int input_count = op_kernel_context.InputCount();
+      for (auto i = 0; i < input_count; i++) {
         const OrtValue* p_input = op_kernel_context.GetInputMLValue(i);
         if (p_input->IsTensor()) {
           const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
@@ -330,7 +331,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     elapsed.QuadPart /= perf_freq.QuadPart;
     // Log an event
     TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
-                      "OpEnd",       // Event Name that should uniquely identify your event.
+                      "OpEnd",                    // Event Name that should uniquely identify your event.
                       TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
                       TraceLoggingValue(elapsed.QuadPart, "time"));
 #endif

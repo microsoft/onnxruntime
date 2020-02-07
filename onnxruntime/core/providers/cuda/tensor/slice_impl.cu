@@ -24,7 +24,7 @@ __global__ void _SliceKernel(const int32_t dimension_count,
   int value = id;
   int dim = 0;
   #pragma unroll
-  for (; dim < MAX_ARRAY_SIZE; ++dim) {
+  for (; dim < starts.GetCapacity(); ++dim) {
     if (dim >= dimension_count - 1) {
       break;
     }

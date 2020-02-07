@@ -178,7 +178,7 @@ __global__ void _DivGrad(
   CUDA_LONG b_index = (b_need_compute ? 0 : id);
   CUDA_LONG offset = id;
   #pragma unroll
-  for (auto dim = 0; dim < MAX_ARRAY_SIZE; dim++) {
+  for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
     if (dim >= output_rank) {
       break;
     }
@@ -210,7 +210,7 @@ __global__ void _DivGrad_A(
   CUDA_LONG b_index = (b_need_compute ? 0 : id);
   CUDA_LONG offset = id;
   #pragma unroll
-  for (auto dim = 0; dim < MAX_ARRAY_SIZE; dim++) {
+  for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
     if (dim >= output_rank) {
       break;
     }
@@ -240,7 +240,7 @@ __global__ void _DivGrad_B(
   CUDA_LONG b_index = (b_need_compute ? 0 : id);
   CUDA_LONG offset = id;
   #pragma unroll
-  for (auto dim = 0; dim < MAX_ARRAY_SIZE; dim++) {
+  for (auto dim = 0; dim < fdm_output_strides.GetCapacity(); dim++) {
     if (dim >= output_rank) {
       break;
     }

@@ -118,10 +118,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
 #ifdef ENABLE_TRAINING
-      {
-        std::unordered_set<std::string> l1_cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};
-        transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_cuda_execution_providers));
-      }
+      transformers.emplace_back(onnxruntime::make_unique<MatmulTransposeFusion>(l1_execution_providers));
 #endif
 
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
@@ -143,8 +140,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
 
-      // Temporarily ignore BiasGelu during GH merge, since is was referencing a cuda provider file with lot of conflicts.
-      // transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
       std::unordered_set<std::string> cuda_execution_providers = {onnxruntime::kCudaExecutionProvider};

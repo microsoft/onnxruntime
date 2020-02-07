@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/optional.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
@@ -14,9 +15,9 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
  protected:
   ReduceKernel(
       const OpKernelInfo& info,
-      std::unique_ptr<int64_t> keep_dims_override = std::unique_ptr<int64_t>{})
+      optional<int64_t> keep_dims_override = {})
       : CudaKernel(info),
-        ReduceKernelBase<allow_multi_axes>(info, std::move(keep_dims_override)),
+        ReduceKernelBase<allow_multi_axes>(info, keep_dims_override),
         calculate_log_(false),
         calculate_sqt_(false),
         log_sum_exp_(false),

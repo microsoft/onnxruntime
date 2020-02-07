@@ -50,7 +50,7 @@ void SparseSoftmaxCrossEntropyGradImpl(
 class LossBase : public ReduceKernel<true> {
  public:
   explicit LossBase(const OpKernelInfo& info)
-      : ReduceKernel<true>(info, /*keep_dims_override*/ onnxruntime::make_unique<int64_t>(0)) {
+      : ReduceKernel<true>(info, /*keep_dims_override*/ int64_t(0)) {
     std::string reduction;
     ORT_ENFORCE(info.GetAttr<std::string>("reduction", &reduction).IsOK());
     reduction_ = StringToReductionType(reduction);

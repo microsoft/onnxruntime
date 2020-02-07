@@ -94,8 +94,7 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   auto rank = static_cast<int32_t>(input_dims.size());
   TensorPitches original_input_strides(input_dims);
   TensorPitches original_output_strides(output_dims);
-  
-  ORT_ENFORCE(rank <= MAX_ARRAY_SIZE);
+
   TArray<int64_t> input_strides(rank);
   for (auto i = 0; i < rank; i++) {
     input_strides.data_[i] = original_input_strides[permutations[i]];

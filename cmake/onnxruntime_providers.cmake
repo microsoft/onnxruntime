@@ -32,35 +32,10 @@ file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
 )
 
-file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
-)
-
-file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
-)
-
-file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cu"
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cuh"
-)
-
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
 )
-
-if (NOT onnxruntime_USE_HOROVOD)
-  list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
-  "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/horovod_kernels.cc"
-  )
-endif()
 
 if(onnxruntime_USE_DNNL)
   set(PROVIDERS_DNNL onnxruntime_providers_dnnl)
@@ -115,6 +90,19 @@ if (onnxruntime_USE_FEATURIZERS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
+  file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu_training_kernels.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
+  )
+
+  if (NOT onnxruntime_USE_HOROVOD)
+    list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/horovod_kernels.cc"
+    )
+  endif()
+
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 endif()
@@ -168,22 +156,6 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
   )
 
-  if (NOT onnxruntime_USE_HOROVOD)
-    list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/horovod_kernels.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/ready_event.cc"
-    )
-  endif()
-
-  # NCCL is not support in Windows build
-  if (WIN32)
-    list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
-    )
-  endif()
-
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
@@ -195,6 +167,34 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING)
+    file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda_training_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cc"
+    )
+
+    file(GLOB_RECURSE onnxruntime_cuda_training_ops_cu_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cu"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.cuh"
+    )
+
+    if (NOT onnxruntime_USE_HOROVOD)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/horovod_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/ready_event.cc"
+      )
+    endif()
+
+    # NCCL is not support in Windows build
+    if (WIN32)
+      list(REMOVE_ITEM onnxruntime_cuda_training_ops_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_common.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/nccl_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/megatron.cc"
+      )
+    endif()
+
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_training_ops_cc_srcs} ${onnxruntime_cuda_training_ops_cu_srcs})
   endif()

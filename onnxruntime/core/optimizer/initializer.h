@@ -179,18 +179,14 @@ class Initializer final {
 
   ONNX_NAMESPACE::TensorProto ToFP16(const std::string name) {
     ONNX_NAMESPACE::TensorProto tensor_proto;
-    tensor_proto.clear_name();
     tensor_proto.set_name(name);
 
-    tensor_proto.clear_dims();
     for (auto d : dims_) {
       tensor_proto.add_dims(d);
     }
 
-    tensor_proto.clear_data_type();
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
 
-    tensor_proto.clear_raw_data();
     switch (data_type_) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
         uint16_t* dst = data<uint16_t>();

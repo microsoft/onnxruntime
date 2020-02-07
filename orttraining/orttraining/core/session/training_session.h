@@ -3,7 +3,7 @@
 
 #pragma once
 #include <memory>
-#include "orttraining/core/common/optional.h"
+#include "core/common/optional.h"
 #include "orttraining/core/graph/loss_func/loss_func_common.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
