@@ -47,7 +47,7 @@ TEST(GeluGradTest, Basic) {
         return dy * (0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))) +
                      x * std::exp(-0.5f * x * x) * static_cast<float>(M_2_SQRTPI) * static_cast<float>(M_SQRT1_2) * 0.5f);
       },
-      {}, 9, kMSDomain);
+      {}, 1, kMSDomain);
 }
 
 }  // namespace test
