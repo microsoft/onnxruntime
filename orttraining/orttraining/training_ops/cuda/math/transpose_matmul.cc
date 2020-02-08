@@ -6,12 +6,10 @@
 namespace onnxruntime {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       TransposeMatMul,                                            \
-      kMSDomain,                                                \
+      kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \

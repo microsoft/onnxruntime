@@ -282,7 +282,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
   X_T x_delta = static_cast<X_T>(delta);
 
   // build the graph once and reuse it later in the looping logic
-  OpTester op_session(op_def.type.c_str(), 9, op_def.domain.c_str(), false);
+  OpTester op_session(op_def.type.c_str(), op_def.opset_version, op_def.domain.c_str(), false);
   InitOpTesterWithGraph(op_session, x_infos, y_infos, x_datas, y_datas, attributes);
 
   for (int x_idx = 0; x_idx < static_cast<int>(x_num); x_idx++) {

@@ -163,11 +163,11 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
 
       // Exp(X-ReduceMax)
-      const TensorShape output_shape(output_dims);
+      const TensorShape rhs_shape(output_dims);
       auto exp_result = GetScratchBuffer<T>(input_count).get();
       auto log_sum_result = GetScratchBuffer<T>(output_count).get();
       BinaryElementwisePreparation prepare;
-      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape);
+      prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape);
       Impl_Sub<CudaT>(prepare.output_rank_or_simple_broadcast,
                       &prepare.lhs_padded_strides,
                       reinterpret_cast<const CudaT*>(X),

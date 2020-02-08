@@ -152,7 +152,7 @@ Status TrainingRunner::Initialize() {
 
 #ifdef USE_CUDA
   if (params_.use_cuda) {
-    CUDAExecutionProviderInfo xp_info{params_.mpi_context.local_rank};
+    CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(params_.mpi_context.local_rank)};
     auto cuda_xp = onnxruntime::make_unique<CUDAExecutionProvider>(xp_info);
     pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
     if (params_.cuda_mem_limit_in_gb > 0)
@@ -534,7 +534,7 @@ Status TrainingRunner::Evaluate(InferenceSession& session, IDataLoader& data_loa
 Status TrainingRunner::LoadAndEvaluate(const PathString& model_path, IDataLoader& data_loader) {
   InferenceSession s{SessionOptions()};
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info{params_.mpi_context.world_rank};
+  CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(params_.mpi_context.world_rank)};
   ORT_RETURN_IF_ERROR(s.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
 #endif
   ORT_RETURN_IF_ERROR(s.Load(model_path));

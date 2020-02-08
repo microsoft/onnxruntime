@@ -5,6 +5,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/environment.h"
 #include "orttraining/models/runner/training_runner.h"
 
 #ifdef USE_CUDA
@@ -443,7 +444,7 @@ static void RunBertTrainingWithChecks(
     }
 
     auto gradient_ref = BERT_TOY_FETCHES.at(name);
-    EXPECT_TRUE(tensor.Shape().Size() == gradient_ref.size());
+    EXPECT_TRUE(static_cast<size_t>(tensor.Shape().Size()) == gradient_ref.size());
 
     float max_diff = 0;
     float max_percent_diff = 0;

@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 
   InferenceSession session_object{so};
 
-  CUDAExecutionProviderInfo xp_info{world_rank};
+  CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(world_rank)};
   session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
 
   std::string model_at_rank;
