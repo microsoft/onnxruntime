@@ -961,7 +961,8 @@ def main():
             if args.use_dnnl:
               dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
-            run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
+            if not args.use_tensorrt:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
               1 if args.x86 or platform.system() == 'Darwin' else 0,
               1 if args.x86 or platform.system() == 'Darwin' else 0)
 
