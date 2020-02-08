@@ -14,6 +14,10 @@
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/session/training_session.h"
+#endif
+
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -97,11 +101,11 @@ void Check<double>(const OpTester::Data& expected_data, const Tensor& output_ten
   }
 }
 
-template <>
-void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
+template <typename TypeToCheck>
+void InternalNumericalCheck(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
-  auto* expected = expected_tensor.template Data<float>();
-  auto* output = output_tensor.template Data<float>();
+  auto* expected = expected_tensor.template Data<TypeToCheck>();
+  auto* output = output_tensor.template Data<TypeToCheck>();
   auto size = output_tensor.Shape().Size();
 
   bool has_abs_err = expected_data.absolute_error_.has_value();
@@ -112,9 +116,10 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
     sort_expected_and_actual_buffers<float>(expected, output, size);
   }
 
-  float threshold = 0.001f;
 #ifdef USE_CUDA
-  threshold = 0.005f;
+  float threshold = 0.005f;
+#else
+  float threshold = 0.0001f;
 #endif
 
   for (int i = 0; i < size; ++i) {
@@ -141,6 +146,14 @@ void Check<float>(const OpTester::Data& expected_data, const Tensor& output_tens
 }
 
 template <>
+void Check<float>(
+    const OpTester::Data& expected_data,
+    const Tensor& output_tensor,
+    const std::string& provider_type) {
+  InternalNumericalCheck<float>(expected_data, output_tensor, provider_type);
+}
+
+template <>
 void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_tensor,
                       const std::string& provider_type) {
   auto& expected_tensor = expected_data.data_.Get<Tensor>();
@@ -158,7 +171,7 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
 
-  float threshold = 0.001f;
+  float threshold = 0.005f;
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
       EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
@@ -194,7 +207,12 @@ void Check<BFloat16>(const OpTester::Data& expected_data, const Tensor& output_t
       EXPECT_EQ(f_expected[i], f_output[i]);
     else {
       // the default for existing tests
-      EXPECT_NEAR(f_expected[i], f_output[i], threshold) << "provider_type: " << provider_type;
+      const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
+      if (max_value != 0)  // max_value = 0 means output and expected are 0s.
+      {
+        const float rel_error = fabs(f_expected[i] - f_output[i]) / max_value;
+        EXPECT_NEAR(0, rel_error, threshold) << "provider_type: " << provider_type;
+      }
     }
   }
 }
@@ -242,7 +260,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& outp
 
   // first ensure data types match
   EXPECT_EQ(exp_seq.DataType(), output_seq.DataType()) << "Data types don't match: Expected: " << DataTypeImpl::ToString(exp_seq.DataType())
-                                             << " Output: " << output_seq.DataType() << " provider_type: " << provider_type;
+                                                       << " Output: " << output_seq.DataType() << " provider_type: " << provider_type;
 
   // check num of contained tensors
   size_t expected_num_tensors = exp_seq.Size();
@@ -371,12 +389,12 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
   }
 }
 
-std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
+std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
 
-  for (size_t i = 0; i < input_data_.size(); ++i) {
+  for (auto i = 0; i < input_data_.size(); ++i) {
     node_input_defs.push_back(&input_data_[i].def_);
   }
 
@@ -385,8 +403,13 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   }
 
   // Create a simple model
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[domain_] = opset_version_;
+  std::unordered_map<std::string, int> domain_to_version(extra_domain_to_version.begin(), extra_domain_to_version.end());
+  if (domain_to_version.count(domain_) == 0) {
+    domain_to_version.insert({domain_, opset_version_});
+  } else {
+    ORT_ENFORCE(extra_domain_to_version.find(domain_)->second == opset_version_);
+  }
+
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>("test", false, ModelMetaData(),
                                                               custom_schema_registries_,
                                                               domain_to_version,
@@ -400,22 +423,28 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph() {
   return p_model;
 }
 
-void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
-                            const std::string& expected_failure_string, const RunOptions* run_options,
-                            std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
-                            const std::string& provider_type) {
+template <class SessionType>
+std::vector<MLValue> OpTester::ExecuteModel(Model& model,
+                                            SessionType& session_object,
+                                            ExpectResult expect_result,
+                                            const std::string& expected_failure_string,
+                                            const RunOptions* run_options,
+                                            std::unordered_map<std::string, OrtValue> feeds,
+                                            std::vector<std::string> output_names,
+                                            const std::string& provider_type,
+                                            const CustomOutputVerifierFn& custom_output_verifier) {
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
   if (!rc) {
     LOGS_DEFAULT(ERROR) << "Failed to serialize proto to string";
-    return;
+    return {};
   }
   std::stringstream sstr(s1);
   auto status = session_object.Load(sstr);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
-    return;
+    return {};
   }
 
   status = session_object.Initialize();
@@ -430,7 +459,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
   }
 
   if (!status.IsOK()) {
-    return;
+    return {};
   }
 
   RunOptions default_run_options{};
@@ -445,7 +474,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
     if (status.IsOK()) {
       EXPECT_TRUE(expect_result == ExpectResult::kExpectSuccess) << "Expected failure but Run was successful";
       if (expect_result == ExpectResult::kExpectFailure) {
-        return;
+        return {};
       }
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
@@ -457,44 +486,54 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
         LOGS_DEFAULT(ERROR) << "Run failed with status: " << status.ErrorMessage();
         EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       }
-      return;
+      return {};
     }
   }
 
   // Verify the outputs
   // Todo: support check output with map/sequence/....
-  size_t idx = 0;
-  for (auto& expected_data : output_data_) {
-    OrtValue& ort_value = fetches[idx];
-    if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
+  if (verify_output_) {
+    if (custom_output_verifier) {
+      // do custom verification if provided
+      custom_output_verifier(fetches, provider_type);
+    } else {
+      // default verification
+      size_t idx = 0;
+      for (auto& expected_data : output_data_) {
+        OrtValue& ort_value = fetches[idx];
+        if (ort_value.Fence()) ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
 
-    if (expected_data.def_.Exists()) {  // optional outputs won't exist
-      if (expected_data.data_.IsTensor()) {
-        // verify output shape inference when input defs have shape
-        if (add_shape_to_tensor_data_) {
-          auto out_shape_proto = expected_data.def_.Shape();
-          EXPECT_TRUE(out_shape_proto != nullptr);
-          const auto& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
-          const auto& inferred_dims = tensor_shape.GetDims();
-          const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
-          EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
-          for (size_t d = 0; d < inferred_dims.size(); ++d) {
-            // check equal unless the input involved a symbolic dimension
-            if (inferred_dims[d] != -1)
-              EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
+        if (expected_data.def_.Exists()) {  // optional outputs won't exist
+          if (expected_data.data_.IsTensor()) {
+            // verify output shape inference when input defs have shape
+            if (add_shape_to_tensor_data_) {
+              auto out_shape_proto = expected_data.def_.Shape();
+              EXPECT_TRUE(out_shape_proto != nullptr);
+              const auto& tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
+              const auto& inferred_dims = tensor_shape.GetDims();
+              const auto& expected_shape = expected_data.data_.Get<Tensor>().Shape();
+              EXPECT_TRUE(inferred_dims.size() == expected_shape.NumDimensions());
+              for (size_t d = 0; d < inferred_dims.size(); ++d) {
+                // check equal unless the input involved a symbolic dimension
+                if (inferred_dims[d] != -1)
+                  EXPECT_EQ(expected_shape[d], inferred_dims[d]) << "Output idx = " << idx << " dim = " << d;
+              }
+            }
+            Check(expected_data, ort_value.Get<Tensor>(), provider_type);
+          } else {
+            Check(expected_data, ort_value, provider_type);
           }
-        }
-        Check(expected_data, ort_value.Get<Tensor>(), provider_type);
-      } else {
-        Check(expected_data, ort_value, provider_type);
-      }
-      ++idx;
+          ++idx;
 
-      // skip missing trailing optional outputs
-      if (idx == fetches.size())
-        break;
+          // skip missing trailing optional outputs
+          if (idx == fetches.size())
+            break;
+        }
+      }
     }
   }
+
+  return fetches;
 }
 
 void OpTester::Run(ExpectResult expect_result,
@@ -502,13 +541,15 @@ void OpTester::Run(ExpectResult expect_result,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
                    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-                   ExecutionMode execution_mode) {
+                   ExecutionMode execution_mode,
+                   const CustomOutputVerifierFn& custom_output_verifier) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
   so.execution_mode = execution_mode;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
-  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers);
+  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers,
+      custom_output_verifier);
 }
 
 void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e. make a copy) because we may need to modify it
@@ -516,39 +557,44 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
                    const std::string& expected_failure_string,
                    const std::unordered_set<std::string>& excluded_provider_types,
                    const RunOptions* run_options,
-                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+                   std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
+                   const CustomOutputVerifierFn& custom_output_verifier) {
   std::string cur_provider = "not set";
   try {
 #ifndef NDEBUG
     run_called_ = true;
 #endif
-    auto p_model = BuildGraph();
+    fetches_.clear();
+    bool cacheEnabled = cached_model_ != nullptr;
+    auto p_model = !cacheEnabled ? BuildGraph() : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
-    if (add_shape_to_tensor_data_ && expect_result == ExpectResult::kExpectFailure) {
-      // capture possible exceptions from shape inference for invalid testcase
-      try {
-        status = graph.Resolve();
-      } catch (const std::exception& ex) {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-      }
-    } else {
-      status = graph.Resolve();
-    }
-
-    if (!status.IsOK()) {
-      if (expect_result == ExpectResult::kExpectFailure) {
-        EXPECT_TRUE(!status.IsOK());
-        EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+    if (!cacheEnabled) {
+      if (add_shape_to_tensor_data_ && expect_result == ExpectResult::kExpectFailure) {
+        // capture possible exceptions from shape inference for invalid testcase
+        try {
+          status = graph.Resolve();
+        } catch (const std::exception& ex) {
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        }
       } else {
-        LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
-        EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+        status = graph.Resolve();
       }
-    }
 
-    if (!status.IsOK()) {
-      return;
+      if (!status.IsOK()) {
+        if (expect_result == ExpectResult::kExpectFailure) {
+          EXPECT_TRUE(!status.IsOK());
+          EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
+        } else {
+          LOGS_DEFAULT(ERROR) << "Resolve failed with status: " << status.ErrorMessage();
+          EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+        }
+      }
+
+      if (!status.IsOK()) {
+        return;
+      }
     }
 
     // Hookup the inputs and outputs
@@ -562,11 +608,11 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         kDnnlExecutionProvider,
         kNGraphExecutionProvider,
         kNupharExecutionProvider,
-        kBrainSliceExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
-        kAclExecutionProvider,};
+        kAclExecutionProvider,
+    };
 
     bool has_run = false;
 
@@ -589,8 +635,9 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(entry)).IsOK());
       }
 
-      ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds, output_names,
-                   provider_types);
+      fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                                                feeds, output_names, provider_types, custom_output_verifier);
+
     } else {
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
@@ -618,8 +665,6 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
           execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
-        else if (provider_type == onnxruntime::kBrainSliceExecutionProvider)
-          execution_provider = DefaultBrainSliceExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
@@ -669,8 +714,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
 
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-        ExecuteModel(*p_model, session_object, expect_result, expected_failure_string, run_options, feeds,
-                     output_names, provider_type);
+        fetches_ = ExecuteModel<InferenceSession>(*p_model, session_object, expect_result, expected_failure_string, run_options,
+                                                  feeds, output_names, provider_type, custom_output_verifier);
 
         cur_provider = "not set";
       }
@@ -683,5 +728,18 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
     throw;
   }
 }
+
+#ifdef ENABLE_TRAINING
+template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(Model& model,
+                                                                                training::TrainingSession& session_object,
+                                                                                ExpectResult expect_result,
+                                                                                const std::string& expected_failure_string,
+                                                                                const RunOptions* run_options,
+                                                                                std::unordered_map<std::string, MLValue> feeds,
+                                                                                std::vector<std::string> output_names,
+                                                                                const std::string& provider_type,
+                                                                                const CustomOutputVerifierFn& custom_output_verifier);
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

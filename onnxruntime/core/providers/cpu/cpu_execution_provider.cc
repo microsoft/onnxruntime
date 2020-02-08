@@ -13,6 +13,10 @@
 #include "featurizers_ops/cpu_featurizers_kernels.h"
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu_training_kernels.h"
+#endif
+
 #include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
@@ -991,7 +995,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
                                                                   RoiAlign)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 10, ReverseSequence)>,
 
-      // opset 11
+      //opset 11
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, Clip)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 11, float,
                                                                   CumSum)>,
@@ -1126,7 +1130,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
   return Status::OK();
-}  // namespace onnxruntime
+}
 
 // Forward declarations of ml op kernels
 namespace ml {
@@ -1293,6 +1297,9 @@ static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
 #endif
 #ifdef ML_FEATURIZERS
   ORT_RETURN_IF_ERROR(::onnxruntime::featurizers::RegisterCpuMSFeaturizersKernels(kernel_registry));
+#endif
+#ifdef ENABLE_TRAINING
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuTrainingKernels(kernel_registry));
 #endif
   return Status::OK();
 }

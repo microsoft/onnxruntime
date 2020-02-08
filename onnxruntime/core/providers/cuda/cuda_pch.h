@@ -13,6 +13,11 @@
 #include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
+
+#ifdef USE_NCCL
+#include <nccl.h>
+#endif
+
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif

@@ -57,7 +57,6 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   }
 }
 
-
 template <typename T, typename OutT>
 void TestInference(Ort::Env& env, T model_uri,
                    const std::vector<Input>& inputs,
@@ -71,7 +70,7 @@ void TestInference(Ort::Env& env, T model_uri,
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0, std::numeric_limits<size_t>::max()));
     std::cout << "Running simple inference with cuda provider" << std::endl;
 #else
     return;
@@ -97,8 +96,8 @@ void TestInference(Ort::Env& env, T model_uri,
     session_options.Add(custom_op_domain_ptr);
   }
 
-  if (custom_op_library_filename){
-    void* library_handle = nullptr; // leak this, no harm. 
+  if (custom_op_library_filename) {
+    void* library_handle = nullptr;  // leak this, no harm.
     Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions*)session_options, custom_op_library_filename, &library_handle);
   }
 
@@ -184,7 +183,7 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
+INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                         CApiTestWithProvider,
                         ::testing::Values(0, 1, 2, 3, 4));
 
@@ -267,14 +266,14 @@ TEST(CApiTest, DISABLED_test_custom_op_library) {
   std::vector<Input> inputs(2);
   inputs[0].name = "input_1";
   inputs[0].dims = {3, 5};
-  inputs[0].values = {1.1f,   2.2f,   3.3f,   4.4f,   5.5f, 
-                      6.6f,   7.7f,   8.8f,   9.9f,   10.0f,
-                      11.1f,  12.2f,  13.3f,  14.4f,  15.5f};
+  inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+                      6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+                      11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
   inputs[1].name = "input_2";
   inputs[1].dims = {3, 5};
-  inputs[1].values = {15.5f,   14.4f,   13.3f,   12.2f,   11.1f, 
-                      10.0f,   9.9f,    8.8f,    7.7f,    6.6f,
-                      5.5f,    4.4f,    3.3f,    2.2f,    1.1f};
+  inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
+                      10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
+                      5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {3, 5};
@@ -294,8 +293,6 @@ TEST(CApiTest, DISABLED_test_custom_op_library) {
 
     TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
-
-
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
 TEST(CApiTest, DISABLED_test_pyop) {

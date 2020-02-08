@@ -29,6 +29,10 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/matmul_transpose_fusion.h"
+#endif
+
 namespace onnxruntime {
 
 namespace optimizer_utils {
@@ -106,7 +110,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     case TransformerLevel::Level1: {
       std::unordered_set<std::string> l1_execution_providers = {};
 
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
+      //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
+      //transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
@@ -120,7 +127,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       // create rule based transformer consisting of all the level2 rewrite rules
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, cpu_execution_providers);
 
-      // create standalone transformers
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_execution_providers));
@@ -130,6 +136,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<LayerNormFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<AttentionFusion>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<EmbedLayerNormFusion>(cpu_cuda_execution_providers));
+      
       transformers.emplace_back(onnxruntime::make_unique<BiasGelu>(cpu_cuda_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<SkipLayerNormFusion>(cpu_cuda_execution_providers));
 
