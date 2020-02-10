@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -12,7 +13,6 @@
 
 #include "core/common/logging/logging.h"
 #include "core/platform/notification.h"
-#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
@@ -53,6 +53,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/util/thread_utils.h"
 #include "core/session/inference_session_utils.h"
+#include "core/platform/ort_mutex.h"
 
 using namespace ONNX_NAMESPACE;
 
