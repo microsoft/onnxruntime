@@ -1,0 +1,1822 @@
+#!/usr/bin/perl  -w
+##
+# Copyright (c) 2015-present Advanced Micro Devices, Inc. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+##
+#usage hipify-perl [OPTIONS] INPUT_FILE
+use Getopt::Long;
+
+my $warn_whitelist ="";
+GetOptions(
+      "print-stats" => \$print_stats                     # print the command-line, like a header.
+    , "count-conversions" => \$count_conversions         # count conversions.
+    , "quiet-warnings" => \$quiet_warnings               # don't print warnings on unknown CUDA functions.
+    , "warn-whitelist=s"=> \$warn_whitelist
+    , "no-output" => \$no_output                         # don't write any translated output to stdout.
+    , "inplace" => \$inplace                             # modify input file inplace, replacing input with hipified output, save backup in ".prehip" file.
+                                                         # If .prehip file exists, use that as input to hip.
+    , "n" => \$n                                         # combination of print_stats + no-output.
+);
+
+$print_stats = 1 if $n;
+$no_output   = 1 if $n;
+
+# These uses of hip[A-Z] are commonly used in CUDA code but don't actually map to any CUDA API:
+# TODO - use a hash lookup for these.
+@warn_whitelist = (
+         "cudaDevice"
+        ,"cudaDevice_t"
+        ,"cudaIDs"
+        ,"cudaGridDim"
+        ,"cudaDimGrid"
+        ,"cudaDimBlock"
+        ,"cudaDeviceId"
+        ,"cudaDevices",
+        ,"cudaGradOutput",
+        ,"cudaInput",
+        ,"cudaOutput",
+        ,"cudaGradInput",
+        ,"cudaIndices",
+        ,"cudaGaugeField"
+        ,"cudaMom"
+        ,"cudaGauge"
+        ,"cudaInGauge"
+        ,"cudaColorSpinorField"
+        ,"cudaSiteLink"
+        ,"cudaFatLink"
+        ,"cudaStaple"
+        ,"cudaCloverField"
+        ,"cudaParam"
+    );
+#print "WW=@warn_whitelist\n";
+
+# Allow users to add their own functions.
+push (@warn_whitelist, split(',',$warn_whitelist));
+
+#Stats tracking code:
+@statNames = ("error", "init", "version", "device", "context", "module", "memory", "addressing", "stream", "event", "external_resource_interop", "stream_memory", "execution", "graph", "occupancy", "texture", "surface", "peer", "graphics", "profiler", "openGL", "D3D9", "D3D10", "D3D11", "VDPAU", "EGL", "thread", "complex", "library", "device_library", "include", "include_cuda_main_header", "type", "literal", "numeric_literal", "define", "kernel_func", "extern_shared", "kern_launch");
+
+#Compute total of all individual counts:
+sub totalStats {
+    my %count = %{ shift() };
+    my $total = 0;
+    foreach $key (keys %count) {
+        $total += $count{$key};
+    }
+    return $total;
+};
+
+sub printStats {
+    my $label     = shift();
+    my @statNames = @{ shift() };
+    my %counts    = %{ shift() };
+    my $warnings  = shift();
+    my $loc       = shift();
+    my $total     = totalStats(\%counts);
+    printf STDERR "%s %d CUDA->HIP refs( ", $label, $total;
+    foreach $stat (@statNames) {
+        printf STDERR "%s:%d ", $stat, $counts{$stat};
+    }
+    printf STDERR ") warn:%d LOC:%d", $warnings, $loc;
+}
+
+# Add adder stats to dest. Used to add stats for current file to a running total for all files:
+sub addStats {
+    my $dest_ref  =  shift();
+    my %adder = %{ shift() };
+    foreach $key (keys %adder) {
+        $dest_ref->{$key} += $adder{$key};
+        #printf ("D{$key} += %d => %d\n", $adder{$key}, $dest{$key});
+    }
+}
+
+sub clearStats {
+    my $dest_ref  =  shift() ;
+    my @statNames = @{ shift() };
+    foreach $stat (@statNames) {
+        $dest_ref->{$stat}  = 0;
+    }
+}
+
+# count of transforms in all files:
+my %tt;
+clearStats(\%tt, \@statNames);
+$Twarnings = 0;
+$TlineCount = 0;
+my %TwarningTags;
+my %Tkernels;
+my $fileCount = @ARGV;
+my $fileName = "";
+
+while (@ARGV) {
+    $fileName=shift (@ARGV);
+    if ($inplace) {
+        my $file_prehip = "$fileName" . ".prehip";
+        my $infile;
+        my $outfile;
+        if (-e $file_prehip) {
+            $infile  = $file_prehip;
+            $outfile = $fileName;
+        } else {
+            system ("cp $fileName $file_prehip");
+            $infile = $file_prehip;
+            $outfile = $fileName;
+        }
+        open(INFILE,"<", $infile) or die "error: could not open $infile";
+        open(OUTFILE,">", $outfile) or die "error: could not open $outfile";
+        $OUTFILE = OUTFILE;
+    } else {
+        open(INFILE,"<", $fileName) or die "error: could not open $fileName";
+        $OUTFILE = STDOUT;
+    }
+    # Note : \b is used in perl to indicate the start of a word - typically that is what we want in this case:
+    # count of transforms in this file, init to 0 here:
+    my %ft;
+    clearStats(\%ft, \@statNames);
+    my $countIncludes = 0;
+    my $countKeywords = 0; # keywords like __global__, __shared__ - not converted by hipify-perl, but counted here.
+    my $warnings = 0;
+    my $warningsCublas = 0;
+    my $warningsCurand = 0;
+    my %warningTags;  # hash with counts of particular unknown keywords.
+    my $lineCount = 0;
+    undef $/; # Read whole file at once, so we can match newlines.
+    while (<INFILE>)
+    {
+        $ft{'error'} += s/\bcudaGetErrorName\b/hipGetErrorName/g;
+        $ft{'error'} += s/\bcudaGetErrorString\b/hipGetErrorString/g;
+        $ft{'error'} += s/\bcudaGetLastError\b/hipGetLastError/g;
+        $ft{'error'} += s/\bcudaPeekAtLastError\b/hipPeekAtLastError/g;
+        $ft{'init'} += s/\bcuInit\b/hipInit/g;
+        $ft{'version'} += s/\bcuDriverGetVersion\b/hipDriverGetVersion/g;
+        $ft{'version'} += s/\bcudaDriverGetVersion\b/hipDriverGetVersion/g;
+        $ft{'version'} += s/\bcudaRuntimeGetVersion\b/hipRuntimeGetVersion/g;
+        $ft{'device'} += s/\bcuDeviceComputeCapability\b/hipDeviceComputeCapability/g;
+        $ft{'device'} += s/\bcuDeviceGet\b/hipGetDevice/g;
+        $ft{'device'} += s/\bcuDeviceGetAttribute\b/hipDeviceGetAttribute/g;
+        $ft{'device'} += s/\bcuDeviceGetCount\b/hipGetDeviceCount/g;
+        $ft{'device'} += s/\bcuDeviceGetName\b/hipDeviceGetName/g;
+        $ft{'device'} += s/\bcuDeviceTotalMem\b/hipDeviceTotalMem/g;
+        $ft{'device'} += s/\bcuDeviceTotalMem_v2\b/hipDeviceTotalMem/g;
+        $ft{'device'} += s/\bcudaChooseDevice\b/hipChooseDevice/g;
+        $ft{'device'} += s/\bcudaDeviceGetAttribute\b/hipDeviceGetAttribute/g;
+        $ft{'device'} += s/\bcudaDeviceGetByPCIBusId\b/hipDeviceGetByPCIBusId/g;
+        $ft{'device'} += s/\bcudaDeviceGetCacheConfig\b/hipDeviceGetCacheConfig/g;
+        $ft{'device'} += s/\bcudaDeviceGetLimit\b/hipDeviceGetLimit/g;
+        $ft{'device'} += s/\bcudaDeviceGetPCIBusId\b/hipDeviceGetPCIBusId/g;
+        $ft{'device'} += s/\bcudaDeviceGetSharedMemConfig\b/hipDeviceGetSharedMemConfig/g;
+        $ft{'device'} += s/\bcudaDeviceGetStreamPriorityRange\b/hipDeviceGetStreamPriorityRange/g;
+        $ft{'device'} += s/\bcudaDeviceReset\b/hipDeviceReset/g;
+        $ft{'device'} += s/\bcudaDeviceSetCacheConfig\b/hipDeviceSetCacheConfig/g;
+        $ft{'device'} += s/\bcudaDeviceSetLimit\b/hipDeviceSetLimit/g;
+        $ft{'device'} += s/\bcudaDeviceSetSharedMemConfig\b/hipDeviceSetSharedMemConfig/g;
+        $ft{'device'} += s/\bcudaDeviceSynchronize\b/hipDeviceSynchronize/g;
+        $ft{'device'} += s/\bcudaFuncSetCacheConfig\b/hipFuncSetCacheConfig/g;
+        $ft{'device'} += s/\bcudaGetDevice\b/hipGetDevice/g;
+        $ft{'device'} += s/\bcudaGetDeviceCount\b/hipGetDeviceCount/g;
+        $ft{'device'} += s/\bcudaGetDeviceFlags\b/hipCtxGetFlags/g;
+        $ft{'device'} += s/\bcudaGetDeviceProperties\b/hipGetDeviceProperties/g;
+        $ft{'device'} += s/\bcudaIpcCloseMemHandle\b/hipIpcCloseMemHandle/g;
+        $ft{'device'} += s/\bcudaIpcGetEventHandle\b/hipIpcGetEventHandle/g;
+        $ft{'device'} += s/\bcudaIpcGetMemHandle\b/hipIpcGetMemHandle/g;
+        $ft{'device'} += s/\bcudaIpcOpenEventHandle\b/hipIpcOpenEventHandle/g;
+        $ft{'device'} += s/\bcudaIpcOpenMemHandle\b/hipIpcOpenMemHandle/g;
+        $ft{'device'} += s/\bcudaSetDevice\b/hipSetDevice/g;
+        $ft{'device'} += s/\bcudaSetDeviceFlags\b/hipSetDeviceFlags/g;
+        $ft{'context'} += s/\bcuCtxCreate\b/hipCtxCreate/g;
+        $ft{'context'} += s/\bcuCtxCreate_v2\b/hipCtxCreate/g;
+        $ft{'context'} += s/\bcuCtxDestroy\b/hipCtxDestroy/g;
+        $ft{'context'} += s/\bcuCtxDestroy_v2\b/hipCtxDestroy/g;
+        $ft{'context'} += s/\bcuCtxGetApiVersion\b/hipCtxGetApiVersion/g;
+        $ft{'context'} += s/\bcuCtxGetCacheConfig\b/hipCtxGetCacheConfig/g;
+        $ft{'context'} += s/\bcuCtxGetCurrent\b/hipCtxGetCurrent/g;
+        $ft{'context'} += s/\bcuCtxGetDevice\b/hipCtxGetDevice/g;
+        $ft{'context'} += s/\bcuCtxGetFlags\b/hipCtxGetFlags/g;
+        $ft{'context'} += s/\bcuCtxGetLimit\b/hipDeviceGetLimit/g;
+        $ft{'context'} += s/\bcuCtxGetSharedMemConfig\b/hipCtxGetSharedMemConfig/g;
+        $ft{'context'} += s/\bcuCtxGetStreamPriorityRange\b/hipDeviceGetStreamPriorityRange/g;
+        $ft{'context'} += s/\bcuCtxPopCurrent\b/hipCtxPopCurrent/g;
+        $ft{'context'} += s/\bcuCtxPopCurrent_v2\b/hipCtxPopCurrent/g;
+        $ft{'context'} += s/\bcuCtxPushCurrent\b/hipCtxPushCurrent/g;
+        $ft{'context'} += s/\bcuCtxPushCurrent_v2\b/hipCtxPushCurrent/g;
+        $ft{'context'} += s/\bcuCtxSetCacheConfig\b/hipCtxSetCacheConfig/g;
+        $ft{'context'} += s/\bcuCtxSetCurrent\b/hipCtxSetCurrent/g;
+        $ft{'context'} += s/\bcuCtxSetLimit\b/hipDeviceSetLimit/g;
+        $ft{'context'} += s/\bcuCtxSetSharedMemConfig\b/hipCtxSetSharedMemConfig/g;
+        $ft{'context'} += s/\bcuCtxSynchronize\b/hipCtxSynchronize/g;
+        $ft{'context'} += s/\bcuDevicePrimaryCtxGetState\b/hipDevicePrimaryCtxGetState/g;
+        $ft{'context'} += s/\bcuDevicePrimaryCtxRelease\b/hipDevicePrimaryCtxRelease/g;
+        $ft{'context'} += s/\bcuDevicePrimaryCtxReset\b/hipDevicePrimaryCtxReset/g;
+        $ft{'context'} += s/\bcuDevicePrimaryCtxRetain\b/hipDevicePrimaryCtxRetain/g;
+        $ft{'context'} += s/\bcuDevicePrimaryCtxSetFlags\b/hipDevicePrimaryCtxSetFlags/g;
+        $ft{'module'} += s/\bcuModuleGetFunction\b/hipModuleGetFunction/g;
+        $ft{'module'} += s/\bcuModuleGetGlobal\b/hipModuleGetGlobal/g;
+        $ft{'module'} += s/\bcuModuleGetGlobal_v2\b/hipModuleGetGlobal/g;
+        $ft{'module'} += s/\bcuModuleGetTexRef\b/hipModuleGetTexRef/g;
+        $ft{'module'} += s/\bcuModuleLoad\b/hipModuleLoad/g;
+        $ft{'module'} += s/\bcuModuleLoadData\b/hipModuleLoadData/g;
+        $ft{'module'} += s/\bcuModuleLoadDataEx\b/hipModuleLoadDataEx/g;
+        $ft{'module'} += s/\bcuModuleUnload\b/hipModuleUnload/g;
+        $ft{'memory'} += s/\bcuArray3DCreate\b/hipArray3DCreate/g;
+        $ft{'memory'} += s/\bcuArray3DCreate_v2\b/hipArray3DCreate/g;
+        $ft{'memory'} += s/\bcuArrayCreate\b/hipArrayCreate/g;
+        $ft{'memory'} += s/\bcuArrayCreate_v2\b/hipArrayCreate/g;
+        $ft{'memory'} += s/\bcuDeviceGetByPCIBusId\b/hipDeviceGetByPCIBusId/g;
+        $ft{'memory'} += s/\bcuDeviceGetPCIBusId\b/hipDeviceGetPCIBusId/g;
+        $ft{'memory'} += s/\bcuIpcCloseMemHandle\b/hipIpcCloseMemHandle/g;
+        $ft{'memory'} += s/\bcuIpcGetMemHandle\b/hipIpcGetMemHandle/g;
+        $ft{'memory'} += s/\bcuIpcOpenMemHandle\b/hipIpcOpenMemHandle/g;
+        $ft{'memory'} += s/\bcuMemAlloc\b/hipMalloc/g;
+        $ft{'memory'} += s/\bcuMemAllocManaged\b/hipMemAllocManaged/g;
+        $ft{'memory'} += s/\bcuMemAlloc_v2\b/hipMalloc/g;
+        $ft{'memory'} += s/\bcuMemFree\b/hipFree/g;
+        $ft{'memory'} += s/\bcuMemFreeHost\b/hipHostFree/g;
+        $ft{'memory'} += s/\bcuMemFree_v2\b/hipFree/g;
+        $ft{'memory'} += s/\bcuMemGetAddressRange\b/hipMemGetAddressRange/g;
+        $ft{'memory'} += s/\bcuMemGetAddressRange_v2\b/hipMemGetAddressRange/g;
+        $ft{'memory'} += s/\bcuMemGetInfo\b/hipMemGetInfo/g;
+        $ft{'memory'} += s/\bcuMemGetInfo_v2\b/hipMemGetInfo/g;
+        $ft{'memory'} += s/\bcuMemHostAlloc\b/hipHostMalloc/g;
+        $ft{'memory'} += s/\bcuMemHostGetDevicePointer\b/hipHostGetDevicePointer/g;
+        $ft{'memory'} += s/\bcuMemHostGetDevicePointer_v2\b/hipHostGetDevicePointer/g;
+        $ft{'memory'} += s/\bcuMemHostGetFlags\b/hipMemHostGetFlags/g;
+        $ft{'memory'} += s/\bcuMemHostRegister\b/hipHostRegister/g;
+        $ft{'memory'} += s/\bcuMemHostRegister_v2\b/hipHostRegister/g;
+        $ft{'memory'} += s/\bcuMemHostUnregister\b/hipHostUnregister/g;
+        $ft{'memory'} += s/\bcuMemcpy2D\b/hipMemcpyParam2D/g;
+        $ft{'memory'} += s/\bcuMemcpy2DAsync\b/hipMemcpyParam2DAsync/g;
+        $ft{'memory'} += s/\bcuMemcpy2DAsync_v2\b/hipMemcpyParam2DAsync/g;
+        $ft{'memory'} += s/\bcuMemcpy2D_v2\b/hipMemcpyParam2D/g;
+        $ft{'memory'} += s/\bcuMemcpyAtoH\b/hipMemcpyAtoH/g;
+        $ft{'memory'} += s/\bcuMemcpyAtoH_v2\b/hipMemcpyAtoH/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoD\b/hipMemcpyDtoD/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoDAsync\b/hipMemcpyDtoDAsync/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoDAsync_v2\b/hipMemcpyDtoDAsync/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoD_v2\b/hipMemcpyDtoD/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoH\b/hipMemcpyDtoH/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoHAsync\b/hipMemcpyDtoHAsync/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoHAsync_v2\b/hipMemcpyDtoHAsync/g;
+        $ft{'memory'} += s/\bcuMemcpyDtoH_v2\b/hipMemcpyDtoH/g;
+        $ft{'memory'} += s/\bcuMemcpyHtoA\b/hipMemcpyHtoA/g;
+        $ft{'memory'} += s/\bcuMemcpyHtoA_v2\b/hipMemcpyHtoA/g;
+        $ft{'memory'} += s/\bcuMemcpyHtoD\b/hipMemcpyHtoD/g;
+        $ft{'memory'} += s/\bcuMemcpyHtoDAsync\b/hipMemcpyHtoDAsync/g;
+        $ft{'memory'} += s/\bcuMemcpyHtoDAsync_v2\b/hipMemcpyHtoDAsync/g;
+        $ft{'memory'} += s/\bcuMemcpyHtoD_v2\b/hipMemcpyHtoD/g;
+        $ft{'memory'} += s/\bcuMemsetD32\b/hipMemsetD32/g;
+        $ft{'memory'} += s/\bcuMemsetD32Async\b/hipMemsetD32Async/g;
+        $ft{'memory'} += s/\bcuMemsetD32_v2\b/hipMemsetD32/g;
+        $ft{'memory'} += s/\bcuMemsetD8\b/hipMemsetD8/g;
+        $ft{'memory'} += s/\bcuMemsetD8_v2\b/hipMemsetD8/g;
+        $ft{'memory'} += s/\bcudaFree\b/hipFree/g;
+        $ft{'memory'} += s/\bcudaFreeArray\b/hipFreeArray/g;
+        $ft{'memory'} += s/\bcudaFreeHost\b/hipHostFree/g;
+        $ft{'memory'} += s/\bcudaGetSymbolAddress\b/hipGetSymbolAddress/g;
+        $ft{'memory'} += s/\bcudaGetSymbolSize\b/hipGetSymbolSize/g;
+        $ft{'memory'} += s/\bcudaHostAlloc\b/hipHostMalloc/g;
+        $ft{'memory'} += s/\bcudaHostGetDevicePointer\b/hipHostGetDevicePointer/g;
+        $ft{'memory'} += s/\bcudaHostGetFlags\b/hipHostGetFlags/g;
+        $ft{'memory'} += s/\bcudaHostRegister\b/hipHostRegister/g;
+        $ft{'memory'} += s/\bcudaHostUnregister\b/hipHostUnregister/g;
+        $ft{'memory'} += s/\bcudaMalloc\b/hipMalloc/g;
+        $ft{'memory'} += s/\bcudaMalloc3D\b/hipMalloc3D/g;
+        $ft{'memory'} += s/\bcudaMalloc3DArray\b/hipMalloc3DArray/g;
+        $ft{'memory'} += s/\bcudaMallocArray\b/hipMallocArray/g;
+        $ft{'memory'} += s/\bcudaMallocHost\b/hipHostMalloc/g;
+        $ft{'memory'} += s/\bcudaMallocManaged\b/hipMallocManaged/g;
+        $ft{'memory'} += s/\bcudaMallocPitch\b/hipMallocPitch/g;
+        $ft{'memory'} += s/\bcudaMemGetInfo\b/hipMemGetInfo/g;
+        $ft{'memory'} += s/\bcudaMemcpy\b/hipMemcpy/g;
+        $ft{'memory'} += s/\bcudaMemcpy2D\b/hipMemcpy2D/g;
+        $ft{'memory'} += s/\bcudaMemcpy2DAsync\b/hipMemcpy2DAsync/g;
+        $ft{'memory'} += s/\bcudaMemcpy2DToArray\b/hipMemcpy2DToArray/g;
+        $ft{'memory'} += s/\bcudaMemcpy3D\b/hipMemcpy3D/g;
+        $ft{'memory'} += s/\bcudaMemcpyAsync\b/hipMemcpyAsync/g;
+        $ft{'memory'} += s/\bcudaMemcpyFromArray\b/hipMemcpyFromArray/g;
+        $ft{'memory'} += s/\bcudaMemcpyFromSymbol\b/hipMemcpyFromSymbol/g;
+        $ft{'memory'} += s/\bcudaMemcpyFromSymbolAsync\b/hipMemcpyFromSymbolAsync/g;
+        $ft{'memory'} += s/\bcudaMemcpyPeer\b/hipMemcpyPeer/g;
+        $ft{'memory'} += s/\bcudaMemcpyPeerAsync\b/hipMemcpyPeerAsync/g;
+        $ft{'memory'} += s/\bcudaMemcpyToArray\b/hipMemcpyToArray/g;
+        $ft{'memory'} += s/\bcudaMemcpyToArrayAsync\b/hipMemcpyToArrayAsync/g;
+        $ft{'memory'} += s/\bcudaMemcpyToSymbol\b/hipMemcpyToSymbol/g;
+        $ft{'memory'} += s/\bcudaMemcpyToSymbolAsync\b/hipMemcpyToSymbolAsync/g;
+        $ft{'memory'} += s/\bcudaMemset\b/hipMemset/g;
+        $ft{'memory'} += s/\bcudaMemset2D\b/hipMemset2D/g;
+        $ft{'memory'} += s/\bcudaMemset2DAsync\b/hipMemset2DAsync/g;
+        $ft{'memory'} += s/\bcudaMemsetAsync\b/hipMemsetAsync/g;
+        $ft{'memory'} += s/\bmake_cudaExtent\b/make_hipExtent/g;
+        $ft{'memory'} += s/\bmake_cudaPitchedPtr\b/make_hipPitchedPtr/g;
+        $ft{'memory'} += s/\bmake_cudaPos\b/make_hipPos/g;
+        $ft{'addressing'} += s/\bcudaPointerGetAttributes\b/hipPointerGetAttributes/g;
+        $ft{'stream'} += s/\bcuStreamAddCallback\b/hipStreamAddCallback/g;
+        $ft{'stream'} += s/\bcuStreamCreate\b/hipStreamCreateWithFlags/g;
+        $ft{'stream'} += s/\bcuStreamCreateWithPriority\b/hipStreamCreateWithPriority/g;
+        $ft{'stream'} += s/\bcuStreamDestroy\b/hipStreamDestroy/g;
+        $ft{'stream'} += s/\bcuStreamDestroy_v2\b/hipStreamDestroy/g;
+        $ft{'stream'} += s/\bcuStreamGetFlags\b/hipStreamGetFlags/g;
+        $ft{'stream'} += s/\bcuStreamGetPriority\b/hipStreamGetPriority/g;
+        $ft{'stream'} += s/\bcuStreamQuery\b/hipStreamQuery/g;
+        $ft{'stream'} += s/\bcuStreamSynchronize\b/hipStreamSynchronize/g;
+        $ft{'stream'} += s/\bcuStreamWaitEvent\b/hipStreamWaitEvent/g;
+        $ft{'stream'} += s/\bcudaStreamAddCallback\b/hipStreamAddCallback/g;
+        $ft{'stream'} += s/\bcudaStreamCreate\b/hipStreamCreate/g;
+        $ft{'stream'} += s/\bcudaStreamCreateWithFlags\b/hipStreamCreateWithFlags/g;
+        $ft{'stream'} += s/\bcudaStreamCreateWithPriority\b/hipStreamCreateWithPriority/g;
+        $ft{'stream'} += s/\bcudaStreamDestroy\b/hipStreamDestroy/g;
+        $ft{'stream'} += s/\bcudaStreamGetFlags\b/hipStreamGetFlags/g;
+        $ft{'stream'} += s/\bcudaStreamGetPriority\b/hipStreamGetPriority/g;
+        $ft{'stream'} += s/\bcudaStreamQuery\b/hipStreamQuery/g;
+        $ft{'stream'} += s/\bcudaStreamSynchronize\b/hipStreamSynchronize/g;
+        $ft{'stream'} += s/\bcudaStreamWaitEvent\b/hipStreamWaitEvent/g;
+        $ft{'event'} += s/\bcuEventCreate\b/hipEventCreateWithFlags/g;
+        $ft{'event'} += s/\bcuEventDestroy\b/hipEventDestroy/g;
+        $ft{'event'} += s/\bcuEventDestroy_v2\b/hipEventDestroy/g;
+        $ft{'event'} += s/\bcuEventElapsedTime\b/hipEventElapsedTime/g;
+        $ft{'event'} += s/\bcuEventQuery\b/hipEventQuery/g;
+        $ft{'event'} += s/\bcuEventRecord\b/hipEventRecord/g;
+        $ft{'event'} += s/\bcuEventSynchronize\b/hipEventSynchronize/g;
+        $ft{'event'} += s/\bcudaEventCreate\b/hipEventCreate/g;
+        $ft{'event'} += s/\bcudaEventCreateWithFlags\b/hipEventCreateWithFlags/g;
+        $ft{'event'} += s/\bcudaEventDestroy\b/hipEventDestroy/g;
+        $ft{'event'} += s/\bcudaEventElapsedTime\b/hipEventElapsedTime/g;
+        $ft{'event'} += s/\bcudaEventQuery\b/hipEventQuery/g;
+        $ft{'event'} += s/\bcudaEventRecord\b/hipEventRecord/g;
+        $ft{'event'} += s/\bcudaEventSynchronize\b/hipEventSynchronize/g;
+        $ft{'execution'} += s/\bcuFuncGetAttribute\b/hipFuncGetAttribute/g;
+        $ft{'execution'} += s/\bcuLaunchKernel\b/hipModuleLaunchKernel/g;
+        $ft{'execution'} += s/\bcudaConfigureCall\b/hipConfigureCall/g;
+        $ft{'execution'} += s/\bcudaLaunch\b/hipLaunchByPtr/g;
+        $ft{'execution'} += s/\bcudaLaunchCooperativeKernel\b/hipLaunchCooperativeKernel/g;
+        $ft{'execution'} += s/\bcudaLaunchCooperativeKernelMultiDevice\b/hipLaunchCooperativeKernelMultiDevice/g;
+        $ft{'execution'} += s/\bcudaLaunchKernel\b/hipLaunchKernel/g;
+        $ft{'execution'} += s/\bcudaSetupArgument\b/hipSetupArgument/g;
+        $ft{'occupancy'} += s/\bcuOccupancyMaxActiveBlocksPerMultiprocessor\b/hipOccupancyMaxActiveBlocksPerMultiprocessor/g;
+        $ft{'occupancy'} += s/\bcuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags\b/hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags/g;
+        $ft{'occupancy'} += s/\bcuOccupancyMaxPotentialBlockSize\b/hipOccupancyMaxPotentialBlockSize/g;
+        $ft{'occupancy'} += s/\bcudaOccupancyMaxActiveBlocksPerMultiprocessor\b/hipOccupancyMaxActiveBlocksPerMultiprocessor/g;
+        $ft{'occupancy'} += s/\bcudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags\b/hipOccupancyMaxActiveBlocksPerMultiprocessorWithFlags/g;
+        $ft{'occupancy'} += s/\bcudaOccupancyMaxPotentialBlockSize\b/hipOccupancyMaxPotentialBlockSize/g;
+        $ft{'texture'} += s/\bcuTexRefSetAddress\b/hipTexRefSetAddress/g;
+        $ft{'texture'} += s/\bcuTexRefSetAddress2D\b/hipTexRefSetAddress2D/g;
+        $ft{'texture'} += s/\bcuTexRefSetAddress2D_v2\b/hipTexRefSetAddress2D/g;
+        $ft{'texture'} += s/\bcuTexRefSetAddress2D_v3\b/hipTexRefSetAddress2D/g;
+        $ft{'texture'} += s/\bcuTexRefSetAddressMode\b/hipTexRefSetAddressMode/g;
+        $ft{'texture'} += s/\bcuTexRefSetAddress_v2\b/hipTexRefSetAddress/g;
+        $ft{'texture'} += s/\bcuTexRefSetArray\b/hipTexRefSetArray/g;
+        $ft{'texture'} += s/\bcuTexRefSetFilterMode\b/hipTexRefSetFilterMode/g;
+        $ft{'texture'} += s/\bcuTexRefSetFlags\b/hipTexRefSetFlags/g;
+        $ft{'texture'} += s/\bcuTexRefSetFormat\b/hipTexRefSetFormat/g;
+        $ft{'texture'} += s/\bcudaBindTexture\b/hipBindTexture/g;
+        $ft{'texture'} += s/\bcudaBindTexture2D\b/hipBindTexture2D/g;
+        $ft{'texture'} += s/\bcudaBindTextureToArray\b/hipBindTextureToArray/g;
+        $ft{'texture'} += s/\bcudaBindTextureToMipmappedArray\b/hipBindTextureToMipmappedArray/g;
+        $ft{'texture'} += s/\bcudaCreateChannelDesc\b/hipCreateChannelDesc/g;
+        $ft{'texture'} += s/\bcudaCreateTextureObject\b/hipCreateTextureObject/g;
+        $ft{'texture'} += s/\bcudaDestroyTextureObject\b/hipDestroyTextureObject/g;
+        $ft{'texture'} += s/\bcudaGetChannelDesc\b/hipGetChannelDesc/g;
+        $ft{'texture'} += s/\bcudaGetTextureAlignmentOffset\b/hipGetTextureAlignmentOffset/g;
+        $ft{'texture'} += s/\bcudaGetTextureObjectResourceDesc\b/hipGetTextureObjectResourceDesc/g;
+        $ft{'texture'} += s/\bcudaGetTextureObjectResourceViewDesc\b/hipGetTextureObjectResourceViewDesc/g;
+        $ft{'texture'} += s/\bcudaGetTextureReference\b/hipGetTextureReference/g;
+        $ft{'texture'} += s/\bcudaUnbindTexture\b/hipUnbindTexture/g;
+        $ft{'surface'} += s/\bcudaCreateSurfaceObject\b/hipCreateSurfaceObject/g;
+        $ft{'surface'} += s/\bcudaDestroySurfaceObject\b/hipDestroySurfaceObject/g;
+        $ft{'peer'} += s/\bcuCtxDisablePeerAccess\b/hipCtxDisablePeerAccess/g;
+        $ft{'peer'} += s/\bcuCtxEnablePeerAccess\b/hipCtxEnablePeerAccess/g;
+        $ft{'peer'} += s/\bcuDeviceCanAccessPeer\b/hipDeviceCanAccessPeer/g;
+        $ft{'peer'} += s/\bcudaDeviceCanAccessPeer\b/hipDeviceCanAccessPeer/g;
+        $ft{'peer'} += s/\bcudaDeviceDisablePeerAccess\b/hipDeviceDisablePeerAccess/g;
+        $ft{'peer'} += s/\bcudaDeviceEnablePeerAccess\b/hipDeviceEnablePeerAccess/g;
+        $ft{'profiler'} += s/\bcuProfilerStart\b/hipProfilerStart/g;
+        $ft{'profiler'} += s/\bcuProfilerStop\b/hipProfilerStop/g;
+        $ft{'profiler'} += s/\bcudaProfilerStart\b/hipProfilerStart/g;
+        $ft{'profiler'} += s/\bcudaProfilerStop\b/hipProfilerStop/g;
+        $ft{'thread'} += s/\bcudaThreadExit\b/hipDeviceReset/g;
+        $ft{'thread'} += s/\bcudaThreadGetCacheConfig\b/hipDeviceGetCacheConfig/g;
+        $ft{'thread'} += s/\bcudaThreadSetCacheConfig\b/hipDeviceSetCacheConfig/g;
+        $ft{'thread'} += s/\bcudaThreadSynchronize\b/hipDeviceSynchronize/g;
+        $ft{'complex'} += s/\bcuCabs\b/hipCabs/g;
+        $ft{'complex'} += s/\bcuCabsf\b/hipCabsf/g;
+        $ft{'complex'} += s/\bcuCadd\b/hipCadd/g;
+        $ft{'complex'} += s/\bcuCaddf\b/hipCaddf/g;
+        $ft{'complex'} += s/\bcuCdiv\b/hipCdiv/g;
+        $ft{'complex'} += s/\bcuCdivf\b/hipCdivf/g;
+        $ft{'complex'} += s/\bcuCfma\b/hipCfma/g;
+        $ft{'complex'} += s/\bcuCfmaf\b/hipCfmaf/g;
+        $ft{'complex'} += s/\bcuCimag\b/hipCimag/g;
+        $ft{'complex'} += s/\bcuCimagf\b/hipCimagf/g;
+        $ft{'complex'} += s/\bcuCmul\b/hipCmul/g;
+        $ft{'complex'} += s/\bcuCmulf\b/hipCmulf/g;
+        $ft{'complex'} += s/\bcuComplexDoubleToFloat\b/hipComplexDoubleToFloat/g;
+        $ft{'complex'} += s/\bcuComplexFloatToDouble\b/hipComplexFloatToDouble/g;
+        $ft{'complex'} += s/\bcuConj\b/hipConj/g;
+        $ft{'complex'} += s/\bcuConjf\b/hipConjf/g;
+        $ft{'complex'} += s/\bcuCreal\b/hipCreal/g;
+        $ft{'complex'} += s/\bcuCrealf\b/hipCrealf/g;
+        $ft{'complex'} += s/\bcuCsub\b/hipCsub/g;
+        $ft{'complex'} += s/\bcuCsubf\b/hipCsubf/g;
+        $ft{'complex'} += s/\bmake_cuComplex\b/make_hipComplex/g;
+        $ft{'complex'} += s/\bmake_cuDoubleComplex\b/make_hipDoubleComplex/g;
+        $ft{'complex'} += s/\bmake_cuFloatComplex\b/make_hipFloatComplex/g;
+        $ft{'library'} += s/\bcublasCreate\b/hipblasCreate/g;
+        $ft{'library'} += s/\bcublasCreate_v2\b/hipblasCreate/g;
+        $ft{'library'} += s/\bcublasDasum\b/hipblasDasum/g;
+        $ft{'library'} += s/\bcublasDasum_v2\b/hipblasDasum/g;
+        $ft{'library'} += s/\bcublasDaxpy\b/hipblasDaxpy/g;
+        $ft{'library'} += s/\bcublasDaxpy_v2\b/hipblasDaxpy/g;
+        $ft{'library'} += s/\bcublasDcopy\b/hipblasDcopy/g;
+        $ft{'library'} += s/\bcublasDcopy_v2\b/hipblasDcopy/g;
+        $ft{'library'} += s/\bcublasDdot\b/hipblasDdot/g;
+        $ft{'library'} += s/\bcublasDdot_v2\b/hipblasDdot/g;
+        $ft{'library'} += s/\bcublasDestroy\b/hipblasDestroy/g;
+        $ft{'library'} += s/\bcublasDestroy_v2\b/hipblasDestroy/g;
+        $ft{'library'} += s/\bcublasDgeam\b/hipblasDgeam/g;
+        $ft{'library'} += s/\bcublasDgemm\b/hipblasDgemm/g;
+        $ft{'library'} += s/\bcublasDgemmBatched\b/hipblasDgemmBatched/g;
+        $ft{'library'} += s/\bcublasDgemmStridedBatched\b/hipblasDgemmStridedBatched/g;
+        $ft{'library'} += s/\bcublasDgemm_v2\b/hipblasDgemm/g;
+        $ft{'library'} += s/\bcublasDgemv\b/hipblasDgemv/g;
+        $ft{'library'} += s/\bcublasDgemv_v2\b/hipblasDgemv/g;
+        $ft{'library'} += s/\bcublasDger\b/hipblasDger/g;
+        $ft{'library'} += s/\bcublasDger_v2\b/hipblasDger/g;
+        $ft{'library'} += s/\bcublasDnrm2\b/hipblasDnrm2/g;
+        $ft{'library'} += s/\bcublasDnrm2_v2\b/hipblasDnrm2/g;
+        $ft{'library'} += s/\bcublasDscal\b/hipblasDscal/g;
+        $ft{'library'} += s/\bcublasDscal_v2\b/hipblasDscal/g;
+        $ft{'library'} += s/\bcublasDtrsm\b/hipblasDtrsm/g;
+        $ft{'library'} += s/\bcublasDtrsm_v2\b/hipblasDtrsm/g;
+        $ft{'library'} += s/\bcublasGemmEx\b/hipblasGemmEx/g;
+        $ft{'library'} += s/\bcublasGetMatrix\b/hipblasGetMatrix/g;
+        $ft{'library'} += s/\bcublasGetPointerMode\b/hipblasGetPointerMode/g;
+        $ft{'library'} += s/\bcublasGetPointerMode_v2\b/hipblasGetPointerMode/g;
+        $ft{'library'} += s/\bcublasGetStream\b/hipblasGetStream/g;
+        $ft{'library'} += s/\bcublasGetStream_v2\b/hipblasGetStream/g;
+        $ft{'library'} += s/\bcublasGetVector\b/hipblasGetVector/g;
+        $ft{'library'} += s/\bcublasHgemm\b/hipblasHgemm/g;
+        $ft{'library'} += s/\bcublasIdamax\b/hipblasIdamax/g;
+        $ft{'library'} += s/\bcublasIdamax_v2\b/hipblasIdamax/g;
+        $ft{'library'} += s/\bcublasIsamax\b/hipblasIsamax/g;
+        $ft{'library'} += s/\bcublasIsamax_v2\b/hipblasIsamax/g;
+        $ft{'library'} += s/\bcublasSasum\b/hipblasSasum/g;
+        $ft{'library'} += s/\bcublasSasum_v2\b/hipblasSasum/g;
+        $ft{'library'} += s/\bcublasSaxpy\b/hipblasSaxpy/g;
+        $ft{'library'} += s/\bcublasSaxpy_v2\b/hipblasSaxpy/g;
+        $ft{'library'} += s/\bcublasScopy\b/hipblasScopy/g;
+        $ft{'library'} += s/\bcublasScopy_v2\b/hipblasScopy/g;
+        $ft{'library'} += s/\bcublasSdot\b/hipblasSdot/g;
+        $ft{'library'} += s/\bcublasSdot_v2\b/hipblasSdot/g;
+        $ft{'library'} += s/\bcublasSetMatrix\b/hipblasSetMatrix/g;
+        $ft{'library'} += s/\bcublasSetPointerMode\b/hipblasSetPointerMode/g;
+        $ft{'library'} += s/\bcublasSetPointerMode_v2\b/hipblasSetPointerMode/g;
+        $ft{'library'} += s/\bcublasSetStream\b/hipblasSetStream/g;
+        $ft{'library'} += s/\bcublasSetStream_v2\b/hipblasSetStream/g;
+        $ft{'library'} += s/\bcublasSetVector\b/hipblasSetVector/g;
+        $ft{'library'} += s/\bcublasSgeam\b/hipblasSgeam/g;
+        $ft{'library'} += s/\bcublasSgemm\b/hipblasSgemm/g;
+        $ft{'library'} += s/\bcublasSgemmBatched\b/hipblasSgemmBatched/g;
+        $ft{'library'} += s/\bcublasSgemmStridedBatched\b/hipblasSgemmStridedBatched/g;
+        $ft{'library'} += s/\bcublasSgemm_v2\b/hipblasSgemm/g;
+        $ft{'library'} += s/\bcublasSgemv\b/hipblasSgemv/g;
+        $ft{'library'} += s/\bcublasSgemv_v2\b/hipblasSgemv/g;
+        $ft{'library'} += s/\bcublasSger\b/hipblasSger/g;
+        $ft{'library'} += s/\bcublasSger_v2\b/hipblasSger/g;
+        $ft{'library'} += s/\bcublasSnrm2\b/hipblasSnrm2/g;
+        $ft{'library'} += s/\bcublasSnrm2_v2\b/hipblasSnrm2/g;
+        $ft{'library'} += s/\bcublasSscal\b/hipblasSscal/g;
+        $ft{'library'} += s/\bcublasSscal_v2\b/hipblasSscal/g;
+        $ft{'library'} += s/\bcublasStrsm\b/hipblasStrsm/g;
+        $ft{'library'} += s/\bcublasStrsm_v2\b/hipblasStrsm/g;
+        $ft{'library'} += s/\bcuda_stream\b/hip_stream/g;
+        $ft{'library'} += s/\bcudnnActivationBackward\b/hipdnnActivationBackward/g;
+        $ft{'library'} += s/\bcudnnActivationForward\b/hipdnnActivationForward/g;
+        $ft{'library'} += s/\bcudnnAddTensor\b/hipdnnAddTensor/g;
+        $ft{'library'} += s/\bcudnnBatchNormalizationBackward\b/hipdnnBatchNormalizationBackward/g;
+        $ft{'library'} += s/\bcudnnBatchNormalizationForwardInference\b/hipdnnBatchNormalizationForwardInference/g;
+        $ft{'library'} += s/\bcudnnBatchNormalizationForwardTraining\b/hipdnnBatchNormalizationForwardTraining/g;
+        $ft{'library'} += s/\bcudnnConvolutionBackwardBias\b/hipdnnConvolutionBackwardBias/g;
+        $ft{'library'} += s/\bcudnnConvolutionBackwardData\b/hipdnnConvolutionBackwardData/g;
+        $ft{'library'} += s/\bcudnnConvolutionBackwardFilter\b/hipdnnConvolutionBackwardFilter/g;
+        $ft{'library'} += s/\bcudnnConvolutionForward\b/hipdnnConvolutionForward/g;
+        $ft{'library'} += s/\bcudnnCreate\b/hipdnnCreate/g;
+        $ft{'library'} += s/\bcudnnCreateActivationDescriptor\b/hipdnnCreateActivationDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateConvolutionDescriptor\b/hipdnnCreateConvolutionDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateDropoutDescriptor\b/hipdnnCreateDropoutDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateFilterDescriptor\b/hipdnnCreateFilterDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateLRNDescriptor\b/hipdnnCreateLRNDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateOpTensorDescriptor\b/hipdnnCreateOpTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreatePersistentRNNPlan\b/hipdnnCreatePersistentRNNPlan/g;
+        $ft{'library'} += s/\bcudnnCreatePoolingDescriptor\b/hipdnnCreatePoolingDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateRNNDescriptor\b/hipdnnCreateRNNDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateReduceTensorDescriptor\b/hipdnnCreateReduceTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnCreateTensorDescriptor\b/hipdnnCreateTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnDeriveBNTensorDescriptor\b/hipdnnDeriveBNTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroy\b/hipdnnDestroy/g;
+        $ft{'library'} += s/\bcudnnDestroyActivationDescriptor\b/hipdnnDestroyActivationDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyConvolutionDescriptor\b/hipdnnDestroyConvolutionDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyDropoutDescriptor\b/hipdnnDestroyDropoutDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyFilterDescriptor\b/hipdnnDestroyFilterDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyLRNDescriptor\b/hipdnnDestroyLRNDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyOpTensorDescriptor\b/hipdnnDestroyOpTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyPersistentRNNPlan\b/hipdnnDestroyPersistentRNNPlan/g;
+        $ft{'library'} += s/\bcudnnDestroyPoolingDescriptor\b/hipdnnDestroyPoolingDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyRNNDescriptor\b/hipdnnDestroyRNNDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyReduceTensorDescriptor\b/hipdnnDestroyReduceTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnDestroyTensorDescriptor\b/hipdnnDestroyTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnDropoutGetStatesSize\b/hipdnnDropoutGetStatesSize/g;
+        $ft{'library'} += s/\bcudnnFindConvolutionBackwardDataAlgorithm\b/hipdnnFindConvolutionBackwardDataAlgorithm/g;
+        $ft{'library'} += s/\bcudnnFindConvolutionBackwardDataAlgorithmEx\b/hipdnnFindConvolutionBackwardDataAlgorithmEx/g;
+        $ft{'library'} += s/\bcudnnFindConvolutionBackwardFilterAlgorithm\b/hipdnnFindConvolutionBackwardFilterAlgorithm/g;
+        $ft{'library'} += s/\bcudnnFindConvolutionBackwardFilterAlgorithmEx\b/hipdnnFindConvolutionBackwardFilterAlgorithmEx/g;
+        $ft{'library'} += s/\bcudnnFindConvolutionForwardAlgorithm\b/hipdnnFindConvolutionForwardAlgorithm/g;
+        $ft{'library'} += s/\bcudnnFindConvolutionForwardAlgorithmEx\b/hipdnnFindConvolutionForwardAlgorithmEx/g;
+        $ft{'library'} += s/\bcudnnGetActivationDescriptor\b/hipdnnGetActivationDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetConvolution2dDescriptor\b/hipdnnGetConvolution2dDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetConvolution2dForwardOutputDim\b/hipdnnGetConvolution2dForwardOutputDim/g;
+        $ft{'library'} += s/\bcudnnGetConvolutionBackwardDataAlgorithm\b/hipdnnGetConvolutionBackwardDataAlgorithm/g;
+        $ft{'library'} += s/\bcudnnGetConvolutionBackwardDataWorkspaceSize\b/hipdnnGetConvolutionBackwardDataWorkspaceSize/g;
+        $ft{'library'} += s/\bcudnnGetConvolutionBackwardFilterAlgorithm\b/hipdnnGetConvolutionBackwardFilterAlgorithm/g;
+        $ft{'library'} += s/\bcudnnGetConvolutionBackwardFilterWorkspaceSize\b/hipdnnGetConvolutionBackwardFilterWorkspaceSize/g;
+        $ft{'library'} += s/\bcudnnGetConvolutionForwardAlgorithm\b/hipdnnGetConvolutionForwardAlgorithm/g;
+        $ft{'library'} += s/\bcudnnGetConvolutionForwardWorkspaceSize\b/hipdnnGetConvolutionForwardWorkspaceSize/g;
+        $ft{'library'} += s/\bcudnnGetErrorString\b/hipdnnGetErrorString/g;
+        $ft{'library'} += s/\bcudnnGetFilter4dDescriptor\b/hipdnnGetFilter4dDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetFilterNdDescriptor\b/hipdnnGetFilterNdDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetLRNDescriptor\b/hipdnnGetLRNDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetOpTensorDescriptor\b/hipdnnGetOpTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetPooling2dDescriptor\b/hipdnnGetPooling2dDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetPooling2dForwardOutputDim\b/hipdnnGetPooling2dForwardOutputDim/g;
+        $ft{'library'} += s/\bcudnnGetRNNDescriptor\b/hipdnnGetRNNDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetRNNLinLayerBiasParams\b/hipdnnGetRNNLinLayerBiasParams/g;
+        $ft{'library'} += s/\bcudnnGetRNNLinLayerMatrixParams\b/hipdnnGetRNNLinLayerMatrixParams/g;
+        $ft{'library'} += s/\bcudnnGetRNNParamsSize\b/hipdnnGetRNNParamsSize/g;
+        $ft{'library'} += s/\bcudnnGetRNNTrainingReserveSize\b/hipdnnGetRNNTrainingReserveSize/g;
+        $ft{'library'} += s/\bcudnnGetRNNWorkspaceSize\b/hipdnnGetRNNWorkspaceSize/g;
+        $ft{'library'} += s/\bcudnnGetReduceTensorDescriptor\b/hipdnnGetReduceTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetReductionWorkspaceSize\b/hipdnnGetReductionWorkspaceSize/g;
+        $ft{'library'} += s/\bcudnnGetStream\b/hipdnnGetStream/g;
+        $ft{'library'} += s/\bcudnnGetTensor4dDescriptor\b/hipdnnGetTensor4dDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetTensorNdDescriptor\b/hipdnnGetTensorNdDescriptor/g;
+        $ft{'library'} += s/\bcudnnGetVersion\b/hipdnnGetVersion/g;
+        $ft{'library'} += s/\bcudnnLRNCrossChannelBackward\b/hipdnnLRNCrossChannelBackward/g;
+        $ft{'library'} += s/\bcudnnLRNCrossChannelForward\b/hipdnnLRNCrossChannelForward/g;
+        $ft{'library'} += s/\bcudnnOpTensor\b/hipdnnOpTensor/g;
+        $ft{'library'} += s/\bcudnnPoolingBackward\b/hipdnnPoolingBackward/g;
+        $ft{'library'} += s/\bcudnnPoolingForward\b/hipdnnPoolingForward/g;
+        $ft{'library'} += s/\bcudnnRNNBackwardData\b/hipdnnRNNBackwardData/g;
+        $ft{'library'} += s/\bcudnnRNNBackwardWeights\b/hipdnnRNNBackwardWeights/g;
+        $ft{'library'} += s/\bcudnnRNNForwardInference\b/hipdnnRNNForwardInference/g;
+        $ft{'library'} += s/\bcudnnRNNForwardTraining\b/hipdnnRNNForwardTraining/g;
+        $ft{'library'} += s/\bcudnnReduceTensor\b/hipdnnReduceTensor/g;
+        $ft{'library'} += s/\bcudnnScaleTensor\b/hipdnnScaleTensor/g;
+        $ft{'library'} += s/\bcudnnSetActivationDescriptor\b/hipdnnSetActivationDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetConvolution2dDescriptor\b/hipdnnSetConvolution2dDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetConvolutionGroupCount\b/hipdnnSetConvolutionGroupCount/g;
+        $ft{'library'} += s/\bcudnnSetConvolutionMathType\b/hipdnnSetConvolutionMathType/g;
+        $ft{'library'} += s/\bcudnnSetConvolutionNdDescriptor\b/hipdnnSetConvolutionNdDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetDropoutDescriptor\b/hipdnnSetDropoutDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetFilter4dDescriptor\b/hipdnnSetFilter4dDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetFilterNdDescriptor\b/hipdnnSetFilterNdDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetLRNDescriptor\b/hipdnnSetLRNDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetOpTensorDescriptor\b/hipdnnSetOpTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetPersistentRNNPlan\b/hipdnnSetPersistentRNNPlan/g;
+        $ft{'library'} += s/\bcudnnSetPooling2dDescriptor\b/hipdnnSetPooling2dDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetPoolingNdDescriptor\b/hipdnnSetPoolingNdDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetRNNDescriptor\b/hipdnnSetRNNDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetRNNDescriptor_v5\b/hipdnnSetRNNDescriptor_v5/g;
+        $ft{'library'} += s/\bcudnnSetRNNDescriptor_v6\b/hipdnnSetRNNDescriptor_v6/g;
+        $ft{'library'} += s/\bcudnnSetReduceTensorDescriptor\b/hipdnnSetReduceTensorDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetStream\b/hipdnnSetStream/g;
+        $ft{'library'} += s/\bcudnnSetTensor\b/hipdnnSetTensor/g;
+        $ft{'library'} += s/\bcudnnSetTensor4dDescriptor\b/hipdnnSetTensor4dDescriptor/g;
+        $ft{'library'} += s/\bcudnnSetTensor4dDescriptorEx\b/hipdnnSetTensor4dDescriptorEx/g;
+        $ft{'library'} += s/\bcudnnSetTensorNdDescriptor\b/hipdnnSetTensorNdDescriptor/g;
+        $ft{'library'} += s/\bcudnnSoftmaxBackward\b/hipdnnSoftmaxBackward/g;
+        $ft{'library'} += s/\bcudnnSoftmaxForward\b/hipdnnSoftmaxForward/g;
+        $ft{'library'} += s/\bcufftCreate\b/hipfftCreate/g;
+        $ft{'library'} += s/\bcufftDestroy\b/hipfftDestroy/g;
+        $ft{'library'} += s/\bcufftEstimate1d\b/hipfftEstimate1d/g;
+        $ft{'library'} += s/\bcufftEstimate2d\b/hipfftEstimate2d/g;
+        $ft{'library'} += s/\bcufftEstimate3d\b/hipfftEstimate3d/g;
+        $ft{'library'} += s/\bcufftEstimateMany\b/hipfftEstimateMany/g;
+        $ft{'library'} += s/\bcufftExecC2C\b/hipfftExecC2C/g;
+        $ft{'library'} += s/\bcufftExecC2R\b/hipfftExecC2R/g;
+        $ft{'library'} += s/\bcufftExecD2Z\b/hipfftExecD2Z/g;
+        $ft{'library'} += s/\bcufftExecR2C\b/hipfftExecR2C/g;
+        $ft{'library'} += s/\bcufftExecZ2D\b/hipfftExecZ2D/g;
+        $ft{'library'} += s/\bcufftExecZ2Z\b/hipfftExecZ2Z/g;
+        $ft{'library'} += s/\bcufftGetSize\b/hipfftGetSize/g;
+        $ft{'library'} += s/\bcufftGetSize1d\b/hipfftGetSize1d/g;
+        $ft{'library'} += s/\bcufftGetSize2d\b/hipfftGetSize2d/g;
+        $ft{'library'} += s/\bcufftGetSize3d\b/hipfftGetSize3d/g;
+        $ft{'library'} += s/\bcufftGetSizeMany\b/hipfftGetSizeMany/g;
+        $ft{'library'} += s/\bcufftGetSizeMany64\b/hipfftGetSizeMany64/g;
+        $ft{'library'} += s/\bcufftGetVersion\b/hipfftGetVersion/g;
+        $ft{'library'} += s/\bcufftMakePlan1d\b/hipfftMakePlan1d/g;
+        $ft{'library'} += s/\bcufftMakePlan2d\b/hipfftMakePlan2d/g;
+        $ft{'library'} += s/\bcufftMakePlan3d\b/hipfftMakePlan3d/g;
+        $ft{'library'} += s/\bcufftMakePlanMany\b/hipfftMakePlanMany/g;
+        $ft{'library'} += s/\bcufftMakePlanMany64\b/hipfftMakePlanMany64/g;
+        $ft{'library'} += s/\bcufftPlan1d\b/hipfftPlan1d/g;
+        $ft{'library'} += s/\bcufftPlan2d\b/hipfftPlan2d/g;
+        $ft{'library'} += s/\bcufftPlan3d\b/hipfftPlan3d/g;
+        $ft{'library'} += s/\bcufftPlanMany\b/hipfftPlanMany/g;
+        $ft{'library'} += s/\bcufftSetAutoAllocation\b/hipfftSetAutoAllocation/g;
+        $ft{'library'} += s/\bcufftSetStream\b/hipfftSetStream/g;
+        $ft{'library'} += s/\bcufftSetWorkArea\b/hipfftSetWorkArea/g;
+        $ft{'library'} += s/\bcurandCreateGenerator\b/hiprandCreateGenerator/g;
+        $ft{'library'} += s/\bcurandCreateGeneratorHost\b/hiprandCreateGeneratorHost/g;
+        $ft{'library'} += s/\bcurandCreatePoissonDistribution\b/hiprandCreatePoissonDistribution/g;
+        $ft{'library'} += s/\bcurandDestroyDistribution\b/hiprandDestroyDistribution/g;
+        $ft{'library'} += s/\bcurandDestroyGenerator\b/hiprandDestroyGenerator/g;
+        $ft{'library'} += s/\bcurandGenerate\b/hiprandGenerate/g;
+        $ft{'library'} += s/\bcurandGenerateLogNormal\b/hiprandGenerateLogNormal/g;
+        $ft{'library'} += s/\bcurandGenerateLogNormalDouble\b/hiprandGenerateLogNormalDouble/g;
+        $ft{'library'} += s/\bcurandGenerateNormal\b/hiprandGenerateNormal/g;
+        $ft{'library'} += s/\bcurandGenerateNormalDouble\b/hiprandGenerateNormalDouble/g;
+        $ft{'library'} += s/\bcurandGeneratePoisson\b/hiprandGeneratePoisson/g;
+        $ft{'library'} += s/\bcurandGenerateSeeds\b/hiprandGenerateSeeds/g;
+        $ft{'library'} += s/\bcurandGenerateUniform\b/hiprandGenerateUniform/g;
+        $ft{'library'} += s/\bcurandGenerateUniformDouble\b/hiprandGenerateUniformDouble/g;
+        $ft{'library'} += s/\bcurandGetVersion\b/hiprandGetVersion/g;
+        $ft{'library'} += s/\bcurandMakeMTGP32Constants\b/hiprandMakeMTGP32Constants/g;
+        $ft{'library'} += s/\bcurandMakeMTGP32KernelState\b/hiprandMakeMTGP32KernelState/g;
+        $ft{'library'} += s/\bcurandSetGeneratorOffset\b/hiprandSetGeneratorOffset/g;
+        $ft{'library'} += s/\bcurandSetPseudoRandomGeneratorSeed\b/hiprandSetPseudoRandomGeneratorSeed/g;
+        $ft{'library'} += s/\bcurandSetQuasiRandomGeneratorDimensions\b/hiprandSetQuasiRandomGeneratorDimensions/g;
+        $ft{'library'} += s/\bcurandSetStream\b/hiprandSetStream/g;
+        $ft{'library'} += s/\bcusparseCreate\b/hipsparseCreate/g;
+        $ft{'library'} += s/\bcusparseCreateCsrilu02Info\b/hipsparseCreateCsrilu02Info/g;
+        $ft{'library'} += s/\bcusparseCreateCsrsv2Info\b/hipsparseCreateCsrsv2Info/g;
+        $ft{'library'} += s/\bcusparseCreateHybMat\b/hipsparseCreateHybMat/g;
+        $ft{'library'} += s/\bcusparseCreateIdentityPermutation\b/hipsparseCreateIdentityPermutation/g;
+        $ft{'library'} += s/\bcusparseCreateMatDescr\b/hipsparseCreateMatDescr/g;
+        $ft{'library'} += s/\bcusparseDaxpyi\b/hipsparseDaxpyi/g;
+        $ft{'library'} += s/\bcusparseDcsr2csc\b/hipsparseDcsr2csc/g;
+        $ft{'library'} += s/\bcusparseDcsr2hyb\b/hipsparseDcsr2hyb/g;
+        $ft{'library'} += s/\bcusparseDcsrilu02\b/hipsparseDcsrilu02/g;
+        $ft{'library'} += s/\bcusparseDcsrilu02_analysis\b/hipsparseDcsrilu02_analysis/g;
+        $ft{'library'} += s/\bcusparseDcsrilu02_bufferSize\b/hipsparseDcsrilu02_bufferSize/g;
+        $ft{'library'} += s/\bcusparseDcsrilu02_bufferSizeExt\b/hipsparseDcsrilu02_bufferSizeExt/g;
+        $ft{'library'} += s/\bcusparseDcsrmm\b/hipsparseDcsrmm/g;
+        $ft{'library'} += s/\bcusparseDcsrmm2\b/hipsparseDcsrmm2/g;
+        $ft{'library'} += s/\bcusparseDcsrmv\b/hipsparseDcsrmv/g;
+        $ft{'library'} += s/\bcusparseDcsrsv2_analysis\b/hipsparseDcsrsv2_analysis/g;
+        $ft{'library'} += s/\bcusparseDcsrsv2_bufferSize\b/hipsparseDcsrsv2_bufferSize/g;
+        $ft{'library'} += s/\bcusparseDcsrsv2_bufferSizeExt\b/hipsparseDcsrsv2_bufferSizeExt/g;
+        $ft{'library'} += s/\bcusparseDcsrsv2_solve\b/hipsparseDcsrsv2_solve/g;
+        $ft{'library'} += s/\bcusparseDdoti\b/hipsparseDdoti/g;
+        $ft{'library'} += s/\bcusparseDestroy\b/hipsparseDestroy/g;
+        $ft{'library'} += s/\bcusparseDestroyCsrilu02Info\b/hipsparseDestroyCsrilu02Info/g;
+        $ft{'library'} += s/\bcusparseDestroyCsrsv2Info\b/hipsparseDestroyCsrsv2Info/g;
+        $ft{'library'} += s/\bcusparseDestroyHybMat\b/hipsparseDestroyHybMat/g;
+        $ft{'library'} += s/\bcusparseDestroyMatDescr\b/hipsparseDestroyMatDescr/g;
+        $ft{'library'} += s/\bcusparseDgthr\b/hipsparseDgthr/g;
+        $ft{'library'} += s/\bcusparseDgthrz\b/hipsparseDgthrz/g;
+        $ft{'library'} += s/\bcusparseDhybmv\b/hipsparseDhybmv/g;
+        $ft{'library'} += s/\bcusparseDroti\b/hipsparseDroti/g;
+        $ft{'library'} += s/\bcusparseDsctr\b/hipsparseDsctr/g;
+        $ft{'library'} += s/\bcusparseGetMatDiagType\b/hipsparseGetMatDiagType/g;
+        $ft{'library'} += s/\bcusparseGetMatFillMode\b/hipsparseGetMatFillMode/g;
+        $ft{'library'} += s/\bcusparseGetMatIndexBase\b/hipsparseGetMatIndexBase/g;
+        $ft{'library'} += s/\bcusparseGetMatType\b/hipsparseGetMatType/g;
+        $ft{'library'} += s/\bcusparseGetPointerMode\b/hipsparseGetPointerMode/g;
+        $ft{'library'} += s/\bcusparseGetStream\b/hipsparseGetStream/g;
+        $ft{'library'} += s/\bcusparseGetVersion\b/hipsparseGetVersion/g;
+        $ft{'library'} += s/\bcusparseSaxpyi\b/hipsparseSaxpyi/g;
+        $ft{'library'} += s/\bcusparseScsr2csc\b/hipsparseScsr2csc/g;
+        $ft{'library'} += s/\bcusparseScsr2hyb\b/hipsparseScsr2hyb/g;
+        $ft{'library'} += s/\bcusparseScsrilu02\b/hipsparseScsrilu02/g;
+        $ft{'library'} += s/\bcusparseScsrilu02_analysis\b/hipsparseScsrilu02_analysis/g;
+        $ft{'library'} += s/\bcusparseScsrilu02_bufferSize\b/hipsparseScsrilu02_bufferSize/g;
+        $ft{'library'} += s/\bcusparseScsrilu02_bufferSizeExt\b/hipsparseScsrilu02_bufferSizeExt/g;
+        $ft{'library'} += s/\bcusparseScsrmm\b/hipsparseScsrmm/g;
+        $ft{'library'} += s/\bcusparseScsrmm2\b/hipsparseScsrmm2/g;
+        $ft{'library'} += s/\bcusparseScsrmv\b/hipsparseScsrmv/g;
+        $ft{'library'} += s/\bcusparseScsrsv2_analysis\b/hipsparseScsrsv2_analysis/g;
+        $ft{'library'} += s/\bcusparseScsrsv2_bufferSize\b/hipsparseScsrsv2_bufferSize/g;
+        $ft{'library'} += s/\bcusparseScsrsv2_bufferSizeExt\b/hipsparseScsrsv2_bufferSizeExt/g;
+        $ft{'library'} += s/\bcusparseScsrsv2_solve\b/hipsparseScsrsv2_solve/g;
+        $ft{'library'} += s/\bcusparseSdoti\b/hipsparseSdoti/g;
+        $ft{'library'} += s/\bcusparseSetMatDiagType\b/hipsparseSetMatDiagType/g;
+        $ft{'library'} += s/\bcusparseSetMatFillMode\b/hipsparseSetMatFillMode/g;
+        $ft{'library'} += s/\bcusparseSetMatIndexBase\b/hipsparseSetMatIndexBase/g;
+        $ft{'library'} += s/\bcusparseSetMatType\b/hipsparseSetMatType/g;
+        $ft{'library'} += s/\bcusparseSetPointerMode\b/hipsparseSetPointerMode/g;
+        $ft{'library'} += s/\bcusparseSetStream\b/hipsparseSetStream/g;
+        $ft{'library'} += s/\bcusparseSgthr\b/hipsparseSgthr/g;
+        $ft{'library'} += s/\bcusparseSgthrz\b/hipsparseSgthrz/g;
+        $ft{'library'} += s/\bcusparseShybmv\b/hipsparseShybmv/g;
+        $ft{'library'} += s/\bcusparseSroti\b/hipsparseSroti/g;
+        $ft{'library'} += s/\bcusparseSsctr\b/hipsparseSsctr/g;
+        $ft{'library'} += s/\bcusparseXbsrilu02_zeroPivot\b/hipsparseXbsrilu02_zeroPivot/g;
+        $ft{'library'} += s/\bcusparseXcoo2csr\b/hipsparseXcoo2csr/g;
+        $ft{'library'} += s/\bcusparseXcoosortByColumn\b/hipsparseXcoosortByColumn/g;
+        $ft{'library'} += s/\bcusparseXcoosortByRow\b/hipsparseXcoosortByRow/g;
+        $ft{'library'} += s/\bcusparseXcoosort_bufferSizeExt\b/hipsparseXcoosort_bufferSizeExt/g;
+        $ft{'library'} += s/\bcusparseXcsr2coo\b/hipsparseXcsr2coo/g;
+        $ft{'library'} += s/\bcusparseXcsrilu02_zeroPivot\b/hipsparseXcsrilu02_zeroPivot/g;
+        $ft{'library'} += s/\bcusparseXcsrsort\b/hipsparseXcsrsort/g;
+        $ft{'library'} += s/\bcusparseXcsrsort_bufferSizeExt\b/hipsparseXcsrsort_bufferSizeExt/g;
+        $ft{'library'} += s/\bcusparseXcsrsv2_zeroPivot\b/hipsparseXcsrsv2_zeroPivot/g;
+        $ft{'device_library'} += s/\bcurand\b/hiprand/g;
+        $ft{'device_library'} += s/\bcurand_discrete\b/hiprand_discrete/g;
+        $ft{'device_library'} += s/\bcurand_discrete4\b/hiprand_discrete4/g;
+        $ft{'device_library'} += s/\bcurand_init\b/hiprand_init/g;
+        $ft{'device_library'} += s/\bcurand_log_normal\b/hiprand_log_normal/g;
+        $ft{'device_library'} += s/\bcurand_log_normal2\b/hiprand_log_normal2/g;
+        $ft{'device_library'} += s/\bcurand_log_normal2_double\b/hiprand_log_normal2_double/g;
+        $ft{'device_library'} += s/\bcurand_log_normal4\b/hiprand_log_normal4/g;
+        $ft{'device_library'} += s/\bcurand_log_normal4_double\b/hiprand_log_normal4_double/g;
+        $ft{'device_library'} += s/\bcurand_log_normal_double\b/hiprand_log_normal_double/g;
+        $ft{'device_library'} += s/\bcurand_normal\b/hiprand_normal/g;
+        $ft{'device_library'} += s/\bcurand_normal2\b/hiprand_normal2/g;
+        $ft{'device_library'} += s/\bcurand_normal2_double\b/hiprand_normal2_double/g;
+        $ft{'device_library'} += s/\bcurand_normal4\b/hiprand_normal4/g;
+        $ft{'device_library'} += s/\bcurand_normal4_double\b/hiprand_normal4_double/g;
+        $ft{'device_library'} += s/\bcurand_normal_double\b/hiprand_normal_double/g;
+        $ft{'device_library'} += s/\bcurand_poisson\b/hiprand_poisson/g;
+        $ft{'device_library'} += s/\bcurand_poisson4\b/hiprand_poisson4/g;
+        $ft{'device_library'} += s/\bcurand_uniform\b/hiprand_uniform/g;
+        $ft{'device_library'} += s/\bcurand_uniform2_double\b/hiprand_uniform2_double/g;
+        $ft{'device_library'} += s/\bcurand_uniform4\b/hiprand_uniform4/g;
+        $ft{'device_library'} += s/\bcurand_uniform4_double\b/hiprand_uniform4_double/g;
+        $ft{'device_library'} += s/\bcurand_uniform_double\b/hiprand_uniform_double/g;
+        $ft{'include'} += s/\bcaffe2\/core\/common_cudnn.h\b/caffe2\/core\/hip\/common_miopen.h/g;
+        $ft{'include'} += s/\bcaffe2\/operators\/spatial_batch_norm_op.h\b/caffe2\/operators\/hip\/spatial_batch_norm_op_miopen.hip/g;
+        $ft{'include'} += s/\bchannel_descriptor.h\b/hip\/channel_descriptor.h/g;
+        $ft{'include'} += s/\bcuda_fp16.h\b/hip\/hip_fp16.h/g;
+        $ft{'include'} += s/\bcuda_profiler_api.h\b/hip\/hip_profile.h/g;
+        $ft{'include'} += s/\bcuda_runtime_api.h\b/hip\/hip_runtime_api.h/g;
+        $ft{'include'} += s/\bcuda_texture_types.h\b/hip\/hip_texture_types.h/g;
+        $ft{'include'} += s/\bcurand_discrete.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_discrete2.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_globals.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_kernel.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_lognormal.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_mrg32k3a.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_mtgp32.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_mtgp32_host.h\b/hiprand_mtgp32_host.h/g;
+        $ft{'include'} += s/\bcurand_mtgp32_kernel.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_mtgp32dc_p_11213.h\b/rocrand_mtgp32_11213.h/g;
+        $ft{'include'} += s/\bcurand_normal.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_normal_static.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_philox4x32_x.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_poisson.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_precalc.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bcurand_uniform.h\b/hiprand_kernel.h/g;
+        $ft{'include'} += s/\bdevice_functions.h\b/hip\/device_functions.h/g;
+        $ft{'include'} += s/\bdriver_types.h\b/hip\/driver_types.h/g;
+        $ft{'include'} += s/\btexture_fetch_functions.h\b//g;
+        $ft{'include'} += s/\bvector_types.h\b/hip\/hip_vector_types.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcuComplex.h\b/hip\/hip_complex.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcublas.h\b/hipblas.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcublas_v2.h\b/hipblas.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcuda.h\b/hip\/hip_runtime.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcuda_runtime.h\b/hip\/hip_runtime.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcudnn.h\b/hipDNN.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcufft.h\b/hipfft.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcurand.h\b/hiprand.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcusparse.h\b/hipsparse.h/g;
+        $ft{'include_cuda_main_header'} += s/\bcusparse_v2.h\b/hipsparse.h/g;
+        $ft{'type'} += s/\bCUDAContext\b/HIPContext/g;
+        $ft{'type'} += s/\bCUDA_ARRAY3D_DESCRIPTOR\b/HIP_ARRAY3D_DESCRIPTOR/g;
+        $ft{'type'} += s/\bCUDA_ARRAY3D_DESCRIPTOR_st\b/HIP_ARRAY3D_DESCRIPTOR/g;
+        $ft{'type'} += s/\bCUDA_ARRAY_DESCRIPTOR\b/HIP_ARRAY_DESCRIPTOR/g;
+        $ft{'type'} += s/\bCUDA_ARRAY_DESCRIPTOR_st\b/HIP_ARRAY_DESCRIPTOR/g;
+        $ft{'type'} += s/\bCUDA_MEMCPY2D\b/hip_Memcpy2D/g;
+        $ft{'type'} += s/\bCUDA_MEMCPY2D_st\b/hip_Memcpy2D/g;
+        $ft{'type'} += s/\bCUaddress_mode\b/hipTextureAddressMode/g;
+        $ft{'type'} += s/\bCUaddress_mode_enum\b/hipTextureAddressMode/g;
+        $ft{'type'} += s/\bCUarray\b/hipArray */g;
+        $ft{'type'} += s/\bCUarray_format\b/hipArray_format/g;
+        $ft{'type'} += s/\bCUarray_format_enum\b/hipArray_format/g;
+        $ft{'type'} += s/\bCUarray_st\b/hipArray/g;
+        $ft{'type'} += s/\bCUcomputemode\b/hipComputeMode/g;
+        $ft{'type'} += s/\bCUcomputemode_enum\b/hipComputeMode/g;
+        $ft{'type'} += s/\bCUcontext\b/hipCtx_t/g;
+        $ft{'type'} += s/\bCUctx_st\b/ihipCtx_t/g;
+        $ft{'type'} += s/\bCUdevice\b/hipDevice_t/g;
+        $ft{'type'} += s/\bCUdevice_attribute\b/hipDeviceAttribute_t/g;
+        $ft{'type'} += s/\bCUdevice_attribute_enum\b/hipDeviceAttribute_t/g;
+        $ft{'type'} += s/\bCUdeviceptr\b/hipDeviceptr_t/g;
+        $ft{'type'} += s/\bCUevent\b/hipEvent_t/g;
+        $ft{'type'} += s/\bCUevent_st\b/ihipEvent_t/g;
+        $ft{'type'} += s/\bCUfilter_mode\b/hipTextureFilterMode/g;
+        $ft{'type'} += s/\bCUfilter_mode_enum\b/hipTextureFilterMode/g;
+        $ft{'type'} += s/\bCUfunc_cache\b/hipFuncCache_t/g;
+        $ft{'type'} += s/\bCUfunc_cache_enum\b/hipFuncCache_t/g;
+        $ft{'type'} += s/\bCUfunc_st\b/ihipModuleSymbol_t/g;
+        $ft{'type'} += s/\bCUfunction\b/hipFunction_t/g;
+        $ft{'type'} += s/\bCUfunction_attribute\b/hipFunction_attribute/g;
+        $ft{'type'} += s/\bCUfunction_attribute_enum\b/hipFunction_attribute/g;
+        $ft{'type'} += s/\bCUipcEventHandle\b/ihipIpcEventHandle_t/g;
+        $ft{'type'} += s/\bCUipcEventHandle_st\b/ihipIpcEventHandle_t/g;
+        $ft{'type'} += s/\bCUipcMemHandle\b/hipIpcMemHandle_t/g;
+        $ft{'type'} += s/\bCUipcMemHandle_st\b/hipIpcMemHandle_st/g;
+        $ft{'type'} += s/\bCUjit_option\b/hipJitOption/g;
+        $ft{'type'} += s/\bCUjit_option_enum\b/hipJitOption/g;
+        $ft{'type'} += s/\bCUlimit\b/hipLimit_t/g;
+        $ft{'type'} += s/\bCUlimit_enum\b/hipLimit_t/g;
+        $ft{'type'} += s/\bCUmemorytype\b/hipMemoryType/g;
+        $ft{'type'} += s/\bCUmemorytype_enum\b/hipMemoryType/g;
+        $ft{'type'} += s/\bCUmipmappedArray\b/hipMipmappedArray_t/g;
+        $ft{'type'} += s/\bCUmipmappedArray_st\b/hipMipmappedArray_st/g;
+        $ft{'type'} += s/\bCUmod_st\b/ihipModule_t/g;
+        $ft{'type'} += s/\bCUmodule\b/hipModule_t/g;
+        $ft{'type'} += s/\bCUresourceViewFormat\b/hipResourceViewFormat/g;
+        $ft{'type'} += s/\bCUresourceViewFormat_enum\b/hipResourceViewFormat/g;
+        $ft{'type'} += s/\bCUresourcetype\b/hipResourceType/g;
+        $ft{'type'} += s/\bCUresourcetype_enum\b/hipResourceType/g;
+        $ft{'type'} += s/\bCUresult\b/hipError_t/g;
+        $ft{'type'} += s/\bCUsharedconfig\b/hipSharedMemConfig/g;
+        $ft{'type'} += s/\bCUsharedconfig_enum\b/hipSharedMemConfig/g;
+        $ft{'type'} += s/\bCUstream\b/hipStream_t/g;
+        $ft{'type'} += s/\bCUstreamCallback\b/hipStreamCallback_t/g;
+        $ft{'type'} += s/\bCUstream_st\b/ihipStream_t/g;
+        $ft{'type'} += s/\bCUtexObject\b/hipTextureObject_t/g;
+        $ft{'type'} += s/\bCUtexref_st\b/textureReference/g;
+        $ft{'type'} += s/\bcsrilu02Info_t\b/csrilu02Info_t/g;
+        $ft{'type'} += s/\bcsrsv2Info_t\b/csrsv2Info_t/g;
+        $ft{'type'} += s/\bcuComplex\b/hipComplex/g;
+        $ft{'type'} += s/\bcuDoubleComplex\b/hipDoubleComplex/g;
+        $ft{'type'} += s/\bcuFloatComplex\b/hipFloatComplex/g;
+        $ft{'type'} += s/\bcublasDataType_t\b/hipblasDatatype_t/g;
+        $ft{'type'} += s/\bcublasDiagType_t\b/hipblasDiagType_t/g;
+        $ft{'type'} += s/\bcublasFillMode_t\b/hipblasFillMode_t/g;
+        $ft{'type'} += s/\bcublasGemmAlgo_t\b/hipblasGemmAlgo_t/g;
+        $ft{'type'} += s/\bcublasHandle_t\b/hipblasHandle_t/g;
+        $ft{'type'} += s/\bcublasOperation_t\b/hipblasOperation_t/g;
+        $ft{'type'} += s/\bcublasPointerMode_t\b/hipblasPointerMode_t/g;
+        $ft{'type'} += s/\bcublasSideMode_t\b/hipblasSideMode_t/g;
+        $ft{'type'} += s/\bcublasStatus\b/hipblasStatus_t/g;
+        $ft{'type'} += s/\bcublasStatus_t\b/hipblasStatus_t/g;
+        $ft{'type'} += s/\bcudaArray\b/hipArray/g;
+        $ft{'type'} += s/\bcudaArray_const_t\b/hipArray_const_t/g;
+        $ft{'type'} += s/\bcudaArray_t\b/hipArray_t/g;
+        $ft{'type'} += s/\bcudaChannelFormatDesc\b/hipChannelFormatDesc/g;
+        $ft{'type'} += s/\bcudaChannelFormatKind\b/hipChannelFormatKind/g;
+        $ft{'type'} += s/\bcudaComputeMode\b/hipComputeMode/g;
+        $ft{'type'} += s/\bcudaDataType\b/hipblasDatatype_t/g;
+        $ft{'type'} += s/\bcudaDataType_t\b/hipblasDatatype_t/g;
+        $ft{'type'} += s/\bcudaDeviceAttr\b/hipDeviceAttribute_t/g;
+        $ft{'type'} += s/\bcudaDeviceProp\b/hipDeviceProp_t/g;
+        $ft{'type'} += s/\bcudaError\b/hipError_t/g;
+        $ft{'type'} += s/\bcudaError_enum\b/hipError_t/g;
+        $ft{'type'} += s/\bcudaError_t\b/hipError_t/g;
+        $ft{'type'} += s/\bcudaEvent_t\b/hipEvent_t/g;
+        $ft{'type'} += s/\bcudaExtent\b/hipExtent/g;
+        $ft{'type'} += s/\bcudaFuncAttributes\b/hipFuncAttributes/g;
+        $ft{'type'} += s/\bcudaFuncCache\b/hipFuncCache_t/g;
+        $ft{'type'} += s/\bcudaIpcEventHandle_st\b/ihipIpcEventHandle_t/g;
+        $ft{'type'} += s/\bcudaIpcEventHandle_t\b/ihipIpcEventHandle_t/g;
+        $ft{'type'} += s/\bcudaIpcMemHandle_st\b/hipIpcMemHandle_st/g;
+        $ft{'type'} += s/\bcudaIpcMemHandle_t\b/hipIpcMemHandle_t/g;
+        $ft{'type'} += s/\bcudaLaunchParams\b/hipLaunchParams/g;
+        $ft{'type'} += s/\bcudaLimit\b/hipLimit_t/g;
+        $ft{'type'} += s/\bcudaMemcpy3DParms\b/hipMemcpy3DParms/g;
+        $ft{'type'} += s/\bcudaMemcpyKind\b/hipMemcpyKind/g;
+        $ft{'type'} += s/\bcudaMipmappedArray\b/hipMipmappedArray/g;
+        $ft{'type'} += s/\bcudaMipmappedArray_const_t\b/hipMipmappedArray_const_t/g;
+        $ft{'type'} += s/\bcudaMipmappedArray_t\b/hipMipmappedArray_t/g;
+        $ft{'type'} += s/\bcudaPitchedPtr\b/hipPitchedPtr/g;
+        $ft{'type'} += s/\bcudaPointerAttributes\b/hipPointerAttribute_t/g;
+        $ft{'type'} += s/\bcudaPos\b/hipPos/g;
+        $ft{'type'} += s/\bcudaResourceDesc\b/hipResourceDesc/g;
+        $ft{'type'} += s/\bcudaResourceType\b/hipResourceType/g;
+        $ft{'type'} += s/\bcudaResourceViewDesc\b/hipResourceViewDesc/g;
+        $ft{'type'} += s/\bcudaResourceViewFormat\b/hipResourceViewFormat/g;
+        $ft{'type'} += s/\bcudaSharedMemConfig\b/hipSharedMemConfig/g;
+        $ft{'type'} += s/\bcudaStreamCallback_t\b/hipStreamCallback_t/g;
+        $ft{'type'} += s/\bcudaStream_t\b/hipStream_t/g;
+        $ft{'type'} += s/\bcudaSurfaceBoundaryMode\b/hipSurfaceBoundaryMode/g;
+        $ft{'type'} += s/\bcudaSurfaceObject_t\b/hipSurfaceObject_t/g;
+        $ft{'type'} += s/\bcudaTextureAddressMode\b/hipTextureAddressMode/g;
+        $ft{'type'} += s/\bcudaTextureDesc\b/hipTextureDesc/g;
+        $ft{'type'} += s/\bcudaTextureFilterMode\b/hipTextureFilterMode/g;
+        $ft{'type'} += s/\bcudaTextureObject_t\b/hipTextureObject_t/g;
+        $ft{'type'} += s/\bcudaTextureReadMode\b/hipTextureReadMode/g;
+        $ft{'type'} += s/\bcudnnActivationDescriptor_t\b/hipdnnActivationDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnActivationMode_t\b/hipdnnActivationMode_t/g;
+        $ft{'type'} += s/\bcudnnBatchNormMode_t\b/hipdnnBatchNormMode_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionBwdDataAlgoPerf_t\b/hipdnnConvolutionBwdDataAlgoPerf_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionBwdDataAlgo_t\b/hipdnnConvolutionBwdDataAlgo_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionBwdDataPreference_t\b/hipdnnConvolutionBwdDataPreference_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionBwdFilterAlgoPerf_t\b/hipdnnConvolutionBwdFilterAlgoPerf_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionBwdFilterAlgo_t\b/hipdnnConvolutionBwdFilterAlgo_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionBwdFilterPreference_t\b/hipdnnConvolutionBwdFilterPreference_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionDescriptor_t\b/hipdnnConvolutionDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionFwdAlgoPerf_t\b/hipdnnConvolutionFwdAlgoPerf_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionFwdAlgo_t\b/hipdnnConvolutionFwdAlgo_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionFwdPreference_t\b/hipdnnConvolutionFwdPreference_t/g;
+        $ft{'type'} += s/\bcudnnConvolutionMode_t\b/hipdnnConvolutionMode_t/g;
+        $ft{'type'} += s/\bcudnnDataType_t\b/hipdnnDataType_t/g;
+        $ft{'type'} += s/\bcudnnDirectionMode_t\b/hipdnnDirectionMode_t/g;
+        $ft{'type'} += s/\bcudnnDropoutDescriptor_t\b/hipdnnDropoutDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnFilterDescriptor_t\b/hipdnnFilterDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnHandle_t\b/hipdnnHandle_t/g;
+        $ft{'type'} += s/\bcudnnIndicesType_t\b/hipdnnIndicesType_t/g;
+        $ft{'type'} += s/\bcudnnLRNDescriptor_t\b/hipdnnLRNDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnLRNMode_t\b/hipdnnLRNMode_t/g;
+        $ft{'type'} += s/\bcudnnMathType_t\b/hipdnnMathType_t/g;
+        $ft{'type'} += s/\bcudnnNanPropagation_t\b/hipdnnNanPropagation_t/g;
+        $ft{'type'} += s/\bcudnnOpTensorDescriptor_t\b/hipdnnOpTensorDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnOpTensorOp_t\b/hipdnnOpTensorOp_t/g;
+        $ft{'type'} += s/\bcudnnPersistentRNNPlan_t\b/hipdnnPersistentRNNPlan_t/g;
+        $ft{'type'} += s/\bcudnnPoolingDescriptor_t\b/hipdnnPoolingDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnPoolingMode_t\b/hipdnnPoolingMode_t/g;
+        $ft{'type'} += s/\bcudnnRNNAlgo_t\b/hipdnnRNNAlgo_t/g;
+        $ft{'type'} += s/\bcudnnRNNBiasMode_t\b/hipdnnRNNBiasMode_t/g;
+        $ft{'type'} += s/\bcudnnRNNDescriptor_t\b/hipdnnRNNDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnRNNInputMode_t\b/hipdnnRNNInputMode_t/g;
+        $ft{'type'} += s/\bcudnnRNNMode_t\b/hipdnnRNNMode_t/g;
+        $ft{'type'} += s/\bcudnnReduceTensorDescriptor_t\b/hipdnnReduceTensorDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnReduceTensorIndices_t\b/hipdnnReduceTensorIndices_t/g;
+        $ft{'type'} += s/\bcudnnReduceTensorOp_t\b/hipdnnReduceTensorOp_t/g;
+        $ft{'type'} += s/\bcudnnSoftmaxAlgorithm_t\b/hipdnnSoftmaxAlgorithm_t/g;
+        $ft{'type'} += s/\bcudnnSoftmaxMode_t\b/hipdnnSoftmaxMode_t/g;
+        $ft{'type'} += s/\bcudnnStatus_t\b/hipdnnStatus_t/g;
+        $ft{'type'} += s/\bcudnnTensorDescriptor_t\b/hipdnnTensorDescriptor_t/g;
+        $ft{'type'} += s/\bcudnnTensorFormat_t\b/hipdnnTensorFormat_t/g;
+        $ft{'type'} += s/\bcufftComplex\b/hipfftComplex/g;
+        $ft{'type'} += s/\bcufftDoubleComplex\b/hipfftDoubleComplex/g;
+        $ft{'type'} += s/\bcufftDoubleReal\b/hipfftDoubleReal/g;
+        $ft{'type'} += s/\bcufftHandle\b/hipfftHandle/g;
+        $ft{'type'} += s/\bcufftReal\b/hipfftReal/g;
+        $ft{'type'} += s/\bcufftResult\b/hipfftResult/g;
+        $ft{'type'} += s/\bcufftResult_t\b/hipfftResult_t/g;
+        $ft{'type'} += s/\bcufftType\b/hipfftType/g;
+        $ft{'type'} += s/\bcufftType_t\b/hipfftType_t/g;
+        $ft{'type'} += s/\bcurandDirectionVectors32_t\b/hiprandDirectionVectors32_t/g;
+        $ft{'type'} += s/\bcurandDiscreteDistribution_st\b/hiprandDiscreteDistribution_st/g;
+        $ft{'type'} += s/\bcurandDiscreteDistribution_t\b/hiprandDiscreteDistribution_t/g;
+        $ft{'type'} += s/\bcurandGenerator_st\b/hiprandGenerator_st/g;
+        $ft{'type'} += s/\bcurandGenerator_t\b/hiprandGenerator_t/g;
+        $ft{'type'} += s/\bcurandRngType\b/hiprandRngType_t/g;
+        $ft{'type'} += s/\bcurandRngType_t\b/hiprandRngType_t/g;
+        $ft{'type'} += s/\bcurandState\b/hiprandState/g;
+        $ft{'type'} += s/\bcurandStateMRG32k3a\b/hiprandStateMRG32k3a/g;
+        $ft{'type'} += s/\bcurandStateMRG32k3a_t\b/hiprandStateMRG32k3a_t/g;
+        $ft{'type'} += s/\bcurandStateMtgp32\b/hiprandStateMtgp32/g;
+        $ft{'type'} += s/\bcurandStateMtgp32_t\b/hiprandStateMtgp32_t/g;
+        $ft{'type'} += s/\bcurandStatePhilox4_32_10\b/hiprandStatePhilox4_32_10/g;
+        $ft{'type'} += s/\bcurandStatePhilox4_32_10_t\b/hiprandStatePhilox4_32_10_t/g;
+        $ft{'type'} += s/\bcurandStateSobol32\b/hiprandStateSobol32/g;
+        $ft{'type'} += s/\bcurandStateSobol32_t\b/hiprandStateSobol32_t/g;
+        $ft{'type'} += s/\bcurandStateXORWOW\b/hiprandStateXORWOW/g;
+        $ft{'type'} += s/\bcurandStateXORWOW_t\b/hiprandStateXORWOW_t/g;
+        $ft{'type'} += s/\bcurandState_t\b/hiprandState_t/g;
+        $ft{'type'} += s/\bcurandStatus\b/hiprandStatus_t/g;
+        $ft{'type'} += s/\bcurandStatus_t\b/hiprandStatus_t/g;
+        $ft{'type'} += s/\bcusparseAction_t\b/hipsparseAction_t/g;
+        $ft{'type'} += s/\bcusparseDiagType_t\b/hipsparseDiagType_t/g;
+        $ft{'type'} += s/\bcusparseFillMode_t\b/hipsparseFillMode_t/g;
+        $ft{'type'} += s/\bcusparseHandle_t\b/hipsparseHandle_t/g;
+        $ft{'type'} += s/\bcusparseHybMat_t\b/hipsparseHybMat_t/g;
+        $ft{'type'} += s/\bcusparseHybPartition_t\b/hipsparseHybPartition_t/g;
+        $ft{'type'} += s/\bcusparseIndexBase_t\b/hipsparseIndexBase_t/g;
+        $ft{'type'} += s/\bcusparseMatDescr_t\b/hipsparseMatDescr_t/g;
+        $ft{'type'} += s/\bcusparseMatrixType_t\b/hipsparseMatrixType_t/g;
+        $ft{'type'} += s/\bcusparseOperation_t\b/hipsparseOperation_t/g;
+        $ft{'type'} += s/\bcusparsePointerMode_t\b/hipsparsePointerMode_t/g;
+        $ft{'type'} += s/\bcusparseSolvePolicy_t\b/hipsparseSolvePolicy_t/g;
+        $ft{'type'} += s/\bcusparseStatus_t\b/hipsparseStatus_t/g;
+        $ft{'type'} += s/\bwarpSize\b/hipWarpSize/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_DIAG_NON_UNIT\b/HIPBLAS_DIAG_NON_UNIT/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_DIAG_UNIT\b/HIPBLAS_DIAG_UNIT/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_FILL_MODE_FULL\b/HIPBLAS_FILL_MODE_FULL/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_FILL_MODE_LOWER\b/HIPBLAS_FILL_MODE_LOWER/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_FILL_MODE_UPPER\b/HIPBLAS_FILL_MODE_UPPER/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_GEMM_DEFAULT\b/HIPBLAS_GEMM_DEFAULT/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_GEMM_DFALT\b/HIPBLAS_GEMM_DEFAULT/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_OP_C\b/HIPBLAS_OP_C/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_OP_HERMITAN\b/HIPBLAS_OP_C/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_OP_N\b/HIPBLAS_OP_N/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_OP_T\b/HIPBLAS_OP_T/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_POINTER_MODE_DEVICE\b/HIPBLAS_POINTER_MODE_DEVICE/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_POINTER_MODE_HOST\b/HIPBLAS_POINTER_MODE_HOST/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_SIDE_LEFT\b/HIPBLAS_SIDE_LEFT/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_SIDE_RIGHT\b/HIPBLAS_SIDE_RIGHT/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_ALLOC_FAILED\b/HIPBLAS_STATUS_ALLOC_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_ARCH_MISMATCH\b/HIPBLAS_STATUS_ARCH_MISMATCH/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_EXECUTION_FAILED\b/HIPBLAS_STATUS_EXECUTION_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_INTERNAL_ERROR\b/HIPBLAS_STATUS_INTERNAL_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_INVALID_VALUE\b/HIPBLAS_STATUS_INVALID_VALUE/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_MAPPING_ERROR\b/HIPBLAS_STATUS_MAPPING_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_NOT_INITIALIZED\b/HIPBLAS_STATUS_NOT_INITIALIZED/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_NOT_SUPPORTED\b/HIPBLAS_STATUS_NOT_SUPPORTED/g;
+        $ft{'numeric_literal'} += s/\bCUBLAS_STATUS_SUCCESS\b/HIPBLAS_STATUS_SUCCESS/g;
+        $ft{'numeric_literal'} += s/\bCUDA_C_16F\b/HIPBLAS_C_16F/g;
+        $ft{'numeric_literal'} += s/\bCUDA_C_32F\b/HIPBLAS_C_32F/g;
+        $ft{'numeric_literal'} += s/\bCUDA_C_64F\b/HIPBLAS_C_64F/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_ALREADY_ACQUIRED\b/hipErrorAlreadyAcquired/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_ALREADY_MAPPED\b/hipErrorAlreadyMapped/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_ARRAY_IS_MAPPED\b/hipErrorArrayIsMapped/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_ASSERT\b/hipErrorAssert/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_CONTEXT_ALREADY_CURRENT\b/hipErrorContextAlreadyCurrent/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_CONTEXT_ALREADY_IN_USE\b/hipErrorContextAlreadyInUse/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_DEINITIALIZED\b/hipErrorDeinitialized/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_ECC_UNCORRECTABLE\b/hipErrorECCNotCorrectable/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_FILE_NOT_FOUND\b/hipErrorFileNotFound/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_HOST_MEMORY_ALREADY_REGISTERED\b/hipErrorHostMemoryAlreadyRegistered/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_HOST_MEMORY_NOT_REGISTERED\b/hipErrorHostMemoryNotRegistered/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_ILLEGAL_ADDRESS\b/hipErrorIllegalAddress/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_CONTEXT\b/hipErrorInvalidContext/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_DEVICE\b/hipErrorInvalidDevice/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_GRAPHICS_CONTEXT\b/hipErrorInvalidGraphicsContext/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_HANDLE\b/hipErrorInvalidResourceHandle/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_IMAGE\b/hipErrorInvalidImage/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_PTX\b/hipErrorInvalidKernelFile/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_SOURCE\b/hipErrorInvalidSource/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_INVALID_VALUE\b/hipErrorInvalidValue/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_LAUNCH_FAILED\b/hipErrorLaunchFailure/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_LAUNCH_OUT_OF_RESOURCES\b/hipErrorLaunchOutOfResources/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_LAUNCH_TIMEOUT\b/hipErrorLaunchTimeOut/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_MAP_FAILED\b/hipErrorMapFailed/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NOT_FOUND\b/hipErrorNotFound/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NOT_INITIALIZED\b/hipErrorNotInitialized/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NOT_MAPPED\b/hipErrorNotMapped/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NOT_MAPPED_AS_ARRAY\b/hipErrorNotMappedAsArray/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NOT_MAPPED_AS_POINTER\b/hipErrorNotMappedAsPointer/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NOT_READY\b/hipErrorNotReady/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NO_BINARY_FOR_GPU\b/hipErrorNoBinaryForGpu/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_NO_DEVICE\b/hipErrorNoDevice/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_OPERATING_SYSTEM\b/hipErrorOperatingSystem/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_OUT_OF_MEMORY\b/hipErrorMemoryAllocation/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED\b/hipErrorPeerAccessAlreadyEnabled/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PEER_ACCESS_NOT_ENABLED\b/hipErrorPeerAccessNotEnabled/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PEER_ACCESS_UNSUPPORTED\b/hipErrorPeerAccessUnsupported/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PROFILER_ALREADY_STARTED\b/hipErrorProfilerAlreadyStarted/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PROFILER_ALREADY_STOPPED\b/hipErrorProfilerAlreadyStopped/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PROFILER_DISABLED\b/hipErrorProfilerDisabled/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_PROFILER_NOT_INITIALIZED\b/hipErrorProfilerNotInitialized/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_SHARED_OBJECT_INIT_FAILED\b/hipErrorSharedObjectInitFailed/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_SHARED_OBJECT_SYMBOL_NOT_FOUND\b/hipErrorSharedObjectSymbolNotFound/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_UNKNOWN\b/hipErrorUnknown/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_UNMAP_FAILED\b/hipErrorUnmapFailed/g;
+        $ft{'numeric_literal'} += s/\bCUDA_ERROR_UNSUPPORTED_LIMIT\b/hipErrorUnsupportedLimit/g;
+        $ft{'numeric_literal'} += s/\bCUDA_R_16F\b/HIPBLAS_R_16F/g;
+        $ft{'numeric_literal'} += s/\bCUDA_R_32F\b/HIPBLAS_R_32F/g;
+        $ft{'numeric_literal'} += s/\bCUDA_R_64F\b/HIPBLAS_R_64F/g;
+        $ft{'numeric_literal'} += s/\bCUDA_SUCCESS\b/hipSuccess/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_16BIT_INDICES\b/HIPDNN_16BIT_INDICES/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_32BIT_INDICES\b/HIPDNN_32BIT_INDICES/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_64BIT_INDICES\b/HIPDNN_64BIT_INDICES/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_8BIT_INDICES\b/HIPDNN_8BIT_INDICES/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_ACTIVATION_CLIPPED_RELU\b/HIPDNN_ACTIVATION_CLIPPED_RELU/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_ACTIVATION_ELU\b/HIPDNN_ACTIVATION_ELU/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_ACTIVATION_IDENTITY\b/HIPDNN_ACTIVATION_PATHTRU/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_ACTIVATION_RELU\b/HIPDNN_ACTIVATION_RELU/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_ACTIVATION_SIGMOID\b/HIPDNN_ACTIVATION_SIGMOID/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_ACTIVATION_TANH\b/HIPDNN_ACTIVATION_TANH/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_BATCHNORM_PER_ACTIVATION\b/HIPDNN_BATCHNORM_PER_ACTIVATION/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_BATCHNORM_SPATIAL\b/HIPDNN_BATCHNORM_SPATIAL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_BATCHNORM_SPATIAL_PERSISTENT\b/HIPDNN_BATCHNORM_SPATIAL_PERSISTENT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_BIDIRECTIONAL\b/HIPDNN_BIDIRECTIONAL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_BN_MIN_EPSILON\b/HIPDNN_BN_MIN_EPSILON/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION\b/HIPDNN_CONVOLUTION/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_0\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_0/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_1\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_1/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_TRANSPOSE_GEMM/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_FFT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED\b/HIPDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE\b/HIPDNN_CONVOLUTION_BWD_DATA_NO_WORKSPACE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST\b/HIPDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT\b/HIPDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_0\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_0/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_1\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_1/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_3\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_3/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED\b/HIPDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE\b/HIPDNN_CONVOLUTION_BWD_FILTER_NO_WORKSPACE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST\b/HIPDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT\b/HIPDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_COUNT\b/HIPDNN_CONVOLUTION_FWD_ALGO_COUNT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_DIRECT\b/HIPDNN_CONVOLUTION_FWD_ALGO_DIRECT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_FFT\b/HIPDNN_CONVOLUTION_FWD_ALGO_FFT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING\b/HIPDNN_CONVOLUTION_FWD_ALGO_FFT_TILING/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_GEMM\b/HIPDNN_CONVOLUTION_FWD_ALGO_GEMM/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM\b/HIPDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM\b/HIPDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD\b/HIPDNN_CONVOLUTION_FWD_ALGO_WINOGRAD/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED\b/HIPDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_NO_WORKSPACE\b/HIPDNN_CONVOLUTION_FWD_NO_WORKSPACE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_PREFER_FASTEST\b/HIPDNN_CONVOLUTION_FWD_PREFER_FASTEST/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT\b/HIPDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_CROSS_CORRELATION\b/HIPDNN_CROSS_CORRELATION/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DATA_DOUBLE\b/HIPDNN_DATA_DOUBLE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DATA_FLOAT\b/HIPDNN_DATA_FLOAT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DATA_HALF\b/HIPDNN_DATA_HALF/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DATA_INT32\b/HIPDNN_DATA_INT32/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DATA_INT8\b/HIPDNN_DATA_INT8/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DATA_INT8x4\b/HIPDNN_DATA_INT8x4/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_DEFAULT_MATH\b/HIPDNN_DEFAULT_MATH/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_GRU\b/HIPDNN_GRU/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_LINEAR_INPUT\b/HIPDNN_LINEAR_INPUT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_LRN_CROSS_CHANNEL_DIM1\b/HIPDNN_LRN_CROSS_CHANNEL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_LSTM\b/HIPDNN_LSTM/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_NOT_PROPAGATE_NAN\b/HIPDNN_NOT_PROPAGATE_NAN/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_OP_TENSOR_ADD\b/HIPDNN_OP_TENSOR_ADD/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_OP_TENSOR_MAX\b/HIPDNN_OP_TENSOR_MAX/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_OP_TENSOR_MIN\b/HIPDNN_OP_TENSOR_MIN/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_OP_TENSOR_MUL\b/HIPDNN_OP_TENSOR_MUL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_OP_TENSOR_SQRT\b/HIPDNN_OP_TENSOR_SQRT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING\b/HIPDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING\b/HIPDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_POOLING_MAX\b/HIPDNN_POOLING_MAX/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_POOLING_MAX_DETERMINISTIC\b/HIPDNN_POOLING_MAX_DETERMINISTIC/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_PROPAGATE_NAN\b/HIPDNN_PROPAGATE_NAN/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_ADD\b/HIPDNN_REDUCE_TENSOR_ADD/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_AMAX\b/HIPDNN_REDUCE_TENSOR_AMAX/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_AVG\b/HIPDNN_REDUCE_TENSOR_AVG/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_FLATTENED_INDICES\b/HIPDNN_REDUCE_TENSOR_FLATTENED_INDICES/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_MAX\b/HIPDNN_REDUCE_TENSOR_MAX/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_MIN\b/HIPDNN_REDUCE_TENSOR_MIN/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_MUL\b/HIPDNN_REDUCE_TENSOR_MUL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_MUL_NO_ZEROS\b/HIPDNN_REDUCE_TENSOR_MUL_NO_ZEROS/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_NORM1\b/HIPDNN_REDUCE_TENSOR_NORM1/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_NORM2\b/HIPDNN_REDUCE_TENSOR_NORM2/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_REDUCE_TENSOR_NO_INDICES\b/HIPDNN_REDUCE_TENSOR_NO_INDICES/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_ALGO_PERSIST_DYNAMIC\b/HIPDNN_RNN_ALGO_PERSIST_DYNAMIC/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_ALGO_PERSIST_STATIC\b/HIPDNN_RNN_ALGO_PERSIST_STATIC/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_ALGO_STANDARD\b/HIPDNN_RNN_ALGO_STANDARD/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_DOUBLE_BIAS\b/HIPDNN_RNN_WITH_BIAS/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_NO_BIAS\b/HIPDNN_RNN_NO_BIAS/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_RELU\b/HIPDNN_RNN_RELU/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_SINGLE_INP_BIAS\b/HIPDNN_RNN_WITH_BIAS/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_SINGLE_REC_BIAS\b/HIPDNN_RNN_WITH_BIAS/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_RNN_TANH\b/HIPDNN_RNN_TANH/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_SKIP_INPUT\b/HIPDNN_SKIP_INPUT/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_SOFTMAX_ACCURATE\b/HIPDNN_SOFTMAX_ACCURATE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_SOFTMAX_FAST\b/HIPDNN_SOFTMAX_FAST/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_SOFTMAX_LOG\b/HIPDNN_SOFTMAX_LOG/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_SOFTMAX_MODE_CHANNEL\b/HIPDNN_SOFTMAX_MODE_CHANNEL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_SOFTMAX_MODE_INSTANCE\b/HIPDNN_SOFTMAX_MODE_INSTANCE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_ALLOC_FAILED\b/HIPDNN_STATUS_ALLOC_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_ARCH_MISMATCH\b/HIPDNN_STATUS_ARCH_MISMATCH/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_BAD_PARAM\b/HIPDNN_STATUS_BAD_PARAM/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_EXECUTION_FAILED\b/HIPDNN_STATUS_EXECUTION_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_INTERNAL_ERROR\b/HIPDNN_STATUS_INTERNAL_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_INVALID_VALUE\b/HIPDNN_STATUS_INVALID_VALUE/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_LICENSE_ERROR\b/HIPDNN_STATUS_LICENSE_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_MAPPING_ERROR\b/HIPDNN_STATUS_MAPPING_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_NOT_INITIALIZED\b/HIPDNN_STATUS_NOT_INITIALIZED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_NOT_SUPPORTED\b/HIPDNN_STATUS_NOT_SUPPORTED/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING\b/HIPDNN_STATUS_RUNTIME_PREREQUISITE_MISSING/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_STATUS_SUCCESS\b/HIPDNN_STATUS_SUCCESS/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_TENSOR_NCHW\b/HIPDNN_TENSOR_NCHW/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_TENSOR_NCHW_VECT_C\b/HIPDNN_TENSOR_NCHW_VECT_C/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_TENSOR_NHWC\b/HIPDNN_TENSOR_NHWC/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_TENSOR_OP_MATH\b/HIPDNN_TENSOR_OP_MATH/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_UNIDIRECTIONAL\b/HIPDNN_UNIDIRECTIONAL/g;
+        $ft{'numeric_literal'} += s/\bCUDNN_VERSION\b/HIPDNN_VERSION/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_ALLOC_FAILED\b/HIPFFT_ALLOC_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_C2C\b/HIPFFT_C2C/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_C2R\b/HIPFFT_C2R/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_D2Z\b/HIPFFT_D2Z/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_EXEC_FAILED\b/HIPFFT_EXEC_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_FORWARD\b/HIPFFT_FORWARD/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INCOMPLETE_PARAMETER_LIST\b/HIPFFT_INCOMPLETE_PARAMETER_LIST/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INTERNAL_ERROR\b/HIPFFT_INTERNAL_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INVALID_DEVICE\b/HIPFFT_INVALID_DEVICE/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INVALID_PLAN\b/HIPFFT_INVALID_PLAN/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INVALID_SIZE\b/HIPFFT_INVALID_SIZE/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INVALID_TYPE\b/HIPFFT_INVALID_TYPE/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INVALID_VALUE\b/HIPFFT_INVALID_VALUE/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_INVERSE\b/HIPFFT_BACKWARD/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_NOT_IMPLEMENTED\b/HIPFFT_NOT_IMPLEMENTED/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_NOT_SUPPORTED\b/HIPFFT_NOT_SUPPORTED/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_NO_WORKSPACE\b/HIPFFT_NO_WORKSPACE/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_PARSE_ERROR\b/HIPFFT_PARSE_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_R2C\b/HIPFFT_R2C/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_SETUP_FAILED\b/HIPFFT_SETUP_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_SUCCESS\b/HIPFFT_SUCCESS/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_UNALIGNED_DATA\b/HIPFFT_UNALIGNED_DATA/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_Z2D\b/HIPFFT_Z2D/g;
+        $ft{'numeric_literal'} += s/\bCUFFT_Z2Z\b/HIPFFT_Z2Z/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_PSEUDO_DEFAULT\b/HIPRAND_RNG_PSEUDO_DEFAULT/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_PSEUDO_MRG32K3A\b/HIPRAND_RNG_PSEUDO_MRG32K3A/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_PSEUDO_MT19937\b/HIPRAND_RNG_PSEUDO_MT19937/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_PSEUDO_MTGP32\b/HIPRAND_RNG_PSEUDO_MTGP32/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_PSEUDO_PHILOX4_32_10\b/HIPRAND_RNG_PSEUDO_PHILOX4_32_10/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_PSEUDO_XORWOW\b/HIPRAND_RNG_PSEUDO_XORWOW/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_QUASI_DEFAULT\b/HIPRAND_RNG_QUASI_DEFAULT/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_QUASI_SCRAMBLED_SOBOL32\b/HIPRAND_RNG_QUASI_SCRAMBLED_SOBOL32/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_QUASI_SCRAMBLED_SOBOL64\b/HIPRAND_RNG_QUASI_SCRAMBLED_SOBOL64/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_QUASI_SOBOL32\b/HIPRAND_RNG_QUASI_SOBOL32/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_QUASI_SOBOL64\b/HIPRAND_RNG_QUASI_SOBOL64/g;
+        $ft{'numeric_literal'} += s/\bCURAND_RNG_TEST\b/HIPRAND_RNG_TEST/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_ALLOCATION_FAILED\b/HIPRAND_STATUS_ALLOCATION_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_ARCH_MISMATCH\b/HIPRAND_STATUS_ARCH_MISMATCH/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_DOUBLE_PRECISION_REQUIRED\b/HIPRAND_STATUS_DOUBLE_PRECISION_REQUIRED/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_INITIALIZATION_FAILED\b/HIPRAND_STATUS_INITIALIZATION_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_INTERNAL_ERROR\b/HIPRAND_STATUS_INTERNAL_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_LAUNCH_FAILURE\b/HIPRAND_STATUS_LAUNCH_FAILURE/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_LENGTH_NOT_MULTIPLE\b/HIPRAND_STATUS_LENGTH_NOT_MULTIPLE/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_NOT_INITIALIZED\b/HIPRAND_STATUS_NOT_INITIALIZED/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_OUT_OF_RANGE\b/HIPRAND_STATUS_OUT_OF_RANGE/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_PREEXISTING_FAILURE\b/HIPRAND_STATUS_PREEXISTING_FAILURE/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_SUCCESS\b/HIPRAND_STATUS_SUCCESS/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_TYPE_ERROR\b/HIPRAND_STATUS_TYPE_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCURAND_STATUS_VERSION_MISMATCH\b/HIPRAND_STATUS_VERSION_MISMATCH/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_ACTION_NUMERIC\b/HIPSPARSE_ACTION_NUMERIC/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_ACTION_SYMBOLIC\b/HIPSPARSE_ACTION_SYMBOLIC/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_DIAG_TYPE_NON_UNIT\b/HIPSPARSE_DIAG_TYPE_NON_UNIT/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_DIAG_TYPE_UNIT\b/HIPSPARSE_DIAG_TYPE_UNIT/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_FILL_MODE_LOWER\b/HIPSPARSE_FILL_MODE_LOWER/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_FILL_MODE_UPPER\b/HIPSPARSE_FILL_MODE_UPPER/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_HYB_PARTITION_AUTO\b/HIPSPARSE_HYB_PARTITION_AUTO/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_HYB_PARTITION_MAX\b/HIPSPARSE_HYB_PARTITION_MAX/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_HYB_PARTITION_USER\b/HIPSPARSE_HYB_PARTITION_USER/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_INDEX_BASE_ONE\b/HIPSPARSE_INDEX_BASE_ONE/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_INDEX_BASE_ZERO\b/HIPSPARSE_INDEX_BASE_ZERO/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_MATRIX_TYPE_GENERAL\b/HIPSPARSE_MATRIX_TYPE_GENERAL/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_MATRIX_TYPE_HERMITIAN\b/HIPSPARSE_MATRIX_TYPE_HERMITIAN/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_MATRIX_TYPE_SYMMETRIC\b/HIPSPARSE_MATRIX_TYPE_SYMMETRIC/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_MATRIX_TYPE_TRIANGULAR\b/HIPSPARSE_MATRIX_TYPE_TRIANGULAR/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_OPERATION_CONJUGATE_TRANSPOSE\b/HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_OPERATION_NON_TRANSPOSE\b/HIPSPARSE_OPERATION_NON_TRANSPOSE/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_OPERATION_TRANSPOSE\b/HIPSPARSE_OPERATION_TRANSPOSE/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_POINTER_MODE_DEVICE\b/HIPSPARSE_POINTER_MODE_DEVICE/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_POINTER_MODE_HOST\b/HIPSPARSE_POINTER_MODE_HOST/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_SOLVE_POLICY_NO_LEVEL\b/HIPSPARSE_SOLVE_POLICY_NO_LEVEL/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_SOLVE_POLICY_USE_LEVEL\b/HIPSPARSE_SOLVE_POLICY_USE_LEVEL/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_ALLOC_FAILED\b/HIPSPARSE_STATUS_ALLOC_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_ARCH_MISMATCH\b/HIPSPARSE_STATUS_ARCH_MISMATCH/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_EXECUTION_FAILED\b/HIPSPARSE_STATUS_EXECUTION_FAILED/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_INTERNAL_ERROR\b/HIPSPARSE_STATUS_INTERNAL_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_INVALID_VALUE\b/HIPSPARSE_STATUS_INVALID_VALUE/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_MAPPING_ERROR\b/HIPSPARSE_STATUS_MAPPING_ERROR/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED\b/HIPSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_NOT_INITIALIZED\b/HIPSPARSE_STATUS_NOT_INITIALIZED/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_SUCCESS\b/HIPSPARSE_STATUS_SUCCESS/g;
+        $ft{'numeric_literal'} += s/\bCUSPARSE_STATUS_ZERO_PIVOT\b/HIPSPARSE_STATUS_ZERO_PIVOT/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_FLOAT\b/HIP_AD_FORMAT_FLOAT/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_HALF\b/HIP_AD_FORMAT_HALF/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_SIGNED_INT16\b/HIP_AD_FORMAT_SIGNED_INT16/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_SIGNED_INT32\b/HIP_AD_FORMAT_SIGNED_INT32/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_SIGNED_INT8\b/HIP_AD_FORMAT_SIGNED_INT8/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_UNSIGNED_INT16\b/HIP_AD_FORMAT_UNSIGNED_INT16/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_UNSIGNED_INT32\b/HIP_AD_FORMAT_UNSIGNED_INT32/g;
+        $ft{'numeric_literal'} += s/\bCU_AD_FORMAT_UNSIGNED_INT8\b/HIP_AD_FORMAT_UNSIGNED_INT8/g;
+        $ft{'numeric_literal'} += s/\bCU_COMPUTEMODE_DEFAULT\b/hipComputeModeDefault/g;
+        $ft{'numeric_literal'} += s/\bCU_COMPUTEMODE_EXCLUSIVE\b/hipComputeModeExclusive/g;
+        $ft{'numeric_literal'} += s/\bCU_COMPUTEMODE_EXCLUSIVE_PROCESS\b/hipComputeModeExclusiveProcess/g;
+        $ft{'numeric_literal'} += s/\bCU_COMPUTEMODE_PROHIBITED\b/hipComputeModeProhibited/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_BLOCKING_SYNC\b/hipDeviceScheduleBlockingSync/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_LMEM_RESIZE_TO_MAX\b/hipDeviceLmemResizeToMax/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_MAP_HOST\b/hipDeviceMapHost/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_SCHED_AUTO\b/hipDeviceScheduleAuto/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_SCHED_BLOCKING_SYNC\b/hipDeviceScheduleBlockingSync/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_SCHED_MASK\b/hipDeviceScheduleMask/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_SCHED_SPIN\b/hipDeviceScheduleSpin/g;
+        $ft{'numeric_literal'} += s/\bCU_CTX_SCHED_YIELD\b/hipDeviceScheduleYield/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_CLOCK_RATE\b/hipDeviceAttributeClockRate/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR\b/hipDeviceAttributeComputeCapabilityMajor/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR\b/hipDeviceAttributeComputeCapabilityMinor/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_COMPUTE_MODE\b/hipDeviceAttributeComputeMode/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_CONCURRENT_KERNELS\b/hipDeviceAttributeConcurrentKernels/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_COOPERATIVE_LAUNCH\b/hipDeviceAttributeCooperativeLaunch/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_COOPERATIVE_MULTI_DEVICE_LAUNCH\b/hipDeviceAttributeCooperativeMultiDeviceLaunch/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH\b/hipDeviceAttributeMemoryBusWidth/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_INTEGRATED\b/hipDeviceAttributeIntegrated/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE\b/hipDeviceAttributeL2CacheSize/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_WIDTH\b/hipDeviceAttributeMaxTexture1DWidth/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_HEIGHT\b/hipDeviceAttributeMaxTexture2DHeight/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_WIDTH\b/hipDeviceAttributeMaxTexture2DWidth/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH\b/hipDeviceAttributeMaxTexture3DDepth/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT\b/hipDeviceAttributeMaxTexture3DHeight/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH\b/hipDeviceAttributeMaxTexture3DWidth/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X\b/hipDeviceAttributeMaxBlockDimX/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y\b/hipDeviceAttributeMaxBlockDimY/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z\b/hipDeviceAttributeMaxBlockDimZ/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X\b/hipDeviceAttributeMaxGridDimX/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y\b/hipDeviceAttributeMaxGridDimY/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z\b/hipDeviceAttributeMaxGridDimZ/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK\b/hipDeviceAttributeMaxRegistersPerBlock/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK\b/hipDeviceAttributeMaxSharedMemoryPerBlock/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR\b/hipDeviceAttributeMaxSharedMemoryPerMultiprocessor/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK\b/hipDeviceAttributeMaxThreadsPerBlock/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR\b/hipDeviceAttributeMaxThreadsPerMultiProcessor/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE\b/hipDeviceAttributeMemoryClockRate/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT\b/hipDeviceAttributeMultiprocessorCount/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_MULTI_GPU_BOARD\b/hipDeviceAttributeIsMultiGpuBoard/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_PCI_BUS_ID\b/hipDeviceAttributePciBusId/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID\b/hipDeviceAttributePciDeviceId/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_REGISTERS_PER_BLOCK\b/hipDeviceAttributeMaxRegistersPerBlock/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_SHARED_MEMORY_PER_BLOCK\b/hipDeviceAttributeMaxSharedMemoryPerBlock/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_TOTAL_CONSTANT_MEMORY\b/hipDeviceAttributeTotalConstantMemory/g;
+        $ft{'numeric_literal'} += s/\bCU_DEVICE_ATTRIBUTE_WARP_SIZE\b/hipDeviceAttributeWarpSize/g;
+        $ft{'numeric_literal'} += s/\bCU_EVENT_BLOCKING_SYNC\b/hipEventBlockingSync/g;
+        $ft{'numeric_literal'} += s/\bCU_EVENT_DEFAULT\b/hipEventDefault/g;
+        $ft{'numeric_literal'} += s/\bCU_EVENT_DISABLE_TIMING\b/hipEventDisableTiming/g;
+        $ft{'numeric_literal'} += s/\bCU_EVENT_INTERPROCESS\b/hipEventInterprocess/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_BINARY_VERSION\b/HIP_FUNC_ATTRIBUTE_BINARY_VERSION/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_CACHE_MODE_CA\b/HIP_FUNC_ATTRIBUTE_CACHE_MODE_CA/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES\b/HIP_FUNC_ATTRIBUTE_CONST_SIZE_BYTES/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES\b/HIP_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_MAX\b/HIP_FUNC_ATTRIBUTE_MAX/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES\b/HIP_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK\b/HIP_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_NUM_REGS\b/HIP_FUNC_ATTRIBUTE_NUM_REGS/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT\b/HIP_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_PTX_VERSION\b/HIP_FUNC_ATTRIBUTE_PTX_VERSION/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES\b/HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_CACHE_PREFER_EQUAL\b/hipFuncCachePreferEqual/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_CACHE_PREFER_L1\b/hipFuncCachePreferL1/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_CACHE_PREFER_NONE\b/hipFuncCachePreferNone/g;
+        $ft{'numeric_literal'} += s/\bCU_FUNC_CACHE_PREFER_SHARED\b/hipFuncCachePreferShared/g;
+        $ft{'numeric_literal'} += s/\bCU_IPC_MEM_LAZY_ENABLE_PEER_ACCESS\b/hipIpcMemLazyEnablePeerAccess/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_CACHE_MODE\b/hipJitOptionCacheMode/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_ERROR_LOG_BUFFER\b/hipJitOptionErrorLogBuffer/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES\b/hipJitOptionErrorLogBufferSizeBytes/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_FALLBACK_STRATEGY\b/hipJitOptionFallbackStrategy/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_FAST_COMPILE\b/hipJitOptionFastCompile/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_GENERATE_DEBUG_INFO\b/hipJitOptionGenerateDebugInfo/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_GENERATE_LINE_INFO\b/hipJitOptionGenerateLineInfo/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_GLOBAL_SYMBOL_ADDRESSES\b/hipJitGlobalSymbolAddresses/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_GLOBAL_SYMBOL_COUNT\b/hipJitGlobalSymbolCount/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_GLOBAL_SYMBOL_NAMES\b/hipJitGlobalSymbolNames/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_INFO_LOG_BUFFER\b/hipJitOptionInfoLogBuffer/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_INFO_LOG_BUFFER_SIZE_BYTES\b/hipJitOptionInfoLogBufferSizeBytes/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_LOG_VERBOSE\b/hipJitOptionLogVerbose/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_MAX_REGISTERS\b/hipJitOptionMaxRegisters/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_NEW_SM3X_OPT\b/hipJitOptionSm3xOpt/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_NUM_OPTIONS\b/hipJitOptionNumOptions/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_OPTIMIZATION_LEVEL\b/hipJitOptionOptimizationLevel/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_TARGET\b/hipJitOptionTarget/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_TARGET_FROM_CUCONTEXT\b/hipJitOptionTargetFromContext/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_THREADS_PER_BLOCK\b/hipJitOptionThreadsPerBlock/g;
+        $ft{'numeric_literal'} += s/\bCU_JIT_WALL_TIME\b/hipJitOptionWallTime/g;
+        $ft{'numeric_literal'} += s/\bCU_LIMIT_MALLOC_HEAP_SIZE\b/hipLimitMallocHeapSize/g;
+        $ft{'numeric_literal'} += s/\bCU_MEMORYTYPE_ARRAY\b/hipMemoryTypeArray/g;
+        $ft{'numeric_literal'} += s/\bCU_MEMORYTYPE_DEVICE\b/hipMemoryTypeDevice/g;
+        $ft{'numeric_literal'} += s/\bCU_MEMORYTYPE_HOST\b/hipMemoryTypeHost/g;
+        $ft{'numeric_literal'} += s/\bCU_MEMORYTYPE_UNIFIED\b/hipMemoryTypeUnified/g;
+        $ft{'numeric_literal'} += s/\bCU_MEM_ATTACH_GLOBAL\b/hipMemAttachGlobal/g;
+        $ft{'numeric_literal'} += s/\bCU_MEM_ATTACH_HOST\b/hipMemAttachHost/g;
+        $ft{'numeric_literal'} += s/\bCU_RESOURCE_TYPE_ARRAY\b/hipResourceTypeArray/g;
+        $ft{'numeric_literal'} += s/\bCU_RESOURCE_TYPE_LINEAR\b/hipResourceTypeLinear/g;
+        $ft{'numeric_literal'} += s/\bCU_RESOURCE_TYPE_MIPMAPPED_ARRAY\b/hipResourceTypeMipmappedArray/g;
+        $ft{'numeric_literal'} += s/\bCU_RESOURCE_TYPE_PITCH2D\b/hipResourceTypePitch2D/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_FLOAT_1X16\b/hipResViewFormatHalf1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_FLOAT_1X32\b/hipResViewFormatFloat1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_FLOAT_2X16\b/hipResViewFormatHalf2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_FLOAT_2X32\b/hipResViewFormatFloat2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_FLOAT_4X16\b/hipResViewFormatHalf4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_FLOAT_4X32\b/hipResViewFormatFloat4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_NONE\b/hipResViewFormatNone/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SIGNED_BC4\b/hipResViewFormatSignedBlockCompressed4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SIGNED_BC5\b/hipResViewFormatSignedBlockCompressed5/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SIGNED_BC6H\b/hipResViewFormatSignedBlockCompressed6H/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_1X16\b/hipResViewFormatSignedShort1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_1X32\b/hipResViewFormatSignedInt1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_1X8\b/hipResViewFormatSignedChar1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_2X16\b/hipResViewFormatSignedShort2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_2X32\b/hipResViewFormatSignedInt2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_2X8\b/hipResViewFormatSignedChar2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_4X16\b/hipResViewFormatSignedShort4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_4X32\b/hipResViewFormatSignedInt4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_SINT_4X8\b/hipResViewFormatSignedChar4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_1X16\b/hipResViewFormatUnsignedShort1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_1X32\b/hipResViewFormatUnsignedInt1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_1X8\b/hipResViewFormatUnsignedChar1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_2X16\b/hipResViewFormatUnsignedShort2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_2X32\b/hipResViewFormatUnsignedInt2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_2X8\b/hipResViewFormatUnsignedChar2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_4X16\b/hipResViewFormatUnsignedShort4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_4X32\b/hipResViewFormatUnsignedInt4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UINT_4X8\b/hipResViewFormatUnsignedChar4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC1\b/hipResViewFormatUnsignedBlockCompressed1/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC2\b/hipResViewFormatUnsignedBlockCompressed2/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC3\b/hipResViewFormatUnsignedBlockCompressed3/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC4\b/hipResViewFormatUnsignedBlockCompressed4/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC5\b/hipResViewFormatUnsignedBlockCompressed5/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC6H\b/hipResViewFormatUnsignedBlockCompressed6H/g;
+        $ft{'numeric_literal'} += s/\bCU_RES_VIEW_FORMAT_UNSIGNED_BC7\b/hipResViewFormatUnsignedBlockCompressed7/g;
+        $ft{'numeric_literal'} += s/\bCU_SHARED_MEM_CONFIG_DEFAULT_BANK_SIZE\b/hipSharedMemBankSizeDefault/g;
+        $ft{'numeric_literal'} += s/\bCU_SHARED_MEM_CONFIG_EIGHT_BYTE_BANK_SIZE\b/hipSharedMemBankSizeEightByte/g;
+        $ft{'numeric_literal'} += s/\bCU_SHARED_MEM_CONFIG_FOUR_BYTE_BANK_SIZE\b/hipSharedMemBankSizeFourByte/g;
+        $ft{'numeric_literal'} += s/\bCU_STREAM_DEFAULT\b/hipStreamDefault/g;
+        $ft{'numeric_literal'} += s/\bCU_STREAM_NON_BLOCKING\b/hipStreamNonBlocking/g;
+        $ft{'numeric_literal'} += s/\bCU_TR_ADDRESS_MODE_BORDER\b/hipAddressModeBorder/g;
+        $ft{'numeric_literal'} += s/\bCU_TR_ADDRESS_MODE_CLAMP\b/hipAddressModeClamp/g;
+        $ft{'numeric_literal'} += s/\bCU_TR_ADDRESS_MODE_MIRROR\b/hipAddressModeMirror/g;
+        $ft{'numeric_literal'} += s/\bCU_TR_ADDRESS_MODE_WRAP\b/hipAddressModeWrap/g;
+        $ft{'numeric_literal'} += s/\bCU_TR_FILTER_MODE_LINEAR\b/hipFilterModeLinear/g;
+        $ft{'numeric_literal'} += s/\bCU_TR_FILTER_MODE_POINT\b/hipFilterModePoint/g;
+        $ft{'numeric_literal'} += s/\bcudaAddressModeBorder\b/hipAddressModeBorder/g;
+        $ft{'numeric_literal'} += s/\bcudaAddressModeClamp\b/hipAddressModeClamp/g;
+        $ft{'numeric_literal'} += s/\bcudaAddressModeMirror\b/hipAddressModeMirror/g;
+        $ft{'numeric_literal'} += s/\bcudaAddressModeWrap\b/hipAddressModeWrap/g;
+        $ft{'numeric_literal'} += s/\bcudaBoundaryModeClamp\b/hipBoundaryModeClamp/g;
+        $ft{'numeric_literal'} += s/\bcudaBoundaryModeTrap\b/hipBoundaryModeTrap/g;
+        $ft{'numeric_literal'} += s/\bcudaBoundaryModeZero\b/hipBoundaryModeZero/g;
+        $ft{'numeric_literal'} += s/\bcudaChannelFormatKindFloat\b/hipChannelFormatKindFloat/g;
+        $ft{'numeric_literal'} += s/\bcudaChannelFormatKindNone\b/hipChannelFormatKindNone/g;
+        $ft{'numeric_literal'} += s/\bcudaChannelFormatKindSigned\b/hipChannelFormatKindSigned/g;
+        $ft{'numeric_literal'} += s/\bcudaChannelFormatKindUnsigned\b/hipChannelFormatKindUnsigned/g;
+        $ft{'numeric_literal'} += s/\bcudaComputeModeDefault\b/hipComputeModeDefault/g;
+        $ft{'numeric_literal'} += s/\bcudaComputeModeExclusive\b/hipComputeModeExclusive/g;
+        $ft{'numeric_literal'} += s/\bcudaComputeModeExclusiveProcess\b/hipComputeModeExclusiveProcess/g;
+        $ft{'numeric_literal'} += s/\bcudaComputeModeProhibited\b/hipComputeModeProhibited/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrClockRate\b/hipDeviceAttributeClockRate/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrComputeCapabilityMajor\b/hipDeviceAttributeComputeCapabilityMajor/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrComputeCapabilityMinor\b/hipDeviceAttributeComputeCapabilityMinor/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrComputeMode\b/hipDeviceAttributeComputeMode/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrConcurrentKernels\b/hipDeviceAttributeConcurrentKernels/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrCooperativeLaunch\b/hipDeviceAttributeCooperativeLaunch/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrCooperativeMultiDeviceLaunch\b/hipDeviceAttributeCooperativeMultiDeviceLaunch/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrGlobalMemoryBusWidth\b/hipDeviceAttributeMemoryBusWidth/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrIntegrated\b/hipDeviceAttributeIntegrated/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrIsMultiGpuBoard\b/hipDeviceAttributeIsMultiGpuBoard/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrL2CacheSize\b/hipDeviceAttributeL2CacheSize/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxBlockDimX\b/hipDeviceAttributeMaxBlockDimX/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxBlockDimY\b/hipDeviceAttributeMaxBlockDimY/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxBlockDimZ\b/hipDeviceAttributeMaxBlockDimZ/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxGridDimX\b/hipDeviceAttributeMaxGridDimX/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxGridDimY\b/hipDeviceAttributeMaxGridDimY/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxGridDimZ\b/hipDeviceAttributeMaxGridDimZ/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxRegistersPerBlock\b/hipDeviceAttributeMaxRegistersPerBlock/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxSharedMemoryPerBlock\b/hipDeviceAttributeMaxSharedMemoryPerBlock/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxSharedMemoryPerMultiprocessor\b/hipDeviceAttributeMaxSharedMemoryPerMultiprocessor/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxTexture1DWidth\b/hipDeviceAttributeMaxTexture1DWidth/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxTexture2DHeight\b/hipDeviceAttributeMaxTexture2DHeight/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxTexture2DWidth\b/hipDeviceAttributeMaxTexture2DWidth/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxTexture3DDepth\b/hipDeviceAttributeMaxTexture3DDepth/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxTexture3DHeight\b/hipDeviceAttributeMaxTexture3DHeight/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxTexture3DWidth\b/hipDeviceAttributeMaxTexture3DWidth/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxThreadsPerBlock\b/hipDeviceAttributeMaxThreadsPerBlock/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMaxThreadsPerMultiProcessor\b/hipDeviceAttributeMaxThreadsPerMultiProcessor/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMemoryClockRate\b/hipDeviceAttributeMemoryClockRate/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrMultiProcessorCount\b/hipDeviceAttributeMultiprocessorCount/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrPciBusId\b/hipDeviceAttributePciBusId/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrPciDeviceId\b/hipDeviceAttributePciDeviceId/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrTotalConstantMemory\b/hipDeviceAttributeTotalConstantMemory/g;
+        $ft{'numeric_literal'} += s/\bcudaDevAttrWarpSize\b/hipDeviceAttributeWarpSize/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorAssert\b/hipErrorAssert/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorECCUncorrectable\b/hipErrorECCNotCorrectable/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorHostMemoryAlreadyRegistered\b/hipErrorHostMemoryAlreadyRegistered/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorHostMemoryNotRegistered\b/hipErrorHostMemoryNotRegistered/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorIllegalAddress\b/hipErrorIllegalAddress/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInitializationError\b/hipErrorInitializationError/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInsufficientDriver\b/hipErrorInsufficientDriver/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidConfiguration\b/hipErrorInvalidConfiguration/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidDevice\b/hipErrorInvalidDevice/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidDeviceFunction\b/hipErrorInvalidDeviceFunction/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidDevicePointer\b/hipErrorInvalidDevicePointer/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidGraphicsContext\b/hipErrorInvalidGraphicsContext/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidKernelImage\b/hipErrorInvalidImage/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidMemcpyDirection\b/hipErrorInvalidMemcpyDirection/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidPtx\b/hipErrorInvalidKernelFile/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidResourceHandle\b/hipErrorInvalidResourceHandle/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidSymbol\b/hipErrorInvalidSymbol/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorInvalidValue\b/hipErrorInvalidValue/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorLaunchFailure\b/hipErrorLaunchFailure/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorLaunchOutOfResources\b/hipErrorLaunchOutOfResources/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorLaunchTimeout\b/hipErrorLaunchTimeOut/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorMapBufferObjectFailed\b/hipErrorMapFailed/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorMemoryAllocation\b/hipErrorMemoryAllocation/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorMissingConfiguration\b/hipErrorMissingConfiguration/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorNoDevice\b/hipErrorNoDevice/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorNoKernelImageForDevice\b/hipErrorNoBinaryForGpu/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorNotReady\b/hipErrorNotReady/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorOperatingSystem\b/hipErrorOperatingSystem/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorPeerAccessAlreadyEnabled\b/hipErrorPeerAccessAlreadyEnabled/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorPeerAccessNotEnabled\b/hipErrorPeerAccessNotEnabled/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorPeerAccessUnsupported\b/hipErrorPeerAccessUnsupported/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorPriorLaunchFailure\b/hipErrorPriorLaunchFailure/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorProfilerAlreadyStarted\b/hipErrorProfilerAlreadyStarted/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorProfilerAlreadyStopped\b/hipErrorProfilerAlreadyStopped/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorProfilerDisabled\b/hipErrorProfilerDisabled/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorProfilerNotInitialized\b/hipErrorProfilerNotInitialized/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorSharedObjectInitFailed\b/hipErrorSharedObjectInitFailed/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorSharedObjectSymbolNotFound\b/hipErrorSharedObjectSymbolNotFound/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorUnknown\b/hipErrorUnknown/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorUnmapBufferObjectFailed\b/hipErrorUnmapFailed/g;
+        $ft{'numeric_literal'} += s/\bcudaErrorUnsupportedLimit\b/hipErrorUnsupportedLimit/g;
+        $ft{'numeric_literal'} += s/\bcudaFilterModeLinear\b/hipFilterModeLinear/g;
+        $ft{'numeric_literal'} += s/\bcudaFilterModePoint\b/hipFilterModePoint/g;
+        $ft{'numeric_literal'} += s/\bcudaFuncCachePreferEqual\b/hipFuncCachePreferEqual/g;
+        $ft{'numeric_literal'} += s/\bcudaFuncCachePreferL1\b/hipFuncCachePreferL1/g;
+        $ft{'numeric_literal'} += s/\bcudaFuncCachePreferNone\b/hipFuncCachePreferNone/g;
+        $ft{'numeric_literal'} += s/\bcudaFuncCachePreferShared\b/hipFuncCachePreferShared/g;
+        $ft{'numeric_literal'} += s/\bcudaLimitMallocHeapSize\b/hipLimitMallocHeapSize/g;
+        $ft{'numeric_literal'} += s/\bcudaMemcpyDefault\b/hipMemcpyDefault/g;
+        $ft{'numeric_literal'} += s/\bcudaMemcpyDeviceToDevice\b/hipMemcpyDeviceToDevice/g;
+        $ft{'numeric_literal'} += s/\bcudaMemcpyDeviceToHost\b/hipMemcpyDeviceToHost/g;
+        $ft{'numeric_literal'} += s/\bcudaMemcpyHostToDevice\b/hipMemcpyHostToDevice/g;
+        $ft{'numeric_literal'} += s/\bcudaMemcpyHostToHost\b/hipMemcpyHostToHost/g;
+        $ft{'numeric_literal'} += s/\bcudaReadModeElementType\b/hipReadModeElementType/g;
+        $ft{'numeric_literal'} += s/\bcudaReadModeNormalizedFloat\b/hipReadModeNormalizedFloat/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatFloat1\b/hipResViewFormatFloat1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatFloat2\b/hipResViewFormatFloat2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatFloat4\b/hipResViewFormatFloat4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatHalf1\b/hipResViewFormatHalf1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatHalf2\b/hipResViewFormatHalf2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatHalf4\b/hipResViewFormatHalf4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatNone\b/hipResViewFormatNone/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedBlockCompressed4\b/hipResViewFormatSignedBlockCompressed4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedBlockCompressed5\b/hipResViewFormatSignedBlockCompressed5/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedBlockCompressed6H\b/hipResViewFormatSignedBlockCompressed6H/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedChar1\b/hipResViewFormatSignedChar1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedChar2\b/hipResViewFormatSignedChar2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedChar4\b/hipResViewFormatSignedChar4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedInt1\b/hipResViewFormatSignedInt1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedInt2\b/hipResViewFormatSignedInt2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedInt4\b/hipResViewFormatSignedInt4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedShort1\b/hipResViewFormatSignedShort1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedShort2\b/hipResViewFormatSignedShort2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatSignedShort4\b/hipResViewFormatSignedShort4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed1\b/hipResViewFormatUnsignedBlockCompressed1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed2\b/hipResViewFormatUnsignedBlockCompressed2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed3\b/hipResViewFormatUnsignedBlockCompressed3/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed4\b/hipResViewFormatUnsignedBlockCompressed4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed5\b/hipResViewFormatUnsignedBlockCompressed5/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed6H\b/hipResViewFormatUnsignedBlockCompressed6H/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedBlockCompressed7\b/hipResViewFormatUnsignedBlockCompressed7/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedChar1\b/hipResViewFormatUnsignedChar1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedChar2\b/hipResViewFormatUnsignedChar2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedChar4\b/hipResViewFormatUnsignedChar4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedInt1\b/hipResViewFormatUnsignedInt1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedInt2\b/hipResViewFormatUnsignedInt2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedInt4\b/hipResViewFormatUnsignedInt4/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedShort1\b/hipResViewFormatUnsignedShort1/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedShort2\b/hipResViewFormatUnsignedShort2/g;
+        $ft{'numeric_literal'} += s/\bcudaResViewFormatUnsignedShort4\b/hipResViewFormatUnsignedShort4/g;
+        $ft{'numeric_literal'} += s/\bcudaResourceTypeArray\b/hipResourceTypeArray/g;
+        $ft{'numeric_literal'} += s/\bcudaResourceTypeLinear\b/hipResourceTypeLinear/g;
+        $ft{'numeric_literal'} += s/\bcudaResourceTypeMipmappedArray\b/hipResourceTypeMipmappedArray/g;
+        $ft{'numeric_literal'} += s/\bcudaResourceTypePitch2D\b/hipResourceTypePitch2D/g;
+        $ft{'numeric_literal'} += s/\bcudaSharedMemBankSizeDefault\b/hipSharedMemBankSizeDefault/g;
+        $ft{'numeric_literal'} += s/\bcudaSharedMemBankSizeEightByte\b/hipSharedMemBankSizeEightByte/g;
+        $ft{'numeric_literal'} += s/\bcudaSharedMemBankSizeFourByte\b/hipSharedMemBankSizeFourByte/g;
+        $ft{'numeric_literal'} += s/\bcudaSuccess\b/hipSuccess/g;
+        $ft{'define'} += s/\bCUDA_ARRAY3D_CUBEMAP\b/hipArrayCubemap/g;
+        $ft{'define'} += s/\bCUDA_ARRAY3D_LAYERED\b/hipArrayLayered/g;
+        $ft{'define'} += s/\bCUDA_ARRAY3D_SURFACE_LDST\b/hipArraySurfaceLoadStore/g;
+        $ft{'define'} += s/\bCUDA_ARRAY3D_TEXTURE_GATHER\b/hipArrayTextureGather/g;
+        $ft{'define'} += s/\bCU_LAUNCH_PARAM_BUFFER_POINTER\b/HIP_LAUNCH_PARAM_BUFFER_POINTER/g;
+        $ft{'define'} += s/\bCU_LAUNCH_PARAM_BUFFER_SIZE\b/HIP_LAUNCH_PARAM_BUFFER_SIZE/g;
+        $ft{'define'} += s/\bCU_LAUNCH_PARAM_END\b/HIP_LAUNCH_PARAM_END/g;
+        $ft{'define'} += s/\bCU_MEMHOSTALLOC_DEVICEMAP\b/hipHostMallocMapped/g;
+        $ft{'define'} += s/\bCU_MEMHOSTALLOC_PORTABLE\b/hipHostMallocPortable/g;
+        $ft{'define'} += s/\bCU_MEMHOSTALLOC_WRITECOMBINED\b/hipHostAllocWriteCombined/g;
+        $ft{'define'} += s/\bCU_MEMHOSTREGISTER_DEVICEMAP\b/hipHostRegisterMapped/g;
+        $ft{'define'} += s/\bCU_MEMHOSTREGISTER_IOMEMORY\b/hipHostRegisterIoMemory/g;
+        $ft{'define'} += s/\bCU_MEMHOSTREGISTER_PORTABLE\b/hipHostRegisterPortable/g;
+        $ft{'define'} += s/\bCU_TRSA_OVERRIDE_FORMAT\b/HIP_TRSA_OVERRIDE_FORMAT/g;
+        $ft{'define'} += s/\bCU_TRSF_NORMALIZED_COORDINATES\b/HIP_TRSF_NORMALIZED_COORDINATES/g;
+        $ft{'define'} += s/\bCU_TRSF_READ_AS_INTEGER\b/HIP_TRSF_READ_AS_INTEGER/g;
+        $ft{'define'} += s/\bREGISTER_CUDA_OPERATOR\b/REGISTER_HIP_OPERATOR/g;
+        $ft{'define'} += s/\bREGISTER_CUDA_OPERATOR_CREATOR\b/REGISTER_HIP_OPERATOR_CREATOR/g;
+        $ft{'define'} += s/\b__CUDACC__\b/__HIPCC__/g;
+        $ft{'define'} += s/\bcudaArrayCubemap\b/hipArrayCubemap/g;
+        $ft{'define'} += s/\bcudaArrayDefault\b/hipArrayDefault/g;
+        $ft{'define'} += s/\bcudaArrayLayered\b/hipArrayLayered/g;
+        $ft{'define'} += s/\bcudaArraySurfaceLoadStore\b/hipArraySurfaceLoadStore/g;
+        $ft{'define'} += s/\bcudaArrayTextureGather\b/hipArrayTextureGather/g;
+        $ft{'define'} += s/\bcudaDeviceBlockingSync\b/hipDeviceScheduleBlockingSync/g;
+        $ft{'define'} += s/\bcudaDeviceLmemResizeToMax\b/hipDeviceLmemResizeToMax/g;
+        $ft{'define'} += s/\bcudaDeviceMapHost\b/hipDeviceMapHost/g;
+        $ft{'define'} += s/\bcudaDeviceScheduleAuto\b/hipDeviceScheduleAuto/g;
+        $ft{'define'} += s/\bcudaDeviceScheduleBlockingSync\b/hipDeviceScheduleBlockingSync/g;
+        $ft{'define'} += s/\bcudaDeviceScheduleMask\b/hipDeviceScheduleMask/g;
+        $ft{'define'} += s/\bcudaDeviceScheduleSpin\b/hipDeviceScheduleSpin/g;
+        $ft{'define'} += s/\bcudaDeviceScheduleYield\b/hipDeviceScheduleYield/g;
+        $ft{'define'} += s/\bcudaEventBlockingSync\b/hipEventBlockingSync/g;
+        $ft{'define'} += s/\bcudaEventDefault\b/hipEventDefault/g;
+        $ft{'define'} += s/\bcudaEventDisableTiming\b/hipEventDisableTiming/g;
+        $ft{'define'} += s/\bcudaEventInterprocess\b/hipEventInterprocess/g;
+        $ft{'define'} += s/\bcudaHostAllocDefault\b/hipHostMallocDefault/g;
+        $ft{'define'} += s/\bcudaHostAllocMapped\b/hipHostMallocMapped/g;
+        $ft{'define'} += s/\bcudaHostAllocPortable\b/hipHostMallocPortable/g;
+        $ft{'define'} += s/\bcudaHostAllocWriteCombined\b/hipHostAllocWriteCombined/g;
+        $ft{'define'} += s/\bcudaHostRegisterDefault\b/hipHostRegisterDefault/g;
+        $ft{'define'} += s/\bcudaHostRegisterIoMemory\b/hipHostRegisterIoMemory/g;
+        $ft{'define'} += s/\bcudaHostRegisterMapped\b/hipHostRegisterMapped/g;
+        $ft{'define'} += s/\bcudaHostRegisterPortable\b/hipHostRegisterPortable/g;
+        $ft{'define'} += s/\bcudaIpcMemLazyEnablePeerAccess\b/hipIpcMemLazyEnablePeerAccess/g;
+        $ft{'define'} += s/\bcudaMemAttachGlobal\b/hipMemAttachGlobal/g;
+        $ft{'define'} += s/\bcudaMemAttachHost\b/hipMemAttachHost/g;
+        $ft{'define'} += s/\bcudaStreamDefault\b/hipStreamDefault/g;
+        $ft{'define'} += s/\bcudaStreamNonBlocking\b/hipStreamNonBlocking/g;
+        $ft{'define'} += s/\bcudaTextureType1D\b/hipTextureType1D/g;
+        $ft{'define'} += s/\bcudaTextureType1DLayered\b/hipTextureType1DLayered/g;
+        $ft{'define'} += s/\bcudaTextureType2D\b/hipTextureType2D/g;
+        $ft{'define'} += s/\bcudaTextureType2DLayered\b/hipTextureType2DLayered/g;
+        $ft{'define'} += s/\bcudaTextureType3D\b/hipTextureType3D/g;
+        $ft{'define'} += s/\bcudaTextureTypeCubemap\b/hipTextureTypeCubemap/g;
+        $ft{'define'} += s/\bcudaTextureTypeCubemapLayered\b/hipTextureTypeCubemapLayered/g;
+
+        $countKeywords += m/__global__/;
+        $countKeywords += m/__shared__/;
+
+        # CUDA extern __shared__ syntax
+        # Note these only work if declaration is on a single line.
+        {
+            # match uses ? for <.*> which will be unitialized if this is not present in launch syntax.
+            no warnings qw/uninitialized/;
+            my $k = 0;
+            # Match extern __shared__ type foo[]; syntax
+            # Replace as HIP_DYNAMIC_SHARED() macro
+            $k += s/extern\s+([\w\(\)]+)?\s*__shared__\s+([\w:<>\s]+)\s+(\w+)\s*\[\s*\]\s*;/HIP_DYNAMIC_SHARED($1 $2, $3)/g;
+            # test patterns for the regular expression above:
+            #'extern __shared__ double foo[];'
+            #'extern __shared__ unsigned int foo[];'
+            #'extern volatile __shared__ double foo[];'
+            #'extern volatile __shared__ unsigned int sdata[];'
+            #'extern __shared__ volatile unsigned int sdata[];'
+            #'extern __shared__ T s[];'
+            #'extern __shared__ T::type s[];'
+            #'extern __shared__ blah<T>::type s[];'
+            #'extern __shared__ typename mapper<Float>::type s_data[];'
+            #'extern __attribute__((used)) __shared__ typename mapper<Float>::type s_data[];'
+            $ft{'extern_shared'} += $k;
+        }
+
+        # CUDA Launch Syntax. Note these only work if launch is on a single line.
+        {
+            # match uses ? for <.*> which will be unitialized if this is not present in launch syntax.
+            no warnings qw/uninitialized/;
+            my $k = 0;
+            # Handle the <<numBlocks, blockDim, sharedSize, stream>>> syntax with empty args:
+            $k += s/(\w+)\s*(<.*>)?\s*<<<\s*(.+)\s*,\s*(.+)\s*,\s*(.+)\s*,\s*(.+)\s*>>>(\s*)\((\s*)\)/hipLaunchKernelGGL($1$2, dim3($3), dim3($4), $5, $6)/g;
+            # Handle the <<numBlocks, blockDim, sharedSize, stream>>> syntax with non-empty args:
+            $k += s/(\w+)\s*(<.*>)?\s*<<<\s*(.+)\s*,\s*(.+)\s*,\s*(.+)\s*,\s*(.+)\s*>>>(\s*)\(/hipLaunchKernelGGL($1$2, dim3($3), dim3($4), $5, $6, /g;
+            # Handle the <<numBlocks, blockDim, sharedSize>>> syntax with empty args:
+            $k += s/(\w+)\s*(<.*>)?\s*<<<\s*(.+)\s*,\s*(.+)\s*,\s*(.+)\s*>>>(\s*)\((\s*)\)/hipLaunchKernelGGL($1$2, dim3($3), dim3($4), $5, 0)/g;
+            # Handle the <<numBlocks, blockDim, sharedSize>>> syntax with non-empty args:
+            $k += s/(\w+)\s*(<.*>)?\s*<<<\s*(.+)\s*,\s*(.+)\s*,\s*(.+)\s*>>>(\s*)\(/hipLaunchKernelGGL($1$2, dim3($3), dim3($4), $5, 0, /g;
+            # Handle the <<numBlocks, blockDim>>> syntax with empty args:
+            $k += s/(\w+)\s*(<.*>)?\s*<<<\s*(.+)\s*,\s*(.+)\s*>>>(\s*)\((\s*)\)/hipLaunchKernelGGL($1$2, dim3($3), dim3($4), 0, 0)/g;
+            # Handle the <<numBlocks, blockDim>>> syntax with non-empty args:
+            $k += s/(\w+)\s*(<.*>)?\s*<<<\s*(.+)\s*,\s*(.+)\s*>>>(\s*)\(/hipLaunchKernelGGL($1$2, dim3($3), dim3($4), 0, 0, /g;
+            if ($k) {
+                $ft{'kern_launch'} += $k;
+                $Tkernels{$1} ++;
+            }
+        }
+        if ($count_conversions) {
+            while (/(\bhip[A-Z]\w+\b)/g) {
+                $convertedTags{$1}++;
+                #print STDERR "HIP: $1 : ", $translateTags{$1}, "\n";
+            }
+        }
+        # guess that we are in device code , or at least in a file that calls device code.
+        # will almost certainly call one of the coordiante functions - could be fooled by clever macros but usually works:
+        my $hasDeviceCode = $countKeywords + $ft{'kernel_func'};
+        unless ($quiet_warnings) {
+            #print STDERR "Check WARNINGs\n";
+            # copy into array of lines, process line-by-line to show warnings:
+            if ($hasDeviceCode or (/\bcuda/) or (/<<<.*>>>/) or (/(\bcublas[A-Z]\w+)/) or (/(\bcurand[A-Z]\w+)/) ) {
+                my @lines = split /\n/, $_;
+                my $tmp = $_;  # copies the whole file, could be a little smarter here...
+                my $line_num = 0;
+                foreach (@lines) {
+                    $line_num ++;
+                    # remove any whitelisted words:
+                    foreach $w (@warn_whitelist) {
+                        s/\b$w\b/ZAP/
+                    }
+                    my $tag;
+                    if ((/(\bcuda[A-Z]\w+)/) or (/<<<.*>>>/)) {
+                        # flag any remaining code that look like hip API calls, may want to add these to hipify
+                        $tag = (defined $1) ? $1 : "Launch";
+                    } elsif (/(\bcublas[A-Z]\w+)/) {
+                        $warningsCublas++;
+                        $tag = $1;
+                    } elsif (/(\bcurand[A-Z]\w+)/) {
+                        $warningsCurand++;
+                        $tag = $1;
+                    }
+                    if (defined $tag) {
+                        $warnings++;
+                        $warningTags{$tag}++;
+                        print STDERR "  warning: $fileName:#$line_num : $_";
+                        print STDERR "\n";
+                    }
+                    $s = warnUnsupportedDeviceFunctions($line_num);
+                    $warnings += $s;
+                }
+                $_ = $tmp;
+            }
+        }
+
+        # To limit bogus translations, try to make sure we are in a kernel:
+        if ($hasDeviceCode > 0) {
+            $ft{'kernel_func'} += countSupportedDeviceFunctions();
+        }
+
+        # Print it!
+        # TODO - would like to move this code outside loop but it uses $_ which contains the whole file.
+        unless ($no_output) {
+            my $apiCalls   = $ft{'error'} + $ft{'init'} + $ft{'version'} + $ft{'device'} + $ft{'context'} + $ft{'module'} + $ft{'memory'} + $ft{'addressing'} + $ft{'stream'} + $ft{'event'} + $ft{'external_resource_interop'} + $ft{'stream_memory'} + $ft{'execution'} + $ft{'graph'} + $ft{'occupancy'} + $ft{'texture'} + $ft{'surface'} + $ft{'peer'} + $ft{'graphics'} + $ft{'profiler'} + $ft{'openGL'} + $ft{'D3D9'} + $ft{'D3D10'} + $ft{'D3D11'} + $ft{'VDPAU'} + $ft{'EGL'} + $ft{'thread'} + $ft{'complex'} + $ft{'library'} + $ft{'device_library'} + $ft{'include'} + $ft{'include_cuda_main_header'} + $ft{'type'} + $ft{'literal'} + $ft{'numeric_literal'} + $ft{'define'};
+            my $kernStuff  = $hasDeviceCode + $ft{'kern_launch'} + $ft{'kernel_func'};
+            my $totalCalls = $apiCalls + $kernStuff;
+            $is_dos = m/\r\n$/;
+            if ($totalCalls and ($countIncludes == 0) and ($kernStuff != 0)) {
+                # TODO: implement hipify-clang's logic with header files AMAP
+                # If this file makes kernel builtin calls, and does not include the cuda_runtime.h,
+                # then add an #include to match "magic" includes provided by NVCC.
+                # This logic can miss cases where cuda_runtime.h is included by another include file.
+                print $OUTFILE '#include "hip/hip_runtime.h"' . ($is_dos ? "\r\n" : "\n");
+            }
+            print $OUTFILE  "$_";
+        }
+        $lineCount = $_ =~ tr/\n//;
+    }
+    my $totalConverted = totalStats(\%ft);
+    #printf "TOTAL-CONV=%d\n", $totalConverted;
+    if (($totalConverted+$warnings) and $print_stats) {
+        printStats("info: converted", \@statNames, \%ft, $warnings, $lineCount);
+        print STDERR " in '$fileName'\n";
+    }
+    # Update totals for all files:
+    addStats(\%tt, \%ft);
+    $Twarnings += $warnings;
+    $TlineCount += $lineCount;
+    foreach $key (keys %warningTags) {
+        $TwarningTags{$key} += $warningTags{$key};
+    }
+}
+#-- Print total stats for all files processed:
+if ($print_stats and ($fileCount > 1)) {
+    print STDERR "\n";
+    printStats("info: TOTAL-converted", \@statNames, \%tt, $Twarnings, $TlineCount);
+    print STDERR "\n";
+    foreach my $key (sort { $TwarningTags{$b} <=> $TwarningTags{$a} } keys %TwarningTags) {
+        printf STDERR "  warning: unconverted %s : %d\n", $key, $TwarningTags{$key};
+    }
+    my $kernelCnt = keys %Tkernels;
+    printf STDERR "  kernels (%d total) : ", $kernelCnt;
+    foreach my $key (sort { $Tkernels{$b} <=> $Tkernels{$a} } keys %Tkernels) {
+        printf STDERR "  %s(%d)", $key, $Tkernels{$key};
+    }
+    print STDERR "\n";
+    print STDERR "\n";
+}
+if ($count_conversions) {
+    foreach my $key (sort { $convertedTags{$b} <=> $convertedTags{$a} } keys %convertedTags) {
+        printf STDERR "  %s %d\n", $key, $convertedTags{$key};
+    }
+}
+
+sub countSupportedDeviceFunctions
+{
+    my $m = 0;
+    # TODO: list all of the supported functions
+    # TODO: split the list on math, device, and maybe fp16
+    foreach $func (
+        # Synchronization:
+        "__syncthreads",
+    )
+    {
+        # match device func at the beginning of a word, but not if it already has a namespace qualifier ('::') :
+        $m += m/[:]?[:]?\b($func)\b(\w*\()/g;
+    }
+    return $m;
+}
+
+sub warnUnsupportedDeviceFunctions
+{
+    my $line_num =  shift;
+    my $m = 0;
+    # ToDo: list all of the supported functions
+    foreach $func (
+        "__syncthreads_and",
+        "__syncthreads_or",
+        "__prof_trigger"
+    )
+    {
+        # match math at the beginning of a word, but not if it already has a namespace qualifier ('::') :
+        my $mt = m/[:]?[:]?\b($func)\b(\w*\()/g;
+        if  ($mt) {
+            $m += $mt;
+            print STDERR "  warning: $fileName:#$line_num : unsupported device function : $_\n";
+        }
+    }
+    return $m;
+}

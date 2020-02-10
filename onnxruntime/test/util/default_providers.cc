@@ -21,6 +21,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_HIP(int device_id);
 
 namespace test {
 
@@ -100,6 +101,14 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
   return CreateExecutionProviderFactory_ACL(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultHipExecutionProvider() {
+#ifdef USE_HIP
+  return CreateExecutionProviderFactory_HIP(0)->CreateProvider();
+#else
   return nullptr;
 #endif
 }
