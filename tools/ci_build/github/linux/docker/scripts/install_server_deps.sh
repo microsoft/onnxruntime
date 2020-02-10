@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-
+OS_VERSION=$(lsb_release -r -s)
 SYS_LONG_BIT=$(getconf LONG_BIT)
 apt-get update
 #see: https://docs.microsoft.com/en-us/dotnet/core/linux-prerequisites?tabs=netcore21
