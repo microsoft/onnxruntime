@@ -8,11 +8,11 @@
 #include <list>
 #include <memory.h>
 
-#include "core/platform/ort_mutex.h"
 #include "core/graph/constants.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/dnnl/subgraph/subgraph.h"
+#include "core/platform/ort_mutex.h"
 
 namespace dnnl {
 struct memory;
