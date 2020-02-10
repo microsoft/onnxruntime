@@ -624,7 +624,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 # tensorrt function to run onnx test and model test.
-def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir):
+    dll_path = os.path.join(args.tensorrt_home, 'lib')
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -638,7 +639,7 @@ def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         #onnx test
         if os.path.exists(onnx_test_data_dir):
           onnx_test_cmd = cmd_base + [onnx_test_data_dir]
-          run_subprocess([exe] + onnx_test_cmd, cwd=cwd)
+          run_subprocess([exe] + onnx_test_cmd, cwd=cwd, dll_path=dll_path)
 
         # model test
         # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
@@ -649,7 +650,7 @@ def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           model_dir_opset10 = glob.glob(os.path.join(model_dir_opset10, "tf_inception_v1"))
           for dir_path in itertools.chain(model_dir_opset8, model_dir_opset10):
             model_test_cmd = cmd_base + [dir_path]
-            run_subprocess([exe] + model_test_cmd, cwd=cwd)
+            run_subprocess([exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
 
 # dnnl temporary function for running onnx tests and model tests separately.
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
@@ -938,9 +939,9 @@ def main():
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
                 onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+                tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir)
               else:
-                tensorrt_run_onnx_tests(build_dir, configs, "")
+                tensorrt_run_onnx_tests(args, build_dir, configs, "")
 
             if args.use_cuda and not args.use_tensorrt:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
@@ -961,10 +962,9 @@ def main():
             if args.use_dnnl:
               dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
-            if not args.use_tensorrt:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
-              1 if args.x86 or platform.system() == 'Darwin' else 0,
-              1 if args.x86 or platform.system() == 'Darwin' else 0)
+            run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
+            1 if args.x86 or platform.system() == 'Darwin' else 0,
+            1 if args.x86 or platform.system() == 'Darwin' else 0)
 
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:

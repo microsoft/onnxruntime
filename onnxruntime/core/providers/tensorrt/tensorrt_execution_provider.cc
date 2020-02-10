@@ -441,7 +441,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 }
 
 // Detect and remove cycles from supported node list
-void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t supported_nodes_vector, const onnxruntime::GraphViewer& graph) const {
+void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   bool trt_cycle = true;
   while (trt_cycle) {
