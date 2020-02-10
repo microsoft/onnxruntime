@@ -367,6 +367,9 @@ if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
 endif()
 
+if(onnxruntime_USE_HIP)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_hip)
+endif()
 
 file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/test/tvm/*.h"
@@ -407,6 +410,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
+    ${PROVIDERS_HIP}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util

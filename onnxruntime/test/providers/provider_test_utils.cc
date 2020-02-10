@@ -752,6 +752,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
+        kHipExecutionProvider
     };
 
     bool has_run = false;
@@ -820,6 +821,8 @@ void OpTester::Run(
           execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kArmNNExecutionProvider)
           execution_provider = DefaultArmNNExecutionProvider();
+        else if (provider_type == onnxruntime::kHipExecutionProvider)
+          execution_provider = DefaultHipExecutionProvider();
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -842,6 +845,7 @@ void OpTester::Run(
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
             valid = false;
+            std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
             for (auto& custom_session_registry : custom_session_registries_) {
               if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
                                                       node, execution_provider->Type())) {
@@ -864,7 +868,7 @@ void OpTester::Run(
         has_run = true;
 
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
-
+        std::cerr << "Running on EP: " << provider_type << std::endl;
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
             run_options, feeds, output_names, provider_type,
