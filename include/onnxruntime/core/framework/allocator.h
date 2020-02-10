@@ -146,6 +146,8 @@ constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
+constexpr const char* HIP = "Hip";
+constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* TRT = "Tensorrt";
 constexpr const char* TRT_PINNED = "TensorrtPinned";
 

@@ -91,6 +91,11 @@ if(onnxruntime_USE_ARMNN)
   set(PROVIDERS_ARMNN onnxruntime_providers_armnn)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
 endif()
+if(onnxruntime_USE_HIP)
+  set(PROVIDERS_HIP onnxruntime_providers_hip)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES hip)
+endif()
+
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -690,4 +695,56 @@ if (onnxruntime_USE_ARMNN)
   target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ARMNN_INCLUDE_DIR})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+if (onnxruntime_USE_HIP)
+  add_definitions(-DUSE_HIP=1)
+
+  # Add search paths for default hip installation
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_HIP_HOME} ${onnxruntime_HIP_HOME}/hip ${onnxruntime_HIP_HOME}/hcc)
+
+  set(CMAKE_MODULE_PATH "${onnxruntime_HIP_HOME}/hip/cmake" ${CMAKE_MODULE_PATH})
+  find_package(HIP)
+
+  find_library(HIP_LIB hip_hcc)
+  find_library(HIP_BLAS hipblas)
+  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS})
+
+  file(GLOB_RECURSE onnxruntime_providers_hip_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cc"
+  )
+
+  file(GLOB_RECURSE onnxruntime_providers_hip_cu_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cu"
+    "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cuh"
+  )
+  
+  set(onnxruntime_providers_hip_src ${onnxruntime_providers_hip_cc_srcs} ${onnxruntime_providers_hip_cu_srcs})
+
+  if(CMAKE_BUILD_TYPE MATCHES Debug)
+    list(APPEND HIP_HCC_FLAGS -g)
+    list(APPEND HIP_HCC_FLAGS -O0)
+  endif(CMAKE_BUILD_TYPE MATCHES Debug)
+
+  list(APPEND HIP_HCC_FLAGS -fPIC)
+  list(APPEND HIP_HCC_FLAGS -D__HIP_PLATFORM_HCC__=1)
+
+  # Let hcc to generate GPU code during compilation
+  list(APPEND HIP_HCC_FLAGS -fno-gpu-rdc)
+
+  # Generate GPU code for GFX9 Generation
+  list(APPEND HIP_HCC_FLAGS --amdgpu-target=gfx900 --amdgpu-target=gfx906 --amdgpu-target=gfx908)
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_hip_src})
+  hip_add_library(onnxruntime_providers_hip ${onnxruntime_providers_hip_src})
+
+  target_link_libraries(onnxruntime_providers_hip PRIVATE  ${ONNXRUNTIME_HIP_LIBS})
+  set_target_properties(onnxruntime_providers_hip PROPERTIES FOLDER "ONNXRuntime")
+  target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-error=sign-compare -D__HIP_PLATFORM_HCC__=1)
+  target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_HIP_HOME}/include  ${onnxruntime_HIP_HOME}/hipblas)
+  onnxruntime_add_include_to_target(onnxruntime_providers_hip onnxruntime_common onnxruntime_framework onnx)
+  add_dependencies(onnxruntime_providers_hip ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_hip PROPERTIES LINKER_LANGUAGE CXX)
 endif()
