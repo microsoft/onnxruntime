@@ -36,6 +36,7 @@ constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
+constexpr const char* kHipExecutionProvider = "HIPExecutionProvider";
 constexpr const char *providers_available[] = {
   kCpuExecutionProvider,
 #ifdef USE_CUDA
@@ -77,5 +78,9 @@ constexpr const char *providers_available[] = {
 #ifdef USE_ARMNN
   kArmNNExecutionProvider,
 #endif
+#ifdef USE_HIP
+  kHipExecutionProvider,
+#endif
 };
+
 }  // namespace onnxruntime
