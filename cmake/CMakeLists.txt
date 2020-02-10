@@ -105,6 +105,10 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
+<<<<<<< HEAD
+=======
+option(onnxruntime_USE_HIP "Build with AMD GPU support" OFF)
+>>>>>>> init commit
 
 # Options to reduce build size
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -1044,6 +1048,12 @@ if (onnxruntime_USE_MIGRAPHX)
   endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
   add_definitions(-DUSE_MIGRAPHX=1)
+endif()
+
+if (onnxruntime_USE_HIP)
+  if (WIN32)
+    message(FATAL_ERROR "HIP does not support build in Windows!")
+  endif()
 endif()
 
 if (onnxruntime_USE_TVM)
