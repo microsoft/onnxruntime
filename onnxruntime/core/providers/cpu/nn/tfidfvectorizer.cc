@@ -412,8 +412,8 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
       if (!w.empty()) {
         const auto* freqs = frequences.data();
         for (size_t batch = 0; batch < B; ++batch) {
-          for (size_t row = 0; row < row_size; ++row) {
-            *output_data++ = (*freqs++ > 0) ? w[row] : 0;
+          for (size_t i = 0; i < row_size; ++i) {
+            *output_data++ = (*freqs++ > 0) ? w[i] : 0;
           }
         }
       } else {
@@ -426,8 +426,8 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
       if (!w.empty()) {
         const auto* freqs = frequences.data();
         for (size_t batch = 0; batch < B; ++batch) {
-          for (size_t row = 0; row < row_size; ++row) {
-            *output_data++ = *freqs++ * w[row];
+          for (size_t i = 0; i < row_size; ++i) {
+            *output_data++ = *freqs++ * w[i];
           }
         }
       } else {
