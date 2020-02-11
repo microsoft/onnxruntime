@@ -25,27 +25,6 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: ../../templates/win-ci-2019.yml
-  parameters:
-    AgentPool : 'Win-GPU-2019'
-    ArtifactName: drop-nuget-dml
-    JobName: 'Windows_CI_GPU_DML_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019"
-    BuildArch: 'x64'
-    msbuildArchitecture: 'amd64'
-    EnvSetupScript: 'setup_env.bat'    
-    sln_platform: 'x64'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: 'false'
-    DoEsrp: ${{ parameters.DoEsrp }}    
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
-     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
-
 - job: 'Linux_CI_GPU_Dev'
   workspace:
     clean: all
