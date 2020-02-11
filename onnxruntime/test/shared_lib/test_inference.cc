@@ -283,15 +283,15 @@ TEST(CApiTest, DISABLED_test_custom_op_library) {
                      17, 17, 17, 17, 17};
 
   std::string lib_name;
-  #if defined(_WIN32)
-    lib_name = "custom_op_library.dll";
-  #elif defined(__APPLE__)
-    lib_name = "libcustom_op_library.dylib";
-  #else
-    lib_name = "libcustom_op_library.so";
-  #endif
+#if defined(_WIN32)
+  lib_name = "custom_op_library.dll";
+#elif defined(__APPLE__)
+  lib_name = "libcustom_op_library.dylib";
+#else
+  lib_name = "libcustom_op_library.so";
+#endif
 
-    TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
+  TestInference<PATH_TYPE, int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y, expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS) && !defined(_WIN32)  // on windows, PYTHONHOME must be set explicitly
