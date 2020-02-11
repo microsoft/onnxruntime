@@ -6,129 +6,139 @@
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is a performance-focused complete scoring engine for Open Neural Network Exchange (ONNX) models, with an open extensible architecture to continually address the latest developments in AI and Deep Learning. ONNX Runtime stays up to date with the ONNX standard and supports all operators from the ONNX v1.2+ spec with both forwards and backwards compatibility. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
+**ONNX Runtime** is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.
 
-[ONNX](https://onnx.ai) is an interoperable format for machine learning models supported by various ML and DNN frameworks and tools. The universal format makes it easier to interoperate between frameworks and maximize the reach of hardware optimization investments.
+Models in the Tensorflow, Keras, PyTorch, scikit-learn, CoreML, and other popular [supported formats](https://github.com/onnx/tutorials#converting-to-onnx-format) can be converted to the standard [ONNX](https://onnx.ai) format, providing framework interoperability and helping to maximize the reach of hardware optimization investments. This provides a solution for systems to integrate a single inference engine to support models trained from a variety of frameworks, while taking advantage of specific hardware accelerators where available.
 
-***
+ONNX Runtime was designed with a focus on performance and scalability in order to support heavy workloads in high-scale production scenarios. It also has extensibility options for compatibility with emerging hardware developments.
 
-**[Key Features](#key-features)**
+ONNX Runtime stays up to date with the ONNX standard and supports all operators from the ONNX v1.2+ spec and is backwards compatible with older versions. Please refer to [this page](docs/Versioning.md) for ONNX opset compatibility details.
 
-**[Samples and Tutorials](./samples)**
 
-**Setup**
-* [Installation](#installation)
-  * [APIs and Official Binaries](#apis-and-official-builds)
-  * [Building from Source](#building-from-source)
-
-**Usage**
-* [Getting ONNX Models](#getting-onnx-models)
-* [Deploying ONNX Runtime](#deploying-onnx-runtime)
-* [Performance Tuning](#performance-tuning)
-
-**More Info**
-* [Technical Design Details](#technical-design-details)
-* [Extensibility Options](#extensibility-options)
-
-**[Data/Telemetry](#Data/Telemetry)**
-
-**[Contributions and Feedback](#contribute)**
-
-**[License](#license)**
 
 ***
-# Key Features
-## Run any ONNX model
-ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. See version compatibility details [here](./docs/Versioning.md).
+# Table of Contents
+* **[Functional Overview](#functional-overview)**
+  * [Key Features](#key-features)
+  * [Performance Focused Design](#performance-focused-design)
+    * [Performance Tuning](./docs/ONNX_Runtime_Perf_Tuning.md)
+  * [Extensibility Options](#extensibility-options)
+* **[Installation](#installation)**
+  * [API Documentation](#apis-documentation)
+  * [Builds and Packages](#Builds-and-Packages)
+* **[Usage](#usage)**
+  * [Samples and Tutorials](./samples)
+  * [Getting ONNX Models](#getting-onnx-models)
+  * [Deploying ONNX Runtime](#deploying-onnx-runtime)
+  * [Data/Telemetry](#Data/Telemetry)
+* **[Contributions and Feedback](#contribute)**
+* **[License](#license)**
 
-**Traditional ML support**
+***
+# Functional Overview
+## Key Features
+* **Cross Platform:** The runtime provides a cross platform API compatible with Windows, Linux, and Mac and a variety of architectures. Both CPU and GPUs are supported, and language bindings are available for a variety of languages and architectures See more details ([below](apis-and-official-builds)). *If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).*
+* **Run any ONNX model:** ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. Both ONNX (DNN) and ONNX-ML (traditional ML) operator sets are supported. *The full set of operators and types supported is listed [here](./docs/OperatorKernels.md). Some operators not supported in the current ONNX version may be available as a [Contrib Operator](./docs/ContribOperators.md).*
+* **Backwards and Forward Compatible**: Models updated to a newer ONNX version will continue to run with ONNX Runtime, and ONNX Runtime version updates should not break integrations. *See version compatibility details [here](./docs/Versioning.md).*
 
-In addition to DNN models, ONNX Runtime fully supports the [ONNX-ML profile](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) of the ONNX spec for traditional ML scenarios.
 
-For the full set of operators and types supported, please see [operator documentation](./docs/OperatorKernels.md)
+## Performance Focused Design
+ [High level architectural design](docs/HighLevelDesign.md)
+ 
+ Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs. See  [Performance Tuning guidance](./docs/ONNX_Runtime_Perf_Tuning.md).
 
-*Note: Some operators not supported in the current ONNX version may be available as a [Contrib Operator](./docs/ContribOperators.md)*
+### Supported Accelerators
+The list of currently supported accelerators (termed [Execution Providers](./docs/execution_providers)) is below. Please see [BUILD.md](./BUILD.md) for build instructions. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
 
-
-## High Performance
-ONNX Runtime supports both CPU and GPU. Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs.
-
-Currently ONNX Runtime supports the following accelerators:
-* MLAS (Microsoft Linear Algebra Subprograms)
-
-* NVIDIA CUDA
-* Intel MKL-ML
-* [Intel DNNL](./docs/execution_providers/MKL-DNN-ExecutionProvider.md) - [subgraph optimization](./docs/execution_providers/MKL-DNN-Subgraphs.md)
+#### CPU
+* Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*
+* [Intel DNNL](./docs/execution_providers/MKL-DNN-ExecutionProvider.md)
 * [Intel nGraph](./docs/execution_providers/nGraph-ExecutionProvider.md)
+* Intel MKL-ML 
+
+#### GPU
+* NVIDIA CUDA
 * [NVIDIA TensorRT](./docs/execution_providers/TensorRT-ExecutionProvider.md)
-* [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
-* [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 * [DirectML](./docs/execution_providers/DirectML-ExecutionProvider.md)
-* [ACL](./docs/execution_providers/ACL-ExecutionProvider.md) (in preview, for ARM Compute Library)
 
-Not all variations are supported in the [official release builds](#apis-and-official-builds), but can be built from source following [these instructions](./BUILD.md).
+#### IoT/Edge/Mobile
+* [Intel OpenVINO](./docs/execution_providers/OpenVINO-ExecutionProvider.md)
+* [ARM Compute Library](./docs/execution_providers/ACL-ExecutionProvider.md) (*preview*)
+* [Android Neural Networks API](./docs/execution_providers/NNAPI-ExecutionProvider.md) (*preview*)
 
-We are continuously working to integrate new execution providers for further improvements in latency and efficiency. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
+#### Other
+* [Nuphar Model Compiler](./docs/execution_providers/Nuphar-ExecutionProvider.md)
 
+## Extensibility Options
+  * [Add a custom operator/kernel](docs/AddingCustomOp.md)
+  * [Add a new graph transform](include/onnxruntime/core/optimizer/graph_transformer.h)
+  * [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
+  * [Add an execution provider](docs/AddingExecutionProvider.md)
 
-## Cross Platform
-ONNX Runtime is currently available for Linux, Windows, and Mac with Python, C#, C++, and C APIs. Please see [API documentation and package installation](#installation). 
-
-If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).
 ***
+
 # Installation
-**Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started.
+**Quick Start:** The [ONNX-Ecosystem Docker container image](https://github.com/onnx/onnx-docker/tree/master/onnx-ecosystem) is available on Dockerhub and includes ONNX Runtime (CPU, Python), dependencies, tools to convert from various frameworks, and Jupyter notebooks to help get started. Additional dockerfiles can be found [here](./dockerfiles).
 
-Additional dockerfiles can be found [here](./dockerfiles).
+## API Documentation
 
-## APIs and Official Builds
+|Language|Supported Versions|Samples|
+|--|--|--|
+[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)|[Samples](./samples#python)|
+|[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
+|[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
+|[C](docs/C_API.md)| | [Samples](./samples#CC)|
+|[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
+[Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.5| [Samples](https://ankane.org/tensorflow-ruby)|
 
-### API Documentation
-* [Python](https://aka.ms/onnxruntime-python)
-* [C](docs/C_API.md)
-* [C#](docs/CSharp_API.md)
-* [C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)
-* [Java](docs/Java_API.md)
-* [Ruby](https://github.com/ankane/onnxruntime) (external project)
+## Builds and Packages
 
-### Official Builds
-| | CPU (MLAS+Eigen) | CPU (MKL-ML) | GPU (CUDA)
-|---|:---|:---|:---|
-| **Python** | **[pypi: onnxruntime](https://pypi.org/project/onnxruntime)**<br><br>Windows (x64)<br>Linux (x64)<br>Mac OS X (x64) | -- | **[pypi: onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)**<br><br>Windows (x64)<br>Linux (x64) |
-| **C#** | **[Nuget: Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/)**<br><br>Windows (x64, x86)<br>Linux (x64, x86)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.MKLML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)**<br><br>Windows (x64)<br>Linux (x64)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)**<br><br>Windows (x64)<br>Linux (x64) |
-| **C/C++ wrapper** | **[Nuget: Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)**<br><br>**[.zip, .tgz](https://aka.ms/onnxruntime-release)**<br><br>Windows (x64, x86)<br>Linux (x64, x86)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.MKLML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.MKLML/)**<br><br>Windows (x64)<br>Linux (x64)<br>Mac OS X (x64) | **[Nuget: Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu/)**<br><br>**[.zip, .tgz](https://aka.ms/onnxruntime-release)**<br><br>Windows (x64)<br>Linux (x64) |
+Official builds are published for the default CPU Provider (Eigen + MLAS), as well as GPU with CUDA. Python packages can be found on PyPi, and C#/C/C++ packages on Nuget. Please view the table on [aka.ms/onnxruntime](https://aka.ms/onnxruntime) for instructions for different build combinations. 
 
-#### System Requirements (pre-requisite dependencies)
+For additional build flavors and/or dockerfiles, please see [BUILD.md](BUILD.md). For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
+
+#### PyPi (Python):
+*If using `pip` to download the Python binaries, run `pip install --upgrade pip` prior to downloading.*
+
+* [onnxruntime](https://pypi.org/project/onnxruntime)
+* [onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)
+
+#### Nuget (C#/C/C++):
+* [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime)
+* [Microsoft.ML.OnnxRuntime.Gpu](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)
+
+#### Other package repositories:
+Contributed non-official packages (including Homebrew, Linuxbrew, and nixpkgs) are listed [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-uwp). These are not maintained by the core ONNX Runtime team and will have limited support; use at your discretion.
+
+### System Requirements
+These system requirements must be met for using the compiled binaries. 
+#### System language
+* Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales. 
+* For Ubuntu, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
+  * Run the following commands:
+    `locale-gen en_US.UTF-8`
+    `update-locale LANG=en_US.UTF-8`
+  * Follow similar procedure to configure other locales on other platforms.
+  
+#### CPU
 * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
     [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
-* GPU builds require CUDA runtime libraries being installed on the system:
-	 * Version: **CUDA 10.0**, **cuDNN 7.6 on Linux and cuDNN 7.3 on Windows**
-  * Older ONNX Runtime releases: used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
-* Python binaries are compatible with **Python 3.5-3.7**. See [Python Dev Notes](./docs/Python_Dev_Notes.md). If using `pip` to be download the Python binaries, run `pip install --upgrade pip` prior to downloading. 
-* The Java API is compatible with **Java 8-13**.
-* Certain operators makes use of system locales. Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required.
-  * For Ubuntu install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
-  * Run the following commands:
-    `locale-gen en_US.UTF-8`
-    `update-locale LANG=en_US.UTF-8`
-  * Follow similar procedure to configure other locales on other platforms.
 
-## Building from Source
-If additional build flavors and/or dockerfiles are needed, please find instructions at [Build ONNX Runtime](BUILD.md). For production scenarios, it's strongly recommended to build only from an [official release branch](https://github.com/microsoft/onnxruntime/releases).
+#### GPU
+* GPU builds require CUDA runtime libraries being installed on the system:
+	 * Version: **CUDA 10.0** and **cuDNN 7.6** on Linux / **cuDNN 7.3** on Windows
+  * Older ONNX Runtime releases used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
 
 ***
 # Usage
+Please see [Samples and Tutorials](./samples) for examples.
 
 ## Getting ONNX Models
-* The [ONNX Model Zoo](https://github.com/onnx/models) has popular ready-to-use pre-trained models.
-* To export or convert a trained ONNX model trained from various frameworks, see [ONNX Tutorials](https://github.com/onnx/tutorials). Versioning compatibility information can be found under [Versioning](docs/Versioning.md#tool-compatibility)
-* Other services that can be used to create ONNX models include:
-  * [AutoML from AzureML SDK](https://aka.ms/automatedmldocs)
-  * [Custom Vision](https://www.customvision.ai/)
-  * [E2E training on Azure Machine Learning Services](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-onnx)
+To get an ONNX model, please view these [ONNX Tutorials](https://github.com/onnx/tutorials#getting-onnx-models).
+ONNX Runtime supports all versions of ONNX 1.2+. Full versioning compatibility information can be found under [Versioning](docs/Versioning.md#tool-compatibility).
 
 ## Deploying ONNX Runtime
 ### Cloud
@@ -143,32 +153,13 @@ This is particularly important when there are massive volumes of incoming data/s
  
 To deploy AI workloads to these edge devices and take advantage of hardware acceleration capabilities on the target device, see [these reference implementations](https://github.com/Azure-Samples/onnxruntime-iot-edge).
 
-### Local applications
-ONNX Runtime packages are published to PyPi and Nuget (see [Official Builds](#official-builds) and/or can be [built from source](./BUILD.md) for local application development. Find samples [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
+### Client applications
+Install or build the package you need to use in your application. Check [this page](https://microsoft.github.io/onnxruntime/) for installation/package guidance. See [sample implementations](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx) using the C++ API. 
 
 On newer Windows 10 devices (1809+), ONNX Runtime is available by default as part of the OS and is accessible via the [Windows Machine Learning APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/). Find tutorials [here](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop) for building a Windows Desktop or UWP application using WinML.
 
-## Performance Tuning
-ONNX Runtime is open and extensible, supporting a broad set of configurations and execution providers for model acceleration. For performance tuning guidance, please see [this page](./docs/ONNX_Runtime_Perf_Tuning.md).
-
-To tune performance for ONNX models, the [ONNX Go Live tool "OLive"](https://github.com/microsoft/OLive) provides an easy-to-use pipeline for converting models to ONNX and optimizing performance for inferencing with ONNX Runtime. 
-
-***
-# Technical Design Details
-* [High level architectural design](docs/HighLevelDesign.md)
-* [Versioning](docs/Versioning.md)
-
-## Extensibility Options
-* [Add a custom operator/kernel](docs/AddingCustomOp.md)
-* [Add an execution provider](docs/AddingExecutionProvider.md)
-* [Add a new graph
-transform](include/onnxruntime/core/optimizer/graph_transformer.h)
-* [Add a new rewrite rule](include/onnxruntime/core/optimizer/rewrite_rule.h)
-
-***
-# Data/Telemetry
+## Data/Telemetry
 This project may collect usage data and send it to Microsoft to help improve our products and services. See the [privacy statement](docs/Privacy.md) for more details.
-
 ***
 # Contribute
 We welcome contributions! Please see the [contribution guidelines](CONTRIBUTING.md).
