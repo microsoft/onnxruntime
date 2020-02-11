@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
 
-size_t Profiler::max_num_events_ = DEFAULT_MAX_PROFILER_EVENTS;
+std::atomic<size_t> Profiler::global_max_num_events_{1000 * 1000};
 
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
 Profiler* Profiler::instance_ = nullptr;

@@ -87,8 +87,6 @@ class TrainingRunner {
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
     bool use_profiler = false;
-    // Maximum number of profile records to collect.
-    size_t max_profile_records = profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS;
     MPIContext mpi_context;
     bool skip_evaluation = false;
     bool dump_fetches = false;

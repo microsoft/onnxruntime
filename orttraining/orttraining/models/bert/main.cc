@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/common/profiler.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -36,8 +37,9 @@ struct BertParameters : public TrainingRunner::Parameters {
 };
 
 struct OrtParameters {
-  logging::Severity log_severity;
-  int vlog_level;
+  logging::Severity log_severity{logging::Severity::kWARNING};
+  int vlog_level{-1};
+  size_t max_num_profiling_events{0};  // 0 means use the default value
 };
 
 Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParameters& ort_params) {
@@ -101,8 +103,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("true"))
       ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
-      ("max_profile_records", "Maximum number of runtime profile data records to collect.",
-        cxxopts::value<size_t>()->default_value(to_string(profiling::Profiler::DEFAULT_MAX_PROFILER_EVENTS)))
+      ("max_profile_records", "Maximum number of runtime profile data records to collect. 0 means use the default value.",
+        cxxopts::value<size_t>()->default_value("0"))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
       ("histogram", "Tensor(s) to display a histogram on tensorboard (e.g. '417,3347,417_grad,3347_grad' for bert-large or '81,449,81_grad,449_grad' for bert-tiny)",
         cxxopts::value<std::vector<std::string>>()->default_value({}))
@@ -196,7 +198,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.use_nccl = flags["use_nccl"].as<bool>();
 
     params.use_profiler = flags.count("use_profiler") > 0;
-    params.max_profile_records = flags["max_profile_records"].as<size_t>();
+    ort_params.max_num_profiling_events = flags["max_profile_records"].as<size_t>();
 
     params.train_data_dir = ToPathString(flags["train_data_dir"].as<std::string>());
     params.test_data_dir = ToPathString(flags["test_data_dir"].as<std::string>());
@@ -558,7 +560,7 @@ static Status RunTraining(const BertParameters& params) {
   if (params_for_phase.mpi_context.world_rank == 0) {
     auto test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
                                                                  params_for_phase.test_data_dir,
-                                                                         max_num_files_preload);
+                                                                 max_num_files_preload);
 
     ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get(), false));
   }
@@ -568,7 +570,7 @@ static Status RunTraining(const BertParameters& params) {
 
 int main(int argc, char* argv[]) {
   BertParameters params;
-  OrtParameters ort_params{logging::Severity::kWARNING, -1};
+  OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   setup_training_params(params);
 
@@ -580,6 +582,11 @@ int main(int argc, char* argv[]) {
                                                   logging::LoggingManager::InstanceType::Default,
                                                   &default_logger_id,
                                                   ort_params.vlog_level};
+
+  // setup profiling
+  if (ort_params.max_num_profiling_events > 0) {
+    profiling::Profiler::SetGlobalMaxNumEvents(ort_params.max_num_profiling_events);
+  }
 
   // setup onnxruntime env
   unique_ptr<Environment> env;

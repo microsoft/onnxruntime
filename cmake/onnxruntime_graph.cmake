@@ -46,10 +46,14 @@ if (onnxruntime_ENABLE_TRAINING)
         "${ORTTRAINING_SOURCE_DIR}/core/graph/horovod_adapters.cc"
         )
   endif()
-  set(onnxruntime_graph_src ${onnxruntime_graph_src} ${orttraining_graph_src})
 endif()
 
-add_library(onnxruntime_graph ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src} ${orttraining_graph_src})
+set(onnxruntime_graph_lib_src ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
+if (onnxruntime_ENABLE_TRAINING)
+    list(APPEND onnxruntime_graph_lib_src ${orttraining_graph_src})
+endif()
+
+add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf)
 
@@ -66,6 +70,9 @@ set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/graph  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
+if (onnxruntime_ENABLE_TRAINING)
+    source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
+endif()
 
 if (WIN32)
     set(onnxruntime_graph_static_library_flags
