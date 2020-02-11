@@ -4,7 +4,7 @@
 #include "precomp.h"
 #include "AbiCustomRegistry.h"
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 {
 
 AbiCustomRegistry::AbiCustomRegistry() : 

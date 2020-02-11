@@ -27,7 +27,7 @@ CMake creates a target to this project
              />
     <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
              Targets="Restore" 
-             Properties="" 
+             Properties="ProtocDirectory=$(ProtocDirectory)"
              />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
              Targets="Restore" 

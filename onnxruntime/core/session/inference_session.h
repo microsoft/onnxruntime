@@ -56,6 +56,13 @@ class LoggingManager;
   * Pre-defined and custom metadata about the model.
   */
 struct ModelMetadata {
+  ModelMetadata() = default;
+  ModelMetadata(const ModelMetadata& other)
+      : producer_name(other.producer_name), graph_name(other.graph_name), domain(other.domain), description(other.description), version(other.version), custom_metadata_map(other.custom_metadata_map) {
+  }
+  ~ModelMetadata() = default;
+  ModelMetadata& operator=(const ModelMetadata&) = delete;
+
   std::string producer_name;
   std::string graph_name;
   std::string domain;
@@ -502,15 +509,24 @@ class InferenceSession {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
-
   // used to support platform telemetry
   static std::atomic<uint32_t> global_session_id_;                  // a monotonically increasing session id
   uint32_t session_id_;                                             // the current session's id
-  uint32_t total_runs_since_last_;                                  // the total number of Run() calls since the last report
-  long long total_run_duration_since_last_;                         // the total duration (us) of Run() calls since the last report
-  TimePoint time_sent_last_;                                        // the TimePoint of the last report
-  const long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
-  std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+
+  struct Telemetry {
+    Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
+    uint32_t total_runs_since_last_ = 0;                                           // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;                                  // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                                                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+
+    TimePoint time_sent_last_;                                                     // the TimePoint of the last report
+    TimePoint time_sent_last_evalutation_start_;
+                                                                                   // Event Rate per provider < 20 peak events per second
+    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;    // duration in (us).  send a report every 10 mins
+    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50; // duration in (us). send a EvaluationStop Event every 50 ms;
+
+    bool isEvaluationStart = false;
+  } telemetry_;
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;

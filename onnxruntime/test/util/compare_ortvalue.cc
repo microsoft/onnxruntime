@@ -27,11 +27,7 @@
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
 #endif
-#ifdef USE_FULL_PROTOBUF
-#include <google/protobuf/message.h>
-#else
 #include <google/protobuf/message_lite.h>
-#endif
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #else
