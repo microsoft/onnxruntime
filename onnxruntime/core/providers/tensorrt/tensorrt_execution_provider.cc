@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
+
 #include "tensorrt_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
