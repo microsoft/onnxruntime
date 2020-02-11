@@ -67,7 +67,6 @@ jobs:
   pool: 'Win-GPU-2019'
   dependsOn:
   - Windows_CI_GPU_CUDA_Dev
-  - Windows_CI_GPU_DML_Dev
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:  
@@ -76,13 +75,6 @@ jobs:
     inputs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet'
-    inputs:
-      artifactName: 'drop-nuget-dml'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    continueOnError: true
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Linux'
