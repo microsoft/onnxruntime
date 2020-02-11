@@ -290,7 +290,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_cuda) {
 #ifdef USE_CUDA
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id, std::numeric_limits<size_t>::max()));
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "CUDA is not supported in this build");
       return -1;
