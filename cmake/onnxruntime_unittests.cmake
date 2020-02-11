@@ -241,7 +241,7 @@ if(onnxruntime_USE_NNAPI)
 endif()
 
 if(onnxruntime_USE_FEATURIZERS)
-   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers onnxruntime_featurizers_comp)
 endif()
 
 if(onnxruntime_USE_DML)
@@ -339,6 +339,9 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework G
 
 if (onnxruntime_USE_DNNL)
   target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
+endif()
+if (onnxruntime_USE_DML)
+  target_add_dml(onnxruntime_test_utils)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})

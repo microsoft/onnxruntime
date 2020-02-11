@@ -146,12 +146,14 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_full_protobuf", action='store_true', help="Use the full protobuf library")
     parser.add_argument("--disable_contrib_ops", action='store_true', help="Disable contrib ops (reduces binary size)")
     parser.add_argument("--skip_onnx_tests", action='store_true', help="Explicitly disable all onnx related tests. Note: Use --skip_tests to skip all tests.")
+    parser.add_argument("--skip_winml_tests", action='store_true', help="Explicitly disable all WinML related tests")
     parser.add_argument("--enable_msvc_static_runtime", action='store_true', help="Enable static linking of MSVC runtimes.")
     parser.add_argument("--enable_language_interop_ops", action='store_true', help="Enable operator implemented in language other than cpp")
     parser.add_argument("--cmake_generator", choices=['Visual Studio 15 2017', 'Visual Studio 16 2019'],
                         default='Visual Studio 15 2017', help="Specify the generator that CMake invokes. This is only supported on Windows")
     parser.add_argument("--enable_multi_device_test", action='store_true', help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
+    parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
     return parser.parse_args()
 
@@ -285,6 +287,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
+                 "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
@@ -328,6 +331,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  # enable pyop if it is nightly build
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
+                 "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
                  ]
 
@@ -372,6 +376,39 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if is_windows():
         cmake_args += cmake_extra_args
 
+    # ADO pipelines will store the pipeline build number (e.g. 191101-2300.1.master) and 
+    # source version in environment variables. If present, use these values to define the 
+    # WinML/ORT DLL versions.
+    build_number = os.getenv('Build_BuildNumber')
+    source_version = os.getenv('Build_SourceVersion')
+    if build_number and source_version:
+        build_matches = re.match(r"^(\d\d)(\d\d)(\d\d)-(\d\d)(\d\d)\.(\d)\.(\S+)$", build_number)
+        if build_matches:
+            YY = build_matches.group(1)
+            MM = build_matches.group(2)
+            DD = build_matches.group(3)
+            HH = build_matches.group(4)
+            
+            # Get ORT major and minor number
+            with open(os.path.join(source_dir, 'VERSION_NUMBER')) as f:
+                first_line = f.readline()
+                ort_version_matches = re.match(r"(\d+).(\d+)", first_line)
+                if not ort_version_matches:
+                    raise BuildError("Couldn't read version from VERSION_FILE")
+                ort_major = ort_version_matches.group(1)
+                ort_minor = ort_version_matches.group(2)
+                # Example (BuildNumber: 191101-2300.1.master, SourceVersion: 0bce7ae6755c792eda558e5d27ded701707dc404)
+                # MajorPart = 1
+                # MinorPart = 0
+                # BuildPart = 1911
+                # PrivatePart = 123
+                # String = 191101-2300.1.master.0bce7ae
+                cmake_args += ["-DVERSION_MAJOR_PART={}".format(ort_major),
+                            "-DVERSION_MINOR_PART={}".format(ort_minor),
+                            "-DVERSION_BUILD_PART={}{}".format(YY, MM),
+                            "-DVERSION_PRIVATE_PART={}{}".format(DD, HH),
+                            "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7])]
+    
     for config in configs:                
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
