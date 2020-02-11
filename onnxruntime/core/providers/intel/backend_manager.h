@@ -10,8 +10,8 @@
 #include "core/framework/allocatormgr.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include <inference_engine.hpp>
-#include "ibackend.h"
-#include "intel_graph.h"
+#include "ov_backend.h"
+#include "cpu_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
@@ -32,8 +32,8 @@ class BackendManager {
   std::string precision_str_;
   ONNX_NAMESPACE::ModelProto model_proto_;
   bool has_dynamic_input_shape_ = false;
-  std::shared_ptr<IBackend> concrete_backend_;
-  std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
+  std::shared_ptr<OVBackend> concrete_backend_;
+  std::map<std::string, std::shared_ptr<OVBackend>> backend_map_;
   std::vector<int> input_indexes_;
 };
 

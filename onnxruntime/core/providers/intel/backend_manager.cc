@@ -8,7 +8,8 @@
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "backend_manager.h"
-#include "intel_graph.h"
+#include "ov_backend.h"
+#include "cpu_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
@@ -68,7 +69,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   } else {
     LOGS_DEFAULT(INFO) << "[Intel-EP] Model has concreate input dims. Initializing backend";
     has_dynamic_input_shape_ = false;
-    concrete_backend_ = std::make_shared<IntelGraph>(model_proto_, input_indexes_, device_id_, precision_);
+    concrete_backend_ = std::make_shared<CPUBackend>(model_proto_, input_indexes_, device_id_, precision_);
   }
 }
 
@@ -175,13 +176,13 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, device_id_);
 
-    std::shared_ptr<IBackend> dynamic_backend;
+    std::shared_ptr<OVBackend> dynamic_backend;
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
       LOGS_DEFAULT(INFO) << "[Intel-EP] "
                          << "Creating concrete backend for key: " << key;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
-      dynamic_backend = std::make_shared<IntelGraph>(*modelproto_with_concrete_shapes, input_indexes_, device_id_, precision_);
+      dynamic_backend = std::make_shared<CPUBackend>(*modelproto_with_concrete_shapes, input_indexes_, device_id_, precision_);
       backend_map_.insert({key, dynamic_backend});
     } else {
       dynamic_backend = search->second;
