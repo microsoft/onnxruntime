@@ -26,7 +26,7 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   // Only Max Min need to set ReduceTensorIndices CUDNN_REDUCE_TENSOR_FLATTENED_INDICES as per cudnn library manual
   // Only Max Min will have indices output, need to set the indices to nullptr for other ops
   template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
-  Status ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const;
+  Status ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const;
 
   template <typename T, typename OutT, cudnnReduceTensorIndices_t ReduceTensorIndices>
   Status ReduceKernelShared(
@@ -34,8 +34,8 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
       const TensorShape& input_shape,
       OutT* Y,
       const TensorShape& output_shape,
-      cudnnReduceTensorOp_t cudnnReduceOp,
-      std::vector<int64_t> output_dims) const;
+      cudnnReduceTensorOp_t cudnn_reduce_op,
+      std::vector<int64_t>& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;

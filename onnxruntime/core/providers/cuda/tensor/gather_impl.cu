@@ -38,23 +38,23 @@ template <typename T, typename Tin>
 void GatherImpl(
     const int64_t input_block_size,
     const int64_t indices_max,
-    const fast_divmod* output_block_size,
-    const fast_divmod* block_size,
+    const fast_divmod& output_block_size,
+    const fast_divmod& block_size,
     const Tin* indices_data,
     const T* input_data,
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   _GatherKernel<T, Tin><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-      input_block_size, indices_max, *output_block_size, *block_size, indices_data, input_data, output_data, (CUDA_LONG)N);
+      input_block_size, indices_max, output_block_size, block_size, indices_data, input_data, output_data, (CUDA_LONG)N);
 }
 
 #define SPECIALIZED_IMPL(T)                                                                                               \
   template void GatherImpl<T, int32_t>(const int64_t input_block_size, const int64_t indices_max,                         \
-                                       const fast_divmod* output_block_size, const fast_divmod* block_size,               \
+                                       const fast_divmod& output_block_size, const fast_divmod& block_size,               \
                                        const int32_t* indices_data, const T* input_data, T* output_data, const size_t N); \
   template void GatherImpl<T, int64_t>(const int64_t input_block_size, const int64_t indices_max,                         \
-                                       const fast_divmod* output_block_size, const fast_divmod* block_size,               \
+                                       const fast_divmod& output_block_size, const fast_divmod& block_size,               \
                                        const int64_t* indices_data, const T* input_data, T* output_data, const size_t N);
 
 SPECIALIZED_IMPL(int8_t)

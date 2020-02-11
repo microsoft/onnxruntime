@@ -77,8 +77,8 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
-CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, size_t cuda_mem_limit)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(cuda_mem_limit) {
+CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(info.cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   size_t free = 0;

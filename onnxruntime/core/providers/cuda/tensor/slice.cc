@@ -65,9 +65,9 @@ REGISTER_V11_TYPED_SLICE(float)
 
 template <typename Tind, bool dynamic>
 Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
-  auto input_tensor = ctx->Input<Tensor>(0);
+  const auto* input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(nullptr != input_tensor);
-  auto& input_dimensions = input_tensor->Shape().GetDims();
+  const auto& input_dimensions = input_tensor->Shape().GetDims();
 
   // Initialize the starts & ends to the actual tensor shape
   size_t dimension_count = input_dimensions.size();

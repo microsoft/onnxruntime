@@ -269,7 +269,7 @@ template void reduce_mean<double, double>(
   const double* data, double* output, int size, double* buffer);
 
 bool is_matrix_row_reduction(
-    const cudnnReduceTensorOp_t cudnnReduceOp,
+    const cudnnReduceTensorOp_t cudnn_reduce_op,
     const int m,
     const int n,
     const size_t rank,
@@ -283,7 +283,7 @@ bool is_matrix_row_reduction(
   if (rank < 2)
     return false;
 
-  if (cudnnReduceOp != CUDNN_REDUCE_TENSOR_ADD)
+  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD)
     return false;
 
   // Check if all but the last axis are reduced. For example, reducing

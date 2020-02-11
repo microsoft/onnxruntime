@@ -23,7 +23,7 @@ void reduce_mean(const TIn* data, TOut* output, int size, TOut* buffer);
 
 // Determine if a CUDNN reduction can be computed by reduce_matrix_rows.
 bool is_matrix_row_reduction(
-    const cudnnReduceTensorOp_t cudnnReduceOp,
+    const cudnnReduceTensorOp_t cudnn_reduce_op,
     const int m,
     const int n,
     const size_t rank,
