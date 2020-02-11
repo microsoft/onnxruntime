@@ -13,7 +13,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     IdentityOp<false>);
 
@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     KernelDefBuilder()
-        .Alias(AliasRange(0, 1024))
+        .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     NcclAllReduce);
 

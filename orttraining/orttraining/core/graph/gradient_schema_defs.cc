@@ -1430,8 +1430,8 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "input", "The input data as Tensor.", "T", OpSchema::Variadic)
-      .Output(0, "output", "The output.", "T", OpSchema::Variadic)
+      .Input(0, "input", "The input data as Tensor.", "T")
+      .Output(0, "output", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1443,8 +1443,8 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronG)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "input", "The input data as Tensor.", "T", OpSchema::Variadic)
-      .Output(0, "output", "The output.", "T", OpSchema::Variadic)
+      .Input(0, "input", "The input data as Tensor.", "T")
+      .Output(0, "output", "The output.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},

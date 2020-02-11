@@ -204,7 +204,7 @@ Status NcclReduceScatter::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-std::vector<std::pair<int, int>> AliasRange(int start, int end) {
+static std::vector<std::pair<int, int>> AliasRange(int start, int end) {
   std::vector<std::pair<int, int>> aliases;
   for (int i = start; i < end; i++) {
     aliases.push_back(std::pair<int, int>(i, i));
