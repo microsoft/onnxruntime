@@ -58,6 +58,7 @@ struct TensorrtFuncState {
   std::vector<std::vector<int64_t>> output_shapes;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool* fp16_enable_ptr = nullptr;
+  size_t* max_workspace_size_ptr = nullptr;
 };
 
 // Logical device representation.

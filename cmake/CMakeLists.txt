@@ -746,7 +746,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
-    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:nvinfer.dll")
+    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
   else()
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
   endif()

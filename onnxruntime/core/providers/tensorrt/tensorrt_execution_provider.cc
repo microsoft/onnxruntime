@@ -761,7 +761,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_};
+            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_, 
+			&max_workspace_size_};
       *state = p.release();
       return 0;
     };
@@ -866,6 +867,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (dimension_update) {
         auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+		trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
         if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
