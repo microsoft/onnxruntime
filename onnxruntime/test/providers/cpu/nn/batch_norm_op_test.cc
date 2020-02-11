@@ -720,7 +720,8 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(BatchNormTest, ForwardTrainingTest) {
+// flacky test - disabled for now
+TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
   OpTester test("BatchNormalization");
   float epsilon = 1e-05f;
   float momentum = 0.1f;

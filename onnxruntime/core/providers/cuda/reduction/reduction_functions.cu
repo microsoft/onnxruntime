@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <algorithm>
 #include <cuda.h>
 #include <cuda_fp16.h>
