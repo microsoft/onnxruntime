@@ -15,10 +15,6 @@
 #include "contrib_ops/cuda_contrib_kernels.h"
 #endif
 
-#ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cuda_training_kernels.h"
-#endif
-
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -1185,9 +1181,6 @@ std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
   ::onnxruntime::contrib::cuda::RegisterCudaContribKernels(*kernel_registry);
 #endif
 
-#ifdef ENABLE_TRAINING
-  ::onnxruntime::cuda::RegisterCudaTrainingKernels(*kernel_registry);
-#endif
   return kernel_registry;
 }
 
