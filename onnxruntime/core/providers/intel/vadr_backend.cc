@@ -8,16 +8,6 @@
 #include <fstream>
 
 #include <inference_engine.hpp>
-#include <ngraph/frontend/onnx_import/onnx.hpp>
-
-// FIXME: These should not be needed after v1 ops
-// are fully integrated into onnx importer
-#include <ngraph/pass/manager.hpp>
-#include <ngraph/pass/opset1_upgrade.hpp>
-#include <ngraph/pass/convert_fp32_to_fp16.hpp>
-
-// FIXME: Remove before production
-#include <ngraph/serializer.hpp>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/graph.h"

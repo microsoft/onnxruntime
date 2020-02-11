@@ -4,9 +4,7 @@
 #pragma once
 
 #include <memory>
-
 #include <inference_engine.hpp>
-
 #include "core/session/onnxruntime_cxx_api.h"
 #include "ov_backend.h"
 
