@@ -28,9 +28,18 @@
 namespace onnxruntime {
 namespace intel_ep {
 
+
+const std::string OVBackend::log_tag = "[Intel-EP] ";
+
 //TODO: Remove this before production
 bool IsDebugEnabled() {
   return (std::getenv("UEP_ENABLE_DEBUG") != nullptr);
+}
+
+void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::string file_name) {
+  std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+  model_proto.SerializeToOstream(&outfile);
+  outfile.close();
 }
 
 std::shared_ptr<InferenceEngine::CNNNetwork> OVBackend::CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -187,13 +196,9 @@ void OVBackend::GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context
   }
 }
 
-void OVBackend::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
+void OVBackend::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, InferenceEngine::InferRequest::Ptr infer_request,
                                   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
-
-  // All infer_requests process identical tensor slices from the batch.
-  // So using info from first infer_request to allocate all output tensors.
-  auto infer_request = infer_requests[0];
 
   size_t i = 0;
   for (auto output_info_iter = graph_output_info.begin();

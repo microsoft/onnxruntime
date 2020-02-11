@@ -11,16 +11,19 @@ namespace intel_ep {
 class OVBackend{
   public:
   virtual void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
+  static const std::string log_tag;
 
-  protected: 
+  protected:
+  OVBackend (InferenceEngine::Precision precision, std::vector<int> input_indexes) : precision_{precision}, input_indexes_{input_indexes} {};
   void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<InferenceEngine::CNNNetwork> network);
   std::shared_ptr<InferenceEngine::CNNNetwork> CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto);
   InferenceEngine::Precision ConvertPrecisionONNXToIntel(const ONNX_NAMESPACE::TypeProto& onnx_type);
   void GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, const OrtValue* input_tensors[], std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
-  void GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+  void GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, InferenceEngine::InferRequest::Ptr infer_request, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
-  std::vector<int> input_indexes_;
   InferenceEngine::Precision precision_;
+  std::vector<int> input_indexes_;
+  mutable std::mutex compute_lock_;
 };
 
 } // namespace intel_ep
