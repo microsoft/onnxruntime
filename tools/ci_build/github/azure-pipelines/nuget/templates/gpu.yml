@@ -47,6 +47,8 @@ jobs:
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
 - job: 'Linux_CI_GPU_Dev'
+  workspace:
+    clean: all
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
@@ -81,6 +83,8 @@ jobs:
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
+  workspace:
+    clean: all
   pool: 'Win-GPU-2019'
   dependsOn:
   - Windows_CI_GPU_CUDA_Dev
