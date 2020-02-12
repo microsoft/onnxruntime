@@ -562,7 +562,12 @@ foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib o
 endforeach()
 set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
 set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
-set_target_properties(winml_dll PROPERTIES LINK_FLAGS "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml}")
+set_target_properties(winml_dll
+    PROPERTIES
+    LINK_FLAGS
+    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml}")
+
+
 set_target_properties(winml_dll
   PROPERTIES
   FOLDER
