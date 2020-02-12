@@ -36,8 +36,8 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
-  const float atol = 1e-8;
-  const float rtol = 1e-5;
+  const float atol = 1e-8f;
+  const float rtol = 1e-5f;
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (is_constant) {
     tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());

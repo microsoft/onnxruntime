@@ -371,26 +371,6 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
   }
 }
 
-TEST(GraphTransformationTests, FastGeluFusionTest) {
-  auto model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
-  std::shared_ptr<Model> p_model;
-  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
-  ASSERT_TRUE(load_ret.IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Tanh"] == 0);
-  ASSERT_TRUE(op_to_count["Mul"] == 0);
-  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
-}
-
 #ifndef DISABLE_CONTRIB_OPS
 TEST(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
@@ -1220,6 +1200,26 @@ TEST(GraphTransformationTests, GeluApproximation_Gelu_Add_MatMul) {
   EXPECT_EQ(op_to_count["BiasGelu"], 0);
   EXPECT_EQ(op_to_count["MatMul"], 1);
   EXPECT_EQ(op_to_count["FastGelu"], 1);
+}
+
+TEST(GraphTransformationTests, FastGeluFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
 }
 
 TEST(GraphTransformationTests, LayerNormFusionTest) {
