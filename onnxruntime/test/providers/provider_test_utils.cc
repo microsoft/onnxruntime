@@ -136,10 +136,9 @@ void InternalNumericalCheck(const OpTester::Data& expected_data,
     sort_expected_and_actual_buffers<float>(expected, output, size);
   }
 
+  float threshold = 0.0001f;
 #ifdef USE_CUDA
   float threshold = 0.005f;
-#else
-  float threshold = 0.0001f;
 #endif
 
   for (int i = 0; i < size; ++i) {
@@ -196,8 +195,11 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
-
-  float threshold = 0.005f;
+ 
+  float threshold = 0.001f;
+#ifdef USE_TENSORRT
+  threshold = 0.005f;
+#endif
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
       EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
