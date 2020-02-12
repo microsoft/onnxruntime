@@ -159,6 +159,9 @@ void Check<MLFloat16>(const OpTester::Data& expected_data, const Tensor& output_
   }
 
   float threshold = 0.001f;
+#ifdef USE_TENSORRT
+  threshold = 0.005f;
+#endif
   for (int i = 0; i < size; ++i) {
     if (std::isinf(f_expected[i]))  // Test infinity for equality
       EXPECT_EQ(f_expected[i], f_output[i]) << "i:" << i;
