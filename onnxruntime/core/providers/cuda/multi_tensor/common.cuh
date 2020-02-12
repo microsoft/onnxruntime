@@ -25,12 +25,12 @@ struct ChunkGroup {
   // block_index_to_chunk_start_index.
   // The i-th chunk starts at the block_index_to_chunk_start_index[i]-th
   // element in the block_index_to_tensor_group_index[i]-th tensor.
-  int chunk_count;
+  int chunk_count = 0;
   // Max number of elements in each chunk in this ChunkGroup.
   // It's an upper bound because chunks locating in the end of tensors
   // are not always full. For example, if we split a 7-element vector into
   // two 4-element chunks, the second chunk may contain only 3 actual values.
-  int chunk_size;
+  int chunk_size = 0;
   // blkIdx.x block processes chunks in block_index_to_tensor_group_index[blkIdx.x]-th
   // tensor group. Each chunk starts from block_index_to_chunk_start_index[blkIdx.x]-th
   // element until reaching the end of this chunk or the end of the whole tensor.
