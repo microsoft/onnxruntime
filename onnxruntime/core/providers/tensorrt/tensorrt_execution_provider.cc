@@ -97,22 +97,22 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const Env& env_instance = Env::Default();
   const std::string max_partition_iterations_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
   if (!max_partition_iterations_env.empty()) {
-    max_partition_iterations_ = stoi(max_partition_iterations_env);
+    max_partition_iterations_ = std::stoi(max_partition_iterations_env);
   }
 
   const std::string min_subgraph_size_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kMinSubgraphSize);
   if (!min_subgraph_size_env.empty()) {
-    min_subgraph_size_ = stoi(min_subgraph_size_env);
+    min_subgraph_size_ = std::stoi(min_subgraph_size_env);
   }
 
   const std::string max_workspace_size_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
   if (!max_workspace_size_env.empty()) {
-    max_workspace_size_ = stoi(max_workspace_size_env);
+    max_workspace_size_ = std::stoull(max_workspace_size_env);
   }
 
   const std::string fp16_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
-    fp16_enable_ = (stoi(fp16_enable_env) == 0 ? false : true);
+    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }  
 }
 
