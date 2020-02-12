@@ -52,10 +52,10 @@ import org.junit.jupiter.api.Test;
 public class InferenceTest {
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
 
-  private static String propertiesFile = "Properties.txt";
+  private static final String propertiesFile = "Properties.txt";
 
-  private static Pattern inputPBPattern = Pattern.compile("input_*.pb");
-  private static Pattern outputPBPattern = Pattern.compile("output_*.pb");
+  private static final Pattern inputPBPattern = Pattern.compile("input_*.pb");
+  private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
   private static Path getResourcePath(String path) {
     return new File(InferenceTest.class.getResource(path).getFile()).toPath();
@@ -111,6 +111,84 @@ public class InferenceTest {
       }
     }
   }
+
+    @Test
+    public void morePartialInputsTest() throws OrtException {
+        String modelPath = otherTestPath.resolve("partial-inputs-test-2.onnx").toString();
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment("partialInputs");
+             OrtSession.SessionOptions options = new SessionOptions();
+             OrtSession session = env.createSession(modelPath, options)) {
+            assertNotNull(session);
+            assertEquals(3, session.getNumInputs());
+            assertEquals(1, session.getNumOutputs());
+
+            // Input and output collections.
+            Map<String,OnnxTensor> inputMap = new HashMap<>();
+            Set<String> requestedOutputs = new HashSet<>();
+
+            BiFunction<Result,String,Float> unwrapFunc = (r,s) -> {try {return ((float[])r.get(s).get().getValue())[0];} catch (OrtException e) { return Float.NaN;}};
+
+            // Graph has three scalar inputs, a, b, c, and a single output, ab.
+            OnnxTensor a = OnnxTensor.createTensor(env,new float[]{2.0f});
+            OnnxTensor b = OnnxTensor.createTensor(env,new float[]{3.0f});
+            OnnxTensor c = OnnxTensor.createTensor(env,new float[]{5.0f});
+
+            // Request all outputs, supply all inputs
+            inputMap.put("a:0",a);
+            inputMap.put("b:0",b);
+            inputMap.put("c:0",c);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(1,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+            }
+
+            // Don't specify an output, expect all of them returned.
+            try (Result r = session.run(inputMap)) {
+                assertEquals(1,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+            }
+
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request single output ab, supply required inputs
+            inputMap.put("a:0",a);
+            inputMap.put("b:0",b);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                assertEquals(1,r.size());
+                float abVal = unwrapFunc.apply(r,"ab:0");
+                assertEquals(6.0f,abVal,1e-10);
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request output but don't supply the inputs
+            inputMap.put("c:0",c);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                fail("Expected to throw OrtException due to incorrect inputs");
+            } catch (OrtException e) {
+                //System.out.println(e.getMessage());
+                //pass
+            }
+            inputMap.clear();
+            requestedOutputs.clear();
+
+            // Request output but don't supply all the inputs
+            inputMap.put("b:0",b);
+            requestedOutputs.add("ab:0");
+            try (Result r = session.run(inputMap,requestedOutputs)) {
+                fail("Expected to throw OrtException due to incorrect inputs");
+            } catch (OrtException e) {
+                //System.out.println(e.getMessage());
+                //pass
+            }
+        }
+    }
 
     @Test
     public void partialInputsTest() throws OrtException {
