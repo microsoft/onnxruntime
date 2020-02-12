@@ -968,10 +968,12 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
   }
 }
 
-TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {  
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
 }
+#endif
 
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
   test_apex_reduce_sum(85 * 128, 768);
