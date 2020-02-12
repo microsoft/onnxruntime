@@ -13,7 +13,6 @@
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
-#include "ov_backend.h"
 #include "backend_utils.h"
 #include "cpu_backend.h"
 

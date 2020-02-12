@@ -8,7 +8,7 @@
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "backend_manager.h"
-#include "ov_backend.h"
+#include "ibackend.h"
 #include "backend_utils.h"
 #include "cpu_backend.h"
 
@@ -177,7 +177,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, device_id_);
 
-    std::shared_ptr<OVBackend> dynamic_backend;
+    std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
       LOGS_DEFAULT(INFO) << "[Intel-EP] "

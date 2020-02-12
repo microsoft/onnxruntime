@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace intel_ep {
 
-class OVBackend{
+class IBackend{
   public:
   virtual void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
 };

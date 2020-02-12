@@ -6,14 +6,14 @@
 #include <memory>
 #include <inference_engine.hpp>
 #include "core/session/onnxruntime_cxx_api.h"
-#include "ov_backend.h"
+#include "ibackend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
 
 bool IsDebugEnabled();
 
-class VADRBackend : public OVBackend {
+class VADRBackend : public IBackend {
  public:
   VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision);
 
