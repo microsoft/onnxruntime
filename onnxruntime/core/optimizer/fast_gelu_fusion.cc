@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/initializer.h"
-#include "orttraining/core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
