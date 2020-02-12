@@ -142,9 +142,9 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
                                 gsl::narrow_cast<int32_t>(dimension_count),
-                                &starts_buffer,
-                                &steps_buffer,
-                                &input_strides,
+                                starts_buffer,
+                                steps_buffer,
+                                input_strides,
                                 output_strides,
                                 input_tensor->DataRaw(),
                                 output_tensor->MutableDataRaw(),
