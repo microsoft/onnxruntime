@@ -73,30 +73,5 @@ TEST(PathTest, dot_dot) {
 
 #undef PATH_EXPECT
 
-namespace {
-
-void CheckGetRelativePath(
-    const PathString& src, const PathString& dst, const PathString& expected) {
-  PathString result;
-  ASSERT_STATUS_OK(GetRelativePath(NormalizePathSeparators(src), NormalizePathSeparators(dst), result));
-  ASSERT_EQ(result, NormalizePathSeparators(expected));
-}
-
-}  // namespace
-
-TEST(PathTest, GetRelativePathBasic) {
-  TemporaryDirectory tmp_dir{ORT_TSTR("path_test")};
-  auto get_tmp_dir_path = [&tmp_dir](const PathString& relative_path) {
-    return ConcatPathComponent<PathChar>(tmp_dir.Path(), NormalizePathSeparators(relative_path));
-  };
-  ASSERT_STATUS_OK(Env::Default().CreateFolder(get_tmp_dir_path(ORT_TSTR("a/b/c"))));
-  ASSERT_STATUS_OK(Env::Default().CreateFolder(get_tmp_dir_path(ORT_TSTR("a/d/e/f"))));
-  CheckGetRelativePath(
-      get_tmp_dir_path(ORT_TSTR("a/b/c")), get_tmp_dir_path(ORT_TSTR("a/d/e/f")),
-      ORT_TSTR("../../d/e/f"));
-  CheckGetRelativePath(
-      get_tmp_dir_path(ORT_TSTR("a/d/e/f")), get_tmp_dir_path(ORT_TSTR("a/b")),
-      ORT_TSTR("../../../b"));
-}
 }  // namespace test
 }  // namespace onnxruntime

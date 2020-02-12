@@ -7,11 +7,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/common/path_string.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/data_types.h"
 #include "core/framework/framework_common.h"
-#include "core/platform/path_string.h"
 
 namespace onnxruntime {
 namespace training {

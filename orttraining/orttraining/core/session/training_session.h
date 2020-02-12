@@ -4,11 +4,11 @@
 #pragma once
 #include <memory>
 #include "core/common/optional.h"
+#include "core/common/path_string.h"
+#include "core/session/inference_session.h"
 #include "orttraining/core/graph/loss_func/loss_func_common.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
-#include "core/platform/path_string.h"
-#include "core/session/inference_session.h"
 #include "orttraining/core/graph/optimizer_config.h"
 
 namespace onnxruntime {

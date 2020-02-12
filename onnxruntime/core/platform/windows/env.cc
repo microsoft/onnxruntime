@@ -278,6 +278,64 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
+  common::Status GetCanonicalPath(
+      const std::basic_string<ORTCHAR_T>& path,
+      std::basic_string<ORTCHAR_T>& canonical_path) const override {
+    // adapted from MSVC STL std::filesystem::canonical() implementation
+    // https://github.com/microsoft/STL/blob/ed3cbf36416a385828e7a5987ca52cb42882d84b/stl/inc/filesystem#L2986
+
+    ScopedFileHandle file_handle{CreateFileW(
+        path.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        nullptr)};
+
+    ORT_RETURN_IF_NOT(
+        file_handle.IsValid(), "CreateFile() failed: ", GetLastError());
+
+    constexpr DWORD initial_buffer_size = MAX_PATH;
+    std::vector<ORTCHAR_T> result_buffer{};
+    result_buffer.resize(initial_buffer_size);
+
+    while (true) {
+      const DWORD result_length = GetFinalPathNameByHandleW(
+          file_handle.Get(),
+          result_buffer.data(),
+          static_cast<DWORD>(result_buffer.size()),
+          0);
+
+      ORT_RETURN_IF_NOT(
+          result_length > 0, "GetFinalPathNameByHandle() failed: ", GetLastError());
+
+      if (result_length < result_buffer.size()) {  // buffer is large enough
+        canonical_path.assign(result_buffer.data(), result_length);
+        break;
+      }
+
+      // need larger buffer
+      result_buffer.resize(result_length);
+    }
+
+    // update prefixes
+    if (canonical_path.find(ORT_TSTR(R"(\\?\)")) == 0) {
+      if (canonical_path.size() > 6 &&
+          (ORT_TSTR('A') <= canonical_path[4] && canonical_path[4] <= ORT_TSTR('Z') ||
+           ORT_TSTR('a') <= canonical_path[4] && canonical_path[4] <= ORT_TSTR('z')) &&
+          canonical_path[5] == ORT_TSTR(':')) {
+        // "\\?\<drive>:" -> "<drive>:"
+        canonical_path.erase(0, 4);
+      } else if (canonical_path.find(ORT_TSTR(R"(UNC\)"), 4) == 4) {
+        // "\\?\UNC\" -> "\\"
+        canonical_path.erase(2, 6);
+      }
+    }
+
+    return Status::OK();
+  }
+
   virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     *handle = ::LoadLibraryA(library_filename.c_str());
     if (!handle)

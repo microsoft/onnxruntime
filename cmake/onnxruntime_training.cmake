@@ -3,8 +3,6 @@
 
 set (CXXOPTS ${PROJECT_SOURCE_DIR}/external/cxxopts/include)
 
-set (re2_INCLUDE_DIRS ${REPO_ROOT}/cmake/external/re2)
-
 # training lib
 file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/framework/*.h"
@@ -27,7 +25,7 @@ if(WIN32)
   target_compile_options(onnxruntime_training PRIVATE /wd4100)
 endif()
 
-target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${re2_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
+target_include_directories(onnxruntime_training PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${RE2_INCLUDE_DIR} PUBLIC ${onnxruntime_graph_header})
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})

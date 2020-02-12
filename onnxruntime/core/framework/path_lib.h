@@ -16,8 +16,8 @@
 #include <time.h>    //strftime
 #include <stddef.h>  //ptrdiff_t
 #endif
+#include "core/common/path_string.h"
 #include "core/common/status.h"
-#include "core/platform/path_string.h"
 #include "core/session/onnxruntime_c_api.h"
 
 using PATH_CHAR_TYPE = ORTCHAR_T;
@@ -284,18 +284,5 @@ inline T ReplaceFilename(const T& input, const T& new_value) {
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return ConcatPathComponent(ret, new_value);
 }
-
-/**
- * Normalizes the path separators in the given path.
- */
-PathString NormalizePathSeparators(const PathString& path);
-
-/**
- * Gets the relative path from the source directory to the destination.
- * The source and destination paths must exist.
- */
-common::Status GetRelativePath(
-    const PathString& source_directory_path, const PathString& destination_path,
-    PathString& relative_path);
 
 }  // namespace onnxruntime

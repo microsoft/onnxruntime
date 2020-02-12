@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/platform/path_string.h"
+#include "core/common/path_string.h"
 #include "test/util/include/gtest_utils.h"
 
 namespace onnxruntime {

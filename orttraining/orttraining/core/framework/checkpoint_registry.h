@@ -7,7 +7,7 @@
 #include <tuple>
 
 #include "core/common/common.h"
-#include "core/platform/path_string.h"
+#include "core/common/path_string.h"
 
 namespace onnxruntime {
 namespace training {

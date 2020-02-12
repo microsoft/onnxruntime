@@ -136,6 +136,12 @@ class Env {
   virtual common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const = 0;
   //Mainly for use with protobuf library
   virtual common::Status FileClose(int fd) const = 0;
+
+  /** Gets the canonical form of a file path (symlinks resolved). */
+  virtual common::Status GetCanonicalPath(
+      const std::basic_string<ORTCHAR_T>& path,
+      std::basic_string<ORTCHAR_T>& canonical_path) const = 0;
+
   //This functions is always successful. It can't fail.
   virtual PIDType GetSelfPid() const = 0;
 

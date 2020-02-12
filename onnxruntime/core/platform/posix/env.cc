@@ -96,6 +96,13 @@ int nftw_remove(
   return result;
 }
 
+template <typename T>
+struct Freer {
+  void operator()(T* p) { ::free(p); }
+};
+
+using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
+
 class PosixEnv : public Env {
  public:
   static PosixEnv& Instance() {
@@ -307,6 +314,17 @@ class PosixEnv : public Env {
     if (0 != ret) {
       return ReportSystemError("close", "");
     }
+    return Status::OK();
+  }
+
+  common::Status GetCanonicalPath(
+      const std::basic_string<ORTCHAR_T>& path,
+      std::basic_string<ORTCHAR_T>& canonical_path) const override {
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr)};
+    if (!canonical_path_cstr) {
+      return ReportSystemError("realpath", path);
+    }
+    canonical_path.assign(canonical_path_cstr.get());
     return Status::OK();
   }
 

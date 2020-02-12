@@ -87,7 +87,8 @@ if (onnxruntime_USE_MIMALLOC)
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface)
-target_include_directories(onnxruntime_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
+target_include_directories(onnxruntime_common
+        PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${RE2_INCLUDE_DIR}
         PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 if(onnxruntime_USE_NSYNC)
     target_compile_definitions(onnxruntime_common PUBLIC USE_NSYNC NSYNC_ATOMIC_CPP11)

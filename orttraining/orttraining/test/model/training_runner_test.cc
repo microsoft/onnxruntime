@@ -5,8 +5,8 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/path_string.h"
 #include "core/framework/path_lib.h"
-#include "core/platform/path_string.h"
 #include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_util.h"
 

@@ -10,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/path.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/path_lib.h"
@@ -270,13 +271,23 @@ Status LoadModelCheckpoint(
 
   // set external data locations
   {
-    PathString model_directory_path{}, relative_tensors_data_path{};
+    PathString model_directory_path{}, model_directory_canonical_path{};
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(
         model_path, model_directory_path));
-    ORT_RETURN_IF_ERROR(GetRelativePath(
-        model_directory_path, GetCheckpointTensorsDataFilePath(checkpoint_path), relative_tensors_data_path));
+    ORT_RETURN_IF_ERROR(Env::Default().GetCanonicalPath(
+        model_directory_path, model_directory_canonical_path));
+
+    PathString checkpoint_canonical_path{};
+    ORT_RETURN_IF_ERROR(Env::Default().GetCanonicalPath(
+        checkpoint_path, checkpoint_canonical_path));
+
+    Path relative_tensors_data_path_obj{};
+    ORT_RETURN_IF_ERROR(RelativePath(
+        Path::Parse(model_directory_canonical_path),
+        Path::Parse(GetCheckpointTensorsDataFilePath(checkpoint_canonical_path)),
+        relative_tensors_data_path_obj));
     ORT_RETURN_IF_ERROR(UpdateTensorsExternalDataLocations(
-        relative_tensors_data_path, loaded_tensor_protos));
+        relative_tensors_data_path_obj.ToPathString(), loaded_tensor_protos));
   }
 
   // read properties file
