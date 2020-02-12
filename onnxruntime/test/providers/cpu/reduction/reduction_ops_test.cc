@@ -35,6 +35,9 @@ void TestReduceOp(const std::string& op,
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 
+//TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
+// machine in RelWithDebInfo build mode, but only 2 seconds on my local dev machine(4 cores).
+#ifdef NDEBUG
 TEST(ReductionOpTest, ReductionVariationTest) {
   const std::vector<float>& input_data = testcases.input_data;
   const std::vector<int64_t>& input_dims = testcases.input_dims;
@@ -60,6 +63,7 @@ TEST(ReductionOpTest, ReductionVariationTest) {
     }
   }
 }
+#endif
 
 TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
   OpTester test("ReduceL1");
