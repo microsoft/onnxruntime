@@ -6,7 +6,7 @@
 #include <memory>
 #include <inference_engine.hpp>
 #include "core/session/onnxruntime_cxx_api.h"
-#include "ibackend.h"
+#include "core/providers/intel/ibackend.h"
 
 namespace onnxruntime {
 namespace intel_ep {

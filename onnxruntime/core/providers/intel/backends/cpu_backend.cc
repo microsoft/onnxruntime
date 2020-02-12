@@ -13,15 +13,13 @@
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
-#include "backend_utils.h"
+#include "../backend_utils.h"
 #include "cpu_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
 
 using namespace backend_utils;
-
-#define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 
 CPUBackend::CPUBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
     : input_indexes_{input_indexes} {
