@@ -452,6 +452,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
+    // This call will create a copy of model_proto and the constructed model instance will own the copy thereafter
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
@@ -517,21 +518,21 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
   }
 
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
-    ModelProto model_proto;
+    auto model_proto = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
 
-    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    const bool result = model_proto->ParseFromArray(model_data, model_data_len);
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(*model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
 
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 

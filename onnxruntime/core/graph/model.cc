@@ -96,7 +96,7 @@ Model::Model(std::unique_ptr<ModelProto> model_proto, const IOnnxRuntimeOpSchema
   }
 
   if (!model_proto->has_ir_version() || model_proto->ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-      throw std::invalid_argument("Unknown model file format version.");
+    throw std::invalid_argument("Unknown model file format version.");
   }
 
   model_proto_ = std::move(model_proto);
@@ -394,14 +394,14 @@ Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::Mo
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ std::shared_ptr<Model>& p_model,
                             const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
-  ModelProto model_proto;
+  auto model_proto = onnxruntime::make_unique<ModelProto>();
 
-  auto status = LoadFromBytes(count, p_bytes, model_proto);
+  auto status = LoadFromBytes(count, p_bytes, *model_proto);
   if (!status.IsOK()) {
     return status;
   }
 
-  p_model = std::make_shared<Model>(model_proto, local_registries, logger);
+  p_model = std::make_shared<Model>(std::move(model_proto), local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
@@ -441,11 +441,11 @@ Status Model::Load(int fd, ONNX_NAMESPACE::ModelProto& model_proto) {
 
 Status Model::Load(int fd, std::shared_ptr<Model>& p_model, const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger) {
-  ModelProto model_proto;
+  auto model_proto = onnxruntime::make_unique<ModelProto>();
 
-  ORT_RETURN_IF_ERROR(Load(fd, model_proto));
+  ORT_RETURN_IF_ERROR(Load(fd, *model_proto));
 
-  p_model = std::make_shared<Model>(model_proto, local_registries, logger);
+  p_model = std::make_shared<Model>(std::move(model_proto), local_registries, logger);
 
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(true));
 
