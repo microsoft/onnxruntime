@@ -33,6 +33,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/util/math.h"
@@ -368,6 +369,26 @@ TEST(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     ASSERT_TRUE(op_to_count["Add"] == 0);
     ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
   }
+}
+
+TEST(GraphTransformationTests, FastGeluFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
 }
 
 #ifndef DISABLE_CONTRIB_OPS
