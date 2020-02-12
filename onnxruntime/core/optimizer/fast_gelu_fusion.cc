@@ -20,7 +20,7 @@ static bool CheckNode(const Node& node, const std::string op_name, const int32_t
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, op_name, {opset_version}) &&
         node.GetExecutionProviderType() == provider &&
         optimizer_utils::IsSupportedDataType(node, supported_data_types) &&
-        (!require_single_output || node.GetOutputEdgesCount() == 1)
+        (!require_single_output || node.GetOutputEdgesCount() == 1);
 }
 
 Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
@@ -44,7 +44,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
 
     int32_t input_index = -1;
     const float mul_val = 0.044715f;
-    for (auto i = 0; i < 2; i++) {}
+    for (auto i = 0; i < 2; i++) {
       if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[i]), mul_val, true)){
         input_index = i;
         break;
@@ -52,13 +52,13 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     }
 
     if (input_index == -1) continue;
-    auto& gelu_input_arg = mul1_node.InputDefs()[input_index];
+    auto gelu_input_arg = mul1_node.InputDefs()[(input_index + 1) % 2];
 
 
     Node& mul2_node = *graph.GetNode(mul1_node.OutputNodesBegin()->Index());
     input_index = optimizer_utils::IndexOfNodeInput(mul2_node, *mul1_node.MutableOutputDefs()[0]);
     if (!CheckNode(mul2_node, "Mul", {7},  mul1_node.GetExecutionProviderType(), true) ||
-        mul2_node.MutableInputDefs()[(input_index + 1) % 2])->Name() != gelu_input_arg->Name()) {
+        mul2_node.MutableInputDefs()[(input_index + 1) % 2]->Name() != gelu_input_arg->Name()) {
       continue;
     }
 
@@ -85,8 +85,8 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     }
 
     input_index = -1;
-    const mul4_val = 0.7978845834732056f;
-    for (auto i = 0; i < 2; i++) {}
+    const float mul4_val = 0.7978845834732056f;
+    for (auto i = 0; i < 2; i++) {
       if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul4_node.InputDefs()[i]), mul4_val, true)){
         input_index = i;
         break;
@@ -104,7 +104,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
 
 
     Node& add2_node = *graph.GetNode(tanh_node.OutputNodesBegin()->Index());
-    if (!CheckNode(add2_node, "Add", {7}), mul1_node.GetExecutionProviderType(), true)) {
+    if (!CheckNode(add2_node, "Add", {7}, mul1_node.GetExecutionProviderType(), true)) {
       continue;
     }
 
@@ -126,9 +126,9 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    const mul6_val = 0.5f
+    const float mul6_val = 0.5f;
     input_index = -1;
-    for (auto i = 0; i < 2; i++) {}
+    for (auto i = 0; i < 2; i++) {
       if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul6_node.InputDefs()[i]), mul6_val, true)){
         input_index = i;
         break;
