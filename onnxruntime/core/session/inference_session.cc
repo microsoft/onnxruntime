@@ -497,7 +497,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(*model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
