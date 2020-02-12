@@ -22,11 +22,12 @@ class VADRBackend : public OVBackend {
 
  private:
 
-
   void StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors, size_t batch_slice_idx, size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
   void CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors, size_t batch_slice_idx, size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
+  std::vector<int> input_indexes_;
+  mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   size_t num_inf_reqs_;

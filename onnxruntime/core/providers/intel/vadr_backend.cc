@@ -14,16 +14,19 @@
 #include "core/common/logging/logging.h"
 
 #include "ov_backend.h"
+#include "backend_utils.h"
 #include "vadr_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
 
+using namespace backend_utils;
+
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 // const std::string VADRBackend::log_tag = "[Intel-EP] ";
 
 VADRBackend::VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
-    : OVBackend(precision, input_indexes){
+    : input_indexes_{input_indexes}{
 
   (void) device_id;
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
@@ -46,7 +49,7 @@ VADRBackend::VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vec
   // input_indexes_ = input_indexes;
 
   InferenceEngine::Core ie;
-  ie_cnn_network_ = CreateCNNNetwork(model_proto);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
 
   SetIODefs(model_proto, ie_cnn_network_);
 
@@ -128,7 +131,7 @@ void VADRBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_);
+  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, input_indexes_);
 
   // Calculate the batch_size from the input tensor shape.
   // auto batch_size = DeduceBatchSize(ort, input_tensors[0],

@@ -14,20 +14,23 @@
 #include "core/common/logging/logging.h"
 
 #include "ov_backend.h"
+#include "backend_utils.h"
 #include "cpu_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
 
+using namespace backend_utils;
+
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
 
 CPUBackend::CPUBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
-    : OVBackend(precision, input_indexes){
+    : input_indexes_{input_indexes} {
 
   (void) device_id;
 
   InferenceEngine::Core ie;
-  ie_cnn_network_ = CreateCNNNetwork(model_proto);
+  ie_cnn_network_ = CreateCNNNetwork(model_proto, precision);
 
   SetIODefs(model_proto, ie_cnn_network_);
 
@@ -99,7 +102,7 @@ void CPUBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Get Input and Output tensors
-  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_);
+  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_, input_indexes_);
 
   size_t batch_size = 1;
   auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_);

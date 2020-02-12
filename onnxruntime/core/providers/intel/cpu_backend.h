@@ -27,6 +27,8 @@ class CPUBackend : public OVBackend {
 
   void CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors, InferenceEngine::InferRequest::Ptr infer_request, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
+  std::vector<int> input_indexes_;
+  mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   InferenceEngine::InferRequest::Ptr infer_request_;
 };

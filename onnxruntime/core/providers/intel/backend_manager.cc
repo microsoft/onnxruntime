@@ -9,6 +9,7 @@
 #include "core/platform/env.h"
 #include "backend_manager.h"
 #include "ov_backend.h"
+#include "backend_utils.h"
 #include "cpu_backend.h"
 
 namespace onnxruntime {
@@ -117,7 +118,7 @@ ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnx
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
-  if (intel_ep::IsDebugEnabled()) {
+  if (intel_ep::backend_utils::IsDebugEnabled()) {
     SaveModel(model_proto, "intel_model.onnx");
   }
 
