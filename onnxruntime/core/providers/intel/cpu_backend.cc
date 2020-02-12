@@ -43,7 +43,7 @@ CPUBackend::CPUBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void CPUBackend::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* input_tensors[],
+void CPUBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
                                      InferenceEngine::InferRequest::Ptr infer_request,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto graph_input_info = ie_cnn_network->getInputsInfo();
@@ -69,7 +69,7 @@ void CPUBackend::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* inpu
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void CPUBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_tensors[],
+void CPUBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
                                         InferenceEngine::InferRequest::Ptr infer_request,
                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   // Wait for Async inference completion
@@ -99,15 +99,10 @@ void CPUBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Get Input and Output tensors
-  size_t input_count = ie_cnn_network_->getInputsInfo().size();
-  size_t output_count = ie_cnn_network_->getOutputsInfo().size();
-  const OrtValue* input_tensors[input_count];
-  OrtValue* output_tensors[output_count];
-
-  GetInputTensors(ort, context, input_tensors, ie_cnn_network_);
+  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_);
 
   size_t batch_size = 1;
-  GetOutputTensors(ort, context, output_tensors, batch_size, infer_request_, ie_cnn_network_);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_request_, ie_cnn_network_);
 
 
   StartAsyncInference(ort, input_tensors, infer_request_, ie_cnn_network_);

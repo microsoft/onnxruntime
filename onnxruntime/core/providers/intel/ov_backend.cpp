@@ -187,17 +187,21 @@ void OVBackend::SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::sh
   }
 }
 
-void OVBackend::GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, const OrtValue* input_tensors[],
+std::vector<const OrtValue*> OVBackend::GetInputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context,
                                  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
+
+  std::vector<const OrtValue*> input_tensors;
   size_t input_count = ie_cnn_network->getInputsInfo().size();
 
   for (size_t i = 0; i < input_count; i++) {
-    input_tensors[i] = ort.KernelContext_GetInput(context, input_indexes_[i]);
+    input_tensors.push_back(ort.KernelContext_GetInput(context, input_indexes_[i]));
   }
+  return input_tensors;
 }
 
-void OVBackend::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, OrtValue* output_tensors[], size_t batch_size, InferenceEngine::InferRequest::Ptr infer_request,
+std::vector<OrtValue*> OVBackend::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size, InferenceEngine::InferRequest::Ptr infer_request,
                                   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
+  std::vector<OrtValue*> output_tensors;
   auto graph_output_info = ie_cnn_network->getOutputsInfo();
 
   size_t i = 0;
@@ -217,8 +221,9 @@ void OVBackend::GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext* contex
       output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
     }
 
-    output_tensors[i] = ort.KernelContext_GetOutput(context, i, output_shape, num_dims);
+    output_tensors.push_back(ort.KernelContext_GetOutput(context, i, output_shape, num_dims));
   }
+  return output_tensors;
 }
 
 }  // namespace intel_ep

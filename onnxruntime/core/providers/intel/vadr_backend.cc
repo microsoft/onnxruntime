@@ -65,7 +65,7 @@ VADRBackend::VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vec
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void VADRBackend::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* input_tensors[],
+void VADRBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
                                      size_t batch_slice_idx,
                                      size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -94,7 +94,7 @@ void VADRBackend::StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* inp
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void VADRBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_tensors[],
+void VADRBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
                                         size_t batch_slice_idx,
                                         size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -128,12 +128,7 @@ void VADRBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   std::lock_guard<std::mutex> lock(compute_lock_);
 
   // Get Input and Output tensors
-  size_t input_count = ie_cnn_network_->getInputsInfo().size();
-  size_t output_count = ie_cnn_network_->getOutputsInfo().size();
-  const OrtValue* input_tensors[input_count];
-  OrtValue* output_tensors[output_count];
-
-  GetInputTensors(ort, context, input_tensors, ie_cnn_network_);
+  auto input_tensors = GetInputTensors(ort, context, ie_cnn_network_);
 
   // Calculate the batch_size from the input tensor shape.
   // auto batch_size = DeduceBatchSize(ort, input_tensors[0],
@@ -145,7 +140,7 @@ void VADRBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
 
   // All infer_requests process identical tensor slices from the batch.
   // So using info from first infer_request to allocate all output tensors.
-  GetOutputTensors(ort, context, output_tensors, batch_size, infer_requests_[0], ie_cnn_network_);
+  auto output_tensors = GetOutputTensors(ort, context, batch_size, infer_requests_[0], ie_cnn_network_);
 
   // Distribute the batched inputs among available Infer Requests
   // for parallel inference.

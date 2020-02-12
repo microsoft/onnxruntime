@@ -23,9 +23,9 @@ class CPUBackend : public OVBackend {
  private:
 
 
-  void StartAsyncInference(Ort::CustomOpApi& ort, const OrtValue* input_tensors[], InferenceEngine::InferRequest::Ptr infer_request, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+  void StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors, InferenceEngine::InferRequest::Ptr infer_request, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtValue* output_tensors[], InferenceEngine::InferRequest::Ptr infer_request, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
+  void CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors, InferenceEngine::InferRequest::Ptr infer_request, std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network);
 
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
   InferenceEngine::InferRequest::Ptr infer_request_;
