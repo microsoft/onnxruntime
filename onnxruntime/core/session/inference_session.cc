@@ -372,9 +372,9 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    // since model load was successful, we don't need to hang on to the member 'model_proto_' anymore
-    // (free up the resource if applicable - if the unique_ptr is a nullptr, reset() doesn't do anything)
-    model_proto_.reset();
+    // model_proto_ should either - 1) always have been a nullptr if the ModelProto was never parsed in the ctor (or)
+    // 2) should have become a nullptr by the passing on theownership of the ModelProto resource it was pointing to, to the Model instance
+    ORT_ENFORCE(model_proto_ == nullptr, "Failed to clear up model_proto_ in Inference Session");
 
     telemetry_.event_name_ = event_name;
 
@@ -487,10 +487,10 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   }
 
   auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
-    ModelProto model_proto;
+    auto model_proto = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
 
     google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+    const bool result = model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
@@ -501,7 +501,7 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -551,7 +551,8 @@ common::Status InferenceSession::Load() {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return Model::Load(*this->model_proto_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    // Pass on ownership of the extracted ModelProto to the Model instance (its job here is done by this stage)
+    return Model::Load(std::move(this->model_proto_), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                        *session_logger_);
   };
 
