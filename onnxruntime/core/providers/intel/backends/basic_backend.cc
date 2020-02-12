@@ -14,14 +14,14 @@
 #include "core/common/logging/logging.h"
 
 #include "../backend_utils.h"
-#include "cpu_backend.h"
+#include "basic_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
 
 using namespace backend_utils;
 
-CPUBackend::CPUBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
+BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
     : input_indexes_{input_indexes} {
 
   (void) device_id;
@@ -32,7 +32,7 @@ CPUBackend::CPUBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
   SetIODefs(model_proto, ie_cnn_network_);
 
   // Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exe_network_ = ie.LoadNetwork(*ie_cnn_network_, "CPU");
+  InferenceEngine::ExecutableNetwork exe_network_ = ie.LoadNetwork(*ie_cnn_network_, device_id);
   LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 
   // Create infer request
@@ -43,7 +43,7 @@ CPUBackend::CPUBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vecto
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void CPUBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
+void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
                                      InferenceEngine::InferRequest::Ptr infer_request,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   auto graph_input_info = ie_cnn_network->getInputsInfo();
@@ -69,7 +69,7 @@ void CPUBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const Or
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void CPUBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
+void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
                                         InferenceEngine::InferRequest::Ptr infer_request,
                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
   // Wait for Async inference completion
@@ -92,7 +92,7 @@ void CPUBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtVa
   }
 }
 
-void CPUBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
+void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
