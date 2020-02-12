@@ -552,7 +552,7 @@ common::Status InferenceSession::Load() {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    // Pass on ownership of the extracted ModelProto to the Model instance (its job here is done by this stage)
+    // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                        *session_logger_);
   };
