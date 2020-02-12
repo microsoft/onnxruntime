@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/arena.h"
+#include "core/framework/bfc_arena.h"
 
 namespace onnxruntime {
 
@@ -14,6 +15,7 @@ struct DeviceAllocatorRegistrationInfo {
   OrtMemType mem_type;
   DeviceAllocatorFactory factory;
   size_t max_mem;
+  ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 };
 
 AllocatorPtr CreateAllocator(DeviceAllocatorRegistrationInfo info, OrtDevice::DeviceId device_id = 0);

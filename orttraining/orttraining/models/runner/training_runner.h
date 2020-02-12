@@ -109,6 +109,7 @@ class TrainingRunner {
 
     //Default value is -1.0f. When cuda_mem_limit_in_gb < 0, ORT can use all cuda memory available.
     float cuda_mem_limit_in_gb = -1.0f;
+
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
     }

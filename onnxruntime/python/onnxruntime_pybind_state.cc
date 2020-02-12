@@ -15,6 +15,7 @@
 #include "core/common/logging/severity.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
+#include "core/framework/bfc_arena.h"
 
 #if USE_CUDA
 #define BACKEND_PROC "GPU"
@@ -97,6 +98,7 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 int cuda_device_id = 0;
 size_t cuda_mem_limit = std::numeric_limits<size_t>::max();
+onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -117,7 +119,9 @@ std::string nuphar_settings;
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id, size_t cuda_mem_limit);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               size_t cuda_mem_limit,
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
@@ -359,9 +363,10 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit));
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(cuda_device_id, cuda_mem_limit, arena_extend_strategy));
       cuda_device_id = 0;
       cuda_mem_limit = static_cast<size_t>(INT_MAX);
+      arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
     } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -553,6 +558,8 @@ void addGlobalMethods(py::module& m) {
   m.def("set_cuda_mem_limit", [](const int64_t limit) {
     cuda_mem_limit = static_cast<size_t>(limit);
   });
+  m.def("set_arena_extend_strategy", [](const onnxruntime::ArenaExtendStrategy strategy) {
+    arena_extend_strategy = strategy; });
 #endif
 }
 
@@ -1087,6 +1094,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
         ORT_THROW_IF_ERROR(sess->SetStateTensors(state_tensors, strict));
       });
+
+  py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())
+    .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
+    .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
+    .export_values();
 }
 
 #ifdef USE_MIMALLOC
