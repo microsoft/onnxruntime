@@ -15,7 +15,7 @@ __forceinline__ __host__ __device__ int least_pow2_bound(int value) {
   value_ |= value_ >> 4;
   value_ |= value_ >> 8;
   value_ |= value_ >> 16;
-  return static_cast<unsigned int>(++value_);
+  return static_cast<int>(++value_);
 }
 
 template<typename TAccumulated, typename TValue>

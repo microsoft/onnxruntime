@@ -512,8 +512,8 @@ class OpTester {
                                     ExpectResult expect_result,
                                     const std::string& expected_failure_string,
                                     const RunOptions* run_options,
-                                    std::unordered_map<std::string, OrtValue> feeds,
-                                    std::vector<std::string> output_names,
+                                    const std::unordered_map<std::string, OrtValue>& feeds,
+                                    const std::vector<std::string>& output_names,
                                     const std::string& provider_type,
                                     const CustomOutputVerifierFn& custom_output_verifier);
 

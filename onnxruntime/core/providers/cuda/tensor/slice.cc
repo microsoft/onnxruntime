@@ -145,7 +145,7 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
                                 &starts_buffer,
                                 &steps_buffer,
                                 &input_strides,
-                                &output_strides,
+                                output_strides,
                                 input_tensor->DataRaw(),
                                 output_tensor->MutableDataRaw(),
                                 output_size));

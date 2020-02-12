@@ -14,7 +14,7 @@ Status SliceImpl(const size_t element_size,
                  const TArray<int64_t>* starts,
                  const TArray<int64_t>* steps,
                  const TArray<int64_t>* input_strides,
-                 const TArray<fast_divmod>* output_strides,
+                 const TArray<fast_divmod>& output_strides,
                  const void* input_data,
                  void* output_data,
                  const size_t N);

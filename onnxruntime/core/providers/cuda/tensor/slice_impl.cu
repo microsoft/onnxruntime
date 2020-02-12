@@ -42,7 +42,7 @@ Status SliceImpl(const size_t element_size,
                 const TArray<int64_t>* starts,
                 const TArray<int64_t>* steps,
                 const TArray<int64_t>* input_strides,
-                const TArray<fast_divmod>* output_strides,
+                const TArray<fast_divmod>& output_strides,
                 const void* input_data,
                 void* output_data,
                 const size_t N) {
@@ -51,28 +51,28 @@ Status SliceImpl(const size_t element_size,
   switch (element_size) {
     case sizeof(int8_t):
       _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, *starts, *steps, *input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
       _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, *starts, *steps, *input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
       _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, *starts, *steps, *input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
       _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
-          dimension_count, *starts, *steps, *input_strides, *output_strides,
+          dimension_count, *starts, *steps, *input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),
           (CUDA_LONG)N);

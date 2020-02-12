@@ -1171,7 +1171,7 @@ static void RegisterCudaKernels(KernelRegistry& kernel_registry) {
   for (auto& function_table_entry : function_table) {
     kernel_registry.Register(function_table_entry());
   }
-}  // namespace cuda
+}
 
 std::shared_ptr<KernelRegistry> GetCudaKernelRegistry() {
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
