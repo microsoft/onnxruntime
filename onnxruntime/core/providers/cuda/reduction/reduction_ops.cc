@@ -33,7 +33,7 @@ namespace cuda {
       name<T>);
 
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
-// it's safter to wrap it with automatically memory deleter as CudnnReduceDescriptor.
+// it's safer to wrap it with automatically memory deleter as CudnnReduceDescriptor.
 // An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t
 // is implemented below, so CUDA can seamlessly work.
 class CudnnReduceDescriptor final {
