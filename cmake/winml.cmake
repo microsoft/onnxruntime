@@ -560,14 +560,10 @@ endif(onnxruntime_USE_DML)
 foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdgl32.lib advapi32.lib)
   set(removed_libs "${removed_libs} /NODEFAULTLIB:${default_lib}")
 endforeach()
-set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
-set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
-#set_target_properties(winml_dll
-#    PROPERTIES
-#    LINK_FLAGS
-#    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-winrt-error-l1-1-1.dll /DELAYLOAD:api-ms-win-core-com-l1-1-1.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll ${delayload_dml}")
+set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} windowsapp.lib")
+set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} windowsapp.lib")
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-winrt-error-l1-1-1.dll /DELAYLOAD:api-ms-win-core-com-l1-1-1.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:dxcore.dll ${delayload_dml})
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-winrt-error-l1-1-1.dll /DELAYLOAD:api-ms-win-core-com-l1-1-1.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll ${delayload_dml})
 
 set_target_properties(winml_dll
   PROPERTIES
