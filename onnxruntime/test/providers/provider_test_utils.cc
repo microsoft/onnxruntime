@@ -195,7 +195,7 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
   if (expected_data.sort_output_) {
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
- 
+
   float threshold = 0.001f;
 #ifdef USE_TENSORRT
   threshold = 0.005f;
@@ -239,8 +239,7 @@ void Check<BFloat16>(const OpTester::Data& expected_data,
     else {
       // the default for existing tests
       const float max_value = fmax(fabs(f_expected[i]), fabs(f_output[i]));
-      if (max_value != 0)  // max_value = 0 means output and expected are 0s.
-      {
+      if (max_value != 0) { // max_value = 0 means output and expected are 0s.
         const float rel_error = fabs(f_expected[i] - f_output[i]) / max_value;
         EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
                                              << provider_type;

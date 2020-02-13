@@ -83,7 +83,6 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   const auto rank = input_shape.NumDimensions();
 
 // Block of fast matrix row reduction.
-// It relies on new atomicAdd for half type, so old CUDA can't use it.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
@@ -338,6 +337,8 @@ static Status PrepareForReduce(OpKernelContext* ctx,
   }
 
   Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
   CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
   *y_pp = Y;
 
