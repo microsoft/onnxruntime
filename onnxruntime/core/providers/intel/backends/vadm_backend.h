@@ -13,9 +13,9 @@ namespace intel_ep {
 
 bool IsDebugEnabled();
 
-class VADRBackend : public IBackend {
+class VADMBackend : public IBackend {
  public:
-  VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision);
+  VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision);
 
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 

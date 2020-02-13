@@ -14,7 +14,7 @@
 #include "core/common/logging/logging.h"
 
 #include "../backend_utils.h"
-#include "vadr_backend.h"
+#include "vadm_backend.h"
 
 namespace onnxruntime {
 namespace intel_ep {
@@ -22,9 +22,9 @@ namespace intel_ep {
 using namespace backend_utils;
 
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
-// const std::string VADRBackend::log_tag = "[Intel-EP] ";
+// const std::string VADMBackend::log_tag = "[Intel-EP] ";
 
-VADRBackend::VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
+VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
     : input_indexes_{input_indexes}{
 
   (void) device_id;
@@ -67,7 +67,7 @@ VADRBackend::VADRBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vec
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
-void VADRBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
+void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const OrtValue*> input_tensors,
                                      size_t batch_slice_idx,
                                      size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                      std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -96,7 +96,7 @@ void VADRBackend::StartAsyncInference(Ort::CustomOpApi& ort, std::vector<const O
 
 // Wait for asynchronous inference completion on an Infer Request object indexed by infer_req_idx
 // and copy the results into a slice location within the batched output buffer indexed by batch_slice_idx
-void VADRBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
+void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtValue*> output_tensors,
                                         size_t batch_slice_idx,
                                         size_t infer_req_idx, std::vector<InferenceEngine::InferRequest::Ptr>& infer_requests,
                                         std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network) {
@@ -123,7 +123,7 @@ void VADRBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, std::vector<OrtV
   }
 }
 
-void VADRBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
+void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   // Preliminary Thread safety mechanism
   // Currently allows only one Infer execution at a time
   LOGS_DEFAULT(INFO) << log_tag << "In Infer";
@@ -169,6 +169,7 @@ void VADRBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
     CompleteAsyncInference(ort, output_tensors, batch_slice_idx, inf_req_idx, infer_requests_, ie_cnn_network_);
   }
 
+  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
