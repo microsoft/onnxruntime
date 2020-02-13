@@ -69,8 +69,8 @@ else
         fi
         docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 19.09
-        IMAGE="$BUILD_OS-cuda10.1-cudnn7.6-tensorrt6.0"
+        # TensorRT container release 20.01
+        IMAGE="$BUILD_OS-cuda10.2-cudnn7.6-tensorrt7.0"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         docker build --pull -t "onnxruntime-$IMAGE" --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} -f $DOCKER_FILE .
     elif [ $BUILD_DEVICE = "openvino" ]; then

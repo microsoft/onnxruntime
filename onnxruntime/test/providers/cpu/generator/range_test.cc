@@ -20,8 +20,8 @@ static void RunTest(
   test1.AddInput<T>("limit", {}, {limit});
   test1.AddInput<T>("delta", {}, {delta});
   test1.AddOutput<T>("output", output_dims, output);
-  // NGraph does not yet support opset-11 and builds break on this test, hence exclude the EP
-  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  // NGraph and TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider, kTensorrtExecutionProvider});
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -34,7 +34,8 @@ static void RunTest(
     test2.AddInput<T>("delta", {}, {delta});
 
   test2.AddOutput<T>("output", output_dims, output);
-  test2.Run();
+  // TensorRT doesn't fully support opset 11 yet
+  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
 #endif
 }  // namespace test
