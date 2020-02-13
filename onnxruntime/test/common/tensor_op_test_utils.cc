@@ -12,9 +12,9 @@ namespace test {
 
 static uint32_t GetSeedValue(RandomValueGenerator::RandomSeedType random_seed_type) {
   switch (random_seed_type) {
-    case RandomValueGenerator::RandomSeedType::Static:
+    case RandomValueGenerator::RandomSeedType::kStatic:
       return 42;
-    case RandomValueGenerator::RandomSeedType::PerProcess:
+    case RandomValueGenerator::RandomSeedType::kPerProcess:
       return GetStaticRandomSeed();
     default:  // dynamic
       return static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
