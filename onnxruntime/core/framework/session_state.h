@@ -134,11 +134,6 @@ class SessionState {
   */
   NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
 
-  /**
-  Update some initialized tensors (weights).
-  */
-  void UpdateInitializedTensors(const NameMLValMap& new_weights);
-
   // execution plan
   void SetExecutionPlan(std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan);
   const SequentialExecutionPlan* GetExecutionPlan() const;

@@ -161,16 +161,6 @@ NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::s
   return result;
 }
 
-void SessionState::UpdateInitializedTensors(const NameMLValMap& new_weights) {
-  for (auto name_and_ml_value : new_weights) {
-    int idx;
-    if (!GetOrtValueNameIdxMap().GetIdx(name_and_ml_value.first, idx).IsOK()) {
-      continue;
-    }
-    initialized_tensors_.at(idx) = name_and_ml_value.second;
-  }
-}
-
 SessionState& SessionState::SetLogger(const logging::Logger& logger) {
   logger_ = &logger;
   return *this;
