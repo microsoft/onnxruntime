@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
+import logging
 import onnx
 import sys
 import argparse
@@ -10,6 +11,8 @@ import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from OnnxModel import OnnxModel
+
+logger = logging.getLogger(__name__)
 
 class BertOnnxModel(OnnxModel):
     def __init__(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only, verbose):
@@ -219,7 +222,7 @@ class BertOnnxModel(OnnxModel):
 
         self.remove_nodes(nodes_to_remove)
         self.update_graph()
-        print("Fused Attention count:", attention_count)
+        logger.info(f"Fused Attention count:{attention_count}")
 
     def fuse_gelu(self, gelu_op_name):
         self.fuse_gelu_with_elf(gelu_op_name)
@@ -294,7 +297,7 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
         if len(nodes_to_add) > 0:
-            print("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu', len(nodes_to_add)))
+            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu', len(nodes_to_add)))
 
     """
      Fuse Gelu with tanh into one node:
@@ -389,7 +392,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            print("Fused {} count: {}".format('Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
+            logger.info("Fused {} count: {}".format('Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -437,7 +440,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            print("Fused FastGelu with Bias count:", len(nodes_to_add))
+            logger.info(f"Fused FastGelu with Bias count:{len(nodes_to_add)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -484,7 +487,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_add.append(new_node)
 
         if len(nodes_to_add) > 0:
-            print("Fused SkipLayerNormalization with Bias count:", len(nodes_to_add))
+            logger.info(f"Fused SkipLayerNormalization with Bias count:{len(nodes_to_add)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -540,7 +543,11 @@ class BertOnnxModel(OnnxModel):
                 concat_2 = self.get_initializer(concat_node.input[2])
                 if concat_2 is None:
                     continue
-                shape.extend(numpy_helper.to_array(concat_2))
+                concat_value = numpy_helper.to_array(concat_2)
+                if isinstance(concat_value, list):
+                    shape.extend(concat_value)
+                else:
+                    shape.append(concat_value)
 
             if len(concat_node.input) == 4 and self.get_initializer(concat_node.input[3]) is None:
                 path2 = self.match_parent_path(concat_node, ['Unsqueeze', 'Div', 'Gather', 'Shape'], [3, 0, 0, 0], output_name_to_node)
@@ -552,7 +559,12 @@ class BertOnnxModel(OnnxModel):
                 concat_3 = self.get_initializer(concat_node.input[3])
                 if concat_3 is None:
                     continue
-                shape.extend(numpy_helper.to_array(concat_3))
+
+                concat_value = numpy_helper.to_array(concat_3)
+                if isinstance(concat_value, list):
+                    shape.extend(concat_value)
+                else:
+                    shape.append(concat_value)
 
             root_input = reshape_node.input[0]
             same_shape_input = True
@@ -582,7 +594,7 @@ class BertOnnxModel(OnnxModel):
             nodes_to_remove.extend(path3)
             nodes_to_add.append(new_node)
 
-        print("Fused Reshape count:", len(nodes_to_add))
+        logger.info(f"Fused Reshape count:{len(nodes_to_add)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -615,10 +627,10 @@ class BertOnnxModel(OnnxModel):
         output_name_to_node = self.output_name_to_node()
 
         if len(self.mask_indice) == 0:
-            print("skip embed layer fusion since mask input is not found")
+            logger.info("skip embed layer fusion since mask input is not found")
             return
         if len(self.mask_indice) > 1:
-            print("skip embed layer fusion since there are multiple mask inputs found")
+            logger.info("skip embed layer fusion since there are multiple mask inputs found")
             return
         mask_input_name = next(iter(self.mask_indice))
         mask_output_name = self.mask_indice[mask_input_name]
@@ -635,13 +647,14 @@ class BertOnnxModel(OnnxModel):
                     break
 
         if normalize_node is None:
-            print("Failed to find embedding layer")
+            logger.info("Failed to find embedding layer")
+            return
 
         # Here we assume the order of embedding is word_embedding +
         # position_embedding + segment_embedding.
         word_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 0])
         if word_embedding_path is None:
-            print("Failed to find word embedding")
+            logger.info("Failed to find word embedding")
             return
         add_node, word_embedding_gather = word_embedding_path
         input_ids = word_embedding_gather.input[1]
@@ -654,14 +667,14 @@ class BertOnnxModel(OnnxModel):
             if position_embedding_path is None:
                 position_embedding_path = self.match_parent_path(add_node, ['Gather', 'Expand', 'Concat', 'Unsqueeze', 'Gather', 'Shape'], [1, 1, 1, 1, 0, 0])
                 if position_embedding_path is None:
-                    print("Failed to find position embedding")
+                    logger.info("Failed to find position embedding")
                     return
                 position_embedding_weight_node, position_embedding_expand, _, _, _, position_embedding_shape = position_embedding_path
             else:
                 position_embedding_weight_node, position_embedding_expand, position_embedding_shape = position_embedding_path
 
             if not position_embedding_shape is None and position_embedding_shape.input[0] != input_ids:
-                print("position and word embedding is expected to be applied on same input")
+                logger.info("position and word embedding is expected to be applied on same input")
                 return
         else:
             _, position_embedding_weight_node = position_embedding_path
@@ -670,7 +683,7 @@ class BertOnnxModel(OnnxModel):
         if segment_embedding_path is None:
             segment_embedding_path = self.match_parent_path(normalize_node, ['Add', 'Gather'], [0, 1])
             if segment_embedding_path is None:
-                print("Failed to find segment embedding")
+                logger.info("Failed to find segment embedding")
                 return
             _, segment_embedding_gather = segment_embedding_path
         else:
@@ -724,7 +737,7 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_node(embed_node)
         self.update_graph()
-        print("Fused EmbedLayerNormalization count: 1")
+        logger.info("Fused EmbedLayerNormalization count: 1")
 
         # Change graph input data type int32 if needed.
         if self.input_int32:
@@ -816,17 +829,6 @@ class BertOnnxModel(OnnxModel):
           |                      |
           +----------------------+
 
-      TODO: Batch Layer Norm from Keras in Tensorflow:
-         +----------------------+
-         |                      |
-         |                      v                                                                      (B)     (A)
-        Add --> ReduceMean -->  Sub  --> Mul --> ReduceMean --> Add --> Sqrt --> Reciprocol --> Mul --> Mul --> Sub --> Add
-         |          |                                                                            |       ^              ^
-         |          |                                                                            |       |              |
-         |          +----------------------------------------------------------------------------|-------+              |
-         |                                                                                       v                      |
-         +-------------------------------------------------------------------------------------> Mul--------------------+
-
     """
     def fuse_layer_norm(self):
         input_name_to_nodes = self.input_name_to_nodes()
@@ -912,8 +914,8 @@ class BertOnnxModel(OnnxModel):
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(skip_layernorm_nodes)
         self.add_nodes(layernorm_nodes)
-        print("Fused SkipLayerNormalization count:", len(skip_layernorm_nodes))
-        print("Fused LayerNormalization count:", len(layernorm_nodes))
+        logger.info(f"Fused SkipLayerNormalization count: {len(skip_layernorm_nodes)}")
+        logger.info(f"Fused LayerNormalization count: {len(layernorm_nodes)}")
 
     def preprocess(self):
         return
@@ -945,4 +947,4 @@ class BertOnnxModel(OnnxModel):
         # Use symbolic batch dimension in input and output.
         self.update_dynamic_batch_io()
 
-        print("opset verion", self.model.opset_import[0].version)
+        logger.info(f"opset verion: {self.model.opset_import[0].version}")

@@ -4,8 +4,8 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Archive.h"
 #include "Featurizers/DateTimeFeaturizer.h"
+#include "Featurizers/../Archive.h"
 
 namespace dft = Microsoft::Featurizer::Featurizers;
 
@@ -14,12 +14,14 @@ using SysClock = std::chrono::system_clock;
 namespace onnxruntime {
 namespace test {
 
-std::vector<uint8_t> GetStream () {
+namespace {
+std::vector<uint8_t> GetStream() {
   dft::DateTimeTransformer dt("", "");
   Microsoft::Featurizer::Archive ar;
   dt.save(ar);
   return ar.commit();
 }
+}  // namespace
 
 TEST(FeaturizersTests, DateTimeTransformer_past_1976_nov_17_12_27_04) {
   const time_t date = 217081624;

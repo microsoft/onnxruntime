@@ -63,4 +63,5 @@ See below for description of all the options:
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
-
+- **run_onnxruntime**: (*optional*)
+    Use onnxruntime to do optimization. This option is only avaiable for pytorch model right now.

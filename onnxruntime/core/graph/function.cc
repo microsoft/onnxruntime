@@ -378,7 +378,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
   auto status = function_body_graph.Resolve();
   ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
-}
+}  // namespace onnxruntime
 
 FunctionImpl::~FunctionImpl() = default;
 

@@ -9,7 +9,7 @@
 #include <limits>
 
 #include "Featurizers/TimeSeriesImputerFeaturizer.h"
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 
 namespace ft = Microsoft::Featurizer::Featurizers;
 
@@ -214,7 +214,7 @@ class TimeSeriesImputerTransformer final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     const auto& times = *ctx->Input<Tensor>(1);
     const auto& times_shape = times.Shape();
-    ORT_RETURN_IF_NOT(times_shape.NumDimensions() == 1, "Times must have shape [B][R] or [R]");
+    ORT_RETURN_IF_NOT(times_shape.NumDimensions() == 1, "Times must have shape of [R]");
     int64_t rows = times_shape[0];
 
     const auto& keys = *ctx->Input<Tensor>(2);
