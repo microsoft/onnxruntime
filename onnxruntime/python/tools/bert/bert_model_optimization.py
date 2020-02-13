@@ -12,7 +12,7 @@
 # For Bert model file like name.onnx, optimized model for GPU or CPU from OnnxRuntime will output as
 # name_ort_gpu.onnx or name_ort_cpu.onnx in the same directory.
 # This script is retained for experiment purpose. Useful senarios like the following:
-#  (1) Change model from fp32 to fp16.D:\share\bert_tf21_glue
+#  (1) Change model from fp32 to fp16.
 #  (2) Change input data type from int64 to int32.
 #  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
 
@@ -41,10 +41,21 @@ logger = logging.getLogger('')
 MODEL_CLASSES = {
     "bert" : (BertOnnxModel, "pytorch", True),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
-    "bert_keras" : (BertOnnxModelKeras, ["keras2onnx"], False)
+    "bert_keras" : (BertOnnxModelKeras, "keras2onnx", False)
 }
 
 def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None):
+    """
+    Use onnxruntime package to optimize model. It could support models exported by PyTorch.
+
+    Args:
+        onnx_model_path (str): th path of input onnx model.
+        use_gpu (bool): whether the optimized model is targeted to run in GPU.
+        optimized_model_path (str or None): the path of optimized model.
+
+    Returns:
+        optimized_model_path: the path of optimized model
+    """
     if use_gpu and 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
@@ -114,7 +125,7 @@ def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence
     input_model_path = input
     if run_onnxruntime:
         input_model_path = optimize_by_onnxruntime(input_model_path, gpu_only)
-        logger.info("Use OnnxRuntime to run optimization and save optimized model to".format(input_model_path))
+        logger.info("Use OnnxRuntime to optimize and save the optimized model to {}".format(input_model_path))
 
     model = ModelProto()
     with open(input_model_path, "rb") as f:

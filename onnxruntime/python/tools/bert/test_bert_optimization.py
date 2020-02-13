@@ -19,12 +19,13 @@ from onnx import numpy_helper
 from bert_model_optimization import optimize_model, optimize_by_onnxruntime
 from OnnxModel import OnnxModel
 
+BERT_TEST_MODELS = {
+    "bert_pytorch_0": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
+    "bert_pytorch_1": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
+    "bert_keras_0": 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx'
+}
+
 class TestBertOptimization(unittest.TestCase):
-    def get_model(self, framework, index):
-        if framework == "pytorch":
-            return 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_{}.onnx'.format(index)
-        else:
-            return 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_{}.onnx'.format(index)
 
     def verify_node_count(self, bert_model, expected_node_count):
         for op_type, count in expected_node_count.items():
@@ -33,7 +34,7 @@ class TestBertOptimization(unittest.TestCase):
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     def test_pytorch_model_0_cpu_onnxruntime(self):
-        input = self.get_model("pytorch", 0)
+        input = BERT_TEST_MODELS['bert_pytorch_0']
         output = 'temp.onnx'
         optimize_by_onnxruntime(input, use_gpu=False, optimized_model_path=output)
         model = ModelProto()
@@ -56,7 +57,7 @@ class TestBertOptimization(unittest.TestCase):
             print("skip test_pytorch_model_0_gpu_onnxruntime since no gpu found")
             return
 
-        input = self.get_model("pytorch", 0)
+        input = BERT_TEST_MODELS['bert_pytorch_0']
         output = 'temp.onnx'
         optimize_by_onnxruntime(input, use_gpu=True, optimized_model_path=output)
         model = ModelProto()
@@ -75,7 +76,7 @@ class TestBertOptimization(unittest.TestCase):
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_1_cpu_onnxruntime(self):
-        input = self.get_model("pytorch", 1)
+        input = BERT_TEST_MODELS['bert_pytorch_1']
         output = 'temp.onnx'
         optimize_by_onnxruntime(input, use_gpu=False, optimized_model_path=output)
         model = ModelProto()
@@ -99,7 +100,7 @@ class TestBertOptimization(unittest.TestCase):
             print("skip test_pytorch_model_1_gpu_onnxruntime since no gpu found")
             return
 
-        input = self.get_model("pytorch", 1)
+        input = BERT_TEST_MODELS['bert_pytorch_1']
         output = 'temp.onnx'
         optimize_by_onnxruntime(input, use_gpu=True, optimized_model_path=output)
         model = ModelProto()
@@ -119,7 +120,7 @@ class TestBertOptimization(unittest.TestCase):
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_0_cpu(self):
-        input = self.get_model("pytorch", 0)
+        input = BERT_TEST_MODELS['bert_pytorch_0']
         bert_model = optimize_model(input, 'bert', gpu_only=False,
                                     num_heads=2, hidden_size=8, sequence_length=10,
                                     input_int32=False, float16=False)
@@ -139,7 +140,7 @@ class TestBertOptimization(unittest.TestCase):
             print("skip test_pytorch_model_0_gpu since no gpu found")
             return
 
-        input = self.get_model("pytorch", 0)
+        input = BERT_TEST_MODELS['bert_pytorch_0']
         bert_model = optimize_model(input, 'bert', gpu_only=True,
                                     num_heads=2, hidden_size=8, sequence_length=10,
                                     input_int32=False, float16=False)
@@ -155,7 +156,7 @@ class TestBertOptimization(unittest.TestCase):
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_keras_model_1_cpu(self):
-        input = self.get_model("keras", 1)
+        input = BERT_TEST_MODELS['bert_keras_0']
 
         bert_model = optimize_model(input, 'bert_keras', gpu_only=False,
                                     num_heads=2, hidden_size=8, sequence_length=7,
