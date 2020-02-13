@@ -5,6 +5,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "gradient_schema_defs.h"
 #include "onnx/defs/function.h"
+#include <math.h>
 
 namespace onnxruntime {
 namespace training {
