@@ -9,12 +9,8 @@
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
-#include "onnx/defs/function.h"
+#include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
-
-#ifdef MICROSOFT_INTERNAL
-#include "core/graph/contrib_ops/internal_schema_defs.h"
-#endif
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -556,7 +552,10 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(3, "beta", "1D skip tensor with shape (hidden_size", "T")
       .Input(4, "bias", "1D bias tensor with shape (hidden_size", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+      .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 }
 
@@ -2186,7 +2185,7 @@ Example 4:
             }
           }
         } else {
-          // Infer ouput shapes' rank in any case
+          // Infer output shapes' rank in any case
           auto* output_shape_0 = getOutputShape(ctx, 0);
           for (size_t i = 0; static_cast<int64_t>(i) < input_rank; ++i) {
             output_shape_0->add_dim();
@@ -2388,7 +2387,7 @@ Example 4:
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
-      .SinceVersion(1)
+      .SinceVersion(9)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("LayerNormalization")
       .Attr("axis",
@@ -2484,10 +2483,6 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterBertSchemas();
 
-#ifdef MICROSOFT_INTERNAL
-  // register internal ops
-  RegisterInternalSchemas();
-#endif
 }
 }  // namespace contrib
 }  // namespace onnxruntime
