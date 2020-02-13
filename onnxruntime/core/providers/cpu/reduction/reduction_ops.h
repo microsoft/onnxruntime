@@ -5,6 +5,7 @@
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 
 #include "core/common/common.h"
+#include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -12,7 +13,7 @@ namespace onnxruntime {
 template <bool allow_multi_axes>
 class ReduceKernelBase {
  protected:
-  ReduceKernelBase(const OpKernelInfo& info) {
+  ReduceKernelBase(const OpKernelInfo& info, optional<int64_t> keepdims_override = {}) {
     if (allow_multi_axes) {
       axes_ = info.GetAttrsOrDefault<int64_t>("axes");
     } else {
@@ -20,7 +21,11 @@ class ReduceKernelBase {
       axes_.push_back(v);
     }
     int64_t keepdims = 1;
-    ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
+    if (keepdims_override.has_value()) {
+      keepdims = keepdims_override.value();
+    } else {
+      ORT_ENFORCE(info.GetAttr("keepdims", &keepdims).IsOK());
+    }
     keepdims_ = (keepdims == 1);
   }
 

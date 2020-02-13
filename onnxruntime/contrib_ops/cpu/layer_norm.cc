@@ -15,7 +15,7 @@ namespace contrib {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
       kOnnxDomain,                                                \
-      1,                                                          \
+      9,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \
       KernelDefBuilder()                                          \
@@ -109,7 +109,7 @@ Status LayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                  }
 
                                                  mean_data[task_idx] = mean;
-                                                 inv_std_var_data[task_idx] = mean_square;
+                                                 inv_std_var_data[task_idx] = 1 / mean_square;
                                                });
 
   return Status::OK();

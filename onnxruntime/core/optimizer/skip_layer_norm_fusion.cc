@@ -139,7 +139,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Node& ln_node = *p_layernorm;
     ORT_RETURN_IF_ERROR(Recurse(ln_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {9}) ||
         !graph_utils::IsSupportedProvider(ln_node, GetCompatibleExecutionProviders()) ||
         !IsSupportedDataType(ln_node)) {
       continue;
