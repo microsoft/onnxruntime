@@ -1453,6 +1453,29 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SliceGrad)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .Input(0, "dY", "Gradient of output", "T")
+    .Input(1, "shape", "Shape of the Slice input X.", "I")
+    .Input(2, "starts", "Tensor of starting indices of corresponding axis in axes", "Tind")
+    .Input(3, "ends", "Tensor of starting indices of corresponding axis in 'axes'", "Tind")
+    .Input(4, "axes", "Tensor of axes that `starts` and `ends` apply to", "Tind")
+    .Input(5, "steps", "Tensor of slice step of corresponding axis in `axes`", "Tind")
+    .Output(0, "dX", "Gradient of input", "T")
+    .TypeConstraint(
+        "I",
+        {"tensor(int64)"},
+        "Constrain input shape to integer tensors.")
+    .TypeConstraint(
+        "T",
+        OpSchema::all_tensor_types(),
+        "Constrain input and output types to float tensors.")
+    .TypeConstraint(
+        "Tind",
+        {"tensor(int32)", "tensor(int64)"},
+        "Constrain indices to integer types");
 }
 }  // namespace training
 }  // namespace onnxruntime

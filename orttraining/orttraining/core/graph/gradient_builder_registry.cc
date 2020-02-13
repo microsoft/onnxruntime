@@ -73,6 +73,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("BatchNormalization", GetBatchNormalizationGradient);
   REGISTER_GRADIENT_BUILDER("MegatronF", GetMegatronFGradient);
   REGISTER_GRADIENT_BUILDER("MegatronG", GetMegatronGGradient);
+  REGISTER_GRADIENT_BUILDER("Slice", GetSliceGradient);
 };
 
 }  // namespace training

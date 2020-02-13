@@ -882,5 +882,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetMegatronGGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Shape",
+              {I(0)},
+              {IA("I0_shape")}),
+      NodeDef(OpDef{"SliceGrad", kMSDomain, 1},
+              {GO(0), IA("I0_shape"), I(1), I(2), I(3), I(4)},
+              {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

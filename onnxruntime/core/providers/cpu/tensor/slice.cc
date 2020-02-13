@@ -260,18 +260,14 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // Slice V10 & DynamicSlice
-void SliceBase::FillVectorsFromInput(const OpKernelContext* context,
-                                     std::vector<int64_t>& input_starts,
+void SliceBase::FillVectorsFromInput(std::vector<int64_t>& input_starts,
                                      std::vector<int64_t>& input_ends,
                                      std::vector<int64_t>& input_axes,
-                                     std::vector<int64_t>& input_steps) const {
-  const auto* start_tensor = context->Input<Tensor>(1);
-  const auto* ends_tensor = context->Input<Tensor>(2);
-  const auto* axes_tensor = context->Input<Tensor>(3);
-  const Tensor* steps_tensor = nullptr;
-  // check if this is Slice V10 - only Slice V10 has this optional input
-  if (context->InputCount() == 5)
-    steps_tensor = context->Input<Tensor>(4);
+                                     std::vector<int64_t>& input_steps,
+                                     const Tensor* start_tensor,
+                                     const Tensor* ends_tensor,
+                                     const Tensor* axes_tensor,
+                                     const Tensor* steps_tensor) const {
 
   ORT_ENFORCE(nullptr != start_tensor && start_tensor->Shape().NumDimensions() == 1, "Starts must be a 1-D array");
   ORT_ENFORCE(nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1, "Ends must be a 1-D array");
@@ -384,7 +380,10 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
     std::vector<int64_t> input_steps;
-    FillVectorsFromInput(ctx, input_starts, input_ends, input_axes, input_steps);
+    FillVectorsFromInput(input_starts, input_ends, input_axes, input_steps,
+                         ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                         ctx->InputCount() == 5 ? ctx->Input<Tensor>(4) : nullptr);
+
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
                                           input_dimensions, starts, steps, output_dims,
                                           p_flattened_output_dims));

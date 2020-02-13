@@ -47,6 +47,7 @@ DECLARE_GRADIENT_BUILDER(GetLayerNormalizationGradient)
 DECLARE_GRADIENT_BUILDER(GetBatchNormalizationGradient)
 DECLARE_GRADIENT_BUILDER(GetMegatronFGradient)
 DECLARE_GRADIENT_BUILDER(GetMegatronGGradient)
+DECLARE_GRADIENT_BUILDER(GetSliceGradient)
 
 }  // namespace training
 }  // namespace onnxruntime
