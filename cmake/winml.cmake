@@ -562,11 +562,12 @@ foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib o
 endforeach()
 set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
 set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} onecoreuap.lib")
-set_target_properties(winml_dll
-    PROPERTIES
-    LINK_FLAGS
-    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml}")
+#set_target_properties(winml_dll
+#    PROPERTIES
+#    LINK_FLAGS
+#    "/DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-winrt-error-l1-1-1.dll /DELAYLOAD:api-ms-win-core-com-l1-1-1.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll ${delayload_dml}")
 
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-winrt-error-l1-1-1.dll /DELAYLOAD:api-ms-win-core-com-l1-1-1.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:dxcore.dll ${delayload_dml})
 
 set_target_properties(winml_dll
   PROPERTIES
@@ -616,5 +617,4 @@ endif()
 # When cuda is enabled in the pipeline, it sets CMAKE_SHARED_LINKER_FLAGS which affects all targets including winml_dll.
 # However, there are no cuda imports in winml_dll, and the linker throws the 4199 warning.
 # This is needed to allow winml_dll build with cuda enabled.
-#set_property(TARGET winml_dll APPEND_STRING PROPERTY LINK_FLAGS " /ignore:4199")
-target_link_options(winml_dll PRIVATE " /ignore:4199")
+target_link_options(winml_dll PRIVATE /ignore:4199)
