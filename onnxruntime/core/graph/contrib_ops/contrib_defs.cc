@@ -528,7 +528,7 @@ will be calculated.)DOC";
       });
 
   static const char* FastGelu_ver1_doc = R"DOC(
-GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X))) with an optional input of bias that will be added to X before GELU.)DOC";
+GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
       .SetDomain(kMSDomain)
