@@ -4,9 +4,13 @@ from onnx import AttributeProto, TensorProto, GraphProto, OperatorSetIdProto
 from onnx import numpy_helper
 import numpy as np
 
+has_bias = True # change it to True to generate fast_gelu_with_bias.onnx
 
 X = helper.make_tensor_value_info('input', TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info('output', TensorProto.FLOAT, ["batch", "seqlen", 64])
+
+bias_np_vals = (0.01 * np.arange(64)).astype(np.float32).reshape((64))
+bias_initializer = numpy_helper.from_array(bias_np_vals, "input_bias")
 
 a_weight_np_vals = np.asarray([0.044714998453855515]).astype(np.float32).reshape(())
 a_weight_initializer = numpy_helper.from_array(a_weight_np_vals, "mul1_init")
@@ -23,84 +27,101 @@ a_bias_initializer = numpy_helper.from_array(a_bias_np_vals, "add1_init")
 b_bias_np_vals = np.asarray([1.0]).astype(np.float32).reshape(())
 b_bias_initializer = numpy_helper.from_array(b_bias_np_vals, "add2_init")
 
+mul_input_name = "input"
+if has_bias:
+    add0 = helper.make_node(
+        'Add', 
+        ['input', bias_initializer.name], 
+        ['add0'], 
+        name="add0"
+    )
+    mul_input_name = "add0"
+
 
 mul1 = helper.make_node(
-    'Mul', # node name
-    ['input', a_weight_initializer.name], # inputs
-    ['mul1'], # outputs
+    'Mul', 
+    [mul_input_name, a_weight_initializer.name], 
+    ['mul1'], 
     name="mul1"
 )
 
 mul2 = helper.make_node(
-    'Mul', # node name
-    ['input', 'mul1'], # inputs
-    ['mul2'], # outputs
+    'Mul', 
+    [mul_input_name, 'mul1'], 
+    ['mul2'], 
     name="mul2"
 )
 
 add1 = helper.make_node(
-    'Add', # node name
-    ['mul2', a_bias_initializer.name], # inputs
-    ['add1'], # outputs
+    'Add', 
+    ['mul2', a_bias_initializer.name], 
+    ['add1'], 
     name="add1"
 )
 
 mul3 = helper.make_node(
-    'Mul', # node name
-    ['input', b_weight_initializer.name], # inputs
-    ['mul3'], # outputs
+    'Mul', 
+    [mul_input_name, b_weight_initializer.name], 
+    ['mul3'], 
     name="mul3"
 )
 
 mul4 = helper.make_node(
-    'Mul', # node name
-    ['mul3', 'add1'], # inputs
-    ['mul4'], # outputs
+    'Mul', 
+    ['mul3', 'add1'], 
+    ['mul4'], 
     name="mul4"
 )
 
 tanh = helper.make_node(
-    'Tanh', # node name
-    ['mul4'], # inputs
-    ['tanh'], # outputs
+    'Tanh', 
+    ['mul4'], 
+    ['tanh'], 
     name="tanh"
 )
 
 add2 = helper.make_node(
-    'Add', # node name
-    ['tanh', b_bias_initializer.name], # inputs
-    ['add2'], # outputs
+    'Add', 
+    ['tanh', b_bias_initializer.name], 
+    ['add2'], 
     name="add2"
 )
 
 mul5 = helper.make_node(
-    'Mul', # node name
-    ['input', c_weight_initializer.name], # inputs
-    ['mul5'], # outputs
+    'Mul', 
+    [mul_input_name, c_weight_initializer.name], 
+    ['mul5'], 
     name="mul5"
 )
 
 mul6 = helper.make_node(
-    'Mul', # node name
-    ['mul5', 'add2'], # inputs
-    ['mul6'], # outputs
+    'Mul', 
+    ['mul5', 'add2'], 
+    ['mul6'], 
     name="mul6"
 )
 
 identity = helper.make_node(
-    'Identity', # node name
-    ['mul6'], # inputs
-    ['output'], # outputs
+    'Identity', 
+    ['mul6'], 
+    ['output'], 
     name="identity"
 )
 
+nodes = []
+initializers = []
+if has_bias:
+    nodes = [add0]
+    initializers = [bias_initializer]
+nodes.extend([mul1, mul2, add1, mul3, mul4, tanh, add2, mul5, mul6, identity])
+initializers.extend([a_weight_initializer, a_bias_initializer, b_weight_initializer, b_bias_initializer, c_weight_initializer])
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
-    [mul1, mul2, add1, mul3, mul4, tanh, add2, mul5, mul6, identity],
+    nodes,
     'test-model',
     [X],
     [Y],
-    [a_weight_initializer, a_bias_initializer, b_weight_initializer, b_bias_initializer, c_weight_initializer]
+    initializers
 )
 
 opsets = []
@@ -117,8 +138,10 @@ opsets.append(msdomain)
 kwargs={}
 kwargs["opset_imports"] = opsets
 
-# Create the model (ModelProto)
 model_def = helper.make_model(graph_def, producer_name='onnx-example', **kwargs)
 
-onnx.save(model_def, 'fast_gelu.onnx')
+file_name = "fast_gelu.onnx"
+if has_bias:
+    file_name = "fast_gelu_with_bias.onnx"
+onnx.save(model_def, file_name)
 

@@ -13,7 +13,8 @@ namespace onnxruntime {
 Rewrite graph fusing Gelu activation subgraph to a single Gelu node.
 
 The formula corresponding to Gelu activation subgraph:
-x * (0.5 * (1.0 + tf.tanh((np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))), where x is the input.
+x * 0.5 * (1.0 + tanh((sqrt(2 / pi) * (x + 0.044715 * pow(x, 3))))) or
+x * 0.5 * (1.0 + tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x))), where x is the input.
 
 */
 class FastGeluFusion : public GraphTransformer {
