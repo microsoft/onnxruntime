@@ -4,15 +4,17 @@ from onnx import AttributeProto, TensorProto, GraphProto, OperatorSetIdProto
 from onnx import numpy_helper
 import numpy as np
 
-# Gelu formula: x * 0.5 * (1.0 + tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
-
-has_bias = True # change it to True to generate fast_gelu_with_bias.onnx
+# Gelu formula: x * 0.5 * (1.0 + tanh((sqrt(2 / pi) * (x + 0.044715 * pow(x, 3)))))
+has_bias = False # change it to True to generate fast_gelu_openai_with_bias.onnx
 
 X = helper.make_tensor_value_info('input', TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info('output', TensorProto.FLOAT, ["batch", "seqlen", 64])
 
 bias_np_vals = (0.01 * np.arange(64)).astype(np.float32).reshape((64))
 bias_initializer = numpy_helper.from_array(bias_np_vals, "input_bias")
+
+pow_np_vals = np.asarray([3]).astype(np.float32).reshape(())
+pow_initializer = numpy_helper.from_array(pow_np_vals, "pow_init")
 
 a_weight_np_vals = np.asarray([0.044714998453855515]).astype(np.float32).reshape(())
 a_weight_initializer = numpy_helper.from_array(a_weight_np_vals, "mul1_init")
@@ -22,9 +24,6 @@ b_weight_initializer = numpy_helper.from_array(b_weight_np_vals, "mul2_init")
 
 c_weight_np_vals = np.asarray([0.5]).astype(np.float32).reshape(())
 c_weight_initializer = numpy_helper.from_array(c_weight_np_vals, "mul3_init")
-
-a_bias_np_vals = np.asarray([1.0]).astype(np.float32).reshape(())
-a_bias_initializer = numpy_helper.from_array(a_bias_np_vals, "add1_init")
 
 b_bias_np_vals = np.asarray([1.0]).astype(np.float32).reshape(())
 b_bias_initializer = numpy_helper.from_array(b_bias_np_vals, "add2_init")
@@ -40,44 +39,37 @@ if has_bias:
     mul_input_name = "add0"
 
 
+pow1 = helper.make_node(
+    'Pow', 
+    [mul_input_name, pow_initializer.name], 
+    ['pow1'], 
+    name="pow1"
+)
+
 mul1 = helper.make_node(
     'Mul', 
-    [mul_input_name, a_weight_initializer.name], 
+    ['pow1', a_weight_initializer.name], 
     ['mul1'], 
     name="mul1"
 )
 
-mul2 = helper.make_node(
-    'Mul', 
-    [mul_input_name, 'mul1'], 
-    ['mul2'], 
-    name="mul2"
-)
-
 add1 = helper.make_node(
     'Add', 
-    ['mul2', a_bias_initializer.name], 
+    [mul_input_name, "mul1"], 
     ['add1'], 
     name="add1"
 )
 
-mul3 = helper.make_node(
+mul2 = helper.make_node(
     'Mul', 
-    [mul_input_name, b_weight_initializer.name], 
-    ['mul3'], 
-    name="mul3"
-)
-
-mul4 = helper.make_node(
-    'Mul', 
-    ['mul3', 'add1'], 
-    ['mul4'], 
-    name="mul4"
+    ['add1', b_weight_initializer.name], 
+    ['mul2'], 
+    name="mul2"
 )
 
 tanh = helper.make_node(
     'Tanh', 
-    ['mul4'], 
+    ['mul2'], 
     ['tanh'], 
     name="tanh"
 )
@@ -115,8 +107,8 @@ initializers = []
 if has_bias:
     nodes = [add0]
     initializers = [bias_initializer]
-nodes.extend([mul1, mul2, add1, mul3, mul4, tanh, add2, mul5, mul6, identity])
-initializers.extend([a_weight_initializer, a_bias_initializer, b_weight_initializer, b_bias_initializer, c_weight_initializer])
+nodes.extend([pow1, mul1, mul2, add1, tanh, add2, mul5, mul6, identity])
+initializers.extend([pow_initializer, a_weight_initializer, b_weight_initializer, b_bias_initializer, c_weight_initializer])
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
     nodes,
@@ -142,8 +134,8 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name='onnx-example', **kwargs)
 
-file_name = "fast_gelu.onnx"
+file_name = "fast_gelu2.onnx"
 if has_bias:
-    file_name = "fast_gelu_with_bias.onnx"
+    file_name = "fast_gelu_with_bias2.onnx"
 onnx.save(model_def, file_name)
 
