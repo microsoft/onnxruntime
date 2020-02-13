@@ -5,46 +5,11 @@
 
 #if defined(USE_MIMALLOC_STL_ALLOCATOR)
 #include <mimalloc.h>
+#else
+#include "core/framework/ort_stl_allocator.h"
 #endif
 
 namespace onnxruntime {
-
-template <class T>
-struct BFCArenaAllocator {
-  AllocatorPtr arena;
-  typedef T value_type;
-
-  using propagate_on_container_copy_assignment = std::true_type;
-  using propagate_on_container_move_assignment = std::true_type;
-  using propagate_on_container_swap = std::true_type;
-  using is_always_equal = std::true_type;
-
-  BFCArenaAllocator(AllocatorPtr a) noexcept {
-    arena = a;
-  }
-  BFCArenaAllocator(const BFCArenaAllocator& other) noexcept {
-    arena = other.arena;
-  }
-  template <class U>
-  BFCArenaAllocator(const BFCArenaAllocator<U>& other) noexcept {
-    arena = other.arena;
-  }
-
-  T* allocate(size_t n, const void* hint = 0) {
-    ORT_UNUSED_PARAMETER(hint);
-    return (T*)arena->Alloc(n * sizeof(T));
-  }
-
-  void deallocate(T* p, size_t n) {
-    ORT_UNUSED_PARAMETER(n);
-    arena->Free(p);
-  }
-};
-
-template <class T1, class T2>
-bool operator==(const BFCArenaAllocator<T1>& lhs, const BFCArenaAllocator<T2>& rhs) noexcept { return true; }
-template <class T1, class T2>
-bool operator!=(const BFCArenaAllocator<T1>& lhs, const BFCArenaAllocator<T2>& rhs) noexcept { return false; }
 
 #if defined(USE_MIMALLOC_STL_ALLOCATOR)
 
@@ -60,16 +25,16 @@ using FastAllocVector = std::vector<T,mi_stl_allocator<T>>;
 #else
 
 template <typename T>
-BFCArenaAllocator<T> GetAllocator(const OpKernelContext& context) {
+OrtStlAllocator<T> GetAllocator(const OpKernelContext& context) {
   AllocatorPtr allocator;
   auto status = context.GetTempSpaceAllocator(&allocator);
   ORT_ENFORCE(status.IsOK());
-  return BFCArenaAllocator<T>(allocator);
+  return OrtStlAllocator<T>(allocator);
 }
 
 template <typename T>
-using FastAllocVector = std::vector<T,BFCArenaAllocator<T>>;
+using FastAllocVector = std::vector<T,OrtStlAllocator<T>>;
 
 #endif 
 
-}  // namespace onnxruntime
+} // namespace onnxruntime
