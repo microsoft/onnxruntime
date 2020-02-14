@@ -310,6 +310,9 @@ def setup_logging(verbose):
     else:
         log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
         logging_level = logging.INFO
+    log_handler.setLevel(logging_level)
+    logger.addHandler(log_handler)
+    logger.setLevel(logging_level)
 
 def main():
     args = parse_arguments()

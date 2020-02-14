@@ -64,7 +64,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 (softmax_qk, sub_qk, matmul_qk) = qk_nodes
                 q_nodes = self.match_parent_path(matmul_qk,
                                              ['Mul', 'Transpose', 'Reshape', 'Add', 'Reshape', 'MatMul'],
-                                             [ 0,     0,           0,         0,     0,         0])
+                                             [ 0,     None,           0,         0,     0,         0])
                 if q_nodes is not None:                             
                     (mul_q, transpose_q, reshape_q, add_q, extra_reshape_2, matmul_q) = q_nodes
                                              
@@ -117,6 +117,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             is_same_root = (root_node == parent or (root_node.op_type == 'Reshape' and root_node.input[0] == parent.output[0]))
             if matmul_q.input[0] == root_input and matmul_v.input[0] == root_input and is_same_root:
                 mask_index = self.process_mask(mask_nodes[-1].input[0])
+                logger.debug("Create an Attention node.")
                 self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v, parent.output[0], reshape_qkv.output[0])
                 nodes_to_remove.extend([reshape_qkv, transpose_qkv, matmul_qkv])
                 nodes_to_remove.extend(qk_nodes)
@@ -145,7 +146,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             [ 0,     0,     0],
             output_name_to_node)
         if pos_embed_path2 is None:
-            logger.info("failed to match pos_embed_path")
+            logger.debug("failed to match pos_embed_path")
             return False
 
         skip_node, add_node, gather_node = pos_embed_path2
