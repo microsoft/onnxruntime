@@ -18,10 +18,6 @@
 #include "orttraining/core/session/training_session.h"
 #endif
 
-#ifdef ENABLE_TRAINING
-#include "orttraining/core/session/training_session.h"
-#endif
-
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -200,9 +196,8 @@ void Check<MLFloat16>(const OpTester::Data& expected_data,
     sort_expected_and_actual_buffers<float>(f_expected, f_output);
   }
 
-  //float threshold = 0.005f;
   float threshold = 0.001f;
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING)
   threshold = 0.005f;
 #endif
   for (int i = 0; i < size; ++i) {

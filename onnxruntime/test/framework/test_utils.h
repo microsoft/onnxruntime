@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -70,8 +71,8 @@ void CreateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, const s
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                              shape,
-                                                              alloc);
+                                                                      shape,
+                                                                      alloc);
   if (value.size() > 0) {
     CopyVectorToTensor(value, *p_tensor);
   }
@@ -86,8 +87,8 @@ void AllocateMLValue(AllocatorPtr alloc, const std::vector<int64_t>& dims, OrtVa
   TensorShape shape(dims);
   auto element_type = DataTypeImpl::GetType<T>();
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                              shape,
-                                                              alloc);
+                                                                      shape,
+                                                                      alloc);
   p_mlvalue->Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
@@ -425,7 +426,7 @@ class OpTester {
   template <typename T>
   void AddAttribute(std::string name, T value) {
     // Generate a the proper AddAttribute call for later
-    add_attribute_funcs_.emplace_back([ name = std::move(name), value = std::move(value) ](onnxruntime::Node & node) {
+    add_attribute_funcs_.emplace_back([name = std::move(name), value = std::move(value)](onnxruntime::Node& node) {
       node.AddAttribute(name, value);
     });
   }

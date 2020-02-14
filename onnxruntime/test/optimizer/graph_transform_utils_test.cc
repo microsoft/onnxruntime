@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "test/framework/test_utils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"

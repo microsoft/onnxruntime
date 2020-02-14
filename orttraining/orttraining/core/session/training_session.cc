@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
+
 #include "orttraining/core/session/training_session.h"
 
 #include "core/graph/model.h"
@@ -81,7 +83,7 @@ Status SetupOptimizerParams(
 bool IsRootNode(const TrainingSession::TrainingConfiguration& config) {
   return config.distributed_config.world_rank == 0;
 }
-}
+}  // namespace
 
 Status TrainingSession::ConfigureForTraining(
     const TrainingConfiguration& config, TrainingConfigurationResult& config_result_out) {

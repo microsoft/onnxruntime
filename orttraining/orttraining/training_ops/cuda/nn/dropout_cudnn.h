@@ -3,10 +3,10 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/platform/ort_mutex.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/rnn/cudnn_rnn_base.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 namespace cuda {
