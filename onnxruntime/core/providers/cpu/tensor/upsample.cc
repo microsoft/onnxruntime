@@ -393,7 +393,7 @@ void UpsampleBilinear(int64_t batch_size,
     thread_pool->ParallelFor(static_cast<int32_t>(batch_size * num_channels), interpolate);
   } else {
     for (int64_t i = 0; i < batch_size * num_channels; i++) {
-      interpolate(i);
+      interpolate(static_cast<int32_t>(i));
     }
   }
 }
