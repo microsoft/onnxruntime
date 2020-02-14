@@ -9,7 +9,7 @@ steps:
     workingDirectory: '${{ parameters.packageFolder }}'
     script: |
       SETLOCAL EnableDelayedExpansion
-      FOR /R %%i IN (Microsoft.ML.OnnxRuntime*.nupkg) do (
+      FOR /R %%i IN (*.nupkg) do (
         set filename=%%~ni
         IF NOT "!filename:~25,7!"=="Managed" (       
             set ortversion=!filename:~25!
@@ -31,7 +31,7 @@ steps:
   inputs:
     workingDirectory: '${{ parameters.packageFolder }}'
     script: |
-      filenamewithext=$(ls Microsoft.ML.OnnxRuntime*.nupkg)
+      filenamewithext=$(ls *.nupkg)
       filename=${filenamewithext%.*}
       if [ "${filename:25:7}" != "Managed" ]
       then      

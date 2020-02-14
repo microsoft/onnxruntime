@@ -53,8 +53,7 @@ def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
     
 def generate_dependencies(list, version):
-    return
-    # list.append('<dependencies>' + '<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/> </dependencies>')
+    list.append('<dependencies>' + '<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/> </dependencies>')
     
 def generate_metadata(list, args):
     metadata_list = ['<metadata>']
