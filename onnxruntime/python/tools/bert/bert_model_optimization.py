@@ -136,17 +136,6 @@ def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence
 
     return bert_model
 
-def output_model(model, output):
-    if output.endswith(".json"): # output to JSON. Only for test purpose.
-        if isinstance(model, ModelProto):
-            with open(output, "w") as out:
-                out.write(str(model))
-            logger.info("Output JSON to {}.json".format(output))
-    else:
-        with open(output, "wb") as out:
-            out.write(model.SerializeToString())
-        logger.info("Output final model to {}".format(output))
-
 def main():
     args = parse_arguments()
 
@@ -158,15 +147,13 @@ def main():
     else:
         log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
         logging_level = logging.INFO
-    
-    
     log_handler.setLevel(logging_level)
     logger.addHandler(log_handler)
     logger.setLevel(logging_level)
 
     bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16)
 
-    output_model(bert_model.model, args.output)
+    bert_model.save_model_to_file(args.output)
 
 if __name__ == "__main__":
     main()

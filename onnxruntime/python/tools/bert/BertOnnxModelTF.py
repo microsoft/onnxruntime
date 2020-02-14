@@ -16,8 +16,8 @@ from ShapeOptimizer import BertOnnxModelShapeOptimizer
 logger = logging.getLogger(__name__)
 
 class BertOnnxModelTF(BertOnnxModel):
-    def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only, verbose):
-        super().__init__(model, num_heads, hidden_size, sequence_length, verbose)
+    def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
+        super().__init__(model, num_heads, hidden_size, sequence_length)
 
     """
      Fuse Gelu with Erf into one node:
@@ -200,6 +200,11 @@ class BertOnnxModelTF(BertOnnxModel):
         self.add_nodes(nodes_to_add)
 
     def optimize_shape(self):
+        # Shape optimization requires graph with 3 known inputs.
+        if self.bert_inputs is None or len(self.bert_inputs) != 3:
+            logger.info('Skip shape optimization since the inputs are not identified by embedding layer fusion')
+            return
+
         optimizer = BertOnnxModelShapeOptimizer(self)
 
         input = self.find_graph_input(self.bert_inputs[0])
@@ -225,8 +230,9 @@ class BertOnnxModelTF(BertOnnxModel):
             enable_shape_opt = False,
             enable_reshape_opt = True,
             output_names = None,
-            batch_size=batch_size,
-            sequence_length=sequence_length)
+            batch_size = batch_size,
+            sequence_length = sequence_length,
+            verbose = False)
 
         self.model = optimizer.model
 
@@ -247,7 +253,6 @@ class BertOnnxModelTF(BertOnnxModel):
         output_name_to_node = self.output_name_to_node()
 
         nodes_to_remove = []
-        skip_layernorm_nodes = []
         layernorm_nodes = []
         for node in self.nodes():
             if node.op_type == 'Add':
@@ -302,29 +307,15 @@ class BertOnnxModelTF(BertOnnxModel):
                 weight_input = mul_node_1.input[1]
                 bias_input = sub_node_0.input[0]
 
-                if root_node.op_type == 'Add':
-                    subgraph_nodes.append(root_node)
-                    if not self.is_safe_to_fuse_nodes(subgraph_nodes, node.output, self.input_name_to_nodes(), self.output_name_to_node()):
-                        subgraph_nodes.pop()
-                    else:
-                        nodes_to_remove.append(root_node)
-                        normalize_node = onnx.helper.make_node(self.normalize_name,
-                            inputs=[root_node.input[0], root_node.input[1], weight_input, bias_input],
-                            outputs=[node.output[0]],
-                            name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm"))
-                        normalize_node.domain = "com.microsoft"
-                        skip_layernorm_nodes.extend([normalize_node])
-                        continue
-
-                normalize_node = onnx.helper.make_node('LayerNormalization',
+                normalize_node = onnx.helper.make_node(
+                    'LayerNormalization',
                     inputs=[reduce_mean_node_1.input[0], weight_input, bias_input],
-                    outputs=[node.output[0]], epsilon=epsilon)
+                    outputs=[node.output[0]])
+                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", float(epsilon))])
                 layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
-        self.add_nodes(skip_layernorm_nodes)
         self.add_nodes(layernorm_nodes)
-        logger.info(f"Fused SkipLayerNormalization count: {len(skip_layernorm_nodes)}")
         logger.info(f"Fused LayerNormalization count: {len(layernorm_nodes)}")
 
     def remove_identity(self):
@@ -542,8 +533,8 @@ class BertOnnxModelTF(BertOnnxModel):
                                 word_embedding,
                                 position_embedding,
                                 segment_embedding,
-                                normalize_node.input[2], # gamma
-                                normalize_node.input[3], # beta
+                                normalize_node.input[1], # gamma
+                                normalize_node.input[2], # beta
                                 mask_input],
                         outputs=[embed_output, mask_index],
                         name="EmbedLayer")
@@ -557,57 +548,61 @@ class BertOnnxModelTF(BertOnnxModel):
         """
         logger.info("start processing embedding layer...")
         output_name_to_node = self.output_name_to_node()
-        for node in self.nodes():
-            if node.op_type == 'SkipLayerNormalization':
-                pos_embed_path = self.match_parent_path(
-                    node,
-                    ['Reshape', 'Slice'],
-                    [ 1,         0],
-                    output_name_to_node)
-                if pos_embed_path is not None:
-                    reshape_node, slice_node = pos_embed_path
-                    initializer = self.get_initializer(slice_node.input[0])
-                    if initializer is None:
-                        continue
 
-                    temp = numpy_helper.to_array(initializer)
-                    if len(temp.shape) == 2:
-                        logger.info("Found position embedding. name:{}, shape:{}".format(initializer.name, temp.shape))
-                        position_embedding = initializer.name
+        layer_norm_nodes = self.get_nodes_by_op_type("LayerNormalization")
+        for layer_norm_node in layer_norm_nodes:
+            pos_embed_path = self.match_parent_path(
+                layer_norm_node,
+                ['Add', 'Reshape', 'Slice'],
+                [ 0,     1,         0],
+                output_name_to_node)
+            if pos_embed_path is None:
+                continue
+
+            add_node, reshape_node, slice_node = pos_embed_path
+            initializer = self.get_initializer(slice_node.input[0])
+            if initializer is None:
+                continue
+
+            temp = numpy_helper.to_array(initializer)
+            if len(temp.shape) == 2:
+                logger.info("Found position embedding. name:{}, shape:{}".format(initializer.name, temp.shape))
+                position_embedding = initializer.name
+            else:
+                logger.info("Failed to find position embedding. name:{}, shape:{}".format(initializer.name, temp.shape))
+                return
+
+            first_parent = self.get_parent(add_node, 0, output_name_to_node)
+            if first_parent is not None and first_parent.op_type == "Add":
+                embeddings = self.get_2d_initializers_from_parent_subgraphs(first_parent)
+                if len(embeddings) != 2:
+                    logger.warning("Failed to find two embeddings (word and segment) from Add node. Found {}".format(embeddings))
+                    return
+
+                word_embedding = None
+                segment_embedding = None
+                for name, shape in embeddings.items():
+                    if shape[0] == 2:
+                        segment_embedding = name
+                        logger.info("Found segment embedding. name:{}, shape:{}".format(name, shape))
                     else:
-                        logger.info("Failed to find position embedding. name:{}, shape:{}".format(initializer.name, temp.shape))
-                        return False
+                        word_embedding = name
+                        logger.info("Found words embedding. name:{}, shape:{}".format(name, shape))
 
-                    first_parent = self.get_parent(node, 0, output_name_to_node)
-                    if first_parent is not None and first_parent.op_type == "Add":
-                        embeddings = self.get_2d_initializers_from_parent_subgraphs(first_parent)
-                        if len(embeddings) != 2:
-                            logger.warning("Failed to find two embeddings (word and segment) from Add node. Found {}".format(embeddings))
-                            return False
+                if word_embedding is None or segment_embedding is None:
+                    logger.info("Failed to find both word and segment embedding")
+                    return
 
-                        word_embedding = None
-                        segment_embedding = None
-                        for name, shape in embeddings.items():
-                            if shape[0] == 2:
-                                segment_embedding = name
-                                logger.info("Found segment embedding. name:{}, shape:{}".format(name, shape))
-                            else:
-                                word_embedding = name
-                                logger.info("Found words embedding. name:{}, shape:{}".format(name, shape))
-
-                        if word_embedding is None or segment_embedding is None:
-                            logger.info("Failed to find both word and segment embedding")
-                            return False
-
-                    logger.info("Create Embedding node")
-                    self.create_embedding_subgraph(node, word_embedding, segment_embedding, position_embedding)
-                    break
+                logger.info("Create Embedding node")
+                self.create_embedding_subgraph(layer_norm_node, word_embedding, segment_embedding, position_embedding)
+                # Prune graph to remove those original embedding nodes.
+                self.prune_graph()
+                break
 
     def preprocess(self):
         self.remove_identity()
         self.process_embedding()
-        if self.bert_inputs is not None and len(self.bert_inputs) == 3:
-            self.optimize_shape()
+        self.optimize_shape()
         #TODO: remove fuse mask since we have embedding fused so fuse_attention shall handle the mask nodes.
         self.fuse_mask()
 

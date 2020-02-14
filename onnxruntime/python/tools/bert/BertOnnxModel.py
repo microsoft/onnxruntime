@@ -36,13 +36,6 @@ class BertOnnxModel(OnnxModel):
 
         self.bert_inputs = []
 
-        # constant node names
-        self.normalize_name = "SkipLayerNormalization"
-        self.attention_name = 'Attention'
-
-    def get_normalize_nodes(self):
-        return self.get_nodes_by_op_type(self.normalize_name)
-
     def normalize_children_types(self):
         return ['MatMul', 'MatMul', 'MatMul', 'SkipLayerNormalization']
 
@@ -123,7 +116,7 @@ class BertOnnxModel(OnnxModel):
 
         qkv_bias = np.stack((qb, kb, vb), axis=-2)
 
-        attention_node_name = self.create_node_name(self.attention_name)
+        attention_node_name = self.create_node_name('Attention')
 
         weight = onnx.helper.make_tensor(name=attention_node_name + '_qkv_weight',
             data_type=TensorProto.FLOAT,
@@ -144,7 +137,7 @@ class BertOnnxModel(OnnxModel):
         self.add_input(bias_input)
 
         attention_node = onnx.helper.make_node(
-            self.attention_name,
+            'Attention',
             inputs=[input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias', mask_index],
             outputs=[output],
             name=attention_node_name)
@@ -163,7 +156,8 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove = []
         attention_count = 0
 
-        for normalize_node in self.get_normalize_nodes():
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for normalize_node in skip_layer_norm_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the
             # root input for attention.
             qkv_nodes = None
@@ -461,13 +455,20 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove = []
         nodes_to_add = []
 
-        for node in self.get_normalize_nodes():
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for node in skip_layer_norm_nodes:
             if len(node.input) != 4:
                 continue
 
-            nodes = self.match_parent_path(node, ['Add', 'MatMul'], [0, None])
+            return_indice = []
+            nodes = self.match_parent_path(node, ['Add', 'MatMul'], [None, None], None, return_indice)
             if nodes is None:
                 continue
+            assert len(return_indice) == 2
+            add_input_index = return_indice[0]
+            if add_input_index >= 2:
+                continue
+
             (add, matmul) = nodes
 
             # bias should be one dimension
@@ -480,19 +481,22 @@ class BertOnnxModel(OnnxModel):
                 bias_weight = numpy_helper.to_array(initializer)
                 break
             if bias_weight is None:
+                logger.debug(f"Bias weight not found")
                 continue
             if len(bias_weight.shape) != 1:
+                logger.debug(f"Bias weight is not 1D")
                 continue
 
             subgraph_nodes = [node, add]
             if not self.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node):
+                logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
                 continue
 
             nodes_to_remove.extend(subgraph_nodes)
-            new_node = onnx.helper.make_node(self.normalize_name,
-                inputs=[matmul.output[0], node.input[1], node.input[2], node.input[3], add.input[bias_index]],
+            new_node = onnx.helper.make_node("SkipLayerNormalization",
+                inputs=[node.input[1 - add_input_index], matmul.output[0], node.input[2], node.input[3], add.input[bias_index]],
                 outputs=node.output,
-                name=self.create_node_name(self.normalize_name, self.normalize_name + "_AddBias_"))
+                name=self.create_node_name("SkipLayerNormalization", "SkipLayerNorm_AddBias_"))
             new_node.domain = "com.microsoft"
             nodes_to_add.append(new_node)
 
@@ -650,7 +654,9 @@ class BertOnnxModel(OnnxModel):
 
         # Find the first normalize node could be embedding layer.
         normalize_node = None
-        for node in self.get_normalize_nodes():
+
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for node in skip_layer_norm_nodes:
             if self.match_parent_path(node, ['Add', 'Gather'], [0, 0]) is not None:
                 if self.find_first_child_by_type(node, 'Attention', input_name_to_nodes, recursive=False) is not None:
                     normalize_node = node
@@ -824,11 +830,11 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_layer_norm(self):
         """
-         Layer Normalization will fuse Add + LayerNormalization into one node:
+         Fuse Layer Normalization subgraph into one node LayerNormalization:
               +----------------------+
               |                      |
               |                      v
-            Add --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+          [Root] --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
                      (axis=2 or -1)  |      (Y=2)   (axis=2 or -1)  (E-6 or E-12 or 0)    ^
                                      |                                               |
                                      +-----------------------------------------------+
@@ -839,11 +845,10 @@ class BertOnnxModel(OnnxModel):
               |           +-------> Sub-----------------------------------------------+
               |           |                                                           |
               |           |                                                           v
-            Add --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div  --> Mul --> Add
+          [Root] --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div  --> Mul --> Add
               |                      ^
               |                      |
               +----------------------+
-
         """
         input_name_to_nodes = self.input_name_to_nodes()
         output_name_to_node = self.output_name_to_node()
@@ -910,26 +915,43 @@ class BertOnnxModel(OnnxModel):
 
                 weight_input = mul_node.input[1 - self.input_index(div_node.output[0], mul_node)]
                 bias_input = last_add_node.input[1 - self.input_index(mul_node.output[0], last_add_node)]
-                if parent.op_type == 'Add' and self.is_safe_to_fuse_nodes([parent] + subgraph_nodes, last_add_node.output, input_name_to_nodes, output_name_to_node):
-                    nodes_to_remove.append(parent)
-                    normalize_node = onnx.helper.make_node(self.normalize_name,
-                        inputs=[parent.input[0], parent.input[1], weight_input, bias_input],
-                        outputs=[last_add_node.output[0]],
-                        name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm"))
+                normalize_node = onnx.helper.make_node('LayerNormalization',
+                    inputs=[node.input[0], weight_input, bias_input],
+                    outputs=[last_add_node.output[0]])
+                normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", add_weight)])
+                layernorm_nodes.extend([normalize_node])
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(layernorm_nodes)
+        logger.info(f"Fused LayerNormalization count: {len(layernorm_nodes)}")
+
+    def fuse_skip_layer_norm(self):
+        """
+         Fuse Add + LayerNormalization into one node: SkipLayerNormalization
+        """
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        skip_layernorm_nodes = []
+        for node in self.nodes():
+            if node.op_type == 'LayerNormalization':
+                add = self.get_parent(node, 0, output_name_to_node)
+                if add is None:
+                    continue
+
+                if add.op_type == 'Add' and self.is_safe_to_fuse_nodes([add, node], node.output, input_name_to_nodes, output_name_to_node):
+                    nodes_to_remove.extend([add, node])
+                    normalize_node = onnx.helper.make_node("SkipLayerNormalization",
+                        inputs=[add.input[0], add.input[1], node.input[1], node.input[2]],
+                        outputs=[node.output[0]],
+                        name=self.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"))
                     normalize_node.domain = "com.microsoft"
                     skip_layernorm_nodes.extend([normalize_node])
-                else:
-                    normalize_node = onnx.helper.make_node('LayerNormalization',
-                        inputs=[node.input[0], weight_input, bias_input],
-                        outputs=[last_add_node.output[0]])
-                    normalize_node.attribute.extend([onnx.helper.make_attribute("epsilon", add_weight)])
-                    layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(skip_layernorm_nodes)
-        self.add_nodes(layernorm_nodes)
         logger.info(f"Fused SkipLayerNormalization count: {len(skip_layernorm_nodes)}")
-        logger.info(f"Fused LayerNormalization count: {len(layernorm_nodes)}")
 
     def preprocess(self):
         return
@@ -949,6 +971,7 @@ class BertOnnxModel(OnnxModel):
 
         self.fuse_reshape()
 
+        self.fuse_skip_layer_norm()
         self.fuse_attention()
         self.fuse_embed_layer()
 

@@ -79,6 +79,6 @@ Most optimizations require exact match of a subgraph. That means this tool could
 Here is list of models that have been tested using this tool:
 - **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
 - **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
-- **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx 1.6.0.
+- **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx 1.6.0.
 
 If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.

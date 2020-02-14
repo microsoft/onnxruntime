@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class BertOnnxModelKeras(BertOnnxModelTF):
     def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only):
-        super().__init__(model, num_heads, hidden_size, sequence_length)
+        super().__init__(model, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
 
     def fuse_attention(self):
         input_name_to_nodes = self.input_name_to_nodes()
@@ -25,13 +25,14 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         nodes_to_remove = []
         attention_count = 0
 
-        for normalize_node in self.get_normalize_nodes():
+        skip_layer_norm_nodes = self.get_nodes_by_op_type("SkipLayerNormalization")
+        for normalize_node in skip_layer_norm_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             parent = self.get_parent(normalize_node, 0)
-            if parent is None or parent.op_type not in [self.normalize_name, "EmbedLayerNormalization"]:
+            if parent is None or parent.op_type not in ["SkipLayerNormalization", "EmbedLayerNormalization"]:
                 if parent.op_type == 'Add':
                     parent = self.get_parent(normalize_node, 1)
-                    if parent is None or parent.op_type not in [self.normalize_name, "EmbedLayerNormalization"]:
+                    if parent is None or parent.op_type not in ["SkipLayerNormalization", "EmbedLayerNormalization"]:
                         logger.debug("First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None))
                         continue
                 else:
@@ -137,17 +138,17 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         logger.info(f"Fused Attention count:{attention_count}")
 
     def fuse_embedding(self, node, output_name_to_node):
-        assert node.op_type == 'SkipLayerNormalization'
+        assert node.op_type == 'LayerNormalization'
         pos_embed_path2 = self.match_parent_path(
             node,
-            ['Add', 'Gather'],
-            [ 0,     0],
+            ['Add', 'Add', 'Gather'],
+            [ 0,     0,     0],
             output_name_to_node)
         if pos_embed_path2 is None:
             logger.info("failed to match pos_embed_path")
             return False
 
-        add_node, gather_node = pos_embed_path2
+        skip_node, add_node, gather_node = pos_embed_path2
         pos_initializer = self.get_initializer(add_node.input[1])
         if pos_initializer is None:
             return False
@@ -175,7 +176,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             logger.info("Failed to find word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
             return False
 
-        gather = self.get_parent(node, 1, output_name_to_node)
+        gather = self.get_parent(skip_node, 1, output_name_to_node)
         if gather is None or gather.op_type != "Gather":
             return False
 
@@ -202,7 +203,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         logger.info("start processing embedding layer...")
         output_name_to_node = self.output_name_to_node()
         for node in self.nodes():
-            if node.op_type == 'SkipLayerNormalization':
+            if node.op_type == 'LayerNormalization':
                 if self.fuse_embedding(node, output_name_to_node):
                     return
 

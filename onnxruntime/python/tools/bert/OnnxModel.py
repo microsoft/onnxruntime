@@ -83,7 +83,7 @@ class OnnxModel:
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
-    def get_initializer(self,name):
+    def get_initializer(self, name):
         for tensor in self.model.graph.initializer:
             if tensor.name == name:
                 return tensor
@@ -145,7 +145,8 @@ class OnnxModel:
                 parent = output_name_to_node[input]
                 if parent.op_type == parent_op_type and parent not in exclude:
                     return parent, i
-
+                else:
+                    logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")
         return None, None
 
     def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude=[], return_indice=None):
@@ -177,14 +178,16 @@ class OnnxModel:
             return parent
 
         if input_index >= len(node.input):
+            logger.debug(f"input_index {input_index} >= node inputs {len(node.input)}")
             return None
 
         parent = self.get_parent(node, input_index, output_name_to_node)
         if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
             return parent
+
         if parent is not None:
             logger.debug(f"Expect {parent_op_type}, Got {parent.op_type}")
-        
+
         return None
 
     def match_parent_path(self, node, parent_op_types, parent_input_index, output_name_to_node=None, return_indice=None):
@@ -371,7 +374,6 @@ class OnnxModel:
 
         return full_name
 
-
     def find_graph_input(self, input_name):
         for input in self.model.graph.input:
             if input.name == input_name:
@@ -550,3 +552,14 @@ class OnnxModel:
                             logger.debug(f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}")
                             return False
         return True
+
+    def save_model_to_file(self, output_path):
+        logger.info(f"Output model to {output_path}")
+
+        if output_path.endswith(".json"):
+            assert isinstance(self.model, ModelProto)
+            with open(output_path, "w") as out:
+                out.write(str(self.model))
+        else:
+            with open(output_path, "wb") as out:
+                out.write(self.model.SerializeToString())
