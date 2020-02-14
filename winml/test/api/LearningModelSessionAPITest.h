@@ -1,0 +1,47 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "test.h"
+
+struct LearningModelSesssionAPITestApi {
+  SetupTest LearningModelSessionAPITestSetup;
+  SetupTest LearningModelSessionAPITestGpuSetup;
+  SetupTest LearningModelSessionAPITestsSkipEdgeCoreSetup;
+  VoidTest CreateSessionDeviceDefault;
+  VoidTest CreateSessionDeviceCpu;
+  VoidTest CreateSessionWithModelLoadedFromStream;
+  VoidTest CreateSessionDeviceDirectX;
+  VoidTest CreateSessionDeviceDirectXHighPerformance;
+  VoidTest CreateSessionDeviceDirectXMinimumPower;
+  VoidTest AdapterIdAndDevice;
+  VoidTest EvaluateFeatures;
+  VoidTest EvaluateFeaturesAsync;
+  VoidTest EvaluationProperties;
+  VoidTest CreateSessionWithCastToFloat16InModel;
+  VoidTest DISABLED_CreateSessionWithFloat16InitializersInModel;
+  VoidTest EvaluateSessionAndCloseModel;
+  VoidTest CloseSession;
+};
+const LearningModelSesssionAPITestApi& getapi();
+
+WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelSessionAPITest, LearningModelSessionAPITestSetup)
+WINML_TEST(LearningModelSessionAPITest, CreateSessionDeviceDefault)
+WINML_TEST(LearningModelSessionAPITest,CreateSessionDeviceCpu)
+WINML_TEST(LearningModelSessionAPITest,CreateSessionWithModelLoadedFromStream)
+WINML_TEST(LearningModelSessionAPITest,EvaluateFeatures)
+WINML_TEST(LearningModelSessionAPITest,EvaluateFeaturesAsync)
+WINML_TEST(LearningModelSessionAPITest,EvaluationProperties)
+WINML_TEST(LearningModelSessionAPITest,EvaluateSessionAndCloseModel)
+WINML_TEST_CLASS_END()
+
+WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelSessionAPITestGpu, LearningModelSessionAPITestGpuSetup)
+WINML_TEST(LearningModelSessionAPITestGpu, CreateSessionDeviceDirectX)
+WINML_TEST(LearningModelSessionAPITestGpu, CreateSessionDeviceDirectXHighPerformance)
+WINML_TEST(LearningModelSessionAPITestGpu, CreateSessionDeviceDirectXMinimumPower)
+WINML_TEST(LearningModelSessionAPITestGpu, CreateSessionWithCastToFloat16InModel)
+WINML_TEST(LearningModelSessionAPITestGpu, DISABLED_CreateSessionWithFloat16InitializersInModel)
+WINML_TEST_CLASS_END()
+
+WINML_TEST_CLASS_BEGIN_WITH_SETUP(LearningModelSessionAPITestsSkipEdgeCore, LearningModelSessionAPITestsSkipEdgeCoreSetup)
+WINML_TEST(LearningModelSessionAPITestsSkipEdgeCore, AdapterIdAndDevice)
+WINML_TEST_CLASS_END()

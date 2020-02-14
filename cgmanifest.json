@@ -139,8 +139,8 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "899973df982f2d389659d9e4266efabb3da1ecc8",
-               "repositoryUrl": "https://github.com/eigenteam/eigen-git-mirror.git"
+               "commitHash": "efd9867ff0e8df23016ac6c9828d0d7bf8bec1b1",
+               "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
             }
          }
       },
@@ -247,7 +247,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "fe1790ca0df67173702f70d5646b82f48f412b99",
+               "commitHash": "498de9f761bef56a032815ee44b6e6dbe0892cc4",
                "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
             }
          }
@@ -390,7 +390,7 @@
             "type": "git"
          }
       },
-      {  
+      {
          "component": {
             "git": {
               "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
@@ -399,8 +399,8 @@
             "type": "git"
           }
       },
-      {  
-         "component":{  
+      {
+         "component":{
             "type": "other",
             "Other": {
                "Name": "Go",
@@ -450,7 +450,7 @@
       {
          "component": {
             "git": {
-               "commitHash": "ebec32ef06859b6399bf8854f18b91158c87760b",
+               "commitHash": "afebe4c9d49ed74918bf8879aaa7aa93ccc7e47c",
                "repositoryUrl": "https://github.com/microsoft/FeaturizersLibrary.git"
             },
             "type": "git"

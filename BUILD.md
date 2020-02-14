@@ -84,6 +84,7 @@ For other system requirements and other dependencies, please see [this section](
 |**Build Shared Library**|--build_shared_lib||
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
+|**Build WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library.|
 |**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
 
 
@@ -165,12 +166,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
@@ -181,6 +182,10 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 ```
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
+
+#### Jetson (ARM64 Builds)
+
+See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips related to building Onnxruntime with TensorRT Execution Provider on Jetson platforms (TX1/TX2, Nano)
 
 ---
 
@@ -549,13 +554,13 @@ git clone --recursive https://github.com/Microsoft/onnxruntime
 
 # Start the basic build
 cd /code/onnxruntime
-./build.sh --config MinSizeRel --arm --update --build
+./build.sh --config MinSizeRel --update --build
 
 # Build Shared Library
-./build.sh --config MinSizeRel --arm --build_shared_lib
+./build.sh --config MinSizeRel --build_shared_lib
 
 # Build Python Bindings and Wheel
-./build.sh --config MinSizeRel --arm --enable_pybind --build_wheel
+./build.sh --config MinSizeRel --enable_pybind --build_wheel
 
 # Build Output
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so

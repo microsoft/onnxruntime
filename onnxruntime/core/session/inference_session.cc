@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
 #include <memory>
@@ -12,7 +13,6 @@
 
 #include "core/common/logging/logging.h"
 #include "core/platform/notification.h"
-#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
@@ -53,6 +53,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/util/thread_utils.h"
 #include "core/session/inference_session_utils.h"
+#include "core/platform/ort_mutex.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -191,6 +192,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
     StartProfiling(session_options_.profile_file_prefix);
   }
 
+  telemetry_ = {};
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
 }
@@ -370,11 +372,12 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
-    // since model load was successful, we don't need to hang on to the member 'model_proto_' anymore
-    // (free up the resource if applicable - if the unique_ptr is a nullptr, reset() doesn't do anything)
-    model_proto_.reset();
+    // model_proto_ should either - 1) always have been a nullptr if the ModelProto was never parsed in the ctor (or)
+    // 2) should have become a nullptr by passing on the ownership of the ModelProto resource it was pointing to,
+    // to the Model instance
+    ORT_ENFORCE(model_proto_ == nullptr, "Failed to clear up model_proto_ in Inference Session");
 
-    event_name_ = event_name;
+    telemetry_.event_name_ = event_name;
 
   } catch (const std::exception& ex) {
     status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -449,6 +452,7 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
+    // This call will create a copy of model_proto and the constructed model instance will own the copy thereafter
     return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
@@ -485,21 +489,21 @@ common::Status InferenceSession::Load(std::istream& model_istream) {
   }
 
   auto loader = [this, &model_istream](std::shared_ptr<onnxruntime::Model>& model) {
-    ModelProto model_proto;
+    auto model_proto = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
 
     google::protobuf::io::IstreamInputStream zero_copy_input(&model_istream);
-    const bool result = model_proto.ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
+    const bool result = model_proto->ParseFromZeroCopyStream(&zero_copy_input) && model_istream.eof();
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(*model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -514,21 +518,21 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
   }
 
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
-    ModelProto model_proto;
+    auto model_proto = onnxruntime::make_unique<ONNX_NAMESPACE::ModelProto>();
 
-    const bool result = model_proto.ParseFromArray(model_data, model_data_len);
+    const bool result = model_proto->ParseFromArray(model_data, model_data_len);
     if (!result) {
       return Status(common::ONNXRUNTIME, common::INVALID_PROTOBUF,
                     "Failed to load model because protobuf parsing failed.");
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
-    LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
+    LoadInterOp(*model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     for (const auto& domain : interop_domains_) {
       AddCustomOpDomains({domain.get()});
     }
 #endif
 
-    return onnxruntime::Model::Load(model_proto, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    return onnxruntime::Model::Load(std::move(model_proto), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_);
   };
 
@@ -549,7 +553,8 @@ common::Status InferenceSession::Load() {
       AddCustomOpDomains({domain.get()});
     }
 #endif
-    return Model::Load(*this->model_proto_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+    // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
+    return Model::Load(std::move(this->model_proto_), model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                        *session_logger_);
   };
 
@@ -736,6 +741,48 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   return Status::OK();
 }
 
+static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
+  switch (type_proto.value_case()) {
+    case ::onnx::TypeProto::ValueCase::kTensorType: {
+      if (type_proto.has_tensor_type()) {
+        auto& tensor_type = type_proto.tensor_type();
+        if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+          return true;
+        }
+      }
+      break;
+    }
+    case ::onnx::TypeProto::ValueCase::kSequenceType: {
+      if (type_proto.has_sequence_type()) {
+        auto& sequence_type = type_proto.sequence_type();
+        return ModelUseFP16Helper(sequence_type.elem_type());
+      }
+      break;
+    }
+    case ::onnx::TypeProto::ValueCase::kMapType: {
+      if (type_proto.has_map_type()) {
+        auto& map_type = type_proto.map_type();
+        return ModelUseFP16Helper(map_type.value_type());
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return false;
+}
+
+static bool ModelUseFP16(const onnx::ModelProto& model_proto) {
+  auto& graph = model_proto.graph();
+  auto& inputs = graph.input();
+  for (auto& input : inputs) {
+    if (input.has_name() && input.has_type() && ModelUseFP16Helper(input.type())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -746,6 +793,8 @@ common::Status InferenceSession::Initialize() {
   try {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    const Env& env = Env::Default();
+    env.GetTelemetryProvider().LogSessionCreationStart();
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
@@ -825,10 +874,10 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // and log telemetry
-    const Env& env = Env::Default();
+    bool model_use_fp16 = ModelUseFP16(model_->ToProto());
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
                                                   model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), event_name_, execution_providers_.GetIds());
+                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_use_fp16);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
@@ -1007,6 +1056,7 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   TraceLoggingWriteStart(ortrun_activity, "OrtRun");
 #endif
   Status retval = Status::OK();
+  const Env& env = Env::Default();
 
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -1015,6 +1065,14 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+    }
+
+    // check the frequency to send Evalutaion Stop event
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_evalutation_start_) > telemetry_.kDurationBetweenSendingEvaluationStart) {
+      env.GetTelemetryProvider().LogEvaluationStart();
+      // reset counters
+      telemetry_.time_sent_last_evalutation_start_ = std::chrono::high_resolution_clock::now();
+      telemetry_.isEvaluationStart = true;
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
@@ -1072,20 +1130,24 @@ Status InferenceSession::Run(const RunOptions& run_options, const std::vector<st
   --current_num_runs_;
 
   // keep track of telemetry
-  ++total_runs_since_last_;
-  total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+  ++telemetry_.total_runs_since_last_;
+  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(time_sent_last_) > kDurationBetweenSending) {
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
     // send the telemetry
-    const Env& env = Env::Default();
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, total_runs_since_last_, total_run_duration_since_last_);
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
     // reset counters
-    time_sent_last_ = std::chrono::high_resolution_clock::now();
-    total_runs_since_last_ = 0;
-    total_run_duration_since_last_ = 0;
+    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+    telemetry_.total_runs_since_last_ = 0;
+    telemetry_.total_run_duration_since_last_ = 0;
   }
 
+  // check the frequency to send Evalutaion Stop event
+  if (telemetry_.isEvaluationStart) {
+    env.GetTelemetryProvider().LogEvaluationStop();
+    telemetry_.isEvaluationStart = false;
+  }
   // send out profiling events (optional)
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "model_run", tp);

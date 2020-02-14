@@ -29,7 +29,7 @@
 
 #define ENABLE_GRAPH_COMPILATION
 
-using namespace winrt::Windows::AI::MachineLearning::implementation;
+using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
 {
@@ -129,6 +129,12 @@ namespace Dml
         }
     }
 
+// ORT release pipelines agent pools do not have 19H1 SDK installed which defines D3D_FEATURE_LEVEL_1_0_CORE.
+// Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK 
+// using the command line installer tool with VS2019
+// Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
+#define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
+
     ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
@@ -138,7 +144,7 @@ namespace Dml
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
-            D3D_FEATURE_LEVEL_1_0_CORE,
+            D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE,
             D3D_FEATURE_LEVEL_11_0,
             D3D_FEATURE_LEVEL_11_1,
             D3D_FEATURE_LEVEL_12_0,
@@ -153,7 +159,7 @@ namespace Dml
             sizeof(featureLevels)
             ));
 
-        m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE);
+        m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
@@ -674,7 +680,7 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
-    std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
+    std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> 
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
         return m_internalRegInfoMap;

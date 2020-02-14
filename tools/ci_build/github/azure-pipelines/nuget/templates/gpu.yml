@@ -7,7 +7,7 @@ jobs:
   parameters:
     AgentPool : 'Win-GPU-2019'
     ArtifactName: 'drop-nuget'    
-    JobName: 'Windows_CI_GPU_Dev'
+    JobName: 'Windows_CI_GPU_CUDA_Dev'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --use_featurizers --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --msvc_toolset 14.16 --use_cuda --cuda_version=10.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.6.5.32\cuda"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
@@ -26,6 +26,8 @@ jobs:
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
 - job: 'Linux_CI_GPU_Dev'
+  workspace:
+    clean: all
   pool: $(AgentPoolLinux)
   steps:    
     - template: ../../templates/set-version-number-variables-step.yml
@@ -38,7 +40,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_featurizers --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0 --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0 --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
     - script: |
        set -e -x
        mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
@@ -60,9 +62,11 @@ jobs:
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
+  workspace:
+    clean: all
   pool: 'Win-GPU-2019'
   dependsOn:
-  - Windows_CI_GPU_Dev
+  - Windows_CI_GPU_CUDA_Dev
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:  
