@@ -18,6 +18,7 @@
     <!--- packaging properties -->
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
+    <PackageVersion Condition=" '$(PackageVersion)' == '' ">dev</OrtPackageId>
     <Version>$(PackageVersion)</Version>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
@@ -177,7 +178,7 @@
     />
 
   </ItemGroup>
-   
+
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE"/>
     <PropertiesFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\props.xml"/>
@@ -188,8 +189,9 @@
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
     <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
+
   </Target>
-  
+
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All"/>
     <PackageReference Include="System.Memory" Version="4.5.3" />
