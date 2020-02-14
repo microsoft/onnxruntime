@@ -19,14 +19,14 @@ const int CPU_ALLOCATOR_DEVICE_ID = 0;
 // Information needed to construct CUDA execution providers.
 struct CUDAExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
+  size_t cuda_mem_limit{std::numeric_limits<size_t>::max()};
+  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
 };
 
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
-  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info,
-                                 size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                 ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+  explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;

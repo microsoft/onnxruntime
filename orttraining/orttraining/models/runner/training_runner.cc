@@ -152,13 +152,14 @@ Status TrainingRunner::Initialize() {
 
 #ifdef USE_CUDA
   if (params_.use_cuda) {
-    CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(params_.mpi_context.local_rank)};
+    CUDAExecutionProviderInfo xp_info;
+    xp_info.device_id = static_cast<OrtDevice::DeviceId>(params_.mpi_context.local_rank);
+    if (params_.cuda_mem_limit_in_gb > 0) {
+      xp_info.cuda_mem_limit = static_cast<size_t>(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
+    }
     auto cuda_xp = onnxruntime::make_unique<CUDAExecutionProvider>(xp_info);
     pinned_allocator_ = cuda_xp->GetAllocator(0, OrtMemTypeCPUOutput);
-    if (params_.cuda_mem_limit_in_gb > 0)
-      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info, (size_t)(params_.cuda_mem_limit_in_gb * 1024 * 1024 * 1024))));
-    else
-      ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+    ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(cuda_xp)));
   }
 #endif
 

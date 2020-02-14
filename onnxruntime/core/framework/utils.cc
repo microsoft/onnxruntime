@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/utils.h"
 
 #include <iomanip>
+
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
@@ -18,7 +19,6 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/graph/onnx_protobuf.h"
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {

@@ -56,7 +56,6 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
-option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
@@ -213,7 +212,7 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -303,13 +302,12 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
-  endif()  
+  endif()
 endif()
 
-if(onnxruntime_USE_NSYNC)
+if(NOT WIN32)
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/nsync EXCLUDE_FROM_ALL)
 endif()
-
 # External dependencies
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
@@ -330,16 +328,16 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
   message("Use protobuf from preinstalled system lib")
   if (onnxruntime_USE_FULL_PROTOBUF)
     set(PROTOBUF_LIB protobuf::libprotobuf)
-    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS 
+    #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a 
+      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
       #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
       message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
-  endif()  
+  endif()
 else()
   message("Use protobuf from submodule")
   # use protobuf as a submodule
@@ -407,7 +405,7 @@ set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 add_subdirectory(external/date EXCLUDE_FROM_ALL)
 
 if(onnxruntime_PREFER_SYSTEM_LIB)
-  find_package(re2)  
+  find_package(re2)
 endif()
 
 if(NOT TARGET re2::re2)
@@ -546,7 +544,7 @@ if (WIN32)
             # disable warning because there are many occurrences from test macros
             " /wd6326 " # potential comparison of a constant with another constant
         )
-    endif()  
+    endif()
 
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
@@ -746,9 +744,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --default-stream legacy")
-
   if (NOT WIN32)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --expt-relaxed-constexpr --compiler-options -fPIC")
   endif()
@@ -756,7 +752,7 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   if (WIN32)
-    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:nvinfer.dll")
+    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:nvinfer.dll /DELAYLOAD:nvinfer_plugin.dll")
   else()
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
   endif()
@@ -854,20 +850,23 @@ if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES Shlwapi)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
-  if(onnxruntime_USE_NSYNC)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
-  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-
+# Default version parts for Windows.AI.MachineLearning.dll and onnxruntime.dll in non-ADO pipeline local builds
+set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
+set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product version.")
+set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
+set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
+set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 if (onnxruntime_USE_WINML)
-  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a 
+  # WINML uses and depends on the shared lib.  Note:  You can build WINML without DML and you will get a
   # CPU only WINML
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     message(
-        FATAL_ERROR 
+        FATAL_ERROR
         "Option onnxruntime_USE_WINML can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
   include(wil.cmake)

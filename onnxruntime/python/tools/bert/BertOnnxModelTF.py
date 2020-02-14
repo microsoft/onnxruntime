@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
+import logging
 import onnx
 import sys
 import argparse
@@ -11,9 +12,90 @@ from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from BertOnnxModel import BertOnnxModel
 
+logger = logging.getLogger(__name__)
+
 class BertOnnxModelTF(BertOnnxModel):
     def __init(self, model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only, verbose):
         super().__init__(model, num_heads, hidden_size, sequence_length, verbose)
+
+    """
+     Fuse Gelu with Erf into one node:
+                   +----------------------------------------------+
+                   |                                              |
+                   |                                              v
+                [root] --> Mul -----> Erf    -->   Add --> Mul -->Mul
+                           (A=0.7071067690849304)  (B=1)  (B=0.5)
+
+     Note that constant input for Add and Mul could be first or second input: like either A=0.5 or B=0.5 is fine.
+    """
+    def fuse_gelu_with_elf(self, gelu_op_name):
+        input_name_to_nodes = self.input_name_to_nodes()
+        output_name_to_node = self.output_name_to_node()
+
+        nodes_to_remove = []
+        nodes_to_add = []
+
+        for node in self.get_nodes_by_op_type('Erf'):
+            erf_node = node
+
+            if erf_node.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[erf_node.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Add':
+                continue
+            add_after_erf = children[0]
+
+            if not self.has_constant_input(add_after_erf, 1):
+                continue
+
+            if add_after_erf.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[add_after_erf.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Mul':
+                continue
+            mul_half = children[0]
+            
+            if not self.has_constant_input(mul_half, 0.5):
+                continue
+
+            first_mul = self.match_parent(erf_node, 'Mul', 0, output_name_to_node)
+            if first_mul is None:
+                continue
+
+            i = self.find_constant_input(first_mul, 0.7071067690849304, delta=0.001)
+            if i < 0:
+                continue
+
+            root_node = self.get_parent(first_mul, 0 if i == 1 else 1, output_name_to_node)
+            if root_node is None:
+                continue
+
+            if mul_half.output[0] not in input_name_to_nodes:
+                continue
+            children = input_name_to_nodes[mul_half.output[0]]
+            if len(children) != 1 or children[0].op_type != 'Mul':
+                continue
+            last_mul = children[0]
+
+            if not (last_mul.input[0] == root_node.output[0] or last_mul.input[1] == root_node.output[0]):
+                continue
+
+            subgraph_nodes = [first_mul, erf_node, add_after_erf, mul_half, last_mul]
+            if not self.is_safe_to_fuse_nodes(subgraph_nodes, [last_mul.output[0]], input_name_to_nodes, output_name_to_node):
+                continue
+
+            nodes_to_remove.extend(subgraph_nodes)
+            gelu_node = onnx.helper.make_node(gelu_op_name,
+                inputs=[root_node.output[0]],
+                outputs=[last_mul.output[0]])
+            gelu_node.domain = "com.microsoft"
+            nodes_to_add.append(gelu_node)
+
+        self.remove_nodes(nodes_to_remove)
+        self.add_nodes(nodes_to_add)
+        if len(nodes_to_add) > 0:
+            logger.info("Fused {} count:{}".format('FastGelu (approximation)' if gelu_op_name == 'FastGelu' else 'Gelu', len(nodes_to_add)))
+
 
     """
      Fuse Gelu with tanh into one node:
@@ -111,7 +193,7 @@ class BertOnnxModelTF(BertOnnxModel):
             nodes_to_add.append(gelu_node)
 
         if len(nodes_to_add) > 0:
-            print("Fused {} count: {}".format('Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
+            logger.info("Fused {} count: {}".format('Gelu (FastGelu fits better)' if gelu_op_name == 'Gelu' else 'FastGelu', len(nodes_to_add)))
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -151,10 +233,24 @@ class BertOnnxModelTF(BertOnnxModel):
         nodes_to_add.append(new_node)
 
     def __fuse_reshape_after_sotfmax(self, reshape_node, nodes_to_remove, nodes_to_add):
+        # Check that it is reshape after softmax.
+        path = self.match_parent_path(reshape_node, ['Transpose', 'MatMul', 'Softmax', 'Add'], [0, 0, 0, 0])
+        if path is None:
+            return
+
         path0 = self.match_parent_path(reshape_node, ['Cast', 'Concat', 'Unsqueeze', 'Mul'], [1, 0, 0, 0])
         if path0 is None:
             return
         cast_node, concat_node, unsqueeze_node, mul_node = path0
+
+        # Verify that cast has attribute "to" = 7
+        is_good_cast = False
+        for att in cast_node.attribute:
+            if att.name == 'to' and att.i == 7:
+                is_good_cast = True
+                break
+        if not is_good_cast:
+            return
 
         if not len(concat_node.input) == 2:
             return
@@ -184,7 +280,7 @@ class BertOnnxModelTF(BertOnnxModel):
 
     def __fuse_reshape_after_normalize(self, reshape_node, nodes_to_remove):
         parent = self.get_parent(reshape_node, 0)
-        if not parent.op_type == self.normalize_name:
+        if parent is None or not parent.op_type == self.normalize_name:
             return
 
         parent_path = self.match_parent_path(
@@ -199,6 +295,9 @@ class BertOnnxModelTF(BertOnnxModel):
 
         self.replace_input_of_all_nodes(reshape_node.output[0], reshape_node.input[0])
 
+
+
+
     def fuse_reshape(self):
         nodes = self.nodes()
         input_name_to_nodes = self.input_name_to_nodes()
@@ -212,7 +311,7 @@ class BertOnnxModelTF(BertOnnxModel):
             self.__fuse_reshape_after_sotfmax(reshape_node, nodes_to_remove, nodes_to_add)
             self.__fuse_reshape_after_normalize(reshape_node, nodes_to_remove)
 
-        print("Count of nodes removed for Reshape fuse:", len(nodes_to_remove))
+        logger.info(f"Count of nodes removed for Reshape fuse:{len(nodes_to_remove)}")
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
@@ -238,51 +337,81 @@ class BertOnnxModelTF(BertOnnxModel):
         layernorm_nodes = []
         for node in self.nodes():
             if node.op_type == 'Add':
+                return_indice=[]
                 parent_nodes = self.match_parent_path(
                     node,
                     ['Sub', 'Mul', 'Mul', 'Reciprocal', 'Sqrt', 'Add', 'ReduceMean', 'Mul', 'Sub', 'ReduceMean'],
-                    [    1,     1,     1,            0,      0,     0,            0,      0,    0,            1],
-                     output_name_to_node)
+                    [   1,     1,   None,            0,      0,     0,         None,     0,    0,          None],
+                    output_name_to_node,
+                    return_indice=return_indice)
+
                 if parent_nodes is None:
+                    continue
+
+                assert len(return_indice) == 3
+                if not (return_indice[0] in [0, 1] and return_indice[1] in [0, 1] and return_indice[2] in [0, 1]):
+                    logger.debug("return indice is exepected in [0, 1], but got {return_indice}")
                     continue
 
                 sub_node_0, mul_node_0, mul_node_1, reciprocol_node, sqrt_node, add_node_0, reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1 = parent_nodes
 
-                mul_node_3 = self.get_parent(node, 0, output_name_to_node)
+                mul_node_3 = self.match_parent(node, 'Mul', 0, output_name_to_node)
                 if mul_node_3 is None:
+                    logger.debug("mul_node_3 not found")
                     continue
 
                 root_node = self.get_parent(reduce_mean_node_1, 0, output_name_to_node)
                 if root_node is None:
+                    logger.debug("root node is none")
                     continue
 
-                i, add_weight = self.get_constant_input(add_node_0)
-                #if add_weight is None or add_weight <= 0 or add_weight > 1.0E-5:
-                #    continue
+                i, epsilon = self.get_constant_input(add_node_0)
+                if epsilon is None or epsilon <= 0 or epsilon > 1.0E-5:
+                    logger.debug("epsilon is not matched")
+                    continue
 
-                nodes_to_remove.extend([node, sub_node_0, mul_node_0, mul_node_1, reciprocol_node, sqrt_node, add_node_0, reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1,mul_node_3])
+                if reduce_mean_node_1.input[0] not in mul_node_3.input or reduce_mean_node_1.input[0] not in sub_node_1.input:
+                    logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
+                    continue
+
+                if mul_node_2.input[0] != mul_node_2.input[1]:
+                    logger.debug("mul_node_2 shall have two same inputs")
+                    continue
+
+                subgraph_nodes = [node, sub_node_0, mul_node_0, mul_node_1, reciprocol_node, sqrt_node, add_node_0, reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1,mul_node_3]
+                if not self.is_safe_to_fuse_nodes(subgraph_nodes, node.output, self.input_name_to_nodes(), self.output_name_to_node()):
+                    logger.debug("not safe to fuse layer normalization")
+                    continue
+
+                nodes_to_remove.extend(subgraph_nodes)
 
                 weight_input = mul_node_1.input[1]
                 bias_input = sub_node_0.input[0]
+
                 if root_node.op_type == 'Add':
-                    nodes_to_remove.append(root_node)
-                    normalize_node = onnx.helper.make_node(self.normalize_name,
-                        inputs=[root_node.input[0], root_node.input[1], weight_input, bias_input],
-                        outputs=[node.output[0]],
-                        name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm"))
-                    normalize_node.domain = "com.microsoft"
-                    skip_layernorm_nodes.extend([normalize_node])
-                else:
-                    normalize_node = onnx.helper.make_node('LayerNormalization',
-                        inputs=[reduce_mean_node_1.input[0], weight_input, bias_input],
-                        outputs=[node.output[0]], epsilon=add_weight)
-                    layernorm_nodes.extend([normalize_node])
+                    subgraph_nodes.append(root_node)
+                    if not self.is_safe_to_fuse_nodes(subgraph_nodes, node.output, self.input_name_to_nodes(), self.output_name_to_node()):
+                        subgraph_nodes.pop()
+                    else:
+                        nodes_to_remove.append(root_node)
+                        normalize_node = onnx.helper.make_node(self.normalize_name,
+                            inputs=[root_node.input[0], root_node.input[1], weight_input, bias_input],
+                            outputs=[node.output[0]],
+                            name=self.create_node_name(self.normalize_name, name_prefix="SkipLayerNorm"))
+                        normalize_node.domain = "com.microsoft"
+                        skip_layernorm_nodes.extend([normalize_node])
+                        continue
+
+                normalize_node = onnx.helper.make_node('LayerNormalization',
+                    inputs=[reduce_mean_node_1.input[0], weight_input, bias_input],
+                    outputs=[node.output[0]], epsilon=epsilon)
+                layernorm_nodes.extend([normalize_node])
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(skip_layernorm_nodes)
         self.add_nodes(layernorm_nodes)
-        print("Fused SkipLayerNormalization count:", len(skip_layernorm_nodes))
-        print("Fused LayerNormalization count:", len(layernorm_nodes))
+        logger.info(f"Fused SkipLayerNormalization count: {len(skip_layernorm_nodes)}")
+        logger.info(f"Fused LayerNormalization count: {len(layernorm_nodes)}")
 
     def remove_identity(self):
         nodes_to_remove = []
@@ -292,7 +421,7 @@ class BertOnnxModelTF(BertOnnxModel):
                     self.replace_input_of_all_nodes(node.output[0], node.input[0])
                     nodes_to_remove.append(node)
         self.remove_nodes(nodes_to_remove)
-        print("Removed Identity count:", len(nodes_to_remove))
+        logger.info(f"Removed Identity count: {len(nodes_to_remove)}")
 
     def fuse_word_embedding(self):
         nodes_to_remove = []
@@ -319,7 +448,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 nodes_to_remove.extend([reshape_node_0, cast_node_0, concat_node, unsqueeze_node, cast_node_1, squeeze_node, slice_node, cast_node_2, shape_node, reshape_node_2, node])
 
         self.remove_nodes(nodes_to_remove)
-        print("Fused word embedding" if len(nodes_to_remove) > 0 else "Failed to fuse word embedding")
+        logger.info("Fused word embedding" if len(nodes_to_remove) > 0 else "Failed to fuse word embedding")
 
     def fuse_segment_embedding(self):
         nodes_to_remove = []
@@ -328,11 +457,16 @@ class BertOnnxModelTF(BertOnnxModel):
                 data_path = self.match_parent_path(node, ['MatMul', 'OneHot', 'Reshape'], [0, 0, 0])
                 if data_path is None:
                     continue
-                matmul_node, onehot_node, reshape_node_0 = data_path
-                concat_node_0 = self.get_parent(onehot_node, 2, self.output_name_to_node())
-                if not concat_node_0.op_type == 'Concat':
-                    continue
 
+                matmul_node, onehot_node, reshape_node_0 = data_path
+
+                subgraph_nodes = [matmul_node, onehot_node, reshape_node_0]
+                if self.get_initializer(onehot_node.input[2]) is None:
+                    concat_node_0 = self.get_parent(onehot_node, 2)
+                    if concat_node_0 is None or concat_node_0.op_type != 'Concat':
+                        continue
+                    subgraph_nodes.append(concat_node_0)
+                    
                 shape_path = self.match_parent_path(
                     node,
                     ['Cast', 'Concat', 'Unsqueeze', 'Cast', 'Squeeze', 'Slice', 'Cast', 'Shape', 'Gather'],
@@ -349,18 +483,13 @@ class BertOnnxModelTF(BertOnnxModel):
                     outputs=node.output,
                     name='segment_embedding_gather')
 
-                nodes_to_remove.extend([
-                    matmul_node,
-                    onehot_node,
-                    reshape_node_0,
-                    concat_node_0
-                ])
+                nodes_to_remove.extend(subgraph_nodes)
 
                 nodes_to_remove.extend([cast_node_0, concat_node_1, unsqueeze_node, cast_node_1, squeeze_node, slice_node, cast_node_2, shape_node, node])
                 self.add_node(gather_node)
 
         self.remove_nodes(nodes_to_remove)
-        print("Fused segment embedding" if len(nodes_to_remove) > 0 else "Failed to fuse segment embedding")
+        logger.info("Fused segment embedding" if len(nodes_to_remove) > 0 else "Failed to fuse segment embedding")
 
     def fuse_mask(self):
         nodes_to_remove = []
@@ -408,7 +537,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 self.add_node(unsqueeze_added_2)
 
         self.remove_nodes(nodes_to_remove)
-        print("Fused mask" if len(nodes_to_remove) > 0 else "Failed to fuse mask")
+        logger.info("Fused mask" if len(nodes_to_remove) > 0 else "Failed to fuse mask")
 
     def preprocess(self):
         self.remove_identity()

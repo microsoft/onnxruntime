@@ -53,7 +53,6 @@ template <typename T>
 const OrtApi& Global<T>::api_ = *OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
-
 // This returns a reference to the OrtApi interface in use, in case someone wants to use the C API functions
 inline const OrtApi& GetApi() { return Global<void>::api_; }
 
@@ -71,6 +70,7 @@ ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
 ORT_DEFINE_RELEASE(TypeInfo);
 ORT_DEFINE_RELEASE(Value);
+ORT_DEFINE_RELEASE(ModelMetadata);
 
 // This is used internally by the C++ API. This is the common base class used by the wrapper objects.
 template <typename T>
@@ -82,7 +82,7 @@ struct Base {
   ~Base() { OrtRelease(p_); }
 
   operator T*() { return p_; }
-  operator const T*() const { return p_; }
+  operator const T *() const { return p_; }
 
   T* release() {
     T* p = p_;
@@ -118,6 +118,7 @@ struct MemoryInfo;
 struct Env;
 struct TypeInfo;
 struct Value;
+struct ModelMetadata;
 
 struct Env : Base<OrtEnv> {
   Env(std::nullptr_t) {}
@@ -186,6 +187,18 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& Add(OrtCustomOpDomain* custom_op_domain);
 };
 
+struct ModelMetadata : Base<OrtModelMetadata> {
+  explicit ModelMetadata(std::nullptr_t) {}
+  explicit ModelMetadata(OrtModelMetadata* p) : Base<OrtModelMetadata>{p} {}
+
+  char* GetProducerName(OrtAllocator* allocator) const;
+  char* GetGraphName(OrtAllocator* allocator) const;
+  char* GetDomain(OrtAllocator* allocator) const;
+  char* GetDescription(OrtAllocator* allocator) const;
+  char* LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const;
+  int64_t GetVersion() const;
+};
+
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
@@ -205,6 +218,8 @@ struct Session : Base<OrtSession> {
   char* GetInputName(size_t index, OrtAllocator* allocator) const;
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;
+  char* EndProfiling(OrtAllocator* allocator) const;
+  ModelMetadata GetModelMetadata() const;
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
@@ -274,7 +289,7 @@ struct AllocatorWithDefaultOptions {
   AllocatorWithDefaultOptions();
 
   operator OrtAllocator*() { return p_; }
-  operator const OrtAllocator*() const { return p_; }
+  operator const OrtAllocator *() const { return p_; }
 
   void* Alloc(size_t size);
   void Free(void* p);

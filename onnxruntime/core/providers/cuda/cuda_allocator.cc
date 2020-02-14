@@ -36,8 +36,8 @@ void* CUDAAllocator::Alloc(size_t size) {
   CheckDevice(true);
   void* p = nullptr;
   if (size > 0) {
-    //Return nullptr when allocation failed. Don't throw exception, the bfc arena will try to adjust the request size.
-    CUDA_CALL(cudaMalloc((void**)&p, size));
+    //BFCArena was updated recently to handle the exception and adjust the request size
+    CUDA_CALL_THROW(cudaMalloc((void**)&p, size));
   }
   return p;
 }
@@ -59,7 +59,7 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     CUDA_CALL_THROW(cudaMallocHost((void**)&p, size));
- }
+  }
   return p;
 }
 

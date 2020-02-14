@@ -24,8 +24,9 @@ uint32_t GenerateRandomSeedFromTime() {
 }  // namespace
 
 uint32_t GetStaticRandomSeed() {
+  uint64_t init = g_initial_random_seed.load();
   static const uint32_t k_random_seed{
-      [init = g_initial_random_seed.load()]() {
+      [init]() {
         return init != k_generate_random_seed_value ? static_cast<uint32_t>(init) : GenerateRandomSeedFromTime();
       }()};
   return k_random_seed;

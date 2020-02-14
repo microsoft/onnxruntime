@@ -4,16 +4,15 @@
 #pragma once
 
 #include <vector>
-#include <condition_variable>
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/platform/ort_mutex.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
