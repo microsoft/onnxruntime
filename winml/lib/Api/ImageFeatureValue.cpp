@@ -155,8 +155,8 @@ BitmapBounds ImageFeatureValue::CenterAndCropBounds(
   // TODO: Do we allow smaller images?
   WINML_THROW_HR_IF_FALSE_MSG(
       WINML_ERR_INVALID_BINDING,
-      (bounds.X >= 0 && bounds.X <= m_widths[idx]) &&
-          (bounds.Y >= 0 && bounds.Y <= m_heights[idx]),
+      (bounds.X >= 0 && bounds.Width <= m_widths[idx]) &&
+          (bounds.Y >= 0 && bounds.Height <= m_heights[idx]),
       "Failed to center crop the provided input image. The calculated bounds exceed the dimensions of the image, or do not match the model inputs dimensions.");
 
   return bounds;
