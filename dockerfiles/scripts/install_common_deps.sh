@@ -8,6 +8,8 @@ apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libcurl4-openssl-dev \
         libssl-dev \
+        libprotoc-dev \
+        protobuf-compiler \
         python3-dev
 
 # Dependencies: conda
