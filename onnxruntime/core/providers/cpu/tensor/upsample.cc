@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
 #include <sstream>
 
@@ -298,6 +299,7 @@ void UpsampleBilinear(int64_t batch_size,
                       const T* Xdata,
                       T* Ydata,
                       AllocatorPtr& alloc,
+                      concurrency::ThreadPool* thread_pool,
                       GetOriginalCoordinateFunc get_original_coordinate) {
   std::vector<float> y_original;
   std::vector<float> x_original;
@@ -361,32 +363,37 @@ void UpsampleBilinear(int64_t batch_size,
     }
   }
 
-  for (int64_t n = 0; n < batch_size; ++n) {
-    for (int64_t c = 0; c < num_channels; ++c) {
-      for (int64_t y = 0; y < output_height; ++y) {
-        for (int64_t x = 0; x < output_width; ++x) {
-          // when use_extrapolation is set and original index of x or y is out of the dim range
-          // then use extrapolation_value as the output value.
-          if (use_extrapolation &&
-              ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-            Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
-            continue;
-          }
-
-          T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
-          T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
-          T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
-          T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
-
-          Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
-                                                       dx1[x] * dy2[y] * X21 +
-                                                       dx2[x] * dy1[y] * X12 +
-                                                       dx1[x] * dy1[y] * X22);
+  const auto interpolate = [&](int32_t index) {
+    const T* X = Xdata + index * input_height * input_width;
+    T* Y = Ydata + index * output_height * output_width;
+    for (int64_t y = 0; y < output_height; ++y) {
+      for (int64_t x = 0; x < output_width; ++x) {
+        // when use_extrapolation is set and original index of x or y is out of the dim range
+        // then use extrapolation_value as the output value.
+        if (use_extrapolation &&
+            ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
+            (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
+          Y[output_width * y + x] = static_cast<T>(extrapolation_value);
+          continue;
         }
+
+        T X11 = X[input_width_mul_y1[y] + in_x1[x]];
+        T X21 = X[input_width_mul_y1[y] + in_x2[x]];
+        T X12 = X[input_width_mul_y2[y] + in_x1[x]];
+        T X22 = X[input_width_mul_y2[y] + in_x2[x]];
+
+        Y[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
+                                                    dx1[x] * dy2[y] * X21 +
+                                                    dx2[x] * dy1[y] * X12 +
+                                                    dx1[x] * dy1[y] * X22);
       }
-      Xdata += input_height * input_width;
-      Ydata += output_width * output_height;
+    }
+  };
+  if (thread_pool) {
+    thread_pool->ParallelFor(static_cast<int32_t>(batch_size * num_channels), interpolate);
+  } else {
+    for (int64_t i = 0; i < batch_size * num_channels; i++) {
+      interpolate(i);
     }
   }
 }
@@ -638,10 +645,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+      concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
       UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                        is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
                        use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                       Y->template MutableData<T>(), alloc, get_original_coordinate_);
+                       Y->template MutableData<T>(), alloc, thread_pool, get_original_coordinate_);
       return Status::OK();
     }
     case UpsampleMode::CUBIC: {
