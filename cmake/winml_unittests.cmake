@@ -89,12 +89,12 @@ get_winml_test_api_src(${WINML_TEST_SRC_DIR} winml_test_api_src)
 add_winml_test(
   TARGET winml_test_api
   SOURCES ${winml_test_api_src}
-  LIBS winml_test_common
+  LIBS winml_test_common delayimp.lib
 )
 target_compile_definitions(winml_test_api PRIVATE BUILD_GOOGLE_TEST)
 target_precompiled_header(winml_test_api testPch.h)
 
-target_link_options(winml_test_api PRIVATE /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+target_link_options(winml_test_api PRIVATE /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
 
 get_winml_test_scenario_src(${WINML_TEST_SRC_DIR} winml_test_scenario_src winml_test_scenario_libs)
 add_winml_test(
@@ -105,7 +105,7 @@ add_winml_test(
 target_precompiled_header(winml_test_scenario testPch.h)
 target_compile_definitions(winml_test_scenario PRIVATE BUILD_GOOGLE_TEST)
 
-target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
