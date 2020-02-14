@@ -6,7 +6,7 @@ steps:
    powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
    powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
    set PATH=%CD%;%PATH%
-   FOR /R %%i IN (*.nupkg) do ( 
+    FOR /F "usebackq tokens=*" %%i in (`dir /a:-d /b /s *.nupkg ^| findstr /v "[\\][^\\]*Managed[^\\]*$"` ) do (
        rename %%~ni.nupkg %%~ni.zip
        unzip %%~ni.zip -d %%~ni
        del /Q %%~ni.zip
@@ -33,5 +33,5 @@ steps:
    ) 
    popd
    copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-  displayName: 'Bundle NuGet and other binaries'
+  displayName: 'Bundle Native NuGet and other binaries'
 

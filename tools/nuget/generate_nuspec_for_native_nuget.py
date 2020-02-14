@@ -12,8 +12,9 @@ def parse_arguments():
     parser.add_argument("--package_name", required=True, help="ORT package name. Eg: Microsoft.ML.OnnxRuntime.Gpu")
     parser.add_argument("--package_version", required=True, help="ORT package version. Eg: 1.0.0")
     parser.add_argument("--target_architecture", required=True, help="Eg: x64")
-    parser.add_argument("--native_build_path", required=True, help="Path where the generated nuspec is to be placed.")        
-    parser.add_argument("--sources_path", required=True, help="Path where the generated nuspec is to be placed.")        
+    parser.add_argument("--build_config", required=True, help="Eg: RelWithDebInfo")
+    parser.add_argument("--native_build_path", required=True, help="Native build directory.")            
+    parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")        
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")        
 
     return parser.parse_args()
@@ -138,7 +139,7 @@ def generate_files(list, args):
     files_list.append('</files>')
     
     list += files_list
-        
+
 def generate_nuspec(args):
     lines = ['<?xml version="1.0"?>']
     lines.append('<package>')
@@ -147,12 +148,21 @@ def generate_nuspec(args):
     lines.append('</package>')
     return lines
 
+def is_windows():
+    return sys.platform.startswith("win")
+    
 def main():
+    if not is_windows():
+        raise Exception('Native Nuget generation is currently supported only on Windows')
+    
     # Parse arguments
     args = parse_arguments()
+
+    # Generate nuspec 
     lines = generate_nuspec(args)
-        
-    with open('NativeNuget.nuspec', 'w') as f:
+
+    # Create the nuspec needed to generate the Nuget       
+    with open(os.path.join(args.native_build_path, 'NativeNuget.nuspec'), 'w') as f:
         for line in lines:
             f.write(line)
             f.write('\n')
