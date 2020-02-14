@@ -16,6 +16,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fence.h"
 #include "core/platform/env.h"
+#include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "onnx/shape_inference/implementation.h"
 #include "cuda_runtime_api.h"
@@ -914,7 +915,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           buffers[i] = const_cast<int32_t*>(ort.GetTensorData<int32_t>(input_tensor));
         } else if (tensor_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-          int input_dim_size = 1;
+          SafeInt<int> input_dim_size = 1;
           for (int j = 0, end = nb_dims; j < end; ++j) {
             input_dim_size *= tensor_shape[j];
           }
@@ -952,10 +953,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
           buffers[i + num_binding_inputs] = ort.GetTensorMutableData<int32_t>(output_tensor[i]);
         } else if (output_types[i] == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
+          SafeInt<int> output_dim_size(output_dim_sizes[i]);
           for (int j = 0, end = nb_dims; j < end; ++j) {
-            output_dim_sizes[i] *= dimensions.d[j];
+            output_dim_size *= dimensions.d[j];
           }
-          CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[i + num_binding_inputs], output_dim_sizes[i] * sizeof(int32_t)));
+          CUDA_RETURN_IF_ERROR(cudaMalloc(&buffers[i + num_binding_inputs], output_dim_size * sizeof(int32_t)));
+          output_dim_sizes[i] = output_dim_size;
         } else {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP output onnx tensor data type: " + std::to_string(output_types[i]) + " not supported.");

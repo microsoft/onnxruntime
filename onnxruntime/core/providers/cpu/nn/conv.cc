@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/conv.h"
+
+#include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -65,7 +67,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  auto col_data = alloc->Alloc(sizeof(T) * col_buffer_size);
+  auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
@@ -207,7 +209,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     &WorkingBufferSize,
                     thread_pool);
 
-    auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
+    auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
+                                              : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
 
     MlasConv(&Parameters,
@@ -227,7 +230,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-    auto col_data = alloc->Alloc(sizeof(float) * col_buffer_size);
+    auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
     BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
