@@ -100,7 +100,7 @@ CMake creates a target to this project
     <Message Importance="High" Text="Bundling managed assemblies into a NuGet package ..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="CopyMiscFiles;Pack"
-             Properties="NoBuild=true;Platform=AnyCPU;Version=$(PackageVersion)"/>
+             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId)"/>
     
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
     <Exec Command="python ..\tools\nuget\generate_nuspec_for_native_nuget.py --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash)" ConsoleToMSBuild="true">

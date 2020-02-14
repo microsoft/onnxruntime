@@ -8,7 +8,7 @@ import zipfile # Available Python 3.2 or higher
 import glob
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="ONNX Runtime create created nuget containing native shared library artifacts spec script",
+    parser = argparse.ArgumentParser(description="Validate ONNX Runtime native nuget containing native shared library artifacts spec script",
                                      usage='')
     # Main arguments
     parser.add_argument("--nuget_path", required=True, help="Path containing the Nuget to be validated. Must only contain only one Nuget within this.")

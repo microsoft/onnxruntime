@@ -16,9 +16,13 @@
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>  
     
     <!--- packaging properties -->
+    <OrtPackageId Condition=" '$(OrtPackageId)' == '' ">Microsoft.ML.OnnxRuntime</OrtPackageId>
+
+    <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
+    <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
     <Authors>Microsoft</Authors>
-    <PackageVersion Condition=" '$(PackageVersion)' == '' ">dev</OrtPackageId>
+    <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0</PackageVersion>
     <Version>$(PackageVersion)</Version>
     <Description>This package contains ONNX Runtime for .Net platforms</Description>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
