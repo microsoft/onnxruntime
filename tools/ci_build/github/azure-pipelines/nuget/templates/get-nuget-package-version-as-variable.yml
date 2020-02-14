@@ -11,7 +11,7 @@ steps:
       SETLOCAL EnableDelayedExpansion
       FOR /R %%i IN (Microsoft.ML.OnnxRuntime.Managed*.nupkg) do (
         set filename=%%~ni
-        set ortversion=!filename:~34!
+        set ortversion=!filename:~33!
         @echo ortversion is !ortversion!
         @echo ##vso[task.setvariable variable=NuGetPackageVersionNumber;]!ortversion!
       )
@@ -23,5 +23,5 @@ steps:
     script: |
       filenamewithext=$(ls Microsoft.ML.OnnxRuntime.Managed*nupkg)
       filename=${filenamewithext%.*}
-      ortversion=${filename:34}
+      ortversion=${filename:33}
       echo "##vso[task.setvariable variable=NuGetPackageVersionNumber;]$ortversion"
