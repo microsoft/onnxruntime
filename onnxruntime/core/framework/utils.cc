@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/framework/utils.h"
 
 #include <iomanip>
+
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
@@ -18,8 +19,6 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
-
-#include "core/graph/onnx_protobuf.h"
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -98,7 +97,7 @@ AllocatorPtr GetAllocator(const SessionState& session_state, const OrtMemoryInfo
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
-         provider_type == onnxruntime::kMklDnnExecutionProvider ||
+         provider_type == onnxruntime::kDnnlExecutionProvider ||
          provider_type == onnxruntime::kNGraphExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
@@ -115,9 +114,10 @@ common::Status AllocateHelper(const IExecutionProvider& execution_provider, cons
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(fetched_tensor.DataType(),
                                                                       fetched_tensor.Shape(),
                                                                       allocator);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   output_mlvalue.Init(p_tensor.release(),
-                      DataTypeImpl::GetType<Tensor>(),
-                      DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+                      ml_tensor,
+                      ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }
@@ -155,8 +155,6 @@ static Status CopyMLValue(const DataTransferManager& data_transfer_mgr,
   //  target_mlvalue = source_mlvalue;
   //  return Status::OK();
   //}
-
-  assert(source_mlvalue.IsTensor());
 
   auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
@@ -610,15 +608,11 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
 
-  const auto& execution_providers = session_state.GetExecutionProviders();
-  const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
       std::cout << "Output " << i << " Name: " << output_defs[i]->Name();
 
       const auto* type = context.OutputType(i);
-
       if (type) {
         if (type->IsTensorType()) {
           const auto& tensor = *context.Output<Tensor>(i);
@@ -629,16 +623,30 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
           if (DEBUG_NODE_INPUTS_OUTPUTS > 1) {
             // check tensor is on CPU before dumping it
             auto& tensor_location = tensor.Location();
-            auto* provider = execution_providers.Get(tensor_location);
-            if (!provider) {
-              provider = cpu_execution_provider;
-            }
-
-            if (provider == cpu_execution_provider || tensor_location.mem_type == OrtMemTypeCPUOutput) {
-              const auto data_type = tensor.DataType();
+            const auto data_type = tensor.DataType();
+            if (tensor_location.device.Type() == OrtDevice::CPU || tensor_location.mem_type == OrtMemTypeCPUOutput) {
               DispatchOnTensorType(data_type, DumpTensor, tensor, shape);
             } else {
-              std::cout << " is not on CPU. Provider=" << provider->Type() << "\n";
+              std::cout << tensor_location << "\n";
+
+#ifdef USE_CUDA
+              // Dumping GPU only when cuda is enabled. Most op has only one output, so put GPU related code here to get best performance.
+              if (tensor_location.device.Type() == OrtDevice::GPU) {
+                const auto& execution_providers = session_state.GetExecutionProviders();
+                const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+                auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
+                std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(data_type, shape, cpu_allocator);
+                const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
+                auto status = data_transfer_mgr.CopyTensor(tensor, *cpu_tensor.get(), 0);
+                if (status == common::Status::OK()) {
+                  DispatchOnTensorType(data_type, DumpTensor, *cpu_tensor.get(), shape);
+                } else {
+                  std::cout << " failed to transfer data to cpu.\n";
+                }
+              }
+#else
+              ORT_UNUSED_PARAMETER(session_state);
+#endif
             }
           }
         } else {
@@ -656,6 +664,47 @@ void DumpNodeOutputs(OpKernelContext& context, const Node& node, const SessionSt
   }
 }
 #endif
+
+int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
+  switch (onnx_enum) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+      return onnx::TensorProto_DataType::TensorProto_DataType_DOUBLE;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT8;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT32;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT32;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_INT64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_UINT64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      return onnx::TensorProto_DataType::TensorProto_DataType_STRING;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      return onnx::TensorProto_DataType::TensorProto_DataType_BOOL;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+      return onnx::TensorProto_DataType::TensorProto_DataType_BFLOAT16;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX64;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
+      return onnx::TensorProto_DataType::TensorProto_DataType_COMPLEX128;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
+    default:
+      assert(false);
+      return onnx::TensorProto_DataType::TensorProto_DataType_UNDEFINED;
+  }
+}
 
 }  // namespace utils
 }  // namespace onnxruntime

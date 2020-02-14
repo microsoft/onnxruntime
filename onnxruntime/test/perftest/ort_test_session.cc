@@ -30,11 +30,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     : rand_engine_(rd()), input_names_(m->GetInputCount()), input_length_(m->GetInputCount()) {
   Ort::SessionOptions session_options;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
-  if (provider_name == onnxruntime::kMklDnnExecutionProvider) {
-#ifdef USE_MKLDNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+  if (provider_name == onnxruntime::kDnnlExecutionProvider) {
+#ifdef USE_DNNL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
-    ORT_THROW("MKL-DNN is not supported in this build\n");
+    ORT_THROW("DNNL is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kNGraphExecutionProvider) {
 #ifdef USE_NGRAPH
@@ -44,7 +44,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -78,6 +78,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
 #else
     ORT_THROW("DirectML is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kAclExecutionProvider) {
+#ifdef USE_ACL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
+	performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+#else
+    ORT_THROW("Acl is not supported in this build\n");
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");

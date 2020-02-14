@@ -83,10 +83,6 @@ struct NupharSubgraphUnit {
     return nodes.size() == 1;
   }
 
-  const std::string& Name() const {
-    return nodes.front()->Name();
-  }
-
   std::string UniqueId() const {
     return std::to_string(id_);
   }

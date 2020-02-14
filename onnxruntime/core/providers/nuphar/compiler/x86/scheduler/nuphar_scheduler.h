@@ -31,11 +31,21 @@ DECLARE_TVM_SCHEDULER_CLASS(True, NupharX86PartialResult)
 // utilities
 bool TryVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx);
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched);
 
 bool InputRootScheduleWithVectorizationX86(
     const tvm::Tensor& tensor,
-    tvm_codegen::ScheduleContext& ctx);
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched);
+
+bool TryParallelX86(
+    const tvm::Tensor& tensor,
+    int64_t to_dim,  // fuse dims before to_dim for parallel schedule, 0 to fuse all but last dim
+    tvm_codegen::CodeGenContext& ctx_codegen,
+    tvm_codegen::ScheduleContext& ctx_sched);
+
+constexpr auto kNupharScheduleNoParallel = "nuphar_schedule_no_parallel";
 
 }  // namespace nuphar
 }  // namespace onnxruntime

@@ -1,5 +1,7 @@
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
+  workspace:
+    clean: all
   timeoutInMinutes:  60
   pool:
     vmImage: 'ubuntu-latest'
@@ -8,12 +10,12 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
         workingDirectory: $(Build.SourcesDirectory)
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -23,6 +25,8 @@ jobs:
           commitId: $(OnnxRuntimeGitCommitHash)
     
 - job: Linux_C_API_Packaging_GPU_x64
+  workspace:
+    clean: all
   timeoutInMinutes:  60
   pool: 'Linux-GPU-CUDA10'
   steps:
@@ -30,12 +34,12 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
+          docker build --pull -t onnxruntime-centos6-gpu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=$(python.version) -f Dockerfile.centos6_gpu .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6-gpu /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
         workingDirectory: $(Build.SourcesDirectory)      
     - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -47,10 +51,11 @@ jobs:
  
 
 - job: MacOS_C_API_Packaging_CPU_x64
+  workspace:
+    clean: all
   pool: 
-    vmImage: 'macOS-10.13'
+    vmImage: 'macOS-10.14'
   steps:
-  
     - template: templates/mac-set-variables-and-download.yml
     - template: templates/set-version-number-variables-step.yml
 
@@ -68,99 +73,163 @@ jobs:
           
     - template: templates/clean-agent-build-directory-step.yml
 
-
-- job: Windows_Packaging_CPU_x64
-  pool: 'Win-CPU'
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildConfig: 'RelWithDebInfo'
-    buildArch: 'x64'
-
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-    - template: templates/set-version-number-variables-step.yml
-
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch 
-        setVcvars: false
-
-    - template: templates/windows-build-and-test-steps.yml
-      parameters:
-        buildAdditionalParams: ' --use_openmp '
-        buildArch: $(buildArch)
-        msbuildPlatform: $(buildArch)
-        buildConfig: $(buildConfig)
-
-    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
-      parameters:
-        buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
-        commitId: $(OnnxRuntimeGitCommitHash)
-    - template: templates/clean-agent-build-directory-step.yml
-
-
-- job: Windows_Packaging_CPU_x86
-  pool: 'Win-CPU'
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildConfig: 'RelWithDebInfo'
-    buildArch: 'x86'
+- job: Windows_Packaging_CPU
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2019'
+  timeoutInMinutes:  120
+  strategy:
+    maxParallel: 2
+    matrix: 
+      x86:
+        EnvSetupScript: setup_env_x86.bat
+        buildArch: x86
+        msbuildArch: x86
+        msbuildPlatform: Win32
+        buildparameter: --x86
+      x64:
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        msbuildArch: amd64
+        msbuildPlatform: x64
+        buildparameter:
 
   steps:
-    - template: templates/set-test-data-variables-step.yml
-    - template: templates/set-version-number-variables-step.yml
+    - task: UsePythonVersion@0
+      inputs: 
+        versionSpec: '3.7' 
+        addToPath: true 
+        architecture: $(buildArch)
 
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: $(buildArch)
-        setVcVars: false
-
-    - template: templates/windows-build-and-test-steps.yml
-      parameters:
-        buildAdditionalParams: ' --use_openmp --x86 '
-        buildArch: $(buildArch)
-        msbuildPlatform: 'Win32'
-        buildConfig: $(buildConfig)
-
-    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
-      parameters:
-        buildConfig: $(buildConfig)
-        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
-        commitId: $(OnnxRuntimeGitCommitHash)
-    - template: templates/clean-agent-build-directory-step.yml
-
-
-- job: Windows_Packaging_GPU_x64
-  pool: 'Win-GPU'
-  variables:
-    buildDirectory: '$(Build.BinariesDirectory)'
-    buildConfig: 'RelWithDebInfo'
-    buildArch: 'x64'
-
-  steps:
-    - template: templates/set-test-data-variables-step.yml
-    - template: templates/set-version-number-variables-step.yml
-
-    - template: templates/windows-build-tools-setup-steps.yml
-      parameters:
-        EnvSetupScript: 'setup_env.bat'
-        buildArch: 'amd64'  # amd64 is needed for vcvars target arch
-        setVcvars: true
-
-    - task: CmdLine@2
-      displayName: 'Build and Test OnnxRuntime'
+    - task: BatchScript@1
+      displayName: 'setup env'
       inputs:
-        script: |
-          $(Build.BinariesDirectory)\packages\python\python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(buildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --enable_onnx_tests --use_cuda --cuda_version=10.0 --cuda_home="C:\local\cuda_10.0.130_win10_trt6015dll" --cudnn_home="C:\local\cudnn-10.0-windows10-x64-v7.3.1.20\cuda"
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy     
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules' 
+    
+    - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory) 
+
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+ 
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: $(msbuildPlatform)
+        configuration: RelWithDebInfo
+        msbuildArchitecture: $(buildArch)
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
+
+
+    - task: PythonScript@0
+      displayName: 'test'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
-        buildConfig: $(buildConfig)
+        buildConfig: RelWithDebInfo
+        artifactName: 'onnxruntime-win-$(buildArch)-$(OnnxRuntimeVersion)'
+        commitId: $(OnnxRuntimeGitCommitHash)
+    - template: templates/clean-agent-build-directory-step.yml
+
+
+- job: Windows_Packaging_GPU
+  workspace:
+    clean: all
+  pool: 'Win-GPU-2019'
+  timeoutInMinutes:  120
+  variables:
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildArch: amd64
+    msbuildPlatform: x64
+    CUDA_VERSION: '10.0'
+    buildparameter: --msvc_toolset 14.16 --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows10-x64-v7.6.5.32\cuda"
+  steps:
+    - task: UsePythonVersion@0
+      inputs: 
+        versionSpec: '3.7' 
+        addToPath: true 
+        architecture: $(buildArch)
+
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
+
+    - script: |
+       python -m pip install -q pyopenssl setuptools wheel numpy     
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules' 
+    
+    - template: templates/set-test-data-variables-step.yml
+    - template: templates/set-version-number-variables-step.yml
+    - task: PythonScript@0
+      displayName: 'Download test data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\github\download_test_data.py'
+        arguments: --test_data_url $(TestDataUrl) --build_dir $(Build.BinariesDirectory)
+        workingDirectory: $(Build.BinariesDirectory) 
+
+
+    - task: PythonScript@0
+      displayName: 'Generate cmake config'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+ 
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        platform: $(msbuildPlatform)
+        configuration: RelWithDebInfo
+        msbuildArchitecture: $(buildArch)
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
+
+    - task: PythonScript@0
+      displayName: 'test'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --use_openmp --build_shared_lib --enable_onnx_tests $(buildparameter)'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-windows.yml
+      parameters:
+        buildConfig: RelWithDebInfo
         artifactName: 'onnxruntime-win-$(buildArch)-gpu-$(OnnxRuntimeVersion)'
         commitId: $(OnnxRuntimeGitCommitHash)
-
     - template: templates/clean-agent-build-directory-step.yml

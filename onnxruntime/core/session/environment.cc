@@ -10,8 +10,8 @@
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
-#ifdef MICROSOFT_AUTOML
-#include "core/graph/automl_ops/automl_defs.h"
+#ifdef ML_FEATURIZERS
+#include "core/graph/featurizers_ops/featurizers_defs.h"
 #endif
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
@@ -19,13 +19,15 @@
 
 #include "core/platform/env.h"
 
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
+#endif
+
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
-
-std::atomic<bool> Environment::is_initialized_{false};
 
 Status Environment::Create(std::unique_ptr<Environment>& environment) {
   environment = std::unique_ptr<Environment>(new Environment());
@@ -41,7 +43,7 @@ Status Environment::Initialize() {
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSAutoMLDomain, 1, 1);
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
@@ -50,8 +52,8 @@ Status Environment::Initialize() {
 #ifndef DISABLE_CONTRIB_OPS
       contrib::RegisterContribSchemas();
 #endif
-#ifdef MICROSOFT_AUTOML
-      automl::RegisterAutoMLSchemas();
+#ifdef ML_FEATURIZERS
+      featurizers::RegisterMSFeaturizersSchemas();
 #endif
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
@@ -90,8 +92,6 @@ Internal copy node
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
-
-    is_initialized_ = true;
   } catch (std::exception& ex) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
   } catch (...) {
@@ -99,10 +99,6 @@ Internal copy node
   }
 
   return status;
-}
-
-Environment::~Environment() {
-  ::google::protobuf::ShutdownProtobufLibrary();
 }
 
 }  // namespace onnxruntime

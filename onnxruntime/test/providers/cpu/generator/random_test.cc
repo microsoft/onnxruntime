@@ -104,7 +104,8 @@ TEST(Random, RandomUniform1DFloat) {
 
   test.AddOutput<float>("Y", dims, expected_output);
 
-  test.Run();
+  // TensorRT does not support manual seed overrides and there will be result mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {
@@ -246,7 +247,7 @@ TEST(Random, MultinomialGoodCase) {
   const std::vector<int64_t> output_dims{batch_size, num_samples};
 #ifdef _WIN32
   const std::vector<int64_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__) || defined(__ANDROID__)
+#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__)
   const std::vector<int64_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
 #else
   const std::vector<int64_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
@@ -284,7 +285,7 @@ TEST(Random, MultinomialDefaultDType) {
 #ifdef _WIN32
   const std::vector<int32_t> expected_output_1{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
   const std::vector<int32_t> expected_output_2{0, 0, 1, 0, 2, 2, 2, 0, 2, 1, 2, 1, 0, 2, 0, 2, 2, 1, 2, 1};
-#elif defined(__MACH__) || defined(__ANDROID__)
+#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__)
   const std::vector<int32_t> expected_output_1{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
   const std::vector<int32_t> expected_output_2{1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 2, 0, 1, 1, 0, 2, 2, 2, 1};
 #else

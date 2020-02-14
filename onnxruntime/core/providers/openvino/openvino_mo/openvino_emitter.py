@@ -14,10 +14,6 @@ import hashlib
 import sys
 import os
 ov_root = os.environ['INTEL_CVSDK_DIR']
-if '2019' in ov_root:
-    version = 'R1'
-else:
-    version = 'R5'
 mo_path = ov_root + "/deployment_tools/model_optimizer"
 sys.path.append(mo_path)
 
@@ -25,10 +21,7 @@ sys.path.append(mo_path)
 def create_const_nodes(graph: nx.MultiDiGraph, start_data_nodes_are_not_allowed: bool = True):
 
     for node_name in list(graph.nodes()):
-        if 'R5' in version:
-            node = NodeWrap(graph, node_name)
-        else:
-            node = Node(graph, node_name)
+        node = Node(graph, node_name)
         if (
                 node.has('kind') and
                 node.kind == 'data' and (
@@ -85,10 +78,7 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
     elif (data_type == np.float16):
         precision = 2
     for node in nodes:
-        if 'R5' in version:
-            node = NodeWrap(graph, node)
-        else:
-            node = Node(graph, node)
+        node = Node(graph, node)
 
         if node.kind == 'data' and node.value is not None and any('bin' in d for u, v, d in graph.out_edges(node.node, data=True)):
             blob = node.value
@@ -115,10 +105,7 @@ def serialize_constants_recursively(weights, graph: nx.MultiDiGraph, data_type, 
                     graph, node.soft_get('name'), node.id, node.shape, node.offset, node.size))
 
     for node in nodes:
-        if 'R5' in version:
-            node = NodeWrap(graph, node)
-        else:
-            node = Node(graph, node)
+        node = Node(graph, node)
         # Dump blobs recursively if sub-graphs are present in the node
         if node.has_valid('sub_graphs'):
             for sub_graph_attr_name in node.sub_graphs:
@@ -160,17 +147,11 @@ def xml_shape(shape: np.ndarray, element: xml.etree.ElementTree.Element):
 
 
 def sorted_inputs(node):
-    if 'R5' in version:
-        return get_sorted_inputs(node)
-    else:
-        return node.get_sorted_inputs(node)
+    return node.get_sorted_inputs(node)
 
 
 def sorted_outputs(node):
-    if 'R5' in version:
-        return get_sorted_outputs(node)
-    else:
-        return node.get_sorted_outputs(node)
+    return node.get_sorted_outputs(node)
 
 
 def xml_ports(node: Node, element: xml.etree.ElementTree.Element, edges: xml.etree.ElementTree.Element):
@@ -379,10 +360,7 @@ def serialize_network(graph, net_element, unsupported):
         return
     nodes = sorted(graph.nodes())
     for node in nodes:
-        if 'R5' in version:
-            node = NodeWrap(graph, node)
-        else:
-            node = Node(graph, node)
+        node = Node(graph, node)
         if not node.has('IE'):
             continue
         if node.kind == 'op' and (not node.has('type') or node.type is None):
@@ -430,10 +408,7 @@ def generate_ie_ir(graph: nx.MultiDiGraph, file_name: str, input_names: tuple = 
 
 def port_renumber(graph: nx.MultiDiGraph):
     for node in list(graph.nodes()):
-        if 'R5' in version:
-            node = NodeWrap(graph, node)
-        else:
-            node = Node(graph, node)
+        node = Node(graph, node)
         if node.kind == 'op':
             base = 0
             for u, d in sorted_inputs(node):

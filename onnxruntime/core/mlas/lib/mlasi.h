@@ -131,6 +131,7 @@ Abstract:
 
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
+#define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
 
 //
 // Define the prototypes of the platform optimized routines.
@@ -332,6 +333,24 @@ size_t
     );
 
 typedef MLAS_GEMM_U8U8_KERNEL* PMLAS_GEMM_U8U8_KERNEL;
+
+typedef
+void
+(MLASCALL MLAS_GEMM_X8X8_OPERATION)(
+    size_t M,
+    size_t N,
+    size_t K,
+    const uint8_t* A,
+    size_t lda,
+    int16_t offa,
+    const uint8_t* B,
+    size_t ldb,
+    int16_t offb,
+    int32_t* C,
+    size_t ldc
+    );
+
+typedef MLAS_GEMM_X8X8_OPERATION* PMLAS_GEMM_X8X8_OPERATION;
 
 typedef
 void
@@ -554,22 +573,10 @@ extern "C" {
 // Define the target number of per-thread multiplies before using another
 // thread to perform additional work.
 //
-// The number is derived from performance results running SGEMM across a
-// range of workloads and observing the ideal number of threads to complete
-// that workload.
-//
 
-#if defined(_OPENMP)
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#else
-#if defined(MLAS_TARGET_AMD64)
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (2 * 1024 * 1024)
-#else
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (1 * 1024 * 1024)
-#endif
-#endif
-
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -673,6 +680,28 @@ MlasGetMaximumThreadCount(
 #endif
 }
 
+inline
+void
+MlasPartitionWork(
+    int32_t ThreadId,
+    int32_t ThreadCount,
+    size_t TotalWork,
+    size_t* WorkIndex,
+    size_t* WorkRemaining
+    )
+{
+    const size_t WorkPerThread = TotalWork / ThreadCount;
+    const size_t WorkPerThreadExtra = TotalWork % ThreadCount;
+
+    if (uint32_t(ThreadId) < WorkPerThreadExtra) {
+        *WorkIndex = (WorkPerThread + 1) * ThreadId;
+        *WorkRemaining = WorkPerThread + 1;
+    } else {
+        *WorkIndex = WorkPerThread * ThreadId + WorkPerThreadExtra;
+        *WorkRemaining = WorkPerThread;
+    }
+}
+
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable
 // cross-compiler support.
@@ -716,8 +745,10 @@ MlasGetMaximumThreadCount(
 
 #if defined(MLAS_NEON_INTRINSICS)
 typedef float32x4_t MLAS_FLOAT32X4;
+typedef int32x4_t MLAS_INT32X4;
 #elif defined(MLAS_SSE2_INTRINSICS)
 typedef __m128 MLAS_FLOAT32X4;
+typedef __m128i MLAS_INT32X4;
 #endif
 
 inline
@@ -994,6 +1025,17 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_SSE2_INTRINSICS)
     __m128i emm0 = _mm_add_epi32(_mm_cvttps_epi32(Vector), _mm_set1_epi32(0x7f));
     return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
+#endif
+}
+
+inline
+MLAS_INT32X4
+MlasBroadcastInt32x4(int32_t Value)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vdupq_n_s32(Value);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_set1_epi32(Value);
 #endif
 }
 

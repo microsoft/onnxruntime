@@ -54,8 +54,8 @@ class IfOpTester : public OpTester {
                 std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                 std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
     // Graph inputs are 0:Split input, 1:Cond for If, 2:if input
-    ASSERT_EQ(graph_input_defs.size(), 3);
-    ASSERT_EQ(graph_output_defs.size(), 1);
+    ASSERT_EQ(graph_input_defs.size(), 3u);
+    ASSERT_EQ(graph_output_defs.size(), 1u);
 
     NodeArg* split_input = graph_input_defs[0];
     NodeArg* if_cond_input = graph_input_defs[1];
@@ -147,7 +147,7 @@ static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch, const R
   bool include_dim_values = options.include_dim_values_in_subgraph;
   bool sym_dim_zero = options.symbolic_dim_value_in_main_graph == 0;
 
-  Model model(then_branch ? "If_then" : "If_else");
+  Model model(then_branch ? "If_then" : "If_else", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -295,6 +295,12 @@ TEST(If, MixedExecutionProviders) {
   RunOptions options{};
   options.mixed_execution_providers = true;
   RunTest(true, options);
+}
+
+TEST(If, MixedExecutionProvidersOpset11) {
+  RunOptions options{};
+  options.mixed_execution_providers = true;
+  RunTest(true, options, false, test::OpTester::ExpectResult::kExpectSuccess, "", 11);
 }
 
 TEST(If, MixedExecutionProvidersNoShapeInSubgraph) {

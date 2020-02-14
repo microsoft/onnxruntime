@@ -93,8 +93,12 @@ class OrtValueTensorSlicer {
       return current_;
     }
 
+    virtual ~Iterator() = default;
+
    private:
-    void MaterializeMLValue() const;
+    // virtual so scenarios where the void* in OrtValue::data_ isn't just a raw pointer to data (e.g. it's a handle)
+    // can implement the correct handling
+    virtual void MaterializeMLValue() const;
 
     T* ort_value_;
     int64_t position_;
@@ -117,18 +121,18 @@ class OrtValueTensorSlicer {
     mutable OrtValue current_;
   };
 
-  Iterator begin() const noexcept { return Iterator(*ort_value_, slice_dimension_, dim0_offset_, 0); }
+  Iterator begin() const noexcept { return Iterator(*ort_value_, static_cast<size_t>(slice_dimension_), static_cast<size_t>(dim0_offset_), 0); }
   Iterator end() const noexcept {
-    return Iterator(*ort_value_, slice_dimension_, dim0_offset_, std::numeric_limits<int64_t>::max());
+    return Iterator(*ort_value_, static_cast<size_t>(slice_dimension_), static_cast<size_t>(dim0_offset_), std::numeric_limits<int64_t>::max());
   }
 
   Iterator rbegin() const noexcept {
-    return Iterator(*ort_value_, slice_dimension_, dim0_offset_, std::numeric_limits<int64_t>::max(),
+    return Iterator(*ort_value_, static_cast<size_t>(slice_dimension_), static_cast<size_t>(dim0_offset_), std::numeric_limits<int64_t>::max(),
                     Iterator::Direction::kReverse);
   }
 
   Iterator rend() const noexcept {
-    return Iterator(*ort_value_, slice_dimension_, dim0_offset_, -1, Iterator::Direction::kReverse);
+    return Iterator(*ort_value_, static_cast<size_t>(slice_dimension_), static_cast<size_t>(dim0_offset_), -1, Iterator::Direction::kReverse);
   }
 
  private:

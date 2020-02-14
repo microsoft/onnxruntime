@@ -1,9 +1,3 @@
-# Defined as pipeline variables
-# variables:
-#   AgentPoolWin : 'Win-CPU'
-#   AgentPoolLinux : 'Linux-CPU'
-#   AgentPoolMacOS : 'macOS-10.13'
-
 schedules:
 - cron: "0 8 * * *"
   displayName: Daily Build
@@ -15,6 +9,6 @@ schedules:
 jobs: 
 - template: templates/cpu.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
     DoEsrp: 'true'
     DoCompliance: 'true'

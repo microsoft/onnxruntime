@@ -51,7 +51,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 #if USE_CUDA
         /// <summary>
-        /// A helper method to constuct a SessionOptions object for CUDA execution
+        /// A helper method to construct a SessionOptions object for CUDA execution
         /// </summary>
         /// <returns>A SessionsOptions() object configured for execution on deviceId=0</returns>
         public static SessionOptions MakeSessionOptionWithCudaProvider()
@@ -60,7 +60,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to constuct a SessionOptions object for CUDA execution
+        /// A helper method to construct a SessionOptions object for CUDA execution
         /// </summary>
         /// <param name="deviceId"></param>
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
@@ -81,10 +81,10 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CPU(_nativePtr, useArena));
         }
 
-#if USE_MKLDNN
-        public void AppendExecutionProvider_Mkldnn(int useArena)
+#if USE_DNNL
+        public void AppendExecutionProvider_Dnnl(int useArena)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Mkldnn(_nativePtr, useArena));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Dnnl(_nativePtr, useArena));
         }
 #endif
 
@@ -142,6 +142,14 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         #endregion //ExecutionProviderAppends
 
+        #region Public Methods
+        public void RegisterCustomOpLibrary(string libraryPath)
+        {
+            IntPtr libraryHandle = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(_nativePtr, libraryPath, out libraryHandle));
+        }
+
+        #endregion
         #region Public Properties
 
         internal IntPtr Handle
@@ -337,7 +345,7 @@ namespace Microsoft.ML.OnnxRuntime
         private int _interOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
-        /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_BASIC.        
+        /// Sets the graph optimization level for the session. Default is set to ORT_ENABLE_ALL.
         /// </summary>
         public GraphOptimizationLevel GraphOptimizationLevel
         {
@@ -351,7 +359,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _graphOptimizationLevel = value;
             }
         }
-        private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_BASIC;
+        private GraphOptimizationLevel _graphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
 
         /// <summary>
         /// Sets the execution mode for the session. Default is set to ORT_SEQUENTIAL.

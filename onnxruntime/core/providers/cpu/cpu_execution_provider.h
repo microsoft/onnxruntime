@@ -32,22 +32,23 @@ class CPUExecutionProvider : public IExecutionProvider {
                                                 std::numeric_limits<size_t>::max()};
 
 #ifdef USE_JEMALLOC
-    #if defined(USE_MIMALLOC)
-    #error jemalloc and mimalloc should not both be enabled
-    #endif
+#if defined(USE_MIMALLOC)
+#error jemalloc and mimalloc should not both be enabled
+#endif
 
     ORT_UNUSED_PARAMETER(info);
     //JEMalloc already has memory pool, so just use device allocator.
-    InsertAllocator(
-        std::shared_ptr<IArenaAllocator>(
-            onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+    InsertAllocator(device_info.factory(0));
 #else
+//Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+#if defined(__amd64__) || defined(_M_AMD64)
     if (info.create_arena)
       InsertAllocator(CreateAllocator(device_info));
     else
-      InsertAllocator(
-          std::shared_ptr<IArenaAllocator>(
-              onnxruntime::make_unique<DummyArena>(device_info.factory(0))));
+#else
+    ORT_UNUSED_PARAMETER(info);
+#endif
+      InsertAllocator(device_info.factory(0));
 #endif
   }
 

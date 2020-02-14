@@ -1,5 +1,4 @@
 parameters:
-  AgentPool : 'Hosted macOS High Sierra'
   JobName: 'MacOS_CI_Dev'
   BuildCommand: ''
   DoNugetPack: 'false'
@@ -9,12 +8,18 @@ jobs:
 - job: ${{ parameters.JobName }}
   workspace:
     clean: all
-  pool: ${{ parameters.AgentPool }}
+  timeoutInMinutes:  120
+  pool:
+    vmImage: 'macOS-10.14'
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
   steps:
     - template: mac-set-variables-and-download.yml
     - script: |
+        export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home
+        java --version
+        javac --version
+
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
         ${{ parameters.BuildCommand }}
@@ -28,7 +33,7 @@ jobs:
         inputs:
           artifactName: 'drop-osx'
           targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: clean-agent-build-directory-step.yml

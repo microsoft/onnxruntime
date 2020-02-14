@@ -15,7 +15,7 @@ namespace cuda {
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
       kOnnxDomain,                                                \
-      1,                                                          \
+      9,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
       KernelDefBuilder()                                          \
@@ -32,7 +32,7 @@ LayerNorm<T, U>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_k
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
-  epsilon_ = ClampCudnnBatchNormEpsilon(tmp_epsilon);
+  epsilon_ = tmp_epsilon;
 }
 
 template <typename T, typename U>

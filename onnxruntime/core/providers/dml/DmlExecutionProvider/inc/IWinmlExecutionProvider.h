@@ -19,7 +19,7 @@ namespace onnxruntime
     class Node;
 }
 
-namespace winrt::Windows::AI::MachineLearning::implementation
+namespace Windows::AI::MachineLearning::Adapter
 {
     interface __declspec(uuid("5b19a18a-5ed5-4df2-a363-21b89380a698"))
     IWinmlExecutionProvider : public IUnknown
@@ -65,6 +65,8 @@ namespace winrt::Windows::AI::MachineLearning::implementation
         virtual void Close() = 0;
     };
 
+    using MLOperatorTensorGetter = std::function<Microsoft::WRL::ComPtr<IMLOperatorTensor>(uint32_t index)>;
+
     struct DmlOperatorParams
     {
         Microsoft::WRL::ComPtr<IDMLOperator> op;
@@ -86,22 +88,28 @@ namespace winrt::Windows::AI::MachineLearning::implementation
         bool allowHalfPrecisionComputation = false;
     };
 
-    using MLOperatorTensorGetter = std::function<Microsoft::WRL::ComPtr<IMLOperatorTensor>(uint32_t index)>;
-
     using GraphNodeFactory = std::function<void(
         const onnxruntime::Node& node, 
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
-
+    
     struct GraphNodeFactoryRegistration
     {
         GraphNodeFactory factory;
         std::optional<uint32_t> requiredInputCount;
-        std::vector<uint32_t> requiredConstantCpuInputs;
         bool requiresFloatFormatsExceptConstInputs = false;
     };
 
-    using GraphNodeFactoryMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<GraphNodeFactoryRegistration>>;
+    using KernelSupportQuery = std::function<bool(const onnxruntime::Node& node)>;
+
+    struct InternalRegistrationInfo
+    {
+        std::vector<uint32_t> requiredConstantCpuInputs;
+        std::optional<GraphNodeFactoryRegistration> graphNodeFactoryRegistration;
+        KernelSupportQuery supportQuery;
+    };
+
+    using InternalRegistrationInfoMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<InternalRegistrationInfo>>;
 }

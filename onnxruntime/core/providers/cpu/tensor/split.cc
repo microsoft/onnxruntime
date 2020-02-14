@@ -18,6 +18,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<int64_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
@@ -29,6 +30,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                       std::vector<MLDataType>{
                                           DataTypeImpl::GetTensorType<float>(),
                                           DataTypeImpl::GetTensorType<int32_t>(),
+                                          DataTypeImpl::GetTensorType<int64_t>(),
                                           DataTypeImpl::GetTensorType<std::string>()}),
     Split);
 
@@ -74,16 +76,17 @@ Status Split::Compute(OpKernelContext* context) const {
   const Tensor& input = *context->Input<Tensor>(0);
 
   Status status;
-  auto data_type = input.DataType();
 
-  if (data_type == DataTypeImpl::GetType<float>())
+  if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<int32_t>())
+  else if (input.IsDataType<int32_t>())
     status = ComputeImpl<int32_t>(*context, input);
-  else if (data_type == DataTypeImpl::GetType<std::string>())
+  else if (input.IsDataType<int64_t>())
+    status = ComputeImpl<int64_t>(*context, input);
+  else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
-    ORT_THROW("Split operator does not support ", data_type, " yet");
+    ORT_THROW("Split operator does not support ", input.DataType(), " yet");
 
   return status;
 }
@@ -93,7 +96,7 @@ inline void copy_data(const T* src, T* dst, size_t count) {
   memcpy(dst, src, count * sizeof(T));
 }
 
-template<>
+template <>
 inline void copy_data<std::string>(const std::string* src, std::string* dst, size_t count) {
   const std::string* end = src + count;
   std::copy(src, end, dst);

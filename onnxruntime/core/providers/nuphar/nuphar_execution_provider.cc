@@ -25,6 +25,7 @@ namespace onnxruntime {
 thread_local int64_t NupharSubgraphUnit::counter = 0;
 
 thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExecutionProvider::tls_realized_dims_;
+thread_local int NupharExecutionProvider::per_model_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
 #if USE_TVM_WITH_LLVM
@@ -57,9 +58,9 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     target_str = default_nuphar_target_str;
   }
 
+  const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   if (target_str == llvm_target_str) {
     // auto detect from CPU ID
-    const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
     if (cpu_id_info.HasAVX512f()) {
       codegen_target_ = CodeGenTarget_AVX512();
     } else if (cpu_id_info.HasAVX2()) {
@@ -81,9 +82,21 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
     ORT_NOT_IMPLEMENTED("Not supported target, should be one of stackvm/llvm/avx/avx2/avx512.");
   }
 
-  CreateTVMTarget();
+  if (settings.HasOption(nuphar::kNupharCodeGenTarget)) {
+    if ((target_str == "avx512" && !cpu_id_info.HasAVX512f()) ||
+        (target_str == "avx2" && !cpu_id_info.HasAVX2()) ||
+        (target_str == "avx" && !cpu_id_info.HasAVX())) {
+      LOGS_DEFAULT(WARNING) << "NUPHAR_CODEGEN_TARGET is not compatible with host machine."
+                               "Target code will be generated, but exectuion will fail!";
+    }
+    // For CPU, use target as host since the tvm_host_target_ is the one used to generate code in TVM
+    tvm_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+    tvm_host_target_ = tvm::Target::create(codegen_target_->GetTargetName());
+  } else {
+    CreateTVMTarget();
+    tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
+  }
 
-  tvm_host_target_ = tvm::Target::create(GetCurrentHostTargetString());
   tvm_ctx_.device_type = static_cast<DLDeviceType>(tvm_target_->device_type);
   tvm_ctx_.device_id = 0;  // use the default device id for CPU allocator
 
@@ -113,8 +126,8 @@ NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderIn
 
   handle->shape_inference = whole_graph_shape_infer_;
 
-  // TODO: remove
-  handle->enable_per_node_parallelized = info.enable_per_node_parallel;
+  handle->parallel_min_workloads = std::stoi(settings.GetOptionValue(kNupharParallelMinWorkloads));
+
   // TODO: remove
   handle->allow_unaligned_buffers = info.allow_unaligned_buffers;  // TODO remove this
 
@@ -146,7 +159,7 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     auto s =
         node.ForEachWithIndex(
             node.OutputDefs(),
-            [&](const NodeArg& def, size_t index) {
+            [&](const NodeArg& def, size_t) {
               if (def.Shape())
                 return Status::OK();
               else
@@ -213,6 +226,17 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           }
         }
       }
+      // reject when pooling on symbolic dims, since shape computation does not support it yet
+      it = attrs.find("kernel_shape");
+      ORT_ENFORCE(it != attrs.end());
+      int kernel_rank = it->second.ints_size();
+      const auto output_shape = node.OutputDefs()[0]->Shape();
+      int output_rank = output_shape->dim_size();
+      for (int d = output_rank - kernel_rank; d < output_rank; ++d) {
+        if (output_shape->dim(d).has_dim_param()) {
+          return false;
+        }
+      }
     }
 
     if (node.OpType() == "Slice") {
@@ -254,6 +278,18 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return false;
     }
 
+    if (node.OpType() == "Split") {
+      const onnxruntime::NodeAttributes& attrs = node.GetAttributes();
+      auto axis = std::vector<int64_t>(1);
+      auto it = attrs.find("axis");
+      if (it != attrs.end()) {
+        axis[0] = it->second.i();
+      }
+      // check if we have symbolic dimension on axis, as TVM split cannot handle that
+      if (HasUnknownShapeOnAxes(inputs[0], axis))
+        return false;
+    }
+
     if (IsAliasNode(node)) {
       // for AliasNode as final output, skip them to avoid potential copy
       for (auto iter = node.OutputEdgesBegin(); iter != node.OutputEdgesEnd(); ++iter) {
@@ -276,7 +312,12 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   };
   GraphPartitioner graph_partitioner(is_supported_func);
 
-  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, results).IsOK());
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, per_model_fused_count_, results).IsOK());
+
+  // reset per_model_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
+  // this is the time all graph cut should be finished as ORT handles main graph last
+  if (!graph_viewer.IsSubgraph())
+    per_model_fused_count_ = 0;
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo
@@ -288,6 +329,8 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
       node->ForEachDef(
           [this, &all_initialized_tensors, &graph_viewer](const NodeArg& def, bool is_input) {
+            if (!is_input)
+              return;
             auto iter = all_initialized_tensors.find(def.Name());
             if (iter != all_initialized_tensors.end()) {
               if (graph_viewer.IsConstantInitializer(def.Name(), true)) {

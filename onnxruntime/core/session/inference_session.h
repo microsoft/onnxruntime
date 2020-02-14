@@ -24,6 +24,10 @@
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include "core/platform/tracing.h"
+#include <TraceLoggingActivity.h>
+#endif
 
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
@@ -52,6 +56,13 @@ class LoggingManager;
   * Pre-defined and custom metadata about the model.
   */
 struct ModelMetadata {
+  ModelMetadata() = default;
+  ModelMetadata(const ModelMetadata& other)
+      : producer_name(other.producer_name), graph_name(other.graph_name), domain(other.domain), description(other.description), version(other.version), custom_metadata_map(other.custom_metadata_map) {
+  }
+  ~ModelMetadata() = default;
+  ModelMetadata& operator=(const ModelMetadata&) = delete;
+
   std::string producer_name;
   std::string graph_name;
   std::string domain;
@@ -95,6 +106,61 @@ class InferenceSession {
     */
   explicit InferenceSession(const SessionOptions& session_options,
                             logging::LoggingManager* logging_manager = nullptr);
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param model_uri absolute path of the model file.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const std::string& model_uri,
+                   logging::LoggingManager* logging_manager = nullptr);
+#ifdef _WIN32
+  InferenceSession(const SessionOptions& session_options,
+                   const std::wstring& model_uri,
+                   logging::LoggingManager* logging_manager = nullptr);
+#endif
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param istream object of the model.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   std::istream& model_istream,
+                   logging::LoggingManager* logging_manager = nullptr);
+
+  /**
+    Create a new InferenceSession
+    @param session_options Session options.
+    @param model_data Model data buffer.
+    @param model_data_len Model data buffer size.
+    @param logging_manager
+    Optional logging manager instance that will enable per session logger output using
+    session_options.session_logid as the logger id in messages.
+    If nullptr, the default LoggingManager MUST have been created previously as it will be used
+    for logging. This will use the default logger id in messages.
+    See core/common/logging/logging.h for details, and how LoggingManager::DefaultLogger works.
+    This ctor will throw on encountering model parsing issues.
+    */
+  InferenceSession(const SessionOptions& session_options,
+                   const void* model_data,
+                   int model_data_len,
+                   logging::LoggingManager* logging_manager = nullptr);
 
   virtual ~InferenceSession();
 
@@ -165,6 +231,13 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status Load(const void* model_data, int model_data_len);
+
+  /**
+    * Load an ONNX model from the member model_proto_. 
+    * To be called only in conjunction with a ctor that takes in a model path/ model stream/ model array  
+    * @return OK if success.
+    */
+  common::Status Load();
 
   /**
     * Initializes a previously loaded model. Initialization includes but is not
@@ -314,6 +387,9 @@ class InferenceSession {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
+  void ConstructorCommon(const SessionOptions& session_options,
+                         logging::LoggingManager* logging_manager);
+
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
@@ -363,9 +439,9 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  const SessionOptions session_options_;
+  SessionOptions session_options_;
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+  std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
   // will be run regardless of the level set.
@@ -384,17 +460,16 @@ class InferenceSession {
   // The list of execution providers.
   ExecutionProviders execution_providers_;
 
+ protected:
+  // Immutable state for each op in the model. Shared by all executors.
+  // It has a dependency on execution_providers_.
+  std::unique_ptr<SessionState> session_state_;
+
  private:
   // Threadpool for this session
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
- protected:
-  // Immutable state for each op in the model. Shared by all executors.
-  // It has a dependency on execution_providers_.
-  SessionState session_state_;
-
- private:
   KernelRegistryManager kernel_registry_manager_;
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 
@@ -434,13 +509,31 @@ class InferenceSession {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
+  // used to support platform telemetry
+  static std::atomic<uint32_t> global_session_id_;                  // a monotonically increasing session id
+  uint32_t session_id_;                                             // the current session's id
 
-  // used to support platform telemetry 
-  static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
-  uint32_t session_id_;                             // the current session's id
-  uint32_t total_runs_since_last_;                  // the total number of Run() calls since the last report
-  long long total_run_duration_since_last_;         // the total duration (us) of Run() calls since the last report
-  TimePoint time_sent_last_;                        // the TimePoint of the last report
-  const long long kDurationBetweenSending = 1000* 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+  struct Telemetry {
+    Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
+    uint32_t total_runs_since_last_ = 0;                                           // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;                                  // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                                                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+
+    TimePoint time_sent_last_;                                                     // the TimePoint of the last report
+    TimePoint time_sent_last_evalutation_start_;
+                                                                                   // Event Rate per provider < 20 peak events per second
+    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;    // duration in (us).  send a report every 10 mins
+    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50; // duration in (us). send a EvaluationStop Event every 50 ms;
+
+    bool isEvaluationStart = false;
+  } telemetry_;
+
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  bool session_activity_started_ = false;
+  TraceLoggingActivity<telemetry_provider_handle> session_activity;
+#endif
+
+  // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
 };
 }  // namespace onnxruntime

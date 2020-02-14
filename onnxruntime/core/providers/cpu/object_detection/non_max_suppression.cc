@@ -35,29 +35,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 using namespace nms_helpers;
 
-// CPU version
-namespace nms_helpers {
-Status GetThresholdsFromInputs(const PrepareContext& pc,
-                               int64_t& max_output_boxes_per_class,
-                               float& iou_threshold,
-                               float& score_threshold) {
-  if (pc.max_output_boxes_per_class_ != nullptr) {
-    max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
-  }
-
-  if (pc.iou_threshold_ != nullptr) {
-    iou_threshold = *pc.iou_threshold_;
-    ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1.f), "iou_threshold must be in range [0, 1].");
-  }
-
-  if (pc.score_threshold_ != nullptr) {
-    score_threshold = *pc.score_threshold_;
-  }
-
-  return Status::OK();
-}
-}  // namespace nms_helpers
-
+// This works for both CPU and GPU.
+// CUDA kernel declare OrtMemTypeCPUInput for max_output_boxes_per_class(2), iou_threshold(3) and score_threshold(4)
 Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) {
   const auto* boxes_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(boxes_tensor);
@@ -107,6 +86,26 @@ Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContex
   pc.num_batches_ = boxes_dims[0];
   pc.num_classes_ = scores_dims[1];
   pc.num_boxes_ = boxes_dims[1];
+
+  return Status::OK();
+}
+
+Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc,
+                                                      int64_t& max_output_boxes_per_class,
+                                                      float& iou_threshold,
+                                                      float& score_threshold) {
+  if (pc.max_output_boxes_per_class_ != nullptr) {
+    max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
+  }
+
+  if (pc.iou_threshold_ != nullptr) {
+    iou_threshold = *pc.iou_threshold_;
+    ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1.f), "iou_threshold must be in range [0, 1].");
+  }
+
+  if (pc.score_threshold_ != nullptr) {
+    score_threshold = *pc.score_threshold_;
+  }
 
   return Status::OK();
 }

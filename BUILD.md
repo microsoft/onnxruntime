@@ -1,5 +1,5 @@
 # Building ONNX Runtime
-*Dockerfiles are available [here](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/linux/docker) to help you get started.*
+*Dockerfiles are available [here](./dockerfiles) to help you get started.*
 
 *Pre-built packages are available at the locations indicated [here](https://github.com/microsoft/onnxruntime#official-builds).*
 
@@ -61,8 +61,6 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 |Windows 10 <br/> Subsystem for Linux | YES         | NO        |         |
 |Ubuntu 16.x  | YES          | YES         | Also supported on ARM32v7 (experimental) |
 
-* Red Hat Enterprise Linux and CentOS are not supported.
-* Other version of Ubuntu might work but we don't support them officially.
 * GCC 4.x and below are not supported.
 
 ### OS/Compiler Matrix:
@@ -70,7 +68,7 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 | OS/Compiler | Supports VC  | Supports GCC     |
 |-------------|:------------:|:----------------:|
 |Windows 10   | YES          | Not tested       |
-|Linux        | NO           | YES(gcc>=5.0)    |
+|Linux        | NO           | YES(gcc>=4.8)    |
 
 ## System Requirements
 For other system requirements and other dependencies, please see [this section](./README.md#system-requirements-pre-requisite-dependencies).
@@ -80,12 +78,14 @@ For other system requirements and other dependencies, please see [this section](
 |Description|Command|Additional description|
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
-|**Debug build**|--config RelWithDebugInfo|Debug build|
+|**Debug build**|--config RelWithDebInfo|Debug build|
 |**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
 |**Build Python wheel**|--build_wheel||
 |**Build C# and C packages**|--build_csharp||
+|**Build WindowsML**|--use_winml<br>--use_dml<br>--build_shared_lib|WindowsML depends on DirectML and the OnnxRuntime shared library.|
+|**Build Java package**|--build_java|Creates an onnxruntime4j.jar in the build directory, implies `--build_shared_lib`|
 
 
 # Additional Build Instructions
@@ -96,43 +96,26 @@ The complete list of build options can be found by running `./build.sh (or .\bui
 **Execution Providers**
 * [NVIDIA CUDA](#CUDA)
 * [NVIDIA TensorRT](#TensorRT)
-* [Intel MKL-DNN/MKL-ML](#MKLDNN-and-MKLML)
+* [Intel DNNL/MKL-ML](#DNNL-and-MKLML)
 * [Intel nGraph](#nGraph)
 * [Intel OpenVINO](#openvino)
-* [Android NNAPI](#Android)
+* [Android NNAPI](#Android-NNAPI)
 * [Nuphar Model Compiler](#Nuphar)
 * [DirectML](#DirectML)
+* [ARM Compute Library](#ARM-Compute-Library)
 
 **Options**
 * [OpenMP](#OpenMP)
 * [OpenBLAS](#OpenBLAS)
+* [DebugNodeInputsOutputs](#DebugNodeInputsOutputs)
 
 **Architectures**
 * [x86](#x86)
 * [ARM](#ARM)
+* [Android](#Android)
 
 ---
 
-## Build ONNX Runtime Server on Linux
-Read more about ONNX Runtime Server [here](https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Server_Usage.md)
-
-### Pre-Requisites
-* ONNX Runtime server (and only the server) requires you to have Go installed to build, due to building BoringSSL.
-    See https://golang.org/doc/install for installation instructions.
-
-### Build Instructions
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel
-```
-
-ONNX Runtime Server supports sending logs to [rsyslog](https://www.rsyslog.com/) daemon. To enable it, please build with an additional parameter: `--cmake_extra_defines onnxruntime_USE_SYSLOG=1`.
-
-Build command:
-```
-./build.sh --config RelWithDebInfo --build_server  --use_openmp --parallel --cmake_extra_defines onnxruntime_USE_SYSLOG=1
-```
-
----
 
 
 ## Execution Providers
@@ -157,7 +140,7 @@ Build command:
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](./tools/ci_build/github/linux/docker/Dockerfile.ubuntu_gpu).
+A Dockerfile is available [here](./dockerfiles#cuda).
 
 
 #### Notes
@@ -183,12 +166,12 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 #### Pre-Requisites
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.1 and cuDNN 7.6.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2 and cuDNN 7.6.5.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home parameter`. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home parameter`.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 6.0.1.5 but validated with the feature set equivalent to TensorRT 5. Some TensorRT 6 new features such as dynamic shape is not available at this time.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.x and is tested with TensorRT 7.0.0.11.
    * The path to TensorRT installation must be provided via the `--tensorrt_home parameter`.
 
 #### Build Instructions
@@ -200,17 +183,20 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
+#### Jetson (ARM64 Builds)
+
+See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips related to building Onnxruntime with TensorRT Execution Provider on Jetson platforms (TX1/TX2, Nano)
+
 ---
 
-### MKLDNN and MKLML
-See more information on MKL-DNN and MKL-ML [here](./docs/execution_providers/MKL-DNN-ExecutionProvider.md).
+### DNNL and MKLML
+See more information on DNNL and MKL-ML [here](./docs/execution_providers/DNNL-ExecutionProvider.md).
 
 #### Build Instructions
 ##### Linux
-MKL-DNN: `./build.sh --use_mkldnn`
-
-MKL-DNN built with dependency on MKL small libraries: `./build.sh --use_mkldnn --use_mklml`
-
+```
+./build.sh --use_dnnl
+```
 ---
 
 
@@ -235,16 +221,16 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 
 #### Pre-Requisites
 * Install the OpenVINO release along with its dependencies: [Windows]([https://software.intel.com/en-us/openvino-toolkit](https://software.intel.com/en-us/openvino-toolkit), [Linux](https://software.intel.com/en-us/openvino-toolkit).
-   * For Linux, currently supports and is validated on OpenVINO 2018 R5.0.1 and OpenVINO 2019 R1.1 (Recommended)
-   * For Windows, download the 2019 R1.1 Windows Installer.
+   * For Linux, currently supports and is validated on OpenVINO 2019 R3.1
+   * For Windows, download the 2019 R3.1 Windows Installer.
 * Install the model optimizer prerequisites for ONNX by running:
    * Windows: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.bat`
    * Linux: `<openvino_install_dir>/deployment_tools/model_optimizer/install_prerequisites/install_prerequisites_onnx.sh`
 * Initialize the OpenVINO environment by running the setupvars in `\<openvino\_install\_directory\>\/bin` using `setupvars.bat` (Windows) or `source setupvars.sh` (Linux)
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2019_R1.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R1.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#usb-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_installing_openvino_linux.html#install-VPU)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2019_R3.1/_docs_install_guides_VisionAcceleratorFPGA_Configure_2019R3.html)
 
 
 #### Build Instructions
@@ -259,19 +245,9 @@ See more information on the OpenVINO Execution Provider [here](./docs/execution_
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option>
 ```
 
-
-  For Linux:
-
-   <code>./build.sh --config RelWithDebInfo --use_openvino <hardware_option>  </code>
-
-  For Windows:
-
-  <code> .\build.bat --config RelWithDebInfo  --use_openvino <hardware_option> </code>
-
-   *Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
-
    <code>--use_openvino</code>: Builds the OpenVINO Execution Provider in ONNX Runtime.
 
+  <code>--build_server</code>: Using this flag in addition to --use_openvino builds the OpenVINO Execution Provider with ONNX Runtime Server.
 
 * `<hardware_option>`: Specifies the hardware target for building OpenVINO Execution Provider. Below are the options for different Intel target devices.
 
@@ -288,18 +264,29 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 
 ---
 
-### Android
+### Android NNAPI
 
-#### Cross compiling on Linux
+See more information on the NNAPI Execution Provider [here](./docs/execution_providers/NNAPI-ExecutionProvider.md).
 
-1. Get Android NDK from https://developer.android.com/ndk/downloads. Please unzip it after downloading.
+#### Pre-Requisites
 
-2. Get a pre-compiled protoc from [here](https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip). Please unzip it after downloading.
+To build ONNX Runtime with the NN API EP, first install Android NDK (see [Android Build instructions](#android))
 
-3. Denote the unzip destination in step 1 as $ANDROID_NDK, append `-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DONNX_CUSTOM_PROTOC_EXECUTABLE=path/to/protoc` to your cmake args, run cmake and make to build it.
+#### Build Instructions
 
-#### Notes
-* For 32-bit devices, replace `-DANDROID_ABI=arm64-v8a` with `-DANDROID_ABI=armeabi-v7a`.
+The basic build commands are below. There are also some other parameters for building the Android version under See [Android Build instructions](#android) for more details.
+
+##### Cross compiling on Windows
+
+```bash
+./build.bat --android --android_ndk_path <android ndk path> --dnnlibrary
+```
+
+##### Cross compiling on Linux
+
+```bash
+./build.sh --android --android_ndk_path <android ndk path> --dnnlibrary
+```
 
 ---
 
@@ -374,7 +361,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --use_tvm --use_llvm --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar-public-preview)
+Dockerfile instructions are available [here](./dockerfiles#nuphar-public-preview)
 
 ---
 
@@ -386,6 +373,41 @@ See more information on the DirectML execution provider [here](./docs/execution_
 ```
 #### Notes
 The DirectML execution provider supports building for both x64 and x86 architectures. DirectML is only supported on Windows.
+
+---
+
+### ARM Compute Library
+See more information on the ACL Execution Provider [here](./docs/execution_providers/ACL-ExecutionProvider.md).
+
+#### Prerequisites
+* Supported backend: i.MX8QM Armv8 CPUs
+* Supported BSP: i.MX8QM BSP
+  * Install i.MX8QM BSP: `source fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4*.sh`
+* Set up the build environment
+```
+source /opt/fsl-imx-xwayland/4.*/environment-setup-aarch64-poky-linux
+alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
+```
+* See [Build ARM](#ARM) below for information on building for ARM devices
+
+#### Build Instructions
+
+1. Configure ONNX Runtime with ACL support:
+```
+cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+```
+
+2. Build ONNX Runtime library, test and performance application:
+```
+make -j 6
+```
+
+3. Deploy ONNX runtime on the i.MX 8QM board
+```
+libonnxruntime.so.0.5.0
+onnxruntime_perf_test
+onnxruntime_test_all
+```
 
 ---
 
@@ -424,6 +446,30 @@ The DirectML execution provider supports building for both x64 and x86 architect
 
 ---
 
+### DebugNodeInputsOutputs
+OnnxRuntime supports build options for enabling debugging of intermediate tensor shapes and data.
+#### Build Instructions
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+Dump tensor input/output shapes for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=1
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+Dump tensor input/output shapes and output data for all nodes to stdout.
+```
+# Linux
+./build.sh --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+# Windows
+.\build.bat --cmake_extra_defines onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=2
+```
+##### Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0
+To disable this functionality after previously enabling, set onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS=0 or delete CMakeCache.txt.
+
+---
+
 ## Architectures
 ### x86
 #### Build Intsructions
@@ -454,7 +500,7 @@ See the instructions for the the Dockerfile [here](./dockerfiles/README.md#arm-3
     ```
 3. Get a pre-compiled protoc:
 
-   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip . Please unzip it after downloading.
+   You may get it from https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip . Please unzip it after downloading.
 4. (optional) Setup sysroot for enabling python extension. (TODO: will add details later)
 5. Save the following content as tool.cmake
     ```
@@ -508,13 +554,13 @@ git clone --recursive https://github.com/Microsoft/onnxruntime
 
 # Start the basic build
 cd /code/onnxruntime
-./build.sh --config MinSizeRel --arm --update --build
+./build.sh --config MinSizeRel --update --build
 
 # Build Shared Library
-./build.sh --config MinSizeRel --arm --build_shared_lib
+./build.sh --config MinSizeRel --build_shared_lib
 
 # Build Python Bindings and Wheel
-./build.sh --config MinSizeRel --arm --enable_pybind --build_wheel
+./build.sh --config MinSizeRel --enable_pybind --build_wheel
 
 # Build Output
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so
@@ -527,4 +573,28 @@ ls -l /code/onnxruntime/build/Linux/MinSizeRel/dist/*.whl
    If you have Visual Studio installed, please use the Visual Studio Installer (look under the section `Individual components` after choosing to `modify` Visual Studio) to download and install the corresponding ARM(64) compilers and libraries.
 
 2. Use `.\build.bat` and specify `--arm` or `--arm64` as the build option to start building. Preferably use `Developer Command Prompt for VS` or make sure all the installed cross-compilers are findable from the command prompt being used to build using the PATH environmant variable.
+
+---
+
+### Android
+
+#### Pre-Requisites
+
+Install Android NDK from https://developer.android.com/ndk/downloads
+
+#### Build Instructions
+
+##### Cross compiling on Windows
+
+```bash
+./build.bat --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+```
+
+##### Cross compiling on Linux
+
+```bash
+./build.sh --android --android_ndk_path <android ndk path> --android_abi <android abi, e.g., arm64-v8a (default) or armeabi-v7a> --android_api <android api level, e.g., 27 (default)>
+```
+
+If you want to use NNAPI Execution Provider on Android, see [docs/execution_providers/NNAPI-ExecutionProvider.md](/docs/execution_providers/NNAPI-ExecutionProvider.md).
 

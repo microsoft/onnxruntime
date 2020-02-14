@@ -21,7 +21,7 @@ namespace test {
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
 std::shared_ptr<onnxruntime::Model> DummyGraphWithClip() {
-  auto model = std::make_shared<onnxruntime::Model>("test");
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -42,7 +42,7 @@ class ExecutionFrameTest : public ::testing::Test {
 };
 
 TEST_F(ExecutionFrameTest, TensorAllocationTest) {
-  onnxruntime::Model model("test");
+  onnxruntime::Model model("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -90,7 +90,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   EXPECT_TRUE(p_tensor);
-  EXPECT_EQ(p_tensor->Shape(), shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor->Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape));
   EXPECT_EQ(p_tensor->DataType(), DataTypeImpl::GetType<float>());
 
   //test share memory from tensor
@@ -106,13 +107,15 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
   EXPECT_TRUE(tensor2);
-  EXPECT_EQ(tensor2->Shape(), shape2);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&tensor2->Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape2));
   EXPECT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
 }
 
 TEST_F(ExecutionFrameTest, FeedInDataTest) {
   onnxruntime::Model model("test", false, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(),
-                           std::unordered_map<std::string, int>{{"", 10}});
+                           std::unordered_map<std::string, int>{{"", 10}}, {},
+                           DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -154,7 +157,8 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   EXPECT_TRUE(p_tensor_arg_0);
-  EXPECT_EQ(p_tensor_arg_0->Shape(), shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor_arg_0->Shape()), *reinterpret_cast<const std::vector<int64_t>*>(&shape));
   EXPECT_EQ(p_tensor_arg_0->DataType(), DataTypeImpl::GetType<float>());
   EXPECT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
@@ -164,7 +168,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   auto xp_type = cpu_xp->Type();
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version);
+  onnxruntime::Model model("test", true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model.MainGraph();
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -258,11 +262,11 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   EXPECT_EQ(pattern.patterns.size(), pattern.locations.size());
-  EXPECT_EQ(pattern.patterns.size(), 1);
+  EXPECT_EQ(pattern.patterns.size(), 1u);
   auto p = pattern.GetPatterns(cpu_allocator->Info());
-  EXPECT_EQ(p->PeakSize(), 2 * 64);  // each allocation is 64-byte aligned
-  EXPECT_EQ(p->GetBlock(3)->offset_, 0);
-  EXPECT_EQ(p->GetBlock(4)->offset_, 64);
+  EXPECT_EQ(p->PeakSize(), 2u * 64u);  // each allocation is 64-byte aligned
+  EXPECT_EQ(p->GetBlock(3)->offset_, 0u);
+  EXPECT_EQ(p->GetBlock(4)->offset_, 64u);
 }
 
 TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {

@@ -26,6 +26,8 @@ tvm::Expr TensorizeIntGemm8bit::CreatePredicateMask(int tail_size) {
     mask_lanes = 16;
   } else if (tensorize_target_ == "avx2") {
     mask_lanes = 8;
+  } else if (tensorize_target_ == "avx") {
+    mask_lanes = 4;
   } else {
     ORT_NOT_IMPLEMENTED("Tensorization only support avx2/avx512-skylake currently!");
   }
@@ -99,8 +101,12 @@ void TensorizeIntGemm8bit::TensorizeReduceKernel(std::vector<tvm::Stmt>& inits, 
   tvm::Expr c_i32v_pred = _0_i32v;
 
   for (int inner_k = 0; inner_k < tensorize_dim_k.tile_size / tensorize_dim_k.layout_size; inner_k++) {
+    // guard reducion dim k
+    tvm::Expr guard_reduce = (tensorize_dim_k.dim_iter * tensorize_dim_k.tile_size) + inner_k * tensorize_dim_k.layout_size < tensorize_dim_k.dim_size;
+
     // buffer a regular load
-    auto a_u8x4 = a_buf.vload({inner_m, inner_k * tensorize_dim_k.layout_size}, u8x4);
+    auto a_u8x4 = tvm::ir::Select::make(guard_reduce,
+                                        a_buf.vload({inner_m, inner_k * tensorize_dim_k.layout_size}, u8x4), tvm::make_const(u8x4, 0));
     auto a_u8v = ExpandScalarUInt8(a_u8x4);
     // buffer b regular load
     auto b_i8v = b_buf.vload({inner_n + inner_k % tensorize_dim_n.layout_size,
@@ -221,6 +227,12 @@ tvm::TensorIntrin TensorizeIntGemm8bit::CreateTensorIntrin() {
                                   HalideIR::Int(8, 32), HalideIR::Int(16, 16), HalideIR::Int(32, 8),
                                   "llvm.x86.avx2.pmadd.ub.sw", "llvm.x86.avx2.pmadd.wd");
     tensorize_targets_meta_.emplace(tensorize_target_, avx2_info);
+  } else if (tensorize_target_ == "avx") {
+    TensorizeTargetInfo avx_info(HalideIR::UInt(1, 4), HalideIR::UInt(8, 16),
+                                 HalideIR::Int(8, 16), HalideIR::Int(16, 8), HalideIR::Int(32, 4),
+                                 "llvm.x86.ssse3.pmadd.ub.sw.128", "llvm.x86.sse2.pmadd.wd");
+
+    tensorize_targets_meta_.emplace(tensorize_target_, avx_info);
   } else {
     ORT_NOT_IMPLEMENTED("Tensorization only support avx2/avx512-skylake currently!");
   }

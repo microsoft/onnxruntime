@@ -3,17 +3,7 @@
 
 #include "core/framework/data_types.h"
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wignored-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-
-#include "onnx/defs/schema.h"
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/constants.h"
 #include "core/framework/op_kernel.h"
@@ -293,7 +283,7 @@ class SparseTensorTests : public testing::Test {
                         registry(std::make_shared<CustomRegistry>()),
                         custom_schema_registries_{registry->GetOpschemaRegistry()},
                         domain_to_version{{onnxruntime::kMLDomain, 10}},
-                        model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version),
+                        model("SparseTensorTest", false, ModelMetaData(), custom_schema_registries_, domain_to_version, {}, DefaultLoggingManager().DefaultLogger()),
                         graph(model.MainGraph()) {
     EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
   }
@@ -306,21 +296,21 @@ class SparseTensorTests : public testing::Test {
     schema.SinceVersion(10);
     schemas.push_back(schema);
 
-    Action register_kernel = [](CustomRegistry* registry) {
+    Action register_kernel = [](CustomRegistry* registry2) {
       auto kernel_def_builder = Op::KernelDef();
       kernel_def_builder
           .SetDomain(onnxruntime::kMLDomain)
           .SinceVersion(10)
           .Provider(onnxruntime::kCpuExecutionProvider);
       KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename Op::OpKernelImpl(info); };
-      EXPECT_TRUE(registry->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
+      EXPECT_TRUE(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
     };
     register_actions.push_back(register_kernel);
   }
 
   void RegisterOps() {
     EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 10, 11).IsOK());
-    for (auto registerop : register_actions)
+    for (auto& registerop : register_actions)
       registerop(registry.get());
   }
 

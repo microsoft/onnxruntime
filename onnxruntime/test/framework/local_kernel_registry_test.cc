@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/session/inference_session.h"
 
@@ -211,10 +212,11 @@ void RunSession(InferenceSession& session_object,
   common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
   std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   EXPECT_TRUE(st.IsOK());
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
-  EXPECT_EQ(expected_shape, rtensor.Shape());
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
   const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_shape.Size());
   ASSERT_EQ(values_y, found);
 }

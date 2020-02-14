@@ -15,10 +15,11 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/logistic.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/tanh.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
 )
 
 if(MSVC)
-  if(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
+  if(onnxruntime_target_platform STREQUAL "ARM64")
     set(asm_filename ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm)
     set(pre_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.i)
     set(obj_filename ${CMAKE_CURRENT_BINARY_DIR}/SgemmKernelNeon.obj)
@@ -37,11 +38,11 @@ if(MSVC)
             armasm64.exe ${ARMASM_FLAGS} ${pre_filename} ${obj_filename}
     )
     set(mlas_platform_srcs ${obj_filename})
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
+  elseif(onnxruntime_target_platform STREQUAL "ARM")
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
-  elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_GENERATOR MATCHES "Win64")
+  elseif(onnxruntime_target_platform STREQUAL "x64")
     enable_language(ASM_MASM)
 
     set(mlas_platform_srcs
@@ -212,7 +213,7 @@ else()
       if(HAS_AVX512F)
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
       endif()
-      
+
       # AVX512BW support is only available if AVX512F support is present.
       check_cxx_compiler_flag("-mavx512bw" HAS_AVX512BW)
       if(HAS_AVX512BW)
@@ -225,7 +226,7 @@ else()
         }"
         AVX512BW_COMPILES
       )
-      
+
       if(AVX512BW_COMPILES)
         set(mlas_platform_srcs_avx512bw
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8S8KernelAvx512BW.S
@@ -235,12 +236,12 @@ else()
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512BW.S
           ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8U8KernelAvx512Vnni.S
         )
-        
+
         if(HAS_AVX512BW)
           set_source_files_properties(${mlas_platform_srcs_avx512bw} PROPERTIES COMPILE_FLAGS "-mavx512bw")
         endif()
       else() # AVX512BW_COMPILES
-        # 
+        #
         set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512BW_UNSUPPORTED")
       endif() # AVX512BW_COMPILES
     else() # AVX512F_COMPILES

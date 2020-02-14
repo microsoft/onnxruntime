@@ -6,6 +6,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [Python](#Python)
 * [C#](#C)
 * [C/C++](#CC)
+* [Java](#Java)
 ***
  
 ## Python
@@ -17,8 +18,8 @@ For a list of available dockerfiles and published images to help with getting st
 * [Model Inferencing using NUPHAR Execution Provider](../docs/python/notebooks/onnxruntime-nuphar-tutorial.ipynb)
 
 **Inference with model conversion**
-* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/tutorial.html)
-* [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
+* [SKL Pipeline: Train, Convert, and Inference](https://microsoft.github.io/onnxruntime/python/tutorial.html)
+* [Keras: Convert and Inference](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_dl_keras.html#sphx-glr-auto-examples-plot-dl-keras-py)
 
 **Inference and deploy through AzureML**
 * Inferencing on CPU using [ONNX Model Zoo](https://github.com/onnx/models) models: 
@@ -38,10 +39,11 @@ For a list of available dockerfiles and published images to help with getting st
 **Inference and Deploy wtih Azure IoT Edge**
   * [Intel OpenVINO](http://aka.ms/onnxruntime-openvino)
   * [NVIDIA TensorRT on Jetson Nano (ARM64)](http://aka.ms/onnxruntime-arm64)
+  * [ONNX Runtime with Azure ML](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md)
 
 **Other**
 * [Running ONNX model tests](./docs/Model_Test.md)
-* [Common Errors with explanations](https://microsoft.github.io/onnxruntime/auto_examples/plot_common_errors.html#sphx-glr-auto-examples-plot-common-errors-py)
+* [Common Errors with explanations](https://microsoft.github.io/onnxruntime/python/auto_examples/plot_common_errors.html#sphx-glr-auto-examples-plot-common-errors-py)
 
 ## C#
 * [Inferencing Tutorial](../docs/CSharp_API.md#getting-started)
@@ -50,3 +52,7 @@ For a list of available dockerfiles and published images to help with getting st
 * [C - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/C_Api_Sample.cpp)
 * [C++ - Inferencing (SqueezeNet)](../csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests.Capi/CXX_Api_Sample.cpp)
 * [C++ - Inferencing (MNIST)](../samples/c_cxx/MNIST)
+
+## Java
+* [Inference Tutorial](../docs/Java_API.md#getting-started)
+* [MNIST inference](../java/sample/ScoreMNIST.java)

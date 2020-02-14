@@ -25,6 +25,22 @@
 using namespace Concurrency;
 #endif
 
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+#include <Windows.h>
+#include "core/platform/tracing.h"
+namespace {
+LARGE_INTEGER OrtGetPerformanceFrequency() {
+  LARGE_INTEGER v;
+  // On systems that run Windows XP or later, the QueryPerformanceFrequency function will always succeed
+  // and will thus never return zero.
+  (void)QueryPerformanceFrequency(&v);
+  return v;
+}
+
+LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
+}  // namespace
+#endif
+
 namespace onnxruntime {
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
@@ -87,7 +103,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     if (p_op_kernel == nullptr)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Got nullptr from GetKernel for node: ",
                              node.Name());
-
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    LARGE_INTEGER kernel_start;
+    QueryPerformanceCounter(&kernel_start);
+#endif
     // construct OpKernelContext
     // TODO: log kernel inputs?
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
@@ -128,7 +147,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
       }
     }
-
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
     utils::DumpNodeInputs(op_kernel_context, p_op_kernel->Node());
 #endif
@@ -202,7 +220,19 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
         }
       }
     }
-
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+    LARGE_INTEGER kernel_stop;
+    QueryPerformanceCounter(&kernel_stop);
+    LARGE_INTEGER elapsed;
+    elapsed.QuadPart = kernel_stop.QuadPart - kernel_start.QuadPart;
+    elapsed.QuadPart *= 1000000;
+    elapsed.QuadPart /= perf_freq.QuadPart;
+    // Log an event
+    TraceLoggingWrite(telemetry_provider_handle,  // handle to my provider
+                      "OpEnd",       // Event Name that should uniquely identify your event.
+                      TraceLoggingValue(p_op_kernel->KernelDef().OpName().c_str(), "op_name"),
+                      TraceLoggingValue(elapsed.QuadPart, "time"));
+#endif
     if (is_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      p_op_kernel->Node().Name() + "_fence_after",

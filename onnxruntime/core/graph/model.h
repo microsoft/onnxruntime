@@ -8,6 +8,7 @@
 #include <climits>
 #include <string>
 #include "core/graph/graph_viewer.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #include "gsl/gsl"
 
@@ -22,23 +23,32 @@ class Model {
  public:
   static constexpr Version kNoVersion = INT64_MAX;
 
+  explicit Model(const std::string& graph_name,
+                 bool is_onnx_domain_only,
+                 const logging::Logger& logger)
+      : Model(graph_name, is_onnx_domain_only, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), {}, {},
+              logger) {}
+
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,
-                 bool is_onnx_domain_only = false,
-                 const ModelMetaData& model_metadata = ModelMetaData(),
-                 const IOnnxRuntimeOpSchemaRegistryList& local_registries = IOnnxRuntimeOpSchemaRegistryList(),
-                 const std::unordered_map<std::string, int>& domain_to_version = {},
-                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions = {});
+                 bool is_onnx_domain_only,
+                 const ModelMetaData& model_metadata,
+                 const IOnnxRuntimeOpSchemaRegistryList& local_registries,
+                 const std::unordered_map<std::string, int>& domain_to_version,
+                 const std::vector<ONNX_NAMESPACE::FunctionProto>& model_specific_functions,
+                 const logging::Logger& logger);
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
-                 const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                 const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                 const logging::Logger& logger);
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto,
-                 const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                 const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                 const logging::Logger& logger);
 
   // Get model's IR version.
   // Return <kNoVersion> if not specified.
@@ -88,10 +98,6 @@ class Model {
 
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);
-
-  // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
-  static common::Status Load(const std::wstring& file_path, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registry = nullptr);
 #endif
   static common::Status Save(Model& model, const std::string& file_path);
 
@@ -99,23 +105,38 @@ class Model {
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
-  static common::Status Load(const std::string& file_path,
+  static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
+                             /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
+
+  // TODO(Task:132) Use of shared_ptr<X>* in Load/Save methods is confusing.
+  static common::Status Load(const std::basic_string<ORTCHAR_T>& file_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
+
+  static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
+
+  // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
+  static common::Status LoadFromBytes(int count, void* pBytes,
+                                      /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,
-                                      const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                                      const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                      const logging::Logger& logger);
 
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
 
   static common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
-                             const IOnnxRuntimeOpSchemaRegistryList* local_registries = nullptr);
+                             const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                             const logging::Logger& logger);
 
  private:
   // Model data.

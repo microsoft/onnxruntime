@@ -39,7 +39,7 @@ struct OP_ScaledTanh : public CtxScaledTanh {
 template <typename T>
 struct OP_Gelu : public CtxGelu {
   __device__ __inline__ T operator()(const T& a) const {
-    return a * _Normcdf(a);
+    return _Gelu(a);
   }
 };
 

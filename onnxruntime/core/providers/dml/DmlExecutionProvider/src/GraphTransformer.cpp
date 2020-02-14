@@ -5,6 +5,8 @@
 #include "GraphTransformer.h"
 #include "Operators/OperatorRegistration.h"
 #include "Operators/OperatorUtility.h"
+#include "ExecutionProvider.h"
+#include "GraphPartitioner.h"
 #include "core/providers/dml/OperatorAuthorHelper/Attributes.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorRegistration.h"
@@ -13,32 +15,33 @@
 
 namespace Dml
 {
-    GraphTransformer::GraphTransformer(const std::string& name, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry)
+    GraphTransformer::GraphTransformer(
+        const std::string& name, 
+        const onnxruntime::IExecutionProvider* provider
+    )
         : onnxruntime::GraphTransformer(name),
-          m_registry(dmlRegistry)
+          m_providerImpl(static_cast<const ExecutionProvider* >(provider)->GetImpl())
     {
     }
 
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
-        onnxruntime::Graph& graph, 
+        onnxruntime::Graph& graph,
         bool& modified,
-        int graph_level) const
-    {
-        modified = false;
-        
-        // Perform fusion
-        {
-            bool transformModifiedGraph = false;
-            PerformOperatorFusion(&graph, &transformModifiedGraph);
-            modified |= transformModifiedGraph;
+        int graph_level, const onnxruntime::logging::Logger&) const {
+      modified = false;
 
-            if (modified)
-            {
-                ORT_RETURN_IF_ERROR(graph.Resolve());
-            }
+      // Perform fusion
+      {
+        bool transformModifiedGraph = false;
+        PerformOperatorFusion(&graph, &transformModifiedGraph);
+        modified |= transformModifiedGraph;
+
+        if (modified) {
+          ORT_RETURN_IF_ERROR(graph.Resolve());
         }
+      }
 
-        return onnxruntime::common::Status::OK();
+      return onnxruntime::common::Status::OK();
     }
 
     static std::string GetUniqueNodeName(const onnxruntime::Node* node)
@@ -54,6 +57,8 @@ namespace Dml
     
     void GraphTransformer::PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const
     {
+        onnxruntime::KernelRegistry* registry = m_providerImpl->GetKernelRegistry().get();
+
         struct NodeToAdd
         {
             std::string name;
@@ -77,7 +82,15 @@ namespace Dml
         {
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!m_registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider))
+
+            bool allow64BitInputThroughStrides = false;
+            if (!IsNodeSupportedByDml(
+                node,
+                *registry,
+                m_providerImpl->GetSuppportedDeviceDataTypeMask(),
+                *m_providerImpl->GetInternalRegistrationInfoMap().get(),
+                allow64BitInputThroughStrides,
+                nullptr))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -97,7 +110,7 @@ namespace Dml
 
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!m_registry->TryFindKernel(outputNode, onnxruntime::kDmlExecutionProvider))
+            if (!registry->TryFindKernel(outputNode, onnxruntime::kDmlExecutionProvider))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;

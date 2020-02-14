@@ -25,7 +25,14 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 | CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7, v0.5.1-cuda10.1-cudnn7, :v1.0.0-cuda10.1-cudnn7 | :latest-cuda            |
 | TensorRT (x86)    | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-tensorrt19.03, :v0.5.0-tensorrt19.06, v1.0.0-tensorrt19.09 | :latest-tensorrt        |
 | OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm            | :latest-openvino-vadm   |
+<<<<<<< HEAD
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad          | :latest-openvino-myriad |
+=======
+| OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad | :latest-openvino-myriad |
+| OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu             | :latest-openvino-cpu    |
+| nGraph            | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-ngraph-v0.26.0                | :latest-ngraph          |
+| Nuphar            | mcr.microsoft.com/azureml/onnxruntime |                                       | :latest-nuphar          |
+>>>>>>> 2b77cb19bd306926693512820dac7d6850d8e925
 | Server            | mcr.microsoft.com/onnxruntime/server  | :v0.4.0, :v0.5.0, v0.5.1, v1.0.0      | :latest                 |
 
 ---
@@ -77,7 +84,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
   ```
 
 ## TensorRT
-**Ubuntu 16.04, TensorRT 5.0.2**
+**Ubuntu 18.04, CUDA 10.1.243, TensorRT 6.0.1**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```

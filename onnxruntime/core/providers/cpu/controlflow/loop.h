@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-class Loop final : public OpKernel, public controlflow::IControlFlowKernel {
+class Loop : public OpKernel, public controlflow::IControlFlowKernel {
  public:
   Loop(const OpKernelInfo& info);
 
@@ -26,9 +26,20 @@ class Loop final : public OpKernel, public controlflow::IControlFlowKernel {
   struct Info;
   ~Loop();
 
+  // function to concatenate the OrtValue instances from each Loop iteration into a single output buffer.
+  // @param per_iteration_output OrtValue instances from each iteration. Never empty. All should have the same shape.
+  // @param output Pre-allocated output buffer. On device specific to the ExecutionProvider running the Loop node.
+  using ConcatOutput = std::function<Status(std::vector<OrtValue>& per_iteration_output,
+                                            void* output, size_t output_size_in_bytes)>;
+
+ protected:
+  // derived class can provide implementation for handling concatenation of Loop output on a different device
+  void SetConcatOutputFunc(const ConcatOutput& concat_output_func) { concat_output_func_ = concat_output_func; }
+
  private:
   // Info and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<Info> info_;
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
+  ConcatOutput concat_output_func_;
 };
 }  // namespace onnxruntime

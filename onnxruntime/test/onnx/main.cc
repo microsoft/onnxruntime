@@ -36,12 +36,12 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
-      "'openvino' or 'nuphar'. "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
+      "'openvino', 'nuphar' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
-      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\n"
       "\t-h: help\n"
@@ -92,7 +92,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   int repeat_count = 1;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
-  bool enable_mkl = false;
+  bool enable_dnnl = false;
   bool enable_ngraph = false;
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
@@ -100,6 +100,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_openvino = false;
   bool enable_nnapi = false;
   bool enable_dml = false;
+  bool enable_acl = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -150,8 +151,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
-            enable_mkl = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("dnnl"))) {
+            enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
@@ -164,6 +165,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
+            enable_acl = true;
           } else {
             usage();
             return -1;
@@ -301,11 +304,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
-    if (enable_mkl) {
-#ifdef USE_MKLDNN
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(sf, enable_cpu_mem_arena ? 1 : 0));
+    if (enable_dnnl) {
+#ifdef USE_DNNL
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
-      fprintf(stderr, "MKL-DNN is not supported in this build");
+      fprintf(stderr, "DNNL is not supported in this build");
       return -1;
 #endif
     }
@@ -338,49 +341,88 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_acl) {
+#ifdef USE_ACL
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena ? 1 : 0));
+#else
+      fprintf(stderr, "ACL is not supported in this build");
+      return -1;
+#endif
+    }
 
     if (user_graph_optimization_level_set) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
-    static const char* cuda_flaky_tests[] = {"fp16_inception_v1", "fp16_shufflenet", "fp16_tiny_yolov2"};
-    static const char* dml_disabled_tests[] = {"mlperf_ssd_resnet34_1200", "mlperf_ssd_mobilenet_300", "mask_rcnn_keras", "mask_rcnn", "faster_rcnn"};
+    // Permanently exclude following tests because ORT support only opset staring from 7,
+    // Please make no more changes to the list
+    static const ORTCHAR_T* immutable_broken_tests[] =
+        {
+            ORT_TSTR("AvgPool1d"),
+            ORT_TSTR("AvgPool1d_stride"),
+            ORT_TSTR("AvgPool2d"),
+            ORT_TSTR("AvgPool2d_stride"),
+            ORT_TSTR("AvgPool3d"),
+            ORT_TSTR("AvgPool3d_stride"),
+            ORT_TSTR("AvgPool3d_stride1_pad0_gpu_input"),
+            ORT_TSTR("BatchNorm1d_3d_input_eval"),
+            ORT_TSTR("BatchNorm2d_eval"),
+            ORT_TSTR("BatchNorm2d_momentum_eval"),
+            ORT_TSTR("BatchNorm3d_eval"),
+            ORT_TSTR("BatchNorm3d_momentum_eval"),
+            ORT_TSTR("GLU"),
+            ORT_TSTR("GLU_dim"),
+            ORT_TSTR("Linear"),
+            ORT_TSTR("PReLU_1d"),
+            ORT_TSTR("PReLU_1d_multiparam"),
+            ORT_TSTR("PReLU_2d"),
+            ORT_TSTR("PReLU_2d_multiparam"),
+            ORT_TSTR("PReLU_3d"),
+            ORT_TSTR("PReLU_3d_multiparam"),
+            ORT_TSTR("PoissonNLLLLoss_no_reduce"),
+            ORT_TSTR("Softsign"),
+            ORT_TSTR("operator_add_broadcast"),
+            ORT_TSTR("operator_add_size1_broadcast"),
+            ORT_TSTR("operator_add_size1_right_broadcast"),
+            ORT_TSTR("operator_add_size1_singleton_broadcast"),
+            ORT_TSTR("operator_addconstant"),
+            ORT_TSTR("operator_addmm"),
+            ORT_TSTR("operator_basic"),
+            ORT_TSTR("operator_mm"),
+            ORT_TSTR("operator_non_float_params"),
+            ORT_TSTR("operator_params"),
+            ORT_TSTR("operator_pow")};
 
-    std::unordered_set<std::string> all_disabled_tests;
+    static const ORTCHAR_T* cuda_flaky_tests[] = {
+        ORT_TSTR("fp16_inception_v1"),
+        ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
+    static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mlperf_ssd_mobilenet_300"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn")};
+    static const ORTCHAR_T* dnnl_disabled_tests[] = {ORT_TSTR("test_densenet121"), ORT_TSTR("test_resnet18v2"), ORT_TSTR("test_resnet34v2"), ORT_TSTR("test_resnet50v2"), ORT_TSTR("test_resnet101v2"),
+                                                     ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
+                                                     ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
+                                                     ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152")};
+
+    std::unordered_set<std::basic_string<ORTCHAR_T> > all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
     if (enable_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     }
-
-#if (defined(_WIN32) && !defined(_WIN64)) || (defined(__GNUG__) && !defined(__LP64__))
-    // Minimize mem consumption
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
-              [&stat, &sf, &all_disabled_tests, &env](ITestCase* l) {
-                std::unique_ptr<ITestCase> test_case_ptr(l);
-                if (all_disabled_tests.find(l->GetTestCaseName()) != all_disabled_tests.end()) {
-                  return;
-                }
-                TestResultStat per_case_stat;
-                std::vector<ITestCase*> per_case_tests = {l};
-                TestEnv per_case_args(per_case_tests, per_case_stat, env, sf);
-                RunTests(per_case_args, 1, 1, 1, GetDefaultThreadPool(Env::Default()));
-                stat += per_case_stat;
-              });
-#else
-    std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
-              [&tests](ITestCase* l) { tests.push_back(l); });
-    for (auto it = tests.begin(); it != tests.end();) {
-      auto iter = all_disabled_tests.find((*it)->GetTestCaseName());
-      if (iter != all_disabled_tests.end()) {
-        delete *it;
-        it = tests.erase(it);
-      } else {
-        ++it;
-      }
+    if (enable_dnnl) {
+      // these models run but disabled tests to keep memory utilization low
+      // This will be removed after LRU implementation
+      all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
+#if !defined(__amd64__) && !defined(_M_AMD64)
+    //out of memory
+    static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19")};
+    all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
+#endif
+
+    std::vector<ITestCase*> tests;
+    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance, all_disabled_tests,
+              [&tests](ITestCase* l) { tests.push_back(l); });
 
     TestEnv args(tests, stat, env, sf);
     Status st = RunTests(args, p_models, concurrent_session_runs, static_cast<size_t>(repeat_count),
@@ -392,29 +434,25 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     for (ITestCase* l : tests) {
       delete l;
     }
-#endif
     std::string res = stat.ToString();
     fwrite(res.c_str(), 1, res.size(), stdout);
   }
-  // clang-format off
 
-  struct BrokenTest
-  {
+  struct BrokenTest {
     std::string test_name_;
     std::string reason_;
-    std::set<std::string> broken_versions_ = {}; // apply to all versions if empty
+    std::set<std::string> broken_versions_ = {};  // apply to all versions if empty
     BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {}
-    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) :
-      test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
-    bool operator < (const struct BrokenTest& test) const {
-        return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
+    BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions) : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {}
+    bool operator<(const struct BrokenTest& test) const {
+      return strcmp(test_name_.c_str(), test.test_name_.c_str()) < 0;
     }
   };
 
   std::set<BrokenTest> broken_tests = {
-      {"constantofshape_float_ones", "test data bug", {"onnx141","onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141","onnx150"}},
-      {"convtranspose_1d", "1d convtranspose not supported yet"},
+      {"BERT_Squad", "test data bug"},
+      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
+      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
       {"convtranspose_3d", "3d convtranspose not supported yet"},
       {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
@@ -441,94 +479,111 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric", "Bad onnx test output. Needs test fix."},
       {"bitshift_right_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
-      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398" },
-};
+      {"maxunpool_export_with_output_shape", "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+  };
 
-#ifdef USE_NGRAPH
-  broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
-  broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
-  broken_tests.insert({"clip", "not implemented yet for opset 11"});
-  broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
-  broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
-  broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
-  broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-  broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
-  broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
-  broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
-  broken_tests.insert({"mask_rcnn_keras", "Results mismatch: 8 of 81000"});
-  broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
-#endif
+  if (enable_ngraph) {
+    broken_tests.insert({"qlinearconv", "ambiguity in scalar dimensions [] vs [1]"});
+    broken_tests.insert({"clip_splitbounds", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_outbounds", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_example", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_default_min", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip_default_max", "not implemented yet for opset 11"});
+    broken_tests.insert({"clip", "not implemented yet for opset 11"});
+    broken_tests.insert({"depthtospace_crd_mode_example", "NGraph does not support CRD mode"});
+    broken_tests.insert({"depthtospace_crd_mode", "NGraph does not support CRD mode"});
+    broken_tests.insert({"gemm_default_no_bias", "not implemented yet for opset 11"});
+    broken_tests.insert({"quantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+    broken_tests.insert({"dequantizelinear", "ambiguity in scalar dimensions [] vs [1]", {"onnx150"}});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "Results mismatch"});
+    broken_tests.insert({"BERT_Squad", "Invalid Feed Input Name:input4"});
+    broken_tests.insert({"candy", "Results mismatch: 2 of 150528"});
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "Results mismatch"});    
+    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "Results mismatch"});
+    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "Results mismatch"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
+  if (enable_nuphar) {
+    broken_tests.insert({"cgan", "TVM exception during initialization"});
+  }
+  if (enable_dnnl) {
+    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
+    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
+    broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
+    broken_tests.insert({"candy", "result mismatch"});
+    broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from DNNL EP"});
+    broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from DNNL EP"});
+    broken_tests.insert({"averagepool_2d_ceil", "maxpool ceiling not supported"});
+    broken_tests.insert({"maxpool_2d_ceil", "maxpool ceiling not supported"});
+    broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_MKLDNN
-  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "result mismatch"});
-  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "result mismatch"});
-  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "result mismatch"});
-  broken_tests.insert({"mobilenetv2-1.0", "result mismatch"});
-  broken_tests.insert({"candy", "result mismatch"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "get unknown exception from MKLDNN EP"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "get unknown exception from MKLDNN EP"});
-#endif
-
-#ifdef USE_OPENVINO
-  broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
-  broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
-  broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+  if (enable_openvino) {
+    broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
+    broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
+    broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
+    broken_tests.insert({"scan_sum", "disable temporarily"});
+    broken_tests.insert({"scan9_sum", "disable temporarily"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 #ifdef OPENVINO_CONFIG_GPU_FP32
-  broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
-  broken_tests.insert({"div", "will be fixed in the next release"});
+    broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
+    broken_tests.insert({"div", "will be fixed in the next release"});
 #ifdef OPENVINO_CONFIG_GPU_FP16
-  broken_tests.insert({"div", "will be fixed in the next release"});
+    broken_tests.insert({"div", "will be fixed in the next release"});
 #endif
 #endif
-#endif
+  }
 
-#ifdef USE_NNAPI
-  broken_tests.insert({"scan9_sum", "Error with the extra graph"});
-  broken_tests.insert({"scan_sum", "Error with the extra graph"});
-  broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
-  broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
-  broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
-#endif
+  if (enable_nnapi) {
+    broken_tests.insert({"scan9_sum", "Error with the extra graph"});
+    broken_tests.insert({"scan_sum", "Error with the extra graph"});
+    broken_tests.insert({"mvn_expanded", "Failed to find kernel for MemcpyFromHost(1) (node Memcpy_1)"});
+    broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"gemm_transposeB", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"range_float_type_positive_delta_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"range_int32_type_negative_delta_expanded", "Temporarily disabled pending investigation"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_TENSORRT
-  broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
-  broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
-  broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
-  broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
-  broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
-#endif
+  if (enable_tensorrt) {
+    broken_tests.insert({"fp16_shufflenet", "TRT EP bug"});
+    broken_tests.insert({"fp16_inception_v1", "TRT EP bug"});
+    broken_tests.insert({"fp16_tiny_yolov2", "TRT EP bug"});
+    broken_tests.insert({"tf_inception_v3", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_mobilenet_v1_1.0_224", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_mobilenet_v2_1.0_224", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_mobilenet_v2_1.4_224", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v1_101", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v1_152", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v1_50", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v2_101", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v2_152", "TRT Engine couldn't be created"});
+    broken_tests.insert({"tf_resnet_v2_50", "TRT Engine couldn't be created"});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_CUDA
-  broken_tests.insert({"mask_rcnn_keras", "result mismatch"});
-  broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
-  broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
-  broken_tests.insert({"tf_inception_v1", "flaky test"}); //TODO: Investigate cause for flakiness
-#endif
+  if (enable_cuda) {
+    broken_tests.insert({"candy", "result mismatch"});
+    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
+    broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
+    broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
+    broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
+  }
 
-#ifdef USE_DML
-  if (enable_dml)
-  {
+  if (enable_dml) {
+    broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
     broken_tests.insert({"operator_permute2", "Test requires 6D Transpose, which isn't supported by DirectML"});
     broken_tests.insert({"resize_downsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
     broken_tests.insert({"resize_upsample_linear", "ORT 0.4 uses asymmetric but will conform to half_pixel in the next ONNX version."});
+    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
 
     // These tests are temporarily disabled pending a fix to the DML EP for handling of the output_padding attribute
     broken_tests.insert({"ConvTranspose2d", "Temporarily disabled due to EP bug"});
@@ -539,7 +594,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"dynamicquantizelinear_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "Temporarily disabled pending investigation"});
     broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "Temporarily disabled pending investigation"});
-    broken_tests.insert({"maxpool_with_argmax_2d_precomputed_pads", "Temporarily disabled pending investigation"});
     broken_tests.insert({"mxnet_arcface", "Temporarily disabled pending investigation"});
     broken_tests.insert({"yolov3", "Temporarily disabled pending investigation"});
     broken_tests.insert({"tf_inception_v2", "Temporarily disabled pending investigation"});
@@ -547,22 +601,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"candy", "Temporarily disabled pending investigation"});
     broken_tests.insert({"BERT_Squad", "Temporarily disabled pending investigation"});
   }
-#endif
-  // clang-format on
 
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif
 
-#if defined(__GNUG__) && !defined(__LP64__)
-  broken_tests.insert(
-      {"nonzero_example", "failed: type mismatch", {"onnx123", "onnx130", "onnx141", "onnx150", "onnxtip"}});
-  broken_tests.insert({"slice_neg_steps", "failed: type mismatch"});
-  broken_tests.insert({"mod_float_mixed_sign_example", "failed: type mismatch"});
-#endif
+  // Disable mask_rcnn_keras as this model currently has an invalid contrib op version set to 10
+  broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
 
 #ifdef DISABLE_CONTRIB_OPS
-  broken_tests.insert({"mask_rcnn_keras", "This model uses contrib ops."});
   broken_tests.insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});
   broken_tests.insert({"keras2coreml_ReLU_ImageNet", "This model uses contrib ops."});
@@ -626,9 +673,6 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "%s\n", ex.what());
     retval = -1;
   }
-  // Release the protobuf library if we failed to create an env (the env will release it automatically on destruction)
-  if (!env) {
-    ::google::protobuf::ShutdownProtobufLibrary();
-  }
+  ::google::protobuf::ShutdownProtobufLibrary();
   return retval;
 }

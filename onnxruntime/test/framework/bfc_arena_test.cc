@@ -35,7 +35,7 @@ TEST(BFCArenaTest, NoDups) {
   for (size_t i = 1; i < ptrs.size(); i++) {
     ASSERT_NE(ptrs[i], ptrs[i - 1]);  // No dups
     size_t req_size = a.RequestedSize(ptrs[i - 1]);
-    ASSERT_GT(req_size, 0);
+    ASSERT_GT(req_size, 0u);
     ASSERT_GE(static_cast<size_t>(static_cast<char*>(ptrs[i]) - static_cast<char*>(ptrs[i - 1])),
               req_size);
   }
@@ -89,7 +89,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocations) {
     EXPECT_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
 
     size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
-    ASSERT_GT(req_size, 0);
+    ASSERT_GT(req_size, 0u);
 
     // Check that they don't overlap.
     ASSERT_GE(static_cast<size_t>(static_cast<char*>(existing_ptrs[i]) -
@@ -146,8 +146,8 @@ TEST(BFCArenaTest, AllocateZeroBufSize) {
 TEST(BFCArenaTest, AllocatedVsRequested) {
   BFCArena a(std::unique_ptr<IDeviceAllocator>(new CPUAllocator()), 1 << 30);
   void* t1 = a.Alloc(4);
-  EXPECT_EQ(4, a.RequestedSize(t1));
-  EXPECT_EQ(256, a.AllocatedSize(t1));
+  EXPECT_EQ(4u, a.RequestedSize(t1));
+  EXPECT_EQ(256u, a.AllocatedSize(t1));
   a.Free(t1);
 }
 
@@ -207,7 +207,7 @@ TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
     EXPECT_NE(existing_ptrs[i], existing_ptrs[i - 1]);  // No dups
 
     size_t req_size = a.RequestedSize(existing_ptrs[i - 1]);
-    ASSERT_GT(req_size, 0);
+    ASSERT_GT(req_size, 0u);
 
     // Check that they don't overlap.
     ASSERT_GE(static_cast<size_t>(

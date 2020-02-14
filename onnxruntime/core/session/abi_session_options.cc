@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -130,7 +131,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
       break;
     case ORT_ENABLE_ALL:
-      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
       break;
     default:
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph_optimization_level is not valid");

@@ -4,6 +4,8 @@
 
 set -x -e -o pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
 function usage {
     echo Usage: create_shared.sh -c cache_dir -m input_model_file -o output_so_file
     echo The generated file would be cache_dir/output_so_file
@@ -34,6 +36,8 @@ if ! [ -x "$(command -v g++)" ]; then
     exit 1
 fi
 
+declare -a all_cc_files
+
 cd $CACHE_DIR
 if [ -x "$MODEL_FILE" ]; then
     # generate checksum.cc
@@ -46,9 +50,24 @@ void _ORTInternal_GetCheckSum(const char*& cs, size_t& len) {
   cs = model_checksum; len = sizeof(model_checksum)/sizeof(model_checksum[0]) - 1;
 }    
 __EOF__
-    g++ -std=c++14 -fPIC -o checksum.o -c checksum.cc
-    rm checksum.cc
+    all_cc_files+=(checksum)
 fi
+
+# generate cache_version.cc
+VERSION_FILE="${SCRIPT_DIR}/NUPHAR_CACHE_VERSION"
+cat > $CACHE_DIR/cache_version.cc <<__EOF__
+#include "$VERSION_FILE"
+extern "C"
+const char* _ORTInternal_GetCacheVersion() {
+  return __NUPHAR_CACHE_VERSION__;
+}
+__EOF__
+all_cc_files+=(cache_version)
+
+for cc_file in "${all_cc_files[@]}"; do
+  g++ -std=c++14 -fPIC -o "$cc_file".o -c "$cc_file".cc
+  rm "$cc_file".cc
+done
 
 # link
 if ls *.o 1> /dev/null 2>&1; then

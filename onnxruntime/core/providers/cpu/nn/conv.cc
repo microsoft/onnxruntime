@@ -14,10 +14,8 @@
 * limitations under the License.
 */
 /* Modifications Copyright (c) Microsoft. */
-#include "core/framework/op_kernel_context_internal.h"
 
 #include "core/providers/cpu/nn/conv.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
@@ -35,7 +33,6 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  bool Is2DKernel = kernel_shape.size() == 2;
   std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
@@ -80,12 +77,13 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
                           output_shape.GetDims().end());
 
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  const size_t kernel_rank = kernel_shape.size();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      if (Is2DKernel) {
-        math::Im2col<T, CPUMathUtil, StorageOrder::NCHW>(
+      if (kernel_rank == 2) {
+        math::Im2col<T, StorageOrder::NCHW>(
             Xdata + group_id * X_offset,
             C / conv_attrs_.group,
             input_shape[0],
@@ -100,10 +98,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
             pads[3],
             strides[0],
             strides[1],
-            col_buffer_data,
-            &CPUMathUtil::Instance());
+            col_buffer_data);
       } else {
-        math::Im2colNd<T, CPUMathUtil, StorageOrder::NCHW>()(
+        math::Im2colNd<T, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
             col_buffer_shape.data(),
@@ -114,8 +111,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
             dilations.data(),
             pads.data(),
             static_cast<int>(kernel_shape.size()),
-            col_buffer_data,
-            &CPUMathUtil::Instance());
+            col_buffer_data);
       }
 
       math::Gemm<T>(
@@ -129,7 +125,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
           col_buffer_data,
           0,
           Ydata + group_id * Y_offset,
-          tp);
+          thread_pool);
     }
 
     if (B != nullptr) {
@@ -190,7 +186,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   auto* Ydata = Y->template MutableData<float>();
 
   const size_t kernel_rank = kernel_shape.size();
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   if (kernel_rank == 2 || kernel_rank == 3) {
     MLAS_CONV_PARAMETERS Parameters;
@@ -209,7 +205,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
-                    tp);
+                    thread_pool);
 
     auto working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * WorkingBufferSize) : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
@@ -220,7 +216,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
              Bdata,
              static_cast<float*>(working_buffer.get()),
              Ydata,
-             tp);
+             thread_pool);
   } else {
     const int64_t input_image_size = input_shape.Size();
     const int64_t output_image_size = output_shape.Size();
@@ -242,7 +238,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-        math::Im2colNd<float, CPUMathUtil, StorageOrder::NCHW>()(
+        math::Im2colNd<float, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
             image_shape.GetDims().data(),
             col_buffer_shape.data(),
@@ -253,8 +249,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             dilations.data(),
             pads.data(),
             static_cast<int>(kernel_shape.size()),
-            col_buffer_data,
-            &CPUMathUtil::Instance());
+            col_buffer_data);
 
         math::Gemm<float>(
             CblasNoTrans,
@@ -267,7 +262,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             col_buffer_data,
             0,
             Ydata + group_id * Y_offset,
-            tp);
+            thread_pool);
       }
 
       MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);

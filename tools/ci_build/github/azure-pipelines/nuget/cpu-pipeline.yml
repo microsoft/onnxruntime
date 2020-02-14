@@ -1,11 +1,5 @@
-# Defined as pipeline variables
-# variables:
-#   AgentPoolWin : 'Win-CPU'
-#   AgentPoolLinux : 'Linux-CPU'
-#   AgentPoolMacOS : 'macOS-10.13'
-
 jobs: 
 - template: templates/cpu.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
     DoEsrp: 'false'

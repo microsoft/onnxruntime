@@ -18,10 +18,12 @@ namespace onnxruntime {
 namespace test {
 
 TEST(FreeDimensionOverrideTransformerTest, Test) {
-  string model_uri = "testdata/abs_free_dimensions.onnx";
+  auto model_uri = ORT_TSTR("testdata/abs_free_dimensions.onnx");
 
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model).IsOK());
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
   Graph& graph = model->MainGraph();
 
   // The model's input shape has two free dimensions, which have the denotation of DATA_BATCH
@@ -38,7 +40,8 @@ TEST(FreeDimensionOverrideTransformerTest, Test) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr(5);
   graph_transformation_mgr.Register(std::move(graph_transformer), TransformerLevel::Level1);
 
-  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1);
+  graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
+                                             DefaultLoggingManager().DefaultLogger());
 
   // Verify that the shape of the input graph has the correct values
 

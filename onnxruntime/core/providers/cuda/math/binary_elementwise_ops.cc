@@ -17,7 +17,7 @@ Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, 
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ",
                            p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
   p->output_tensor = context->Output(0, p->lhs_tensor->Shape());
-  p->output_rank_or_simple_broadcast = static_cast<size_t>(SimpleBroadcast::NoBroadcast);
+  p->output_rank_or_simple_broadcast = static_cast<int32_t>(SimpleBroadcast::NoBroadcast);
   return Status::OK();
 }
 
@@ -54,8 +54,8 @@ Status BinaryElementwiseBroadcastPrepare(
     const Tensor* rhs_tensor,
     Tensor* output_tensor,
     BinaryElementwisePreparation* p,
-    const TensorShape* override_lhs_shape = nullptr,
-    const TensorShape* override_rhs_shape = nullptr) {
+    const TensorShape* override_lhs_shape,
+    const TensorShape* override_rhs_shape) {
   p->lhs_tensor = lhs_tensor;
   p->rhs_tensor = rhs_tensor;
   const auto& lhs_shape = override_lhs_shape ? *override_lhs_shape : lhs_tensor->Shape();
@@ -119,16 +119,15 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 #define BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                         \
   template <>                                                                                                    \
   Status x<T>::ComputeInternal(OpKernelContext* context) const {                                                 \
-    BinaryElementwisePreparation prepare(this);                                                                  \
-    ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
-    ORT_RETURN_IF_ERROR(prepare.CopyToGpu());                                                                    \
+    BinaryElementwisePreparation prepare;                                                                        \
+    Prepare(context, &prepare);                                                                                  \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
-        prepare.lhs_padded_strides.GpuPtr(),                                                                     \
+        &prepare.lhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
-        prepare.rhs_padded_strides.GpuPtr(),                                                                     \
+        &prepare.rhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
-        prepare.fdm_output_strides.GpuPtr(),                                                                     \
+        &prepare.fdm_output_strides,                                                                             \
         prepare.fdm_H,                                                                                           \
         prepare.fdm_C,                                                                                           \
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
@@ -175,6 +174,11 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, bool)    \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t) \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int64_t)
+
+#define BINARY_OP_REGISTER_VERSIONED_OIL(name, startver, endver)                      \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, bool)    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int32_t) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int64_t)
 
 #define BINARY_LOGICALOP_REGISTER_OIL(name, ver)                         \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, bool)    \
@@ -247,20 +251,19 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
       previous_output_shape = output_shape;
     }
     Tensor* output_tensor = context->Output(0, output_shape);
-    BinaryElementwisePreparation prepare(this);
+    BinaryElementwisePreparation prepare;
 
     auto rhs_tensor = context->Input<Tensor>(1);
     if (input_count == 2) {
       // special case for 2 tensors to avoid memset zero
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare));
-      ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
       Impl_Compute(
           prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
+          &prepare.lhs_padded_strides,
           reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
+          &prepare.rhs_padded_strides,
           reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-          prepare.fdm_output_strides.GpuPtr(),
+          &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
@@ -270,14 +273,13 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
       CUDA_RETURN_IF_ERROR(cudaMemset(output_tensor->MutableDataRaw(), 0, output_shape.Size() * sizeof(CudaT)));
 
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, lhs_tensor, output_tensor, &prepare));
-      ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
       Impl_Add(
           prepare.output_rank_or_simple_broadcast,
-          prepare.lhs_padded_strides.GpuPtr(),
+          &prepare.lhs_padded_strides,
           reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-          prepare.rhs_padded_strides.GpuPtr(),
+          &prepare.rhs_padded_strides,
           reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-          prepare.fdm_output_strides.GpuPtr(),
+          &prepare.fdm_output_strides,
           prepare.fdm_H,
           prepare.fdm_C,
           reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
@@ -287,11 +289,11 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
         ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(output_tensor, context->Input<Tensor>(index), output_tensor, &prepare));
         Impl_Compute(
             prepare.output_rank_or_simple_broadcast,
-            prepare.lhs_padded_strides.GpuPtr(),
+            &prepare.lhs_padded_strides,
             reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-            prepare.rhs_padded_strides.GpuPtr(),
+            &prepare.rhs_padded_strides,
             reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-            prepare.fdm_output_strides.GpuPtr(),
+            &prepare.fdm_output_strides,
             prepare.fdm_H,
             prepare.fdm_C,
             reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
@@ -301,6 +303,7 @@ Status VariadicInputBase<T, CudaT>::ComputeMethod(OpKernelContext* context, Impl
   }
   return Status::OK();
 }
+
 template <typename T>
 Status Sum<T>::ComputeInternal(OpKernelContext* context) const {
   this->ComputeMethod(context, &Impl_Add);
@@ -326,18 +329,17 @@ Status Min<T>::ComputeInternal(OpKernelContext* context) const {
 //for other elementwise ops
 template <typename T, typename CudaT>
 Status CompareFunction<T, CudaT>::CompareMethod(OpKernelContext* context, ImplCompare Impl_Compare) const {
-  BinaryElementwisePreparation prepare(this);
+  BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   size_t output_size = prepare.output_tensor->Shape().Size();
   IAllocatorUniquePtr<T> output_buffer = GetScratchBuffer<T>(output_size);
-  ORT_RETURN_IF_ERROR(prepare.CopyToGpu());
   Impl_Compare(
       prepare.output_rank_or_simple_broadcast,
-      prepare.lhs_padded_strides.GpuPtr(),
+      &prepare.lhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
-      prepare.rhs_padded_strides.GpuPtr(),
+      &prepare.rhs_padded_strides,
       reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
-      prepare.fdm_output_strides.GpuPtr(),
+      &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
       reinterpret_cast<CudaT*>(output_buffer.get()),
@@ -379,7 +381,8 @@ Status Less<T>::ComputeInternal(OpKernelContext* context) const {
 BINARY_OP_REGISTER_UZILHFD(Sum, 8)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Sum, 6, 7)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Greater, 9)
-BINARY_OP_REGISTER_OIL(Equal, 7)
+BINARY_OP_REGISTER_VERSIONED_OIL(Equal, 7, 10)
+BINARY_OP_REGISTER_OIL(Equal, 11)
 BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_OP_REGISTER_HFD(Max, 8)
 BINARY_OP_REGISTER_VERSIONED_HFD(Max, 6, 7)

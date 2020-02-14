@@ -75,9 +75,10 @@ void RunTypedTest() {
                      {1, 1,
                       4, 4});
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
+  // skip cuda as the cuda kernel won't throw the error message
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider});
+            {kNupharExecutionProvider, kCudaExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -138,6 +139,22 @@ void RunTypedTest() {
                            {1, 0});
   test10.AddOutput<T>("output", {2}, {2, 1});
   test10.Run();
+}
+
+template <>
+void RunTypedTest<bool>() {
+  // 3D input - axis 2
+  OpTester test1("GatherElements", 11);
+  test1.AddAttribute<int64_t>("axis", 2LL);
+  test1.AddInput<bool>("data", {2, 2, 2},
+                       {true, false,
+                        true, false,
+                        true, false,
+                        true, false});
+  test1.AddInput<int64_t>("indices", {1, 2, 1},
+                          {0, 1});
+  test1.AddOutput<bool>("output", {1, 2, 1}, {true, false});
+  test1.Run();
 }
 
 template <>
@@ -280,6 +297,18 @@ TEST(GatherElementsOpTest, uint32_t) {
 
 TEST(GatherElementsOpTest, uint64_t) {
   RunTypedTest<uint64_t>();
+}
+
+TEST(GatherElementsOpTest, float) {
+  RunTypedTest<float>();
+}
+
+TEST(GatherElementsOpTest, double) {
+  RunTypedTest<double>();
+}
+
+TEST(GatherElementsOpTest, bool) {
+  RunTypedTest<bool>();
 }
 
 TEST(GatherElementsOpTest, string) {

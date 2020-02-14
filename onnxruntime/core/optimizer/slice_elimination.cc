@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect) const {
+Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   if (graph_utils::RemoveNode(graph, node)) {
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
@@ -17,13 +17,13 @@ Status EliminateSlice::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_e
   return Status::OK();
 }
 
-bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node) const {
+bool EliminateSlice::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   // We currently support elimination for Slice operator v1.
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11})) {
     return false;
   }
 
-  if (!graph_utils::CanRemoveNode(graph, node)) {
+  if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
 

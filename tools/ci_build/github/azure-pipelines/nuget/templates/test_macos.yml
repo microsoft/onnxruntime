@@ -1,24 +1,34 @@
 parameters:
-  AgentPool : 'Hosted macOS High Sierra'
+  IsMacOS : 'true'
 
 jobs:
 - job: NuGet_Test_MacOS
   workspace:
     clean: all
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    vmImage: 'macOS-10.14'
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+  - group: ORT_TEST_DATA_SAS
+  - name: OnnxRuntimeBuildDirectory
+    value: '$(Build.BinariesDirectory)'
   steps:
-  - template: ../../templates/mac-set-variables-and-download.yml
+  - template: set-test-data-variables-step.yml
+  - template: mac-set-variables-and-download.yml
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - Signed NuGet'
     inputs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download OsX CustomOp test data'
+    inputs:
+      artifactName: 'drop-osx'
+      targetPath: '$(Build.BinariesDirectory)/testdata'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
@@ -29,16 +39,21 @@ jobs:
                $(Build.BinariesDirectory)/nuget-artifact \
                $(Build.SourcesDirectory) \
                $(Build.BinariesDirectory) \
-               $(NuGetPackageVersionNumber)
+               $(NuGetPackageVersionNumber) \
+               ${{ parameters.IsMacOS }}
 
      if [ $? -ne 0 ]; then
          echo "Failed to run test"
          exit 1
      fi
     displayName: 'Run Test'
+    env:
+        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+        DisableContribOps: $(DisableContribOps)
+        IsReleaseBuild: $(IsReleaseBuild)
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: always()
+  - template: ../../templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'always'
 
   - template: ../../templates/clean-agent-build-directory-step.yml

@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
-
-#include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
-#include "core/providers/nuphar/mti_x86/math/matmul_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/passes/weight_layout/transpose_2d.h"
 #include "core/codegen/passes/weight_layout/vertical_stripes_2d.h"
+#include "core/framework/op_kernel_info.h"
+#include "core/providers/nuphar/compiler/nuphar_codegen_ctx.h"
+#include "core/providers/nuphar/compiler/x86/op_ir_creator/all_ops.h"
 #include "core/providers/nuphar/compiler/x86/x86_target_info.h"
+#include "core/providers/nuphar/mti_x86/math/matmul_ops.h"
 
 #include <tvm/ir_pass.h>
 
@@ -89,29 +89,86 @@ static bool MatMul_weights2D(
   return true;
 }
 
-static bool MatMulF32ExternCpuEx(
-    ONNX_NAMESPACE::TensorProto_DataType proto_type,
-    NupharCodeGenCtx& ctx_nuphar,
-    const tvm::Tensor& A,
-    const tvm::Tensor& B,
+static bool MatMulF32ExternCPU(
+    tvm::Tensor A,
+    tvm::Tensor B,
     tvm::Tensor& Y,
-    const std::string& B_initializer_name = "",
-    bool trans_a = false,
-    bool trans_b = false,
-    const std::string& name = "matmul_extern_cpu_ex") {
-  // transpose weights if not already
-  tvm::Tensor actual_B = B;
+    const Node& node,
+    tvm_codegen::CodeGenContext& ctx_codegen) {
+  NupharCodeGenCtx* ctx_nuphar = Promote<NupharCodeGenCtx>(&ctx_codegen);
 
-  if (ctx_nuphar.IsInitializer(B_initializer_name) && !trans_b) {
-    auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(proto_type);
-    actual_B = ctx_nuphar.ApplyWeightLayout(layout_key, B_initializer_name, B, true);
-    trans_b = true;
+  // try to fuse tranpose in MatMul input with MatMul
+  auto find_transposed_input = [&ctx_nuphar](const tvm::Tensor& t, std::vector<int32_t>& cumulated_permute) {
+    tvm::Tensor out = t;
+    int64_t rank = gsl::narrow<int64_t>(t->shape.size());
+    std::vector<int64_t> default_node_perm(rank);
+    cumulated_permute.resize(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+      cumulated_permute[i] = gsl::narrow<int32_t>(i);
+      default_node_perm[i] = rank - i - 1;
+    }
+    for (const Node* root_node = ctx_nuphar->FindNode(out);
+         root_node != nullptr && root_node->OpType() == "Transpose";
+         root_node = ctx_nuphar->FindNode(out)) {
+      ProtoHelperNodeContext ctx(*root_node);
+      OpNodeProtoHelper<ProtoHelperNodeContext> info(&ctx);
+      auto perm = info.GetAttrsOrDefault("perm", default_node_perm);
+      std::vector<int32_t> updated_cumulated_permute = cumulated_permute;
+      for (int64_t dst_dim = 0; dst_dim < rank; ++dst_dim) {
+        auto src_dim = tvm_codegen::HandleNegativeAxis(perm[cumulated_permute[dst_dim]], rank);
+        updated_cumulated_permute[dst_dim] = gsl::narrow<int32_t>(src_dim);
+      }
+      cumulated_permute = updated_cumulated_permute;
+      // op corresponding to node should be Transpose
+      auto op = out->op.as<tvm::ComputeOpNode>();
+      ORT_ENFORCE(op != nullptr);
+      ORT_ENFORCE(op->InputTensors().size() == 1);
+      out = op->InputTensors()[0];
+    }
+    return out;
+  };
+
+  std::vector<int32_t> permute_A;
+  std::vector<int32_t> permute_B;
+  const std::vector<int32_t>* p_permute_A = nullptr;
+  const std::vector<int32_t>* p_permute_B = nullptr;
+  tvm::Tensor root_A = find_transposed_input(A, permute_A);
+  tvm::Tensor root_B = find_transposed_input(B, permute_B);
+  if (A->shape.size() == B->shape.size() && A->shape.size() >= 2) {
+    // currently only fuse Transpose into MatMul when rank(A) == rank(B)
+    // make sure no broadcasting in MatMul
+    bool no_broadcast = true;
+    for (size_t i = 0; i < A->shape.size() - 2; ++i) {
+      if (!tvm::ir::Equal(A->shape[i], B->shape[i])) {
+        no_broadcast = false;
+        break;
+      }
+    }
+    if (no_broadcast) {
+      if (CanPermuteBeFusedInMatMul(permute_A)) {
+        A = root_A;
+        p_permute_A = &permute_A;
+      }
+      if (CanPermuteBeFusedInMatMul(permute_B)) {
+        B = root_B;
+        p_permute_B = &permute_B;
+      }
+    }
   }
 
-  return nuphar::MatMulExternCpu(A, actual_B, Y, trans_a, trans_b, name);
+  const auto& B_name = node.InputDefs()[1]->Name();
+  if (ctx_nuphar->IsInitializer(B_name) && B->shape.size() == 2) {
+    // matmul with initializer, using transpose weights
+    auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto actual_B = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
+    return nuphar::GemmExternCpu(A, actual_B, Y, false, true, B_name);
+  } else {
+    return nuphar::MatMulExternCpu(A, B, Y, p_permute_A, p_permute_B, node.Name() + "_matmul_extern");
+  }
 }
 
-Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMul)::Evaluate(
+Status
+NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMul)::Evaluate(
     const tvm::Array<tvm::Tensor>& inputs,
     const Node& node,
     tvm_codegen::CodeGenContext& ctx_codegen,
@@ -123,15 +180,17 @@ Status NUPHAR_TVM_X86_OP_IR_CREATOR_CLASS(MatMul)::Evaluate(
   tvm::Tensor Y;
   auto& A = inputs[0];
   auto& B = inputs[1];
-  const std::string& input_1_name = node.InputDefs()[1]->Name();
 
+  // float MatMul, try use extern
   if (A->dtype == HalideIR::Float(32) &&
       B->dtype == HalideIR::Float(32) &&
-      MatMulF32ExternCpuEx(proto_type, *ctx_nuphar, A, B, Y, input_1_name)) {
+      MatMulF32ExternCPU(A, B, Y, node, ctx_codegen)) {
     outputs.push_back(Y);
     return Status::OK();
   }
 
+  // if B is 2D initializer, use vertical stripe layout
+  const std::string& input_1_name = node.InputDefs()[1]->Name();
   if (ShapeRank(node.InputDefs()[1]) == 2 && ctx_nuphar->IsInitializer(input_1_name)) {
     if (MatMul_weights2D(proto_type, A, B, input_1_name, *ctx_nuphar, Y)) {
       outputs.push_back(Y);

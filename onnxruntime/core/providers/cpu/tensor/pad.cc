@@ -223,10 +223,10 @@ Status PadCpuImpl(OpKernelContext* ctx,
   std::vector<int64_t> input_extents;
 
   // Calculate output dimensions, and handle any negative padding
-  input_starts.reserve(2 * new_dims_count);
-  input_extents.reserve(2 * new_dims_count);
+  input_starts.reserve(new_dims_count);
+  input_extents.reserve(new_dims_count);
   for (size_t i = 0; i < new_dims_count; i++) {
-    input_starts.push_back(reshaped_slice[i]);
+    input_starts.push_back(-1 * reshaped_slice[i]);
     input_extents.push_back(reshaped_input_dims[i] + reshaped_slice[i] + reshaped_slice[i + new_dims_count]);
     reshaped_output_dims[i] += reshaped_pad[i] + reshaped_pad[i + new_dims_count] + reshaped_slice[i] + reshaped_slice[i + new_dims_count];
   }
@@ -365,7 +365,7 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
     const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
-    ORT_ENFORCE(pads_tensor.DataType() == DataTypeImpl::GetType<int64_t>(),
+    ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
                 "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
@@ -390,10 +390,10 @@ Status Pad<T>::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    T value = 0;
+    T value = static_cast<T>(0);
     const Tensor* value_tensor = ctx->Input<Tensor>(2);
     if (nullptr != value_tensor) {
-      ORT_ENFORCE(value_tensor->DataType() == DataTypeImpl::GetType<T>() &&
+      ORT_ENFORCE(value_tensor->IsDataType<T>() &&
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
       value = value_tensor->template Data<T>()[0];

@@ -11,6 +11,7 @@
 #include <Python.h>
 
 #include <inference_engine.hpp>
+#include <ext_list.hpp>
 //MSVC does not allow initialization of a typedef
 
 #ifdef OPTIONAL
@@ -32,6 +33,8 @@ namespace openvino_ep {
 
 const std::string OpenVINOGraph::log_tag = "[OpenVINO-EP] ";
 
+InferenceEngine::Core ie;
+
 OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
@@ -41,6 +44,7 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
   precision_str = "FP32";
+  ie.AddExtension(std::make_shared<InferenceEngine::Extensions::Cpu::CpuExtensions>(), "CPU");
 #endif
 #ifdef OPENVINO_CONFIG_GPU_FP32
   device_id_ = "GPU";
@@ -68,7 +72,6 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   precision_ = InferenceEngine::Precision::FP32;
   precision_str = "FP32";
 #endif
-
 
   // Infer Request class represents OpenVINO's logical hardware instance. These logical
   // instances are bound to physical hardware instances at runtime depending
@@ -107,11 +110,10 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
     input_indexes_.push_back(index);
   }
 
-  class FPGA_ErrorListener : public InferenceEngine::IErrorListener{
-
-        void onError(const char *msg) noexcept override {
-          LOGS_DEFAULT(INFO) << log_tag << msg;
-        }
+  class FPGA_ErrorListener : public InferenceEngine::IErrorListener {
+    void onError(const char* msg) noexcept override {
+      LOGS_DEFAULT(INFO) << log_tag << msg;
+    }
   };
 
   FPGA_ErrorListener err_listener;
@@ -122,14 +124,8 @@ OpenVINOGraph::OpenVINOGraph(const onnxruntime::Node* fused_node) {
   // Create hardware specific OpenVINO network representation
   GetExecutableHandle(openvino_network_);
 
-
-
-  plugin_ = InferenceEngine::PluginDispatcher().getPluginByDevice(device_id_);
-
-  static_cast<InferenceEngine::InferenceEnginePluginPtr>(plugin_)->SetLogCallback(err_listener);
-
   //Loading model to the plugin
-  InferenceEngine::ExecutableNetwork exeNetwork = plugin_.LoadNetwork(*openvino_network_, {});
+  auto exeNetwork = ie.LoadNetwork(*openvino_network_, device_id_);
 
   LOGS_DEFAULT(INFO) << log_tag << "Network loaded into accelerator plug-in succesfully";
 
@@ -152,7 +148,6 @@ void OpenVINOGraph::ConvertONNXModelToOpenVINOIR(const std::string& onnx_model,
   PyObject* pModule = NULL;
   PyObject* pName;
   pName = PyUnicode_FromString("openvino_mo");
-
 
   pModule = PyImport_Import(pName);
   if (pModule == NULL) {
@@ -213,9 +208,9 @@ std::shared_ptr<InferenceEngine::CNNNetwork> OpenVINOGraph::BuildOpenVINONetwork
   const auto& attributes = fused_node_->GetAttributes();
   std::string xml_string = attributes.at("xml_str").s();
   std::string weights_string = attributes.at("weights_str").s();
-  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(
-      new InferenceEngine::TBlob<uint8_t>(InferenceEngine::Precision::U8,
-                                          InferenceEngine::Layout::C, {weights_string.size()}));
+  InferenceEngine::TensorDesc tensorDesc(InferenceEngine::Precision::U8,
+                                         {weights_string.size()}, InferenceEngine::Layout::C);
+  InferenceEngine::TBlob<uint8_t>::Ptr weightsPtr(new InferenceEngine::TBlob<uint8_t>(tensorDesc));
   weightsPtr->allocate();
 
   std::memcpy(weightsPtr->buffer(), static_cast<const void*>(weights_string.c_str()), weights_string.size());

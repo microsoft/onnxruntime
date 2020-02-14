@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/logging/logging.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/rewrite_rule.h"
@@ -20,7 +21,7 @@ class GraphTransformerManager {
   common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
 
   // Apply all transformers registered for the given level on the given graph
-  common::Status ApplyTransformers(Graph& graph, TransformerLevel level) const;
+  common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);  

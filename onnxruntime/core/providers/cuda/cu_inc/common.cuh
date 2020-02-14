@@ -7,6 +7,7 @@
 #include <mutex>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
@@ -14,7 +15,7 @@ namespace onnxruntime {
 namespace cuda {
 
 // float16 arithmetic is supported after sm5.3 with intrinsics, and cuda does not provide fallback for lower versions
-#if __CUDA_ARCH__ < 530
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 __device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
 __device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
 __device__ __forceinline__ half operator*(const half& lh, const half& rh) { return half((float)lh * (float)rh); }
@@ -119,6 +120,24 @@ template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
 template <typename T>
+__device__ __inline__ T _Round(T a);
+
+template <>
+__device__ __inline__ float _Round(float a) { return rintf(a); }
+
+template <>
+__device__ __inline__ double _Round(double a) { return rint(a); }
+
+template <>
+__device__ __inline__ half _Round(half a) { 
+#if __CUDA_ARCH__ < 530
+  return half(rintf((float)a));
+#else
+  return hrint(a);
+#endif
+}
+
+template <typename T>
 __device__ __inline__ T _Exp(T a);
 
 template <>
@@ -154,6 +173,14 @@ __device__ __inline__ double _Tanh(double a) { return tanh(a); }
 template <>
 __device__ __inline__ half _Tanh(half a) { return half(tanhf((float)a)); }
 
+template <>
+__device__ __inline__ half2 _Tanh(half2 a) {
+  float2 tmp = (__half22float2(a));
+  tmp.x = tanhf(tmp.x);
+  tmp.y = tanhf(tmp.y);
+  return __float22half2_rn(tmp);
+}
+
 template <typename T>
 __device__ __inline__ T _Pow(T a, T b);
 
@@ -187,6 +214,11 @@ __device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
 template <>
 __device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
 
+template <typename T>
+__device__ __inline__ T _Gelu(T a) {
+  return a * _Normcdf(a);
+}
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 
@@ -208,8 +240,9 @@ static INT CeilDiv(INT a, INT2 b)  // ceil(a/b)
 
 struct GridDim {
   enum : CUDA_LONG {
-    maxThreadsPerBlock = 1024,  // use this many threads per block
-    maxWarpsPerBlock = 32,      // use this many warps per block. This means 1024 threads for warpSize=32
+    maxThreadsPerBlock = 256,  // max threads per block
+    maxWarpsPerBlock = 32,     // max warps per block
+    maxElementsPerThread = 4,  // max element processed per thread
   };
 
   // use these for launching
@@ -257,6 +290,15 @@ struct GridDim {
   CUDA_LONG id = GridDim::GetLinearThreadId();     \
   if (id >= N)                                     \
     return;
+
+// CUDA_KERNEL_ASSERT is a macro that wraps an assert() call inside cuda kernels.
+// This is not supported by Apple platforms so we special case it.
+// See http://docs.nvidia.com/cuda/cuda-c-programming-guide/#assertion
+#if defined(__APPLE__) || defined(__HIP_PLATFORM_HCC__)
+#define CUDA_KERNEL_ASSERT(...)
+#else // __APPLE__
+#define CUDA_KERNEL_ASSERT(...) assert(__VA_ARGS__)
+#endif // __APPLE__
 
 }  // namespace cuda
 }  // namespace onnxruntime

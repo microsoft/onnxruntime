@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <core/common/logging/logging.h>
 #include "core/framework/data_types.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
@@ -26,7 +27,7 @@ extern "C" struct ExperimentalDataContainer {
   // by the client code
   OrtValue* str_;
 };
-
+extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 // A new Opaque type representation
 extern const char kMsTestDomain[] = "com.microsoft.test";
@@ -106,7 +107,7 @@ class OpaqueCApiTestKernel final : public OpKernel {
 
 ONNX_OPERATOR_KERNEL_EX(
     OpaqueCApiTestKernel,
-    kMSAutoMLDomain,
+    kMSFeaturizersDomain,
     1,
     kCpuExecutionProvider,
     KernelDefBuilder()
@@ -130,7 +131,7 @@ static void RegisterCustomKernel() {
   // Registry the schema
   ONNX_TEST_OPERATOR_SCHEMA(OpaqueCApiTestKernel)
       .SetDoc("Replace all of h chars to _ in the original string contained within experimental type")
-      .SetDomain(onnxruntime::kMSAutoMLDomain)
+      .SetDomain(onnxruntime::kMSFeaturizersDomain)
       .SinceVersion(1)
       .Input(
           0,
@@ -152,7 +153,7 @@ static void RegisterCustomKernel() {
   // Register kernel directly to KernelRegistry
   // because we can not create custom ops with Opaque types
   // as input
-  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSAutoMLDomain, 1, OpaqueCApiTestKernel)>;
+  BuildKernelCreateInfoFn fn = BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSFeaturizersDomain, 1, OpaqueCApiTestKernel)>;
   auto kernel_registry = CPUExecutionProvider(CPUExecutionProviderInfo()).GetKernelRegistry();
   kernel_registry->Register(fn());
 }
@@ -161,8 +162,7 @@ namespace test {
 
 std::string CreateModel() {
   RegisterCustomKernel();
-
-  Model model("ModelWithOpaque", false);
+  Model model("ModelWithOpaque", false, logging::LoggingManager::DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -179,7 +179,7 @@ std::string CreateModel() {
     outputs.push_back(&output_arg);
 
     auto& node = graph.AddNode("OpaqueCApiTestKernel", "OpaqueCApiTestKernel", "Replace all h to underscore",
-                               inputs, outputs, nullptr, onnxruntime::kMSAutoMLDomain);
+                               inputs, outputs, nullptr, onnxruntime::kMSFeaturizersDomain);
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
   EXPECT_TRUE(graph.Resolve().IsOK());
@@ -190,22 +190,13 @@ std::string CreateModel() {
   return serialized_model;
 }
 
-class OpaqueApiTest : public ::testing::Test {
- protected:
-  Ort::Env env_{nullptr};
-
-  void SetUp() override {
-    env_ = Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
-  }
-};
-
-TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
+TEST(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
   std::string model_str = CreateModel();
 
   try {
     // initialize session options if needed
     Ort::SessionOptions session_options;
-    Ort::Session session(env_, model_str.data(), model_str.size(), session_options);
+    Ort::Session session(*ort_env.get(), model_str.data(), model_str.size(), session_options);
 
     Ort::AllocatorWithDefaultOptions allocator;
 
@@ -273,8 +264,3 @@ TEST_F(OpaqueApiTest, RunModelWithOpaqueInputOutput) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

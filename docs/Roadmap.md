@@ -78,7 +78,7 @@ To achieve the best performance on a growing set of compute targets across cloud
 |Supported|Future|
 |---|---|
 |MLAS (Microsoft Linear Algebra Subprograms)|Android NN API (in progress)|
-|Intel MKL-DNN / MKL-ML|ARM Compute Library (community contribution by NXP, in progress)|
+|Intel DNNL / MKL-ML|ARM Compute Library (community contribution by NXP, in progress)|
 |Intel nGraph| |
 |NVIDIA CUDA| |
 |NVIDIA TensorRT| |

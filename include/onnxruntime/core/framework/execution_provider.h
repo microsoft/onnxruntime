@@ -7,6 +7,7 @@
 #include "gsl/gsl"
 
 #include "core/common/status.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
 #include "core/framework/func_api.h"
 #include "core/framework/data_transfer.h"
@@ -153,10 +154,19 @@ class IExecutionProvider {
   virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_node,
                                  std::string& dll_path);
 
+  void SetLogger(const logging::Logger* logger) {
+    logger_ = logger;
+  }
+
+  const logging::Logger* GetLogger() const {
+    return logger_;
+  }
+
  private:
   const std::string type_;
   AllocatorMap allocators_;
-
+  //It will be set when this object is registered to a session
+  const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<gsl::not_null<const IAllocator*>> allocator_list_;

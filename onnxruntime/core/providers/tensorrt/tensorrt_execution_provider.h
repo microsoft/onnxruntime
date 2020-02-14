@@ -11,6 +11,13 @@
 
 namespace onnxruntime {
 
+namespace tensorrt_env_vars {
+static const std::string kMaxPartitionIterations = "ORT_TENSORRT_MAX_PARTITION_ITERATIONS";
+static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
+static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
+static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
+}  // namespace tensorrt_env_vars
+
 class TensorrtLogger : public nvinfer1::ILogger {
   nvinfer1::ILogger::Severity verbosity_;
 
@@ -43,10 +50,15 @@ struct TensorrtFuncState {
   nvonnxparser::IParser* parser = nullptr;
   nvinfer1::ICudaEngine* engine = nullptr;
   nvinfer1::IExecutionContext* context = nullptr;
+  nvinfer1::IBuilder* builder = nullptr;
+  nvinfer1::INetworkDefinition* network = nullptr;
   std::vector<std::vector<int>> input_info;
   std::vector<std::vector<int>> output_info;
+  std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
   std::vector<std::vector<int64_t>> output_shapes;
   OrtMutex* tensorrt_mu_ptr = nullptr;
+  bool* fp16_enable_ptr = nullptr;
+  size_t* max_workspace_size_ptr = nullptr;
 };
 
 // Logical device representation.
@@ -69,18 +81,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-  void SetMaxBatchSize(const int batch_size) {
-    max_batch_size_ = batch_size;
-  }
-
-  void SetMaxWorkspaceSize(const size_t workspace_size) {
-    max_workspace_size_ = workspace_size;
-  }
-
  private:
-  int max_batch_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
-  int max_parser_iterations_ = 6;
+  int max_partition_iterations_ = 1000;
+  int min_subgraph_size_ = 1;
+  bool fp16_enable_ = false;
 
   struct InferDeleter {
     template <typename T>
@@ -99,8 +104,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, unique_pointer<nvinfer1::IExecutionContext>> contexts_;
+  std::unordered_map<std::string, unique_pointer<nvinfer1::IBuilder>> builders_;
+  std::unordered_map<std::string, unique_pointer<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> input_info_;
   std::unordered_map<std::string, std::vector<std::vector<int>>> output_info_;
+  std::unordered_map<std::string, std::unordered_map<int, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> output_shapes_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
@@ -117,6 +125,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const onnxruntime::GraphViewer& graph, bool* early_termination) const;
 
+  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const onnxruntime::GraphViewer& graph) const;
+  
   AllocatorPtr allocator_;
 };
 

@@ -21,7 +21,8 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   EXPECT_TRUE(data);
   Tensor t(DataTypeImpl::GetType<T>(), shape, data, alloc->Info(), offset);
   auto tensor_shape = t.Shape();
-  EXPECT_EQ(shape, tensor_shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
   auto& location = t.Location();
   EXPECT_STREQ(location.name, CPU);
@@ -36,7 +37,8 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset = 0) {
   Tensor new_t(DataTypeImpl::GetType<T>(), shape, alloc, offset);
 
   tensor_shape = new_t.Shape();
-  EXPECT_EQ(shape, tensor_shape);
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
   EXPECT_EQ(new_t.DataType(), DataTypeImpl::GetType<T>());
   auto& new_location = new_t.Location();
   ASSERT_STREQ(new_location.name, CPU);
@@ -134,7 +136,13 @@ TEST(TensorTest, EmptyTensorTest) {
   auto& location = t.Location();
   ASSERT_STREQ(location.name, CPU);
   EXPECT_EQ(location.id, 0);
-  EXPECT_EQ(location.type, OrtAllocatorType::OrtArenaAllocator);
+
+  // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
+#if (defined(__amd64__) || defined(_M_AMD64)) && !defined(USE_JEMALLOC)
+  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtArenaAllocator);
+#else
+  EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtDeviceAllocator);
+#endif
 }
 
 TEST(TensorTest, StringTensorTest) {
@@ -150,7 +158,8 @@ TEST(TensorTest, StringTensorTest) {
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
-    EXPECT_EQ(shape, tensor_shape);
+    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+    EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
     EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<std::string>());
     auto& location = t.Location();
     ASSERT_STREQ(location.name, CPU);
@@ -166,14 +175,6 @@ TEST(TensorTest, StringTensorTest) {
     EXPECT_EQ(tensor_data[1], "b");
     string_ptr = new_data;
   }
-  // on msvc, check does the ~string be called when release tensor
-  // It may be not stable as access to a deleted pointer could have
-  // undefined behavior. If we find it is failure on other platform
-  // go ahead to remove it.
-#ifdef _MSC_VER
-  EXPECT_EQ(string_ptr->size(), 0);
-  EXPECT_EQ((string_ptr + 1)->size(), 0);
-#endif
 }
 
 TEST(TensorTest, ConvertToString) {
@@ -190,7 +191,7 @@ TEST(TensorTest, Int64PtrConstructor) {
   int64_t dimensions[] = {2, 3, 4};
   TensorShape shape(dimensions, 2);  // just use first 2
   EXPECT_EQ(shape.Size(), 6);
-  EXPECT_EQ(shape.NumDimensions(), 2);
+  EXPECT_EQ(shape.NumDimensions(), 2u);
   EXPECT_THAT(shape.GetDims(), testing::ElementsAre(2, 3));
 }
 

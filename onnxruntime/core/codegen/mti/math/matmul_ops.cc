@@ -124,22 +124,36 @@ tvm::Tensor MatMul(const tvm::Tensor& A, const tvm::Tensor& B, const std::string
 tvm::Array<tvm::Expr>
 ComputeMatMulShape(
     const tvm::Array<tvm::Expr>& A_shape,
-    const tvm::Array<tvm::Expr>& B_shape) {
+    const tvm::Array<tvm::Expr>& B_shape,
+    bool trans_a,
+    bool trans_b) {
   auto a_rank = A_shape.size();
   auto b_rank = B_shape.size();
   tvm::Array<tvm::Expr> output_shape;
   int64_t output_rank = std::max(a_rank, b_rank);
-  MTI_ASSERT(tvm::ir::Equal(A_shape[a_rank - 1], B_shape[b_rank - 2]));
-  for (int64_t i = 0; i < output_rank - 2; i++) {
-    tvm::Expr broadcasted_dim = tvm::make_const(HalideIR::Int(32), 1);
-    bool broadcasted =
-        BroadcastDim(A_shape, i, output_rank, broadcasted_dim) &&
-        BroadcastDim(B_shape, i, output_rank, broadcasted_dim);
-    MTI_ASSERT(broadcasted);
-    output_shape.push_back(broadcasted_dim);
+  MTI_ASSERT(a_rank > 0 && b_rank > 0);
+  if (a_rank == 1 && b_rank == 1) {
+    MTI_ASSERT(!trans_a && !trans_b);
+    // reduction, output shape is empty
+  } else if (a_rank == 1) {
+    MTI_ASSERT(!trans_a && !trans_b);
+    output_shape = SliceShapeToDimension(B_shape, b_rank - 2);
+    output_shape.push_back(B_shape[b_rank - 1]);
+  } else if (b_rank == 1) {
+    MTI_ASSERT(!trans_a && !trans_b);
+    output_shape = SliceShapeToDimension(A_shape, a_rank - 1);
+  } else {
+    for (int64_t i = 0; i < output_rank - 2; i++) {
+      tvm::Expr broadcasted_dim = tvm::make_const(HalideIR::Int(32), 1);
+      bool broadcasted =
+          BroadcastDim(A_shape, i, output_rank, broadcasted_dim) &&
+          BroadcastDim(B_shape, i, output_rank, broadcasted_dim);
+      MTI_ASSERT(broadcasted);
+      output_shape.push_back(broadcasted_dim);
+    }
+    output_shape.push_back(A_shape[a_rank - (trans_a ? 1 : 2)]);
+    output_shape.push_back(B_shape[b_rank - (trans_b ? 2 : 1)]);
   }
-  output_shape.push_back(A_shape[a_rank - 2]);
-  output_shape.push_back(B_shape[b_rank - 1]);
   return output_shape;
 }
 

@@ -2,7 +2,7 @@
 jobs:
 - template: test_win.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
 - template: test_linux.yml
   parameters:
     AgentPool : $(AgentPoolLinux)

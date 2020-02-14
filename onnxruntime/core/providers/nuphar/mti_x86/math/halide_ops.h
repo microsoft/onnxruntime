@@ -43,6 +43,8 @@ tvm::Expr halideir_exp(const tvm::Expr& x_full);
 
 tvm::Expr halideir_log(const tvm::Expr& x_full);
 
+tvm::Expr halideir_pow(tvm::Expr x, tvm::Expr y);
+
 tvm::Expr fast_log(const tvm::Expr& x);
 
 }  // namespace nuphar

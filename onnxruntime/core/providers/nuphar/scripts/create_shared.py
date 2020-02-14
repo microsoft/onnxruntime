@@ -38,15 +38,27 @@ def gen_checksum(file_checksum, input_dir):
         print('    cs = model_checksum; len = sizeof(model_checksum)/sizeof(model_checksum[0]) - 1;', file=checksum_cc)
         print('}', file=checksum_cc)
 
+def gen_cache_version(input_dir):
+    name = 'ORTInternal_cache_version'
+    with open(os.path.join(input_dir, name + '.cc'), 'w') as cache_version_cc:
+        header_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'NUPHAR_CACHE_VERSION')
+        print('#include "{}"'.format(header_file), file=cache_version_cc)
+        print('extern "C"', file=cache_version_cc)
+        if is_windows():
+            print('__declspec(dllexport)', file=cache_version_cc)
+        print('const char*  _ORTInternal_GetCacheVersion() {', file=cache_version_cc)
+        print('    return __NUPHAR_CACHE_VERSION__;', file=cache_version_cc)
+        print('}', file=cache_version_cc)
+
 def compile_all_cc(path):
     for f in os.listdir(path):
         name, ext = os.path.splitext(f)
         if ext != '.cc':
             continue
         if is_windows():
-            subprocess.run(['cl', '/Fo' + os.path.join(path, name + '.o'), '/c', os.path.join(path, f)], check=True)
+            subprocess.run(['cl', '/Fo' + name + '.o', '/c', f], cwd=path, check=True)
         else:
-            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', os.path.join(path, name + '.o'), '-c', os.path.join(path, f)], check=True)
+            subprocess.run(['g++', '-std=c++14', '-fPIC', '-o', name + '.o', '-c', f], cwd=path, check=True)
         os.remove(os.path.join(path, f))
 
 def parse_arguments():
@@ -65,6 +77,8 @@ if __name__ == '__main__':
         input_checksum = gen_md5(args.input_model)
         gen_checksum(input_checksum, args.input_dir)
 
+    gen_cache_version(args.input_dir)
+
     if is_windows():
         # create dllmain
         name = 'ORTInternal_dllmain'
@@ -74,13 +88,15 @@ if __name__ == '__main__':
             print("                      DWORD   ul_reason_for_call,", file=dllmain_cc)
             print("                      LPVOID  lpReserved)", file=dllmain_cc)
             print(" {return TRUE;}", file=dllmain_cc)
-        compile_all_cc(args.input_dir)
-        objs = [os.path.join(args.input_dir, f) for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
-        subprocess.run(['link', '-dll', '-FORCE:MULTIPLE', '-EXPORT:__tvm_main__', '-out:' + os.path.join(args.input_dir, args.output_name)] + objs, check=True)
+
+    compile_all_cc(args.input_dir)
+    objs = [f for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
+
+    if is_windows():
+        subprocess.run(['link', '-dll', '-FORCE:MULTIPLE', '-EXPORT:__tvm_main__', '-out:' + args.output_name, '*.o'], cwd=args.input_dir, check=True)
     else:
-        compile_all_cc(args.input_dir)
-        objs = [os.path.join(args.input_dir, f) for f in os.listdir(args.input_dir) if os.path.isfile(os.path.join(args.input_dir, f)) and '.o' == os.path.splitext(f)[1]]
-        subprocess.run(['g++', '-shared', '-fPIC', '-o', os.path.join(args.input_dir, args.output_name)] + objs, check=True)
+        subprocess.run(['g++', '-shared', '-fPIC', '-o', args.output_name] + objs, cwd=args.input_dir, check=True)
+
     if not args.keep_input:
         for f in objs:
-            os.remove(f)
+            os.remove(os.path.join(args.input_dir, f))

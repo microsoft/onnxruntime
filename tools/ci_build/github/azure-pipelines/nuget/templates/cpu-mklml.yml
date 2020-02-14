@@ -1,25 +1,25 @@
-# Defined as pipeline variables
-# variables:
-#   AgentPoolWin : 'Win-CPU'
-#   AgentPoolLinux : 'Linux-CPU'
-#   AgentPoolMacOS : 'macOS-10.13'
-
 parameters:
   DoEsrp: 'false'
 
 jobs: 
-- template: ../../templates/win-ci.yml
+- template: ../../templates/win-ci-2019.yml
   parameters:
-    AgentPool : $(AgentPoolWin)
+    AgentPool : 'Win-CPU-2019'
     JobName: 'Windows_CI_Dev'
-    BuildCommand:  '$(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake\bin\ctest.exe --use_mklml --build_shared_lib --build_csharp --enable_onnx_tests'
+    BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_mklml --build_shared_lib --enable_onnx_tests  --cmake_generator "Visual Studio 16 2019"'
+    BuildArch: 'x64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'x64'
     DoDebugBuild: 'false'
     DoNugetPack : 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime.MKLML'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:PackageId=Microsoft.ML.OnnxRuntime.MKLML
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.MKLML
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
 - job: 'Linux_CI_Dev'
   workspace:
@@ -31,23 +31,24 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker build -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_automl --use_mklml --enable_onnx_tests
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
-       mkdir $(Build.BinariesDirectory)/linux-x64
-       cp $(Build.BinariesDirectory)/Release/libonnxruntime.so $(Build.BinariesDirectory)/linux-x64
-       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libiomp5.so $(Build.BinariesDirectory)/linux-x64
-       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libmklml_intel.so $(Build.BinariesDirectory)/linux-x64
-       ldd $(Build.BinariesDirectory)/linux-x64/libonnxruntime.so
-       cd $(Build.BinariesDirectory)
+       mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libiomp5.so $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cp $(Build.BinariesDirectory)/Release/mklml/src/project_mklml/lib/libmklml_intel.so $(Build.BinariesDirectory)/linux-x64/linux-x64
+       ldd $(Build.BinariesDirectory)/linux-x64/linux-x64/libonnxruntime.so
+       cd $(Build.BinariesDirectory)/linux-x64
        zip -r linux-x64.zip linux-x64
-       cp $(Build.BinariesDirectory)/linux*.zip $(Build.ArtifactStagingDirectory)
+       cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
        ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
     - task: PublishPipelineArtifact@0
@@ -55,9 +56,9 @@ jobs:
       inputs:
         artifactName: 'drop-linux'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml
@@ -85,12 +86,14 @@ jobs:
      cd $(Build.BinariesDirectory)
      zip -r osx-x64.zip osx-x64
      cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)/testdata
+     cp $(Build.BinariesDirectory)/RelWithDebInfo/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
      cd $cwd
 
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: $(AgentPoolWin)
+  pool: 'Win-CPU-2019'
   dependsOn:
   - Windows_CI_Dev
   - Linux_CI_Dev
@@ -156,6 +159,12 @@ jobs:
       DisplayName: 'ESRP - sign NuGet package'
       FolderPath: '$(Build.ArtifactStagingDirectory)'
       DoEsrp: ${{ parameters.DoEsrp }}
+
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      PlatformsSupported: 'win-x64,linux-x64,osx-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'

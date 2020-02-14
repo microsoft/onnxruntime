@@ -174,7 +174,7 @@ tvm::Expr raise_to_integer_power(const tvm::Expr& e, int64_t p) {
  * cast to Float(32). For Float(32), cleanly vectorizable, and
  * accurate up to the last few bits of the mantissa. Gets worse when
  * approaching overflow. Vectorizes cleanly. */
-inline tvm::Expr halideir_pow(tvm::Expr x, tvm::Expr y) {
+tvm::Expr halideir_pow(tvm::Expr x, tvm::Expr y) {
   if (const int64_t* i = as_const_int(y)) {
     return raise_to_integer_power(x, *i);
   }

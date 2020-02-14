@@ -12,6 +12,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/callback.h"
+#include "core/framework/TensorSeq.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {
@@ -57,8 +58,8 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
   // TODO: node->ImplicitInputDefs() need to be added here for control flow nodes.
   for (auto* node : nodes) {
-    onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps);
-    onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps);
+    ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps));
+    ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->OutputDefs(), initialize_maps));
   }
 
   node_index_info_ = onnxruntime::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
@@ -67,8 +68,9 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   for (auto* node : nodes) {
     std::unique_ptr<OpKernel> op_kernel;
     std::shared_ptr<KernelRegistry> kernel_registry = cpu_execution_provider_->GetKernelRegistry();
-    auto status = kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
-                                                   ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_, op_kernel);
+    ORT_THROW_IF_ERROR(kernel_registry->TryCreateKernel(*node, *cpu_execution_provider_, initializers_,
+                                                        ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
+                                                        op_kernel));
     kernels_[node->Index()] = std::move(op_kernel);
   }
 }
@@ -107,7 +109,17 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
     ort_value.Init(sparse.release(), container_type, container_type->GetDeleteFunc());
     return Status::OK();
   }
+
+  if (ml_type->IsTensorSequenceType()) {
+    auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();
+    auto p_sequence = onnxruntime::make_unique<TensorSeq>(element_type);
+    auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+    ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+    return Status::OK();
+  }
+
   if (!ml_type->IsTensorType()) {
+    assert(ml_type->AsNonTensorTypeBase() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);
     auto creator = non_tensor_type->GetCreateFunc();
     ort_value.Init(creator(), non_tensor_type, non_tensor_type->GetDeleteFunc());
@@ -118,10 +130,11 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
   std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                              *shape,
-                                                              allocator_ptr);
+                                                                      *shape,
+                                                                      allocator_ptr);
 
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
   return Status::OK();
 }

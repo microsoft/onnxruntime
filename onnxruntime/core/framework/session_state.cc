@@ -271,7 +271,10 @@ void SessionState::AddSubgraphSessionState(onnxruntime::NodeIndex index, const s
     ORT_ENFORCE(existing_entries.find(attribute_name) == existing_entries.cend(), "Entry exists in node ", index,
                 " for attribute ", attribute_name);
   }
-
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
+  session_state->parent_ = this;
+  GenerateGraphId();
+#endif
   subgraph_session_states_[index].insert(std::make_pair(attribute_name, std::move(session_state)));
 }
 
