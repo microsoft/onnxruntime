@@ -53,7 +53,24 @@ def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
     
 def generate_dependencies(list, version):
-    list.append('<dependencies>' + '<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/> </dependencies>')
+    list.append('<dependencies>')
+
+    # Support .Net Core
+    list.append('<group targetFramework="NETCOREAPP">')
+    list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+    list.append('</group>')
+
+    # Support .Net Standard
+    list.append('<group targetFramework="NETSTANDARD">')
+    list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+    list.append('</group>')
+
+    # Support .Net Framework
+    list.append('<group targetFramework="NETFRAMEWORK">')
+    list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+    list.append('</group>')
+
+    list.append('</dependencies>')    
     
 def generate_metadata(list, args):
     metadata_list = ['<metadata>']
