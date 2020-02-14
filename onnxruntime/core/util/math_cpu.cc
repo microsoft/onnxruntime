@@ -269,114 +269,55 @@ SPECIALIZED_SET(uint16_t);
 #undef SPECIALIZED_SET
 
 template <typename T>
-static void Im2colWithEqualPadding(int64_t output_h, int64_t output_w, const T* data_im, int64_t channels,
-                                   int64_t height, int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t, int64_t pad_l,
-                                   int64_t stride_h, int64_t stride_w, T* data_col, T padding_value) {
-  // From Intel, https://github.com/BVLC/caffe/pull/3536
-  int64_t pad_h = pad_t;
-  int64_t pad_w = pad_l;
-  int64_t channel_size = height * width;
-  for (int64_t channel = channels; channel--; data_im += channel_size) {
-    for (int64_t kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
-      for (int64_t kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
-        int64_t input_row = -pad_h + kernel_row * dilation_h;
-        for (int64_t output_rows = output_h; output_rows; output_rows--) {
-          if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
-            std::fill_n(data_col, output_w, padding_value);
-            data_col += output_w;
-          } else {
-            int64_t input_col = -pad_w + kernel_col * dilation_w;
-            const T* rdptr = data_im + input_row * width + input_col;
-            for (int64_t i = 0; i != output_w; ++i) {
-              if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
-                *(data_col++) = rdptr[i * stride_w];
-              } else {
-                *(data_col++) = padding_value;
-              }
-              input_col += stride_w;
-            }
-          }
-          input_row += stride_h;
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
 void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channels, int64_t height,
                                                int64_t width, int64_t kernel_h, int64_t kernel_w,
                                                int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
                                                int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
                                                int64_t stride_w, T* data_col, T padding_value) {
-  const int64_t output_h =
-      (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h +
-      1;
-  const int64_t output_w =
-      (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w +
-      1;
+  const int64_t output_h = (height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
+  const int64_t output_w = (width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
 
-  // Fast path for zero padding and no dilation
-  // From Torch, THNN_(unfolded_copy)
-  if (dilation_h == 1 && dilation_w == 1 && pad_l == 0 && pad_r == 0 &&
-      pad_t == 0 && pad_b == 0) {
-    for (auto k = 0; k < channels * kernel_h * kernel_w; k++) {
-      const auto nip = k / (kernel_h * kernel_w);
-      const auto rest = k % (kernel_h * kernel_w);
-      const auto kh = rest / kernel_w;
-      const auto kw = rest % kernel_w;
-      auto* dst = data_col + nip * (kernel_h * kernel_w * output_h * output_w) +
-                  kh * (kernel_w * output_h * output_w) + kw * (output_h * output_w);
-      const auto* src = data_im + nip * (height * width);
-      for (auto y = 0; y < output_h; y++) {
-        const auto iy = y * stride_h + kh;
-        const auto ix = kw;
-        if (stride_w == 1) {
-          memcpy(
-              dst + (y * output_w),
-              src + (iy * width + ix),
-              sizeof(T) * output_w);
-        } else {
-          for (auto x = 0; x < output_w; x++) {
-            memcpy(
-                dst + (y * output_w + x),
-                src + (iy * width + ix + x * stride_w),
-                sizeof(T));
+  // From Intel, https://github.com/BVLC/caffe/pull/3536
+  int64_t channel_size = height * width;
+  for (int64_t channel = channels; channel--; data_im += channel_size) {
+    for (int64_t kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
+      for (int64_t kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
+        int64_t input_row = -pad_t + kernel_row * dilation_h;
+        for (int64_t output_rows = output_h; output_rows; output_rows--) {
+          if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
+            std::fill_n(data_col, output_w, padding_value);
+            data_col += output_w;
+          } else {
+            int64_t input_col = -pad_l + kernel_col * dilation_w;
+            const T* rdptr = data_im + input_row * width + input_col;
+            for (int64_t i = 0; i < output_w;) {
+              int64_t output_handled = 1;
+              if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
+                if (stride_w == 1) {
+                  // Compute the minimum of the number of input elements remaining
+                  // and the number of output elements to produce.
+                  output_handled = std::min(width - input_col, output_w - i);
+                  data_col = std::copy_n(&rdptr[i], static_cast<size_t>(output_handled), data_col);
+                } else if (stride_w == 2) {
+                  // Same as above except using the number of strided input elements.
+                  output_handled = std::min((width - input_col + 1) / 2, output_w - i);
+                  const T* local_rdptr = &rdptr[i * 2];
+                  for (int64_t x = output_handled; x > 0; x--) {
+                    *(data_col++) = *local_rdptr;
+                    local_rdptr += 2;
+                  }
+                } else {
+                  *(data_col++) = rdptr[i * stride_w];
+                }
+              } else {
+                *(data_col++) = padding_value;
+              }
+              input_col += output_handled * stride_w;
+              i += output_handled;
+            }
           }
+          input_row += stride_h;
         }
-      }
-    }
-    return;
-  }
-
-  // Fast path for equal padding
-  if (pad_l == pad_r && pad_t == pad_b) {
-    Im2colWithEqualPadding(output_h, output_w, data_im, channels, height, width, kernel_h, kernel_w, dilation_h, dilation_w, pad_t, pad_l, stride_h, stride_w, data_col, padding_value);
-    return;
-  }
-
-  // Baseline
-  const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
-  const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
-
-  int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
-  int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
-
-  int64_t channels_col = channels * kernel_h * kernel_w;
-  for (int64_t c = 0; c < channels_col; ++c) {
-    int64_t w_offset = c % kernel_w;
-    int64_t h_offset = (c / kernel_w) % kernel_h;
-    int64_t c_im = c / kernel_h / kernel_w;
-    for (int64_t h = 0; h < height_col; ++h) {
-      for (int64_t w = 0; w < width_col; ++w) {
-        int64_t h_pad = h * stride_h - pad_t + h_offset * dilation_h;
-        int64_t w_pad = w * stride_w - pad_l + w_offset * dilation_w;
-        if (h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width)
-          data_col[(c * height_col + h) * width_col + w] =
-              data_im[(c_im * height + h_pad) * width + w_pad];
-        else
-          data_col[(c * height_col + h) * width_col + w] = padding_value;
       }
     }
   }
