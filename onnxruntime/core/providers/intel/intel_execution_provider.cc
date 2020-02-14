@@ -13,6 +13,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "backend_manager.h"
+#include "backend_utils.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -441,7 +442,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
         return true;
       default:
-        if (intel_ep::IsDebugEnabled())
+        if (intel_ep::backend_utils::IsDebugEnabled())
           std::cout << "Initializer Data Type is not supported" << std::endl;
         return false;
     }
@@ -466,7 +467,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
       if(supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else{
-        if (intel_ep::IsDebugEnabled())
+        if (intel_ep::backend_utils::IsDebugEnabled())
           std::cout << "I/O data type is not supported" << std::endl;
         return false;
       }
@@ -476,7 +477,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
       if(supported_types_gpu.find(dtype) != supported_types_gpu.end())
         return true;
       else{
-        if (intel_ep::IsDebugEnabled())
+        if (intel_ep::backend_utils::IsDebugEnabled())
           std::cout << "I/O data type is not supported" << std::endl;
         return false;
       }
@@ -491,7 +492,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
 
-  if (intel_ep::IsDebugEnabled())
+  if (intel_ep::backend_utils::IsDebugEnabled())
     std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
 
@@ -516,7 +517,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 
   //Check 0
   if (IsUnsupportedOp(optype, device_id)) {
-    if (intel_ep::IsDebugEnabled())
+    if (intel_ep::backend_utils::IsDebugEnabled())
       std::cout << "Node is in the unsupported list" << std::endl;
     return false;
   }
@@ -562,14 +563,14 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     }
   });
   if (has_unsupported_dimension) {
-    if (intel_ep::IsDebugEnabled())
+    if (intel_ep::backend_utils::IsDebugEnabled())
       std::cout << "Dimension check failed" << std::endl;
     return false;
   }
 
   //Check 3a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer, device_id)) {
-    if (intel_ep::IsDebugEnabled())
+    if (intel_ep::backend_utils::IsDebugEnabled())
       std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
   }
