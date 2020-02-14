@@ -21,7 +21,7 @@ __global__ void _Fill(
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
       output_data[id] = val;
-      id += NumThreadsPerBlock;
+      id += blockDim.x;
     }
   }
 }
@@ -79,5 +79,9 @@ SPECIALIZED_FILL(int8_t)
 SPECIALIZED_FILL(int16_t)
 SPECIALIZED_FILL(int32_t)
 SPECIALIZED_FILL(int64_t)
+SPECIALIZED_FILL(float)
+SPECIALIZED_FILL(double)
+SPECIALIZED_FILL(__half)
+
 }  // namespace cuda
 }  // namespace onnxruntime

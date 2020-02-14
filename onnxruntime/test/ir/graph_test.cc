@@ -115,13 +115,238 @@ static bool RegisterCustomSchemas() {
 
   return true;
 }
+static std::once_flag once;
 
-static const bool kSchemasRegistered = RegisterCustomSchemas();
+class GraphTest : public ::testing::Test {
+ protected:
+  GraphTest() {
+    std::call_once(once, RegisterCustomSchemas);
+    logger_ = DefaultLoggingManager().CreateLogger("GraphTest");
+  }
 
-TEST(GraphTraversalTest, ReverseDFS) {
-  ASSERT_TRUE(kSchemasRegistered);
+  std::unique_ptr<logging::Logger> logger_;
+};
 
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+static void SetTypeAndShape(TypeProto_Tensor* t, int type, const std::vector<int64_t>& shape) {
+  t->set_elem_type(type);
+  for (int64_t i : shape) {
+    TensorShapeProto* s = t->mutable_shape();
+    s->add_dim()->set_dim_value(i);
+  }
+}
+
+static void ImportOpset(ModelProto& m, const char* domain, int64_t version) {
+  OperatorSetIdProto* p = m.add_opset_import();
+  p->set_domain(domain);
+  p->set_version(version);
+}
+
+static void ConstructASimpleAddGraph(GraphProto& g, const char* domain) {
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_input() = "y";
+  *node->add_output() = "sum";
+  node->set_op_type("Add");
+  if (domain != nullptr) {
+    node->set_domain(domain);
+  }
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* input2 = g.add_input();
+  input2->set_name("y");
+  SetTypeAndShape(input2->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+}
+
+TEST_F(GraphTest, SimpleAddWithoutDomain) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "", 10);
+  ConstructASimpleAddGraph(*m->mutable_graph(), nullptr);
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, SimpleAddDefaultDomain) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "", 10);
+  ConstructASimpleAddGraph(*m->mutable_graph(), "");
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, SimpleAddFutureOpSet) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "", 9999);
+  ConstructASimpleAddGraph(*m->mutable_graph(), "ai.onnx");
+  std::shared_ptr<Model> model;
+  Status st;
+  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+}
+
+TEST_F(GraphTest, SimpleAddONNXDomain) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "", 10);
+  ConstructASimpleAddGraph(*m->mutable_graph(), "ai.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, SimpleAddONNXDomain2) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "ai.onnx", 10);
+  ConstructASimpleAddGraph(*m->mutable_graph(), "ai.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, SimpleAddWrongDomain) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "", 10);
+  ConstructASimpleAddGraph(*m->mutable_graph(), "AAAA");
+  std::shared_ptr<Model> model;
+  Status st;
+  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+}
+
+TEST_F(GraphTest, SimpleAddWrongDomain2) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "AAAA", 10);
+  ConstructASimpleAddGraph(*m->mutable_graph(), "AAAA");
+  std::shared_ptr<Model> model;
+  Status st;
+  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+}
+
+TEST_F(GraphTest, SimpleUnique) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "", 11);
+  GraphProto& g = *m->mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
+}
+
+TEST_F(GraphTest, WrongOpset) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  //No Op registered for Unique with domain_version of 1
+  ImportOpset(*m, "", 1);
+  GraphProto& g = *m->mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  std::shared_ptr<Model> model;
+  Status st;
+  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+}
+
+TEST_F(GraphTest, ExtraInput) {
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  //Node () has input size 2 not in range [min=1, max=1].
+  ImportOpset(*m, "", 11);
+  GraphProto& g = *m->mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_input() = "y";
+  *node->add_output() = "sum";
+  node->set_op_type("Unique");
+  node->set_domain("");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  std::shared_ptr<Model> model;
+  Status st;
+  ASSERT_FALSE((st = Model::Load(std::move(m), model, nullptr, *logger_)).IsOK());
+}
+
+TEST_F(GraphTest, LocalCustomRegistry) {
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema().SetName("FakeUnique").Input(0, "X", "A N-D input tensor that is to be processed.", "T").Output(0, "Y", "desc", "T").TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to any tensor type.").SetDomain("FakeTestDomain")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  ImportOpset(*m, "FakeTestDomain", 1);
+  GraphProto& g = *m->mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("FakeUnique");
+  node->set_domain("FakeTestDomain");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  std::shared_ptr<Model> model;
+  Status st;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(m), model, &regs, *logger_));
+}
+
+TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema().SetName("FakeUnique").Input(0, "X", "A N-D input tensor that is to be processed.", "T").Output(0, "Y", "desc", "T").TypeConstraint("T", OpSchema::all_tensor_types(), "Constrain input and output types to any tensor type.").SetDomain("FakeTestDomain")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+  std::unique_ptr<ModelProto> m = onnxruntime::make_unique<ModelProto>();
+  m->set_ir_version(3);
+  //Should be 1, but we put 11 herer so the model loading will fail
+  ImportOpset(*m, "FakeTestDomain", 11);
+  GraphProto& g = *m->mutable_graph();
+  NodeProto* node = g.add_node();
+  *node->add_input() = "x";
+  *node->add_output() = "sum";
+  node->set_op_type("FakeUnique");
+  node->set_domain("FakeTestDomain");
+  ValueInfoProto* input1 = g.add_input();
+  input1->set_name("x");
+  SetTypeAndShape(input1->mutable_type()->mutable_tensor_type(), 1, {3, 4, 5});
+  ValueInfoProto* output = g.add_output();
+  output->set_name("sum");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {60});
+  std::shared_ptr<Model> model;
+  Status st;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_FALSE((st = Model::Load(std::move(m), model, &regs, *logger_)).IsOK());
+}
+
+TEST_F(GraphTest, ReverseDFS) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.
@@ -218,8 +443,8 @@ TEST(GraphTraversalTest, ReverseDFS) {
   EXPECT_EQ("leave:node_4", enter_leave_sequence.at(7));
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_VerifyNoDuplicateName) {
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_VerifyNoDuplicateName) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   EXPECT_EQ("graph_1", graph.Name());
@@ -251,8 +476,8 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNoDuplicateName) {
   EXPECT_TRUE(duplicate_error_found);
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -272,10 +497,8 @@ TEST(ResolvingGraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
   EXPECT_EQ(0u, status.ErrorMessage().find_first_of("This is an invalid model. No Schema registered for OpNotExist"));
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
-  ASSERT_TRUE(kSchemasRegistered);
-
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   /* A normal graph.
@@ -336,7 +559,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
   std::shared_ptr<Model> model2;
-  EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, *logger_).IsOK());
 
   auto model_proto = model.ToProto();
   auto model_proto2 = model2->ToProto();
@@ -345,7 +568,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
 
   // Load the model again to ensure that it's still the right thing.
   //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
-  model2.reset(new Model(model_proto2, nullptr, DefaultLoggingManager().DefaultLogger()));
+  model2.reset(new Model(model_proto2, nullptr, *logger_));
   Graph& graph2 = model2->MainGraph();
   for (auto& node : graph2.Nodes()) {
     auto node_name_to_input_output_iter = expected_node_name_to_input_output_args.find(node.Name());
@@ -365,10 +588,8 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsAcyclic) {
   }
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
-  ASSERT_TRUE(kSchemasRegistered);
-
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   //    node_1 (Identity)  node_2 (Identity)
@@ -445,10 +666,8 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckInputNodeOrderMaintained) {
   }
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
-  ASSERT_TRUE(kSchemasRegistered);
-
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   std::unordered_map<std::string, int> map;
@@ -541,7 +760,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, *logger_);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -552,10 +771,8 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained)
 
 // Validate that an unused initializer doesn't break graph loading/resolution
 // and is removed as expected.
-TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
-  ASSERT_TRUE(kSchemasRegistered);
-
-  Model model("UnusedInitializerIsIgnored", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, UnusedInitializerIsIgnored) {
+  Model model("UnusedInitializerIsIgnored", false, *logger_);
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;
@@ -596,7 +813,7 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(result) << "Failed to load model from serialized protobuf";
 
   std::shared_ptr<onnxruntime::Model> p_tmp_model;
-  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  auto x = onnxruntime::Model::Load(model_proto, p_tmp_model, nullptr, *logger_);
 
   auto& graph2 = p_tmp_model->MainGraph();
   status = graph2.Resolve();
@@ -604,15 +821,13 @@ TEST(ResolvingGraphTest, UnusedInitializerIsIgnored) {
   ASSERT_TRUE(graph.GetAllInitializedTensors().empty());
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
+TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
   // A cyclic graph
   //                 SouceNode
   //                     |
   //             --> node_1 (Add)
   //            ^        |
   //            | <- node_2 (NoOp)
-
-  ASSERT_TRUE(kSchemasRegistered);
 
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
@@ -621,7 +836,7 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
   tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
   auto& input_arg1 = graph.GetOrCreateNodeArg("node_1_in_1", &tensor_int32);
   auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
@@ -642,8 +857,8 @@ TEST(ResolvingGraphTest, GraphConstruction_CheckIsNotAcyclic) {
   EXPECT_EQ("This is an invalid model. Error: the graph is not acyclic.", status.ErrorMessage());
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
-  onnxruntime::Model model("graph", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_OnlyInitializer) {
+  onnxruntime::Model model("graph", false, *logger_);
   auto& graph = model.MainGraph();
 
   ONNX_NAMESPACE::TensorProto weight;
@@ -660,10 +875,8 @@ TEST(ResolvingGraphTest, GraphConstruction_OnlyInitializer) {
   EXPECT_TRUE(iii.size() == 0);
 }
 
-TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
-  ASSERT_TRUE(kSchemasRegistered);
-
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, GraphConstruction_TypeInference) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   /* Case 1: A normal graph.
@@ -725,7 +938,7 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
 
   EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
   std::shared_ptr<Model> loaded_model;
-  EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+  EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, *logger_).IsOK());
   EXPECT_EQ(2u, loaded_model->MainGraph().GetInputs().size());
 
   auto& graph_proto = graph.ToGraphProto();
@@ -737,10 +950,8 @@ TEST(ResolvingGraphTest, GraphConstruction_TypeInference) {
   EXPECT_EQ("node_4_out_1", graph_proto.output(0).name());
 }
 
-TEST(ResolvingGraphTest, ShapeInferenceErrorHandling) {
-  ASSERT_TRUE(kSchemasRegistered);
-
-  Model model("graph", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, ShapeInferenceErrorHandling) {
+  Model model("graph", false, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor_int32;
@@ -758,14 +969,14 @@ TEST(ResolvingGraphTest, ShapeInferenceErrorHandling) {
                                                         "[ShapeInferenceError] try harder"));
 }
 
-TEST(TestAddAttribute, AddTensorAttribute) {
+TEST_F(GraphTest, AddTensorAttribute) {
   OPERATOR_SCHEMA(__Constant)
       .SetDoc("Constant Op.")
       .Attr(kConstantValue, "constant value", AttrType::AttributeProto_AttributeType_TENSOR)
       .Output(0, "output_1", "docstr for output_1.", "tensor(int64)");
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
   TypeProto output_type;
   output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
@@ -807,10 +1018,10 @@ void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::
 }
 
 // Test that output type can be inferred for ops with a type-attribute
-TEST(TypeInferenceTest, TypeAttribute) {
+TEST_F(GraphTest, TypeAttribute) {
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
   auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", nullptr);
   outputs.push_back(&output_arg);
@@ -829,12 +1040,12 @@ void CheckTensorEltType(const TypeProto* ptype, TensorProto_DataType elt_type) {
 }
 
 // Test that output type can be inferred for ops with variadic outputs
-TEST(TypeInferenceTest, VariadicOutput) {
+TEST_F(GraphTest, VariadicOutput) {
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
   TypeProto tensor_type;
   tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
   auto& X = graph.GetOrCreateNodeArg("X", &tensor_type);
   inputs.push_back(&X);
@@ -850,8 +1061,8 @@ TEST(TypeInferenceTest, VariadicOutput) {
 }
 
 // test that we prefer the graph input shape for a non-const initializer (initializer with matching graph input)
-TEST(TypeInferenceTest, NonConstInitializer) {
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, NonConstInitializer) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor_type_no_shape;
@@ -901,7 +1112,7 @@ TEST(TypeInferenceTest, NonConstInitializer) {
   ASSERT_TRUE(model.ToProto().SerializeToString(&s1));
   ASSERT_TRUE(model_proto.ParseFromString(s1));
 
-  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  auto status = onnxruntime::Model::Load(model_proto, p_model, nullptr, *logger_);
   ASSERT_TRUE(status.IsOK()) << status;
 
   auto& graph2 = p_model->MainGraph();
@@ -909,8 +1120,8 @@ TEST(TypeInferenceTest, NonConstInitializer) {
 }
 
 // Test that Graph::Resolve identifies name-duplication across initializer and node-output-arg
-TEST(NameResolutionTest, DuplicateName) {
-  Model model("graph_1", false, DefaultLoggingManager().DefaultLogger());
+TEST_F(GraphTest, DuplicateName) {
+  Model model("graph_1", false, *logger_);
   auto& graph = model.MainGraph();
 
   ONNX_NAMESPACE::TensorProto weight;
@@ -939,8 +1150,8 @@ TEST(NameResolutionTest, DuplicateName) {
   EXPECT_TRUE(duplicate_error_found);
 }
 
-TEST(GraphUpdateTest, ReplaceInitializedTensor) {
-  Model model{"GraphUpdateTest", false, DefaultLoggingManager().DefaultLogger()};
+TEST_F(GraphTest, ReplaceInitializedTensor) {
+  Model model{"GraphUpdateTest", false, *logger_};
   auto& graph = model.MainGraph();
   const std::string initializer_name = "initializer";
 
@@ -1010,8 +1221,8 @@ TEST(GraphUpdateTest, ReplaceInitializedTensor) {
   }
 }
 
-TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
-  Model m{"test_model", false, DefaultLoggingManager().DefaultLogger()};
+TEST_F(GraphTest, AddRemoveInitializerHandling) {
+  Model m{"test_model", false, *logger_};
   Graph& graph = m.MainGraph();
 
   auto create_tensor_proto = [](const std::string& name, int32_t value) {
@@ -1063,7 +1274,7 @@ TEST(GraphUpdateTest, AddRemoveInitializerHandling) {
   validate_proto(graph_proto_from_const_graph);
   validate_proto(graph_proto_from_graph);
 
-  // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused. 
+  // Call Graph::Resolve which should remove the initializers from the Graph instance and proto as they're unused.
   ASSERT_STATUS_OK(graph.Resolve());
   ASSERT_EQ(graph.GetAllInitializedTensors().size(), 0u);
 

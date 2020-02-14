@@ -103,21 +103,18 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     dimension_count = flattened_output_dims.size();
   }
 
-  CudaAsyncBuffer<int64_t> starts_buffer(this, dimension_count);
-  gsl::span<int64_t> starts_buffer_span = starts_buffer.CpuSpan();
-  for (size_t i = 0; i < dimension_count; ++i) {
-    starts_buffer_span[i] = starts[i];
+  TArray<int64_t> starts_buffer(gsl::narrow_cast<int32_t>(starts.size()));
+  for (size_t i = 0; i < starts.size(); ++i) {
+    starts_buffer.data_[i] = starts[i];
   }
-  starts_buffer.CopyToGpu();
 
-  CudaAsyncBuffer<int64_t> steps_buffer(this, dimension_count);
-  gsl::span<int64_t> steps_buffer_span = steps_buffer.CpuSpan();
-  for (size_t i = 0; i < dimension_count; ++i) {
-    steps_buffer_span[i] = steps[i];
+  TArray<int64_t> steps_buffer(gsl::narrow_cast<int32_t>(steps.size()));
+  for (size_t i = 0; i < steps.size(); ++i) {
+    steps_buffer.data_[i] = steps[i];
   }
-  steps_buffer.CopyToGpu();
 
-  CudaAsyncBuffer<int64_t> input_strides(this, dimension_count);
+  TArray<int64_t> input_strides(gsl::narrow_cast<int32_t>(dimension_count));
+  const gsl::span<int64_t> input_strides_span = gsl::make_span(input_strides.data_, input_strides.size_);
   if (p_flattened_output_dims != nullptr) {
     // we were able to flatten the innermost dimensions as they're being copied in full to the output.
     // do the same flattening to the innermost input dimensions in order to calculate pitches that match
@@ -130,30 +127,25 @@ Status Slice<Tind, dynamic>::ComputeInternal(OpKernelContext* ctx) const {
     auto flattened_input_dims(input_dimensions);
     flattened_input_dims.resize(dimension_count);
     flattened_input_dims.back() = aggregated_last_dim;
-    ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), flattened_input_dims));
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, flattened_input_dims));
   } else {
-    ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dimensions));
+    ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, input_dimensions));
   }
 
-  input_strides.CopyToGpu();
-
-  TensorPitches output_pitches(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
-
-  CudaAsyncBuffer<fast_divmod> div_strides(this, dimension_count);
-  gsl::span<fast_divmod> div_strides_span = div_strides.CpuSpan();
-  for (size_t i = 0; i < dimension_count; ++i) {
-    div_strides_span[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+  TensorPitches original_output_strides(p_flattened_output_dims != nullptr ? flattened_output_dims : output_dims);
+  TArray<fast_divmod> output_strides(gsl::narrow_cast<int32_t>(original_output_strides.size()));
+  for (size_t i = 0; i < original_output_strides.size(); ++i) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
-  div_strides.CopyToGpu();
 
   size_t element_size = input_tensor->DataType()->Size();
 
   ORT_RETURN_IF_ERROR(SliceImpl(element_size,
                                 gsl::narrow_cast<int32_t>(dimension_count),
-                                starts_buffer.GpuPtr(),
-                                steps_buffer.GpuPtr(),
-                                input_strides.GpuPtr(),
-                                div_strides.GpuPtr(),
+                                starts_buffer,
+                                steps_buffer,
+                                input_strides,
+                                output_strides,
                                 input_tensor->DataRaw(),
                                 output_tensor->MutableDataRaw(),
                                 output_size));

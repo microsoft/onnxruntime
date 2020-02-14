@@ -669,5 +669,25 @@ TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
+TEST(TfIdfVectorizerTest, String_TFIDFWeights_onlyBigrams_Skip5_2rows) {
+  OpTester test("TfIdfVectorizer", opset_ver);
+  // s=5, Min=Max=2, weights specified, string
+  InitTestAttr(test, "TFIDF", 2, 2, 5,
+               {0, 4},
+               {0, 1, 2, 3, 4, 5, 6},                //7 output indexes
+               {2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 3.0f, 2.0f},  // weights
+               {},
+               {"two", "three", "five", "four",                     //1-grams
+                "five", "six", "seven", "eight", "six", "seven"});  //bi-grams
+
+  test.AddInput<std::string>("T", {2, 6}, {"one", "one",  "three", "three", "three", "seven",
+                                           "eight", "six", "seven", "five", "six", "eight"});
+
+  test.AddOutput<float>("Y", {2, 7}, {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, // No bi-grams in the first row
+                                      0.f, 0.f, 0.f, 0.f, 2.f, 3.f, 2.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
