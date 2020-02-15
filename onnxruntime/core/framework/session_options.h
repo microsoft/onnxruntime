@@ -10,8 +10,8 @@
 
 namespace onnxruntime {
 struct FreeDimensionOverride {
-  std::string dimension_denotation;
-  int64_t dimension_override;
+  std::string dim_param;
+  int64_t dim_value;
 };
 
 /**
@@ -61,8 +61,8 @@ struct SessionOptions {
   // configuring this makes sense only when you're using parallel executor
   int inter_op_num_threads = 0;
 
-  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
-  // free dimensions with, keyed by dimension denotation.
+  // For models with symbolic input dimensions (most commonly batch size), specifies a set of values to override those
+  // symbolic dimensions with, keyed by dimension parameters.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
 };
 }  // namespace onnxruntime

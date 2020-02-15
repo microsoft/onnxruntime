@@ -37,7 +37,8 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(Windows::AI::MachineLearning
   auto session_options = UniqueOrtSessionOptions(ort_options, ort_api->ReleaseSessionOptions);
 
   if (batch_size_override_.has_value()) {
-    constexpr const char* DATA_BATCH = "DATA_BATCH";
+    //TODO: this asks the model is using "DATA_BATCH" as the batch dim parameter string.
+	constexpr const char* DATA_BATCH = "DATA_BATCH";
     RETURN_HR_IF_NOT_OK_MSG(ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value()),
                             ort_api);
   }

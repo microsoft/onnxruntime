@@ -18,13 +18,12 @@ static std::string ToLower(std::string s) {
   return s;
 }
 
-/*explicit*/ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply)
+FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply)
     : GraphTransformer("FreeDimensionOverrideTransformer") {
   for (const auto& o : overrides_to_apply) {
     // Convert to lowercase to perform case-insensitive comparisons later
-    std::string denotation = ToLower(o.dimension_denotation);
-
-    dimension_override_by_denotation_.emplace(denotation, o.dimension_override);
+    auto& dim_param = ToLower(o.dim_param);
+    dimension_override_by_dim_param_.emplace(dim_param, o.dim_value);
   }
 }
 
@@ -47,10 +46,10 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
       auto* new_dimension = new_shape.add_dim();
       *new_dimension = dimension;
 
-      if (dimension.has_denotation()) {
+      if (dimension.has_dim_param()) {
         // Convert to lowercase to perform case-insensitive comparison
-        auto it = dimension_override_by_denotation_.find(ToLower(dimension.denotation()));
-        if (it == dimension_override_by_denotation_.end()) {
+        auto it = dimension_override_by_dim_param_.find(ToLower(dimension.dim_param()));
+        if (it == dimension_override_by_dim_param_.end()) {
           continue;
         }
 

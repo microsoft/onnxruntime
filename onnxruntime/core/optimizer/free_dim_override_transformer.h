@@ -25,7 +25,7 @@ class FreeDimensionOverrideTransformer : public GraphTransformer {
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
-  std::map<std::string, int64_t> dimension_override_by_denotation_;
+  std::map<std::string, int64_t> dimension_override_by_dim_param_;
 };
 
 }  // namespace onnxruntime
