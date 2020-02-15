@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/initializer.h"
-#include "orttraining/core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/graph/graph_utils.h"
 #include <deque>
 

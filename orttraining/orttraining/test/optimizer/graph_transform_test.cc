@@ -10,7 +10,6 @@
 #include "gtest/gtest.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
-#include "orttraining/core/optimizer/matmul_transpose_fusion.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -36,23 +35,6 @@ TEST(GraphTransformationTests, GistEncodeDecode) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["GistBinarizeEncoder"] == op_to_count["GistBinarizeEncoder"]);
-}
-
-TEST(GraphTransformationTests, TransposeMatmulFusion) {
-  auto model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
-  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
-  ASSERT_TRUE(ret.IsOK());
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Transpose"] == 0);
-  ASSERT_TRUE(op_to_count["MatMul"] == 0);
-  ASSERT_TRUE(op_to_count["TransposeMatMul"] == 1);
 }
 
 }  // namespace test

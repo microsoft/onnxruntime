@@ -30,7 +30,7 @@
 #include "core/session/inference_session.h"
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/matmul_transpose_fusion.h"
 #endif
 
 namespace onnxruntime {
