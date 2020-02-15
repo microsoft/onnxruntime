@@ -6,9 +6,11 @@
 # Setup Java compilation
 include(FindJava)
 find_package(Java REQUIRED)
-find_package(JNI REQUIRED)
 include(UseJava)
-include_directories(${JNI_INCLUDE_DIRS})
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    find_package(JNI REQUIRED)
+    include_directories(${JNI_INCLUDE_DIRS})
+endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
 
 set(JAVA_ROOT ${REPO_ROOT}/java)

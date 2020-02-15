@@ -72,6 +72,15 @@ final class OnnxRuntime {
     }
   }
 
+  private static boolean isAndroid() {
+    try {
+      Class.forName("android.app.Activity");
+      return true;
+    } catch (ClassNotFoundException e) {
+      return false;
+    }
+  }
+
   /**
    * Load a shared library by name.
    *
@@ -80,6 +89,12 @@ final class OnnxRuntime {
    * @throws IOException If the file failed to read or write.
    */
   private static void load(Path tempDirectory, String library) throws IOException {
+    // On Android, we simply use System.loadLibrary
+    if (isAndroid()) {
+      System.loadLibrary("onnxruntime4j_jni");
+      return;
+    }
+
     // 1) The user may skip loading of this library:
     String skip = System.getProperty("onnxruntime.native." + library + ".skip");
     if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {

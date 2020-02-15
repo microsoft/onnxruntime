@@ -278,7 +278,7 @@ if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
     find_package(PythonLibs 3.5 REQUIRED)
   else()
     find_package(PythonInterp 3.4 REQUIRED)
-    find_package(PythonLibs 3.4 REQUIRED)
+    # find_package(PythonLibs 3.4 REQUIRED)
   endif()
 endif()
 
@@ -848,6 +848,11 @@ if (onnxruntime_USE_WINML)
   include(wil.cmake)
   include(winml.cmake)
 endif() # if(onnxruntime_USE_WINML)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  find_library(log-lib log)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${log-lib})
+endif()
 
 #The following files may use the 'onnxruntime_libs' and 'onnxruntime_EXTERNAL_LIBRARIES' vars
 
