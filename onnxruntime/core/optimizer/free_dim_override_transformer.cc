@@ -22,8 +22,7 @@ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<con
     : GraphTransformer("FreeDimensionOverrideTransformer") {
   for (const auto& o : overrides_to_apply) {
     // Convert to lowercase to perform case-insensitive comparisons later
-    auto& dim_param = ToLower(o.dim_param);
-    dimension_override_by_dim_param_.emplace(dim_param, o.dim_value);
+    dimension_override_by_dim_param_.emplace(ToLower(o.dim_param), o.dim_value);
   }
 }
 

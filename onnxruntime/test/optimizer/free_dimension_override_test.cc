@@ -17,7 +17,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
-TEST(FreeDimensionOverrideTransformerTest, Test) {
+TEST(FreeDimensionOverrideTransformerTest, DISABLED_Test) {
   auto model_uri = ORT_TSTR("testdata/abs_free_dimensions.onnx");
 
   std::shared_ptr<Model> model;
