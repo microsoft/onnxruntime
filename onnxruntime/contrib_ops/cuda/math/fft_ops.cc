@@ -45,6 +45,23 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   ORT_ENFORCE(input_ndim >= signal_ndim_, "signal_ndim cannot be greater than the dimension of Input: ", signal_ndim_, " > ", input_ndim);
   auto signal_tensor_ndim = signal_ndim_ + static_cast<int64_t>(complex_input);  // add complex dim
 
+  cudaDataType itype, otype, exec_type;
+  if (X->IsDataType<float>()) {
+    itype = complex_input ? CUDA_C_32F : CUDA_R_32F;
+    otype = complex_output ? CUDA_C_32F : CUDA_R_32F;
+    exec_type = CUDA_C_32F;
+  } else if (X->IsDataType<double>()) {
+    itype = complex_input ? CUDA_C_64F : CUDA_R_64F;
+    otype = complex_output ? CUDA_C_64F : CUDA_R_64F;
+    exec_type = CUDA_C_64F;
+  } else if (X->IsDataType<MLFloat16>()) {
+    itype = complex_input ? CUDA_C_16F : CUDA_R_16F;
+    otype = complex_output ? CUDA_C_16F : CUDA_R_16F;
+    exec_type = CUDA_C_16F;
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFFT does not support tensor type: ", X->DataType());
+  }
+
   //calculate batch size
   int64_t batch_ndim = input_ndim - signal_tensor_ndim;
   int64_t batch_size = (batch_ndim == 0 ? 1 : input_shape.SizeToDimension(batch_ndim));
@@ -81,54 +98,44 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
 
   //Making plan
   //TODO: add plan cache
-  cufftHandle plan;
   cufftResult result;
-  result = cufftCreate(&plan);
-  //TODO: replace it with a util func
-  ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
+  FFTState fft_state;
 
-  size_t ws_size_t;
+  SetFFTState(&fft_state, signal_ndim_, signal_dims, itype, otype, batch_size, exec_type);
 
-  cudaDataType itype, otype, exec_type;
-  if (X->IsDataType<float>()) {
-    itype = complex_input ? CUDA_C_32F : CUDA_R_32F;
-    otype = complex_output ? CUDA_C_32F : CUDA_R_32F;
-    exec_type = CUDA_C_32F;
-  } else if (X->IsDataType<double>()) {
-    itype = complex_input ? CUDA_C_64F : CUDA_R_64F;
-    otype = complex_output ? CUDA_C_64F : CUDA_R_64F;
-    exec_type = CUDA_C_64F;
-  } else if (X->IsDataType<MLFloat16>()) {
-    itype = complex_input ? CUDA_C_16F : CUDA_R_16F;
-    otype = complex_output ? CUDA_C_16F : CUDA_R_16F;
-    exec_type = CUDA_C_16F;
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "cuFFT does not support tensor type: ", X->DataType());
-  }
-
-  result = cufftXtMakePlanMany(plan, static_cast<int>(signal_ndim_), reinterpret_cast<long long int*>(signal_dims.data()),
-                               /* inembed */ nullptr, /* base_istride */ 1, /* idist */ 1, itype,
-                               /* onembed */ nullptr, /* base_ostride */ 1, /* odist */ 1, otype,
-                               batch_size, &ws_size_t, exec_type);
-
-  //TODO: replace it with a util func
-  ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to create a cuFFT plan: ", result);
+  CufftPlanInfo plan_info = cufft_cache_.TryEmplaceValue(fft_state);
 
   Tensor* Y = const_cast<OpKernelContext*>(context)->Output(0, TensorShape(output_dims));
   auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  result = cufftXtExec(plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD);
+  result = cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD);
 
   ORT_ENFORCE(result == CUFFT_SUCCESS, "Failed to exec the cuFFT plan: ", result);
-
-  cufftDestroy(plan);
 
   if (inverse) {
     PostProcess(signal_dims, Y, y_data);
   }
 
   return Status::OK();
+}
+
+void SetFFTState(FFTState* state,
+                 int64_t signal_ndim,
+                 const std::vector<int64_t>& signal_dims,
+                 cudaDataType itype,
+                 cudaDataType otype,
+                 int64_t batch_size,
+                 cudaDataType exec_type) {
+  memset(state, 0, sizeof(FFTState));
+  state->signal_ndim = signal_ndim;
+  for (int32_t i = 0; i < signal_dims.size(); ++i) {
+    state->signal_dims[i] = signal_dims[i];
+  }
+  state->itype = itype;
+  state->otype = otype;
+  state->batch_size = batch_size;
+  state->exec_type = exec_type;
 }
 
 template <typename T>

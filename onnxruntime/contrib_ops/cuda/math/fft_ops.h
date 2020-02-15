@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
+#include "cufft_plan_cache.h"
 #include "cufft.h"
 #include "cufftXt.h"
 
@@ -24,6 +25,7 @@ class FFTBase : public ::onnxruntime::cuda::CudaKernel {
 
  protected:
   int64_t signal_ndim_, normalized_, onesided_;
+  mutable CuFFTPlanCache cufft_cache_;
   Status DoFFT(OpKernelContext* context, const Tensor* X, bool complex_input, bool complex_output, bool inverse) const;
 };
 
