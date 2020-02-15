@@ -80,7 +80,7 @@ def generate_metadata(list, args):
     generate_owners(metadata_list, 'Microsoft')
     generate_description(metadata_list, 'This package contains native shared library artifacts for all supported platforms of ONNX Runtime.')
     generate_copyright(metadata_list, '\xc2\xa9 ' + 'Microsoft Corporation. All rights reserved.')
-    generate_tags(metadata_list, 'ONNX;ONNX Runtime;Machine Learning')
+    generate_tags(metadata_list, 'ONNX ONNX Runtime Machine Learning')
     generate_icon_url(metadata_list, 'https://go.microsoft.com/fwlink/?linkid=2049168')
     generate_license(metadata_list)
     generate_project_url(metadata_list, 'https://github.com/Microsoft/onnxruntime')
@@ -138,7 +138,7 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'LICENSE.txt') + '" target="LICENSE.txt" />')    
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ThirdPartyNotices.txt') + '" target="ThirdPartyNotices.txt" />')    
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') + '" target="Privacy.md" />')
-    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'CSharp_API.md') + '" target="README.md" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'C_API.md') + '" target="README.md" />')
     
     # Process props file
     source_props = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'props.xml')
