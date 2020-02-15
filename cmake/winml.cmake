@@ -563,7 +563,7 @@ endforeach()
 set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} windowsapp.lib")
 set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} windowsapp.lib")
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-winrt-error-l1-1-1.dll /DELAYLOAD:api-ms-win-core-com-l1-1-1.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll ${delayload_dml})
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll ${delayload_dml})
 
 set_target_properties(winml_dll
   PROPERTIES
