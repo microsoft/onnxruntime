@@ -262,3 +262,4 @@ class BertOnnxModelKeras(BertOnnxModelTF):
     def postprocess(self):
         self.remove_extra_reshape()
         self.remove_extra_reshape_2()
+        self.prune_graph()

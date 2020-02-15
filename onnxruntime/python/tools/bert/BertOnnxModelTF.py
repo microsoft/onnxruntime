@@ -11,7 +11,6 @@ import numpy as np
 from collections import deque
 from onnx import ModelProto, TensorProto, numpy_helper
 from BertOnnxModel import BertOnnxModel
-from ShapeOptimizer import BertOnnxModelShapeOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -198,43 +197,6 @@ class BertOnnxModelTF(BertOnnxModel):
 
         self.remove_nodes(nodes_to_remove)
         self.add_nodes(nodes_to_add)
-
-    def optimize_shape(self):
-        # Shape optimization requires graph with 3 known inputs.
-        if self.bert_inputs is None or len(self.bert_inputs) != 3:
-            logger.info('Skip shape optimization since the inputs are not identified by embedding layer fusion')
-            return
-
-        optimizer = BertOnnxModelShapeOptimizer(self)
-
-        input = self.find_graph_input(self.bert_inputs[0])
-        assert input is not None
-
-        dim_proto = input.type.tensor_type.shape.dim[0]
-        if dim_proto.HasField('dim_param'):
-            batch_size = 1
-        elif dim_proto.HasField('dim_value'):
-            batch_size = dim_proto.dim_value
-
-        dim_proto = input.type.tensor_type.shape.dim[1]
-        if dim_proto.HasField('dim_param'):
-            sequence_length = 128
-        elif dim_proto.HasField('dim_value'):
-            sequence_length = dim_proto.dim_value
-
-        optimizer.optimize(
-            output_path = None,
-            input_ids = self.bert_inputs[0],
-            segment_ids = self.bert_inputs[1],
-            input_mask = self.bert_inputs[2],
-            enable_shape_opt = False,
-            enable_reshape_opt = True,
-            output_names = None,
-            batch_size = batch_size,
-            sequence_length = sequence_length,
-            verbose = False)
-
-        self.model = optimizer.model
 
     """
       Batch Layer Norm from Keras in Tensorflow:
@@ -602,7 +564,6 @@ class BertOnnxModelTF(BertOnnxModel):
     def preprocess(self):
         self.remove_identity()
         self.process_embedding()
-        self.optimize_shape()
         #TODO: remove fuse mask since we have embedding fused so fuse_attention shall handle the mask nodes.
         self.fuse_mask()
 
