@@ -47,14 +47,15 @@ ONNX_OPERATOR_KERNEL_EX(
 
 thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit});
   allocator_ = CreateAllocator(default_memory_info, device_id);
 }
 
@@ -73,10 +74,11 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
+  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(info.cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   size_t free = 0;
@@ -88,7 +90,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
        [](OrtDevice::DeviceId device_id) {
          return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
        },
-       total});
+       cuda_mem_limit_});
 
   InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
@@ -142,7 +144,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
     std::lock_guard<OrtMutex> lock(context_pool_mutex_);
     std::shared_ptr<PerThreadContext> ptc;
     if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_);
+      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_);
     } else {
       ptc = retired_context_pool_.back();
       retired_context_pool_.pop_back();
@@ -1340,6 +1342,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // cast is not compute heavy, and may be placed outside
     }
 
+//Below rule only works for inference, for training, we can't do constant folding.
+//We need find a better solution.
+//Temporary disable the check here, the cost is all the cast will be on GPU now.
+#ifndef ENABLE_TRAINING
     if (!not_supported && !force_inside) {
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
@@ -1368,7 +1374,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         force_outside = true;
       }
     }
-
+#endif
     if (!force_inside && (not_supported || force_outside)) {
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
       if (not_supported) {
