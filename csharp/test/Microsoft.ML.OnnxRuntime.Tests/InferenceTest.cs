@@ -93,6 +93,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
 #endif
+#if USE_MIGRAPHX
+                opt.AppendExecutionProvider_MIGraphX(0);
+#endif
 #if USE_NNAPI
                 opt.AppendExecutionProvider_Nnapi();
 #endif
