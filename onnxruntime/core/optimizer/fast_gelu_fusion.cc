@@ -84,9 +84,10 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   }
   nodes_to_fuse.push_back(mul3_node);
 
-
   input_index = optimizer_utils::IndexOfNodeInput(mul3_node, *add1_node.MutableOutputDefs()[0]);
-  Node& mul4_node = const_cast<Node&>(*graph_utils::GetInputNode(mul3_node, (input_index + 1) % 2));
+  const Node* p_mul3_input_node = graph_utils::GetInputNode(mul3_node, (input_index + 1) % 2);
+  if (p_mul3_input_node == nullptr) return matchResult;
+  Node& mul4_node = const_cast<Node&>(*p_mul3_input_node);
   if (!CheckNode(mul4_node, "Mul", 7, mul1_node.GetExecutionProviderType(), true)) {
     return matchResult;
   }
@@ -214,7 +215,6 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-
     Node& mul5_node = *graph.GetNode(add2_node.OutputNodesBegin()->Index());
     if (!CheckNode(mul5_node, "Mul", 7, node.GetExecutionProviderType(), true)) {
       continue;
@@ -222,7 +222,9 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
 
 
     input_index = optimizer_utils::IndexOfNodeInput(mul5_node, *add2_node.MutableOutputDefs()[0]);
-    Node& mul6_node = const_cast<Node&>(*graph_utils::GetInputNode(mul5_node, (input_index + 1) % 2));
+    const Node* p_mul5_input_node = graph_utils::GetInputNode(mul5_node, (input_index + 1) % 2);
+    if (p_mul5_input_node == nullptr) continue;
+    Node& mul6_node = const_cast<Node&>(*p_mul5_input_node);
     if (!CheckNode(mul6_node, "Mul", 7, node.GetExecutionProviderType(), false)) {
       continue;
     }
