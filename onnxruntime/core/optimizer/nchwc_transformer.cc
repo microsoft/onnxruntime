@@ -150,7 +150,7 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   }
   // Bias the edge count to handle the case of a node that produces a graph
   // output.
-  if (graph_utils::IsGraphOutput(graph_, node.OutputDefs()[0])) {
+  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty()) {
     output_edges_count++;
   }
   return output_edges_count;
