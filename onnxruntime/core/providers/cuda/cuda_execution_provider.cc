@@ -82,8 +82,11 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
-CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(cuda_mem_limit), arena_extend_strategy_(arena_extend_strategy) {
+CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
+      device_id_(info.device_id),
+      cuda_mem_limit_(info.cuda_mem_limit),
+      arena_extend_strategy_(info.arena_extend_strategy) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   size_t free = 0;

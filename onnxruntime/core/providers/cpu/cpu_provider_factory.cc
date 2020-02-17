@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include <atomic>
+#include "core/graph/onnx_protobuf.h"
 #include "cpu_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"

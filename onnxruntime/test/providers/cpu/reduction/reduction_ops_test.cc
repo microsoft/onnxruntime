@@ -40,6 +40,9 @@ void TestReduceOp(const std::string& op,
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 
+//TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
+// machine in RelWithDebInfo build mode, but only 2 seconds on my local dev machine(4 cores).
+#ifdef NDEBUG
 TEST(ReductionOpTest, ReductionVariationTest) {
   const std::vector<float>& input_data = testcases.input_data;
   const std::vector<int64_t>& input_dims = testcases.input_dims;
@@ -65,6 +68,7 @@ TEST(ReductionOpTest, ReductionVariationTest) {
     }
   }
 }
+#endif
 
 TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
   OpTester test("ReduceL1");
@@ -968,10 +972,12 @@ TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
   }
 }
 
+#ifdef USE_CUDA
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {
   test_apex_reduce_sum(4 * 128, 30528);
   test_apex_reduce_sum(4 * 512, 30528);
 }
+#endif
 
 TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
   test_apex_reduce_sum(85 * 128, 768);

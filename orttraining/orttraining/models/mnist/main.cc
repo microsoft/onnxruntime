@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cxxopts.hpp"
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/platform/env.h"

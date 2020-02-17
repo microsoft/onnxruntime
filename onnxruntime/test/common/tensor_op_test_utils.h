@@ -14,12 +14,12 @@ namespace test {
 class RandomValueGenerator {
  public:
   enum class RandomSeedType {
-    Static,      // static value
-    PerProcess,  // value that is fixed per process (generated or static)
-    Dynamic,     // dynamic value
+    kStatic,      // static value
+    kPerProcess,  // value that is fixed per process (generated or static)
+    kDynamic,     // dynamic value
   };
 
-  static constexpr auto k_default_random_seed_type = RandomSeedType::PerProcess;
+  static constexpr auto k_default_random_seed_type = RandomSeedType::kPerProcess;
 
   explicit RandomValueGenerator(RandomSeedType random_seed_type = k_default_random_seed_type);
 

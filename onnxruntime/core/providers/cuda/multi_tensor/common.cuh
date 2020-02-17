@@ -6,7 +6,9 @@
 
 namespace onnxruntime {
 namespace cuda {
-
+// initial reference from:
+// https://github.com/NVIDIA/apex/blob/5b71d3695bf39efcdcda9dff5be2f70314b8f091/csrc/multi_tensor_apply.cuh#L15
+// further experiment to get the number below. The larger the better, but if too large, it won't fit into GPU stack.
 constexpr int ACTUAL_TENSOR_GROUP_SIZE[8] = {1, 1, 2, 3, 4, 5, 6, 7};
 constexpr int MAX_BLOCK_COUNTS[8] = {256, 320, 320, 320, 320, 288, 288, 256};
 constexpr int MAX_TENSOR_GROUP_COUNTS[8] = {1, 96, 64, 32, 32, 32, 32, 32};
@@ -47,7 +49,7 @@ struct ChunkGroup {
   //    the tensors' pointers in the i-th group.
   // 2. All tensors in the i-th group have the same size, tensor_sizes[i].
   void* tensor_ptrs[ACTUAL_TENSOR_GROUP_SIZE[TensorGroupSize]][MAX_TENSOR_GROUP_COUNTS[TensorGroupSize]];
-  // Max number of GPU blocks to process the chunks in this chunk group.  
+  // Max number of GPU blocks to process the chunks in this chunk group.
   const static int max_block_count = MAX_BLOCK_COUNTS[TensorGroupSize];
   // Max number of tensor groups in this chunk group.
   const static int max_tensor_group_count = MAX_TENSOR_GROUP_COUNTS[TensorGroupSize];
@@ -58,19 +60,19 @@ struct ChunkGroup {
 template <int TensorGroupSize>
 int compute_max_tensor_size_per_launch(int element_count_per_thread) {
   constexpr int block_count =
-    ChunkGroup<TensorGroupSize>::max_block_count;
+      ChunkGroup<TensorGroupSize>::max_block_count;
   constexpr int thread_count_per_block =
-    ChunkGroup<TensorGroupSize>::thread_count_per_block;
+      ChunkGroup<TensorGroupSize>::thread_count_per_block;
   return block_count * thread_count_per_block * element_count_per_thread;
 }
 
 template <int TensorGroupSize, typename TMultiTensorFunctor, typename... TFunctorParams>
 void launch_multi_tensor_functor(
-  const int chunk_size,
-  std::vector<int>& tensor_sizes,
-  std::vector<std::vector<void*>>& grouped_tensor_pointers,
-  TMultiTensorFunctor multipleTensorKernel,
-  TFunctorParams... kernelParams) {
+    const int chunk_size,
+    std::vector<int>& tensor_sizes,
+    std::vector<std::vector<void*>>& grouped_tensor_pointers,
+    TMultiTensorFunctor multipleTensorKernel,
+    TFunctorParams... kernelParams) {
   ORT_ENFORCE(tensor_sizes.size() > 0);
   ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
   ORT_ENFORCE(grouped_tensor_pointers.size() > 0);
@@ -88,7 +90,7 @@ void launch_multi_tensor_functor(
   ORT_ENFORCE(grouped_tensor_pointers.size() == tensor_sizes.size());
   ORT_ENFORCE(group_size == ACTUAL_TENSOR_GROUP_SIZE[TensorGroupSize]);
   for (int i = 0; i < group_count; ++i) {
-    ORT_ENFORCE(grouped_tensor_pointers[i].size() == static_cast<size_t>(group_size)); 
+    ORT_ENFORCE(grouped_tensor_pointers[i].size() == static_cast<size_t>(group_size));
   }
 
   // Handle multiple tensors per CUDA kernel call.

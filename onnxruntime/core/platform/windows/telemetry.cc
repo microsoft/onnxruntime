@@ -112,6 +112,9 @@ void WindowsTelemetry::LogProcessInfo() const {
 }
 
 void WindowsTelemetry::LogSessionCreationStart() const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionCreationStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -120,6 +123,9 @@ void WindowsTelemetry::LogSessionCreationStart() const {
 }
 
 void WindowsTelemetry::LogEvaluationStop() const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
   TraceLoggingWrite(telemetry_provider_handle,
                     "EvaluationStop",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -128,6 +134,9 @@ void WindowsTelemetry::LogEvaluationStop() const {
 }
 
 void WindowsTelemetry::LogEvaluationStart() const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
   TraceLoggingWrite(telemetry_provider_handle,
                     "EvaluationStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),

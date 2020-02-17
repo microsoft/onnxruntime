@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <algorithm>
 #include <cuda.h>
 #include <cuda_fp16.h>
@@ -168,7 +171,7 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
     is_last_block_done = (count == (num_blocks_in_grid - 1));
   }
 
-  // All threads in each block see if they belong the last active block 
+  // All threads in each block see if they belong the last active block
   // (i.e., the value of is_last_block_done).
   __syncthreads();
 
@@ -266,7 +269,7 @@ template void reduce_mean<double, double>(
   const double* data, double* output, int size, double* buffer);
 
 bool is_matrix_row_reduction(
-    const cudnnReduceTensorOp_t cudnnReduceOp,
+    const cudnnReduceTensorOp_t cudnn_reduce_op,
     const int m,
     const int n,
     const size_t rank,
@@ -280,7 +283,7 @@ bool is_matrix_row_reduction(
   if (rank < 2)
     return false;
 
-  if (cudnnReduceOp != CUDNN_REDUCE_TENSOR_ADD)
+  if (cudnn_reduce_op != CUDNN_REDUCE_TENSOR_ADD)
     return false;
 
   // Check if all but the last axis are reduced. For example, reducing

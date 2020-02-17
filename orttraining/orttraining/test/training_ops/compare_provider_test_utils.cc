@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
 #include "orttraining/test/training_ops/compare_provider_test_utils.h"

@@ -33,7 +33,7 @@ namespace cuda {
       name<T>);
 
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
-// it's safter to wrap it with automatically memory deleter as CudnnReduceDescriptor.
+// it's safer to wrap it with automatically memory deleter as CudnnReduceDescriptor.
 // An implicit caster from CudnnReduceDescriptor to cudnnReduceTensorDescriptor_t
 // is implemented below, so CUDA can seamlessly work.
 class CudnnReduceDescriptor final {
@@ -76,26 +76,24 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     const TensorShape& input_shape,
     OutT* Y,
     const TensorShape& output_shape,
-    cudnnReduceTensorOp_t cudnnReduceOp,
-    std::vector<int64_t> output_dims) const {
+    cudnnReduceTensorOp_t cudnn_reduce_op,
+    std::vector<int64_t>& output_dims) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   const auto rank = input_shape.NumDimensions();
 
-// Block of fast matrix row reduction.
-// It relies on new atomicAdd for half type, so old CUDA can't use it.
+  // Block of fast matrix row reduction.
   const auto stride = input_shape[input_shape.NumDimensions() - 1];
   const auto reduction_size = input_shape.Size() / stride;
   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
-      is_matrix_row_reduction(cudnnReduceOp,
-        static_cast<int>(reduction_size),
-        static_cast<int>(stride), rank, axes_)) {
-
+      is_matrix_row_reduction(cudnn_reduce_op,
+                              static_cast<int>(reduction_size),
+                              static_cast<int>(stride), rank, axes_)) {
     reduce_matrix_rows(
-      reinterpret_cast<const CudaT*>(X),
-      reinterpret_cast<CudaT*>(Y),
-      static_cast<int>(reduction_size),
-      static_cast<int>(stride));
+        reinterpret_cast<const CudaT*>(X),
+        reinterpret_cast<CudaT*>(Y),
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride));
     return Status::OK();
   }
 
@@ -120,9 +118,9 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
   CudnnReduceDescriptor reduce_desc;
   if (std::is_same<T, MLFloat16>::value)
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
   else
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, ReduceTensorIndices));
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, ReduceTensorIndices));
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
   CudnnTensor input_tensor;
@@ -253,24 +251,24 @@ template Status ReduceKernel<true>::ReduceKernelShared<double, double, CUDNN_RED
     const TensorShape& input_shape,
     double* Y,
     const TensorShape& output_shape,
-    cudnnReduceTensorOp_t cudnnReduceOp,
-    std::vector<int64_t> output_dims) const;
+    cudnnReduceTensorOp_t cudnn_reduce_op,
+    std::vector<int64_t>& output_dims) const;
 
 template Status ReduceKernel<true>::ReduceKernelShared<float, float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     const float* X,
     const TensorShape& input_shape,
     float* Y,
     const TensorShape& output_shape,
-    cudnnReduceTensorOp_t cudnnReduceOp,
-    std::vector<int64_t> output_dims) const;
+    cudnnReduceTensorOp_t cudnn_reduce_op,
+    std::vector<int64_t>& output_dims) const;
 
 template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     const MLFloat16* X,
     const TensorShape& input_shape,
     MLFloat16* Y,
     const TensorShape& output_shape,
-    cudnnReduceTensorOp_t cudnnReduceOp,
-    std::vector<int64_t> output_dims) const;
+    cudnnReduceTensorOp_t cudnn_reduce_op,
+    std::vector<int64_t>& output_dims) const;
 
 static Status PrepareForReduce(OpKernelContext* ctx,
                                bool keepdims,
@@ -338,6 +336,8 @@ static Status PrepareForReduce(OpKernelContext* ctx,
   }
 
   Tensor* Y = ctx->Output(0, TensorShape(squeezed_output_dims));
+  // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
+  // Therefore zeroing out the memory is required
   CUDA_RETURN_IF_ERROR(cudaMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
   *y_pp = Y;
 
@@ -357,7 +357,7 @@ static Status PrepareForReduce(OpKernelContext* ctx,
 
 template <bool allow_multi_axes>
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const {
+Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const Tensor* X = nullptr;
   Tensor* Y = nullptr;
@@ -394,15 +394,14 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   // It relies on new atomicAdd for half type, so old CUDA can't use it.
   const auto reduction_size = input_count / stride;
   if (fast_reduction_ && reduction_size <= std::numeric_limits<int>::max() && stride <= std::numeric_limits<int>::max() &&
-      is_matrix_row_reduction(cudnnReduceOp,
-        static_cast<int>(reduction_size),
-        static_cast<int>(stride), rank, axes_)) {
-
+      is_matrix_row_reduction(cudnn_reduce_op,
+                              static_cast<int>(reduction_size),
+                              static_cast<int>(stride), rank, axes_)) {
     reduce_matrix_rows(
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-      static_cast<int>(reduction_size),
-      static_cast<int>(stride));
+        reinterpret_cast<const CudaT*>(X->template Data<T>()),
+        reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+        static_cast<int>(reduction_size),
+        static_cast<int>(stride));
     return Status::OK();
   }
 
@@ -415,9 +414,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
   CudnnReduceDescriptor reduce_desc;
   if (std::is_same<T, MLFloat16>::value)
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
   else
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, ReduceTensorIndices));
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, ReduceTensorIndices));
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
   CudnnTensor input_tensor;
@@ -546,7 +545,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 
 template <>
 template <>
-Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnnReduceOp) const {
+Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(OpKernelContext* ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {
   typedef typename ToCudaType<int32_t>::MappedType CudaT;
 
   const Tensor* X = nullptr;
@@ -595,7 +594,7 @@ Status ReduceKernel<true>::ComputeImpl<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES>(
   IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
   Impl_Cast<CudaT, float>(reinterpret_cast<const CudaT*>(X->template Data<int32_t>()), temp_X.get(), X->Shape().Size());
 
-  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnnReduceOp, cudnn_type_X, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES));
+  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES));
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudnnHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));

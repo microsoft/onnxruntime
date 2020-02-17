@@ -46,7 +46,7 @@ For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tun
 When/if using [onnxruntime_perf_test](../../onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 
 ## Configuring environment variables
-There are three environment variables for TensorRT execution provider.
+There are four environment variables for TensorRT execution provider.
 
 ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine.
 
@@ -54,9 +54,11 @@ ORT_TENSORRT_MAX_PARTITION_ITERATIONS: maximum number of iterations allowed in m
 
 ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioning. Subgraphs with smaller size will fall back to other execution providers.
 
-By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000 and min subgraph size = 1.
+ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT
 
-One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS and ORT_TENSORRT_MIN_SUBGRAPH_SIZE.
+By default TensorRT execution provider builds an ICudaEngine with max workspace size = 1 GB, max partition iterations = 1000, min subgraph size = 1 and FP16 mode is disabled.
+
+One can override these defaults by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE and ORT_TENSORRT_FP16_ENABLE.
 e.g. on Linux
 
 ### override default max workspace size to 2GB
@@ -67,3 +69,6 @@ export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=10
         
 ### override default minimum subgraph node size to 5
 export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
+
+### Enable FP16 mode in TensorRT
+export ORT_TENSORRT_FP16_ENABLE=1

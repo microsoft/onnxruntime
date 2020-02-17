@@ -14,7 +14,7 @@
 using namespace WinML;
 
 static const OrtApi* GetVersionedOrtApi() {
-  static const uint32_t ort_version = 1;
+  static const uint32_t ort_version = 2;
   const auto ort_api_base = OrtGetApiBase();
   return ort_api_base->GetApi(ort_version);
 }
@@ -1259,6 +1259,7 @@ const WinmlAdapterApi* OnnxruntimeEngineFactory::UseWinmlAdapterApi() {
 HRESULT OnnxruntimeEngineFactory::GetOrtEnvironment(OrtEnv** ort_env) {
   RETURN_IF_FAILED(EnsureEnvironment());
   RETURN_IF_FAILED(environment_->GetOrtEnvironment(ort_env));
+  RETURN_HR_IF_NOT_OK_MSG(ort_api_->EnableTelemetryEvents(*ort_env), ort_api_);
   return S_OK;
 }
 

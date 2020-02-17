@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
@@ -457,7 +458,7 @@ class OpTester {
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
-     cached_model_ = model;
+    cached_model_ = model;
   }
 
   std::shared_ptr<onnxruntime::Model> GetModelCache() {
@@ -512,8 +513,8 @@ class OpTester {
                                     ExpectResult expect_result,
                                     const std::string& expected_failure_string,
                                     const RunOptions* run_options,
-                                    std::unordered_map<std::string, OrtValue> feeds,
-                                    std::vector<std::string> output_names,
+                                    const std::unordered_map<std::string, OrtValue>& feeds,
+                                    const std::vector<std::string>& output_names,
                                     const std::string& provider_type,
                                     const CustomOutputVerifierFn& custom_output_verifier);
 
@@ -522,7 +523,7 @@ class OpTester {
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
 
-  // for gradient unit tests only 
+  // for gradient unit tests only
   std::shared_ptr<onnxruntime::Model> cached_model_;
 
 #ifndef NDEBUG

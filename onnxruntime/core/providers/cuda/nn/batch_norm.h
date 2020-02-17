@@ -14,7 +14,8 @@ class BatchNorm final : public CudaKernel {
  public:
   BatchNorm(const OpKernelInfo& op_kernel_info)
       : CudaKernel{op_kernel_info},
-        cudnn_batch_norm_mode_(CUDNN_BATCHNORM_SPATIAL) {
+        cudnn_batch_norm_mode_(CUDNN_BATCHNORM_SPATIAL),
+        momentum_(0.9) {
     float tmp_epsilon;
     ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
     epsilon_ = ClampCudnnBatchNormEpsilon(static_cast<double>(tmp_epsilon));
