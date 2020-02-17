@@ -181,7 +181,7 @@ static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) 
 }
 
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
-    to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs. 
+    to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs.
     This is important when removing a node with this NodeArg as input. */
 static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
                                                   const std::vector<GraphEdge>& output_edges,
@@ -311,7 +311,7 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators. 
+/** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
 Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
   const int unassigned = -1;
@@ -475,6 +475,11 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
+}
+
+bool IsGraphOutput(const Graph& graph, const NodeArg* output) {
+  const auto& graph_outputs = graph.GetOutputs();
+  return std::find(graph_outputs.begin(), graph_outputs.end(), output) != graph_outputs.end();
 }
 
 const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& initializer_name,
