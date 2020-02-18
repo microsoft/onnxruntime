@@ -16,6 +16,7 @@ def parse_arguments():
     parser.add_argument("--native_build_path", required=True, help="Native build directory.")            
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")        
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")        
+    parser.add_argument("--is_release_build", required=False, default=None, type=str, help="Flag indicating if the build is a release build. Accepted values: true/false.")        
 
     return parser.parse_args()
 
@@ -151,7 +152,15 @@ def generate_files(list, args):
     target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.targets')    
     os.system('copy ' + source_targets + ' ' + target_targets)
     files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')    
-    
+
+    # Some tools to be packaged in nightly build only, should not be released 
+    # These are copied to the runtimes folder for convenience of loading with the dlls    
+    if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')):
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+
+    if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnx_test_runner.exe')):
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+        
     files_list.append('</files>')
     
     list += files_list
@@ -173,7 +182,9 @@ def main():
     
     # Parse arguments
     args = parse_arguments()
-
+    if (args.is_release_build.lower() != 'true' and args.is_release_build.lower() != 'false'):
+        raise Exception('Only valid options for IsReleaseBuild are: true and false')        
+    
     # Generate nuspec 
     lines = generate_nuspec(args)
 
