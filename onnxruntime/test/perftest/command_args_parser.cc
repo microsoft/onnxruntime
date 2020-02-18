@@ -84,8 +84,6 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNGraphExecutionProvider;
-        } else if (!CompareCString(optarg, ORT_TSTR("brainslice"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kBrainSliceExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {

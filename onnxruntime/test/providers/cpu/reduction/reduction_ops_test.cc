@@ -1,10 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/reduction/reduction_ops.h"
+#include <random>
+#include <cmath>
+#include <type_traits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -35,6 +40,9 @@ void TestReduceOp(const std::string& op,
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  //TensorRT: result differs
 }
 
+//TODO:investigate why it is so slow. It need 12 seconds on an Azure Standard F48s_v2 (48 vcpus, 96 GiB memory)
+// machine in RelWithDebInfo build mode, but only 2 seconds on my local dev machine(4 cores).
+#ifdef NDEBUG
 TEST(ReductionOpTest, ReductionVariationTest) {
   const std::vector<float>& input_data = testcases.input_data;
   const std::vector<int64_t>& input_dims = testcases.input_dims;
@@ -60,6 +68,7 @@ TEST(ReductionOpTest, ReductionVariationTest) {
     }
   }
 }
+#endif
 
 TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
   OpTester test("ReduceL1");
@@ -302,6 +311,29 @@ TEST(ReductionOpTest, ReduceLogSum_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {1.79175947f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
+TEST(ReductionOpTest, ReduceLogSumAxes01) {
+  OpTester test("ReduceLogSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 4, 5},
+                       {0.5172141f, 0.36681905f, 0.7489675f, 0.21859895f, 0.6378839f,
+                        0.6120873f, 0.74698675f, 0.87222993f, 0.23919299f, 0.4877085f,
+                        0.58392614f, 0.56973755f, 0.28744474f, 0.56500393f, 0.13348383f,
+                        0.06321382f, 0.20588198f, 0.08760026f, 0.9710815f, 0.6781033f,
+                        0.38189054f, 0.9127731f, 0.21229997f, 0.7597165f, 0.36321816f,
+                        0.18440539f, 0.44839138f, 0.888846f, 0.54862875f, 0.15642975f,
+                        0.5046317f, 0.6035792f, 0.42172152f, 0.55201846f, 0.8684674f,
+                        0.8725194f, 0.89469117f, 0.88513845f, 0.48750868f, 0.2512843f,
+                        0.54381144f, 0.970685f, 0.44817686f, 0.7655562f, 0.64186585f,
+                        0.8696393f, 0.91110307f, 0.12956737f, 0.9199235f, 0.26789218f,
+                        0.25372583f, 0.6147827f, 0.67517287f, 0.74066293f, 0.6317299f,
+                        0.70738846f, 0.27802366f, 0.15887405f, 0.95882577f, 0.23314993f});
+  test.AddOutput<float>("reduced", {5},
+                        {1.8073791f, 2.0180254f, 1.7606194f, 2.0446842f, 1.6773242f});
+
+  test.Run();
 }
 
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
@@ -856,6 +888,113 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceSum_apex_reduction) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 1});
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {36.0f, 42.0f});
+  test.Run();
+}
+
+void test_apex_reduce_sum(
+    int64_t m, int64_t n) {
+  OpTester test("ReduceSum");
+  // Input tensor.
+  std::vector<float> X(m * n, 0.0f);
+  // Reduced tensor.
+  std::vector<float> Y(n, 0.0f);
+  // Random number generator.
+  std::default_random_engine generator(0);
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  for (int64_t i = 0; i < m; ++i) {
+    for (int64_t j = 0; j < n; ++j) {
+      const float value = distribution(generator) / float(m);
+      X[i * n + j] = value;
+      Y[j] += value;
+    }
+  }
+
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddInput<float>("data", {m, n}, X);
+  test.AddOutput<float>("reduced", {n}, Y);
+
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
+  for (int64_t m = 1; m < 2049; m *= 8) {
+    for (int64_t n = 2; n < 2049; n *= 8) {
+      if (m * n > 32768) {
+        continue;
+      }
+      test_apex_reduce_sum(m, n);
+      test_apex_reduce_sum(m + 1, n);
+      test_apex_reduce_sum(m + 3, n);
+      test_apex_reduce_sum(m + 5, n);
+      test_apex_reduce_sum(m + 23, n);
+      test_apex_reduce_sum(m + 47, n);
+      test_apex_reduce_sum(m + 97, n);
+    }
+  }
+}
+
+TEST(ReductionOpTest, ReduceSum_apex_bert) {
+  test_apex_reduce_sum(6 * 128, 128);
+  test_apex_reduce_sum(8 * 128, 128);
+  test_apex_reduce_sum(6 * 384, 128);
+  test_apex_reduce_sum(8 * 384, 128);
+}
+
+TEST(ReductionOpTest, ReduceSum_batch_by_two) {
+  for (int i = 1; i < 128; ++i) {
+    test_apex_reduce_sum(i, 2);
+  }
+}
+
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
+  for (int i = 1; i < 16; i += 1) {
+    test_apex_reduce_sum(i * 128, 128);
+    test_apex_reduce_sum(i * 512, 128);
+    test_apex_reduce_sum(i * 128, 768);
+    test_apex_reduce_sum(i * 512, 768);
+    test_apex_reduce_sum(i * 128, 1024);
+    test_apex_reduce_sum(i * 512, 1024);
+  }
+}
+
+#ifdef USE_CUDA
+TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_30528) {  
+  test_apex_reduce_sum(4 * 128, 30528);
+  test_apex_reduce_sum(4 * 512, 30528);
+}
+#endif
+
+TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
+  test_apex_reduce_sum(85 * 128, 768);
+  test_apex_reduce_sum(86 * 128, 768);
+}
+
+TEST(ReductionOpTest, ReduceSum_apex_more) {
+  std::srand(0);
+  for (int64_t m = 1; m < 16; ++m) {
+    for (int64_t n = 1; n < 16; ++n) {
+      const auto m_ = 2 * m;
+      const auto n_ = 2 * n;
+      test_apex_reduce_sum(m_, n_);
+    }
+  }
+}
+
 TEST(ReductionOpTest, ReduceSum_int64) {
   OpTester test("ReduceSum");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -1348,6 +1487,82 @@ TEST(ReductionOpTest, ArgMin_int32) {
                            0, 0});
   test.Run();
 }
+
+#ifdef USE_CUDA
+
+void test_reduce_apis(size_t size) {
+  float output_sum = 0;
+  float output_square_sum = 0;
+  float output_mean = 0;
+  float expected_output_sum = 0;
+  float expected_output_square_sum = 0;
+  float expected_output_mean = 0;
+  const std::vector<int64_t> shape = {static_cast<int64_t>(size)};
+  std::random_device random_device;
+  std::mt19937 random_engine(random_device());
+  std::uniform_real_distribution<float> dist(0.1f, 1.0f);
+  std::vector<float> input(size);
+  for (size_t i = 0; i < size; ++i) {
+    input[i] = dist(random_engine);
+    expected_output_sum += input[i];
+    expected_output_square_sum += input[i] * input[i];
+    expected_output_mean += input[i] / float(size);
+  }
+  const int buffer_size_in_byte = onnxruntime::cuda::compute_reduction_buffer_size(
+      static_cast<int>(sizeof(float)), static_cast<int>(size));
+
+  float* device_input = NULL;
+  float* device_output_sum = NULL;
+  float* device_output_square_sum = NULL;
+  float* device_output_mean = NULL;
+  float* buffer = NULL;
+
+  cudaMalloc((void**)&device_input, size * sizeof(float));
+  cudaMalloc((void**)&device_output_sum, 1 * sizeof(float));
+  cudaMalloc((void**)&device_output_square_sum, 1 * sizeof(float));
+  cudaMalloc((void**)&device_output_mean, 1 * sizeof(float));
+  cudaMalloc((void**)&buffer, buffer_size_in_byte);
+
+  cudaMemcpy(device_input, input.data(), size * sizeof(float), cudaMemcpyHostToDevice);
+
+  onnxruntime::cuda::reduce_sum(device_input,
+                                device_output_sum,
+                                static_cast<int>(size),
+                                buffer);
+  onnxruntime::cuda::reduce_square_sum(device_input,
+                                       device_output_square_sum,
+                                       static_cast<int>(size), buffer);
+  onnxruntime::cuda::reduce_mean(
+      device_input,
+      device_output_mean,
+      static_cast<int>(size),
+      buffer);
+
+  cudaMemcpy(&output_sum, device_output_sum, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(&output_square_sum, device_output_square_sum, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(&output_mean, device_output_mean, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+
+  cudaFree(device_input);
+  cudaFree(buffer);
+  cudaFree(device_output_sum);
+  cudaFree(device_output_square_sum);
+  cudaFree(device_output_mean);
+
+  EXPECT_TRUE(std::abs(output_sum - expected_output_sum) / expected_output_sum < 1e-4f);
+  EXPECT_TRUE(std::abs(output_square_sum - expected_output_square_sum) / expected_output_square_sum < 1e-4);
+  EXPECT_TRUE(std::abs(output_mean - expected_output_mean) / expected_output_mean < 1e-4f);
+}
+
+TEST(ReduceApiTest, Sum) {
+  test_reduce_apis(3);
+  test_reduce_apis(19);
+  test_reduce_apis(123);
+  test_reduce_apis(1128);
+  test_reduce_apis(5566);
+  test_reduce_apis(941736);
+}
+
+#endif
 
 TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
   OpTester test("ArgMin");

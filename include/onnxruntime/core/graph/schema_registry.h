@@ -5,9 +5,8 @@
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
-
 #include "core/graph/onnx_protobuf.h"
+#include "core/platform/ort_mutex.h"
 #include <mutex>
 #include <deque>
 #include "sstream"

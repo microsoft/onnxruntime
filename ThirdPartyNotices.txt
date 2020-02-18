@@ -225,7 +225,7 @@ THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 _____
 
-eigen-git-mirror
+Eigen
 
 MPL v2.0
 Mozilla Public License Version 2.0
