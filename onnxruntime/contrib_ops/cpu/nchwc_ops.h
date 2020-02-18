@@ -12,7 +12,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
 class ReorderInput : public OpKernel {
  public:
   ReorderInput(const OpKernelInfo& info) : OpKernel(info) {
@@ -21,18 +20,19 @@ class ReorderInput : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
 class ReorderOutput : public OpKernel {
  public:
   ReorderOutput(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("channels", &channels_).IsOK());
     ORT_ENFORCE(channels_ > 0, "invalid channel count");
+    ORT_ENFORCE(info.GetAttr<int64_t>("channels_last", &channels_last_).IsOK());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   int64_t channels_;
+  int64_t channels_last_;
 };
 
 class NchwcConv : public OpKernel {
