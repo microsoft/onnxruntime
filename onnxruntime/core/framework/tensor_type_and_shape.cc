@@ -192,6 +192,11 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape, const st
   return GetTensorShapeAndTypeHelper(type, shape, dim_params, out);
 }
 
+OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out)
+{
+  return GetTensorShapeAndTypeHelper(type, shape, &dim_params, out);
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   onnxruntime::MLDataType type = v->Type();

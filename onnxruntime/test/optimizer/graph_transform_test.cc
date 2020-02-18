@@ -675,7 +675,7 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
     expected_values_prod.push_back(prod_f);
   }
 
-  ASSERT_EQ(1, fetches.size());
+  ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
@@ -1223,7 +1223,7 @@ TEST(GraphTransformationTests, LayerNormFusionTest) {
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {
       // LayerNormalization should have three inputs.
-      EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
@@ -1259,7 +1259,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {
       // LayerNormalization should have three inputs.
-      EXPECT_EQ(node.InputDefs().size(), 3) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
       const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
@@ -1272,7 +1272,7 @@ TEST(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
   }
 }
 
-static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path) {
+static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count, int skip_ln_count) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph = p_model->MainGraph();
@@ -1285,19 +1285,22 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == add_count );
   ASSERT_TRUE(op_to_count["Sub"] == 0);
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
-  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count );
+  ASSERT_TRUE(op_to_count["SkipLayerNormalization"] == skip_ln_count );
 }
 
 TEST(GraphTransformationTests, SkipLayerNormFusionTest) {
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx");
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx");
-  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx");
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format1.onnx", 0, 0, 1);
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format2.onnx", 0, 0, 1 );
+  TestSkipLayerNormFusion(MODEL_FOLDER "fusion/skip_layer_norm_format3.onnx", 0, 0, 1 );
+  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format1_partial.onnx", 1, 0, 1 );
+  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format2_partial.onnx", 1, 0, 1 );
+  TestSkipLayerNormFusion( MODEL_FOLDER "fusion/skip_layer_norm_format3_no_fusion.onnx", 1, 1, 0 );
 }
 
 TEST(GraphTransformationTests, EmbedLayerNormFusionFormat1) {

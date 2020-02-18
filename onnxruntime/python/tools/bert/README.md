@@ -1,6 +1,6 @@
 # BERT Model Optimization Tool Overview
 
-This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensroFlow, and generates an optimized model to run faster with OnnxRuntime.
+This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensorFlow, and generates an optimized model to run faster with OnnxRuntime.
 
 Note that OnnxRuntime can fuse the Bert ONNX model exported from PyTorch automatically. You don't need this tool to fuse the model. It is only required for Bert Model converted from Tensorflow. 
 
@@ -63,4 +63,3 @@ See below for description of all the options:
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
-
