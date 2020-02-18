@@ -94,6 +94,8 @@ TEST(MathOpTest, Add_float) {
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#elif defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_GPU_GP16) || defined(INTEL_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //Intel: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
 #endif
@@ -150,7 +152,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
                         {4.0f, 5.0f, 6.0f,
                          3.0f, 4.0f, 5.0f,
                          2.0f, 3.0f, 4.0f});
-  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //Intel: disabled temporarily due to accurarcy issues
   #else
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
@@ -279,8 +281,9 @@ TEST(MathOpTest, Add_Broadcast_2x1x1_3x4) {
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#elif defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
-  //Intel: Disabled temporarily due to accuarcy issues
+#elif defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+  //Intel GPU: Disabled temporarily due to accuarcy issues
+  //Intel VPU: Disabled due to software limitation
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //TensorRT: Input batch size is inconsistent
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
@@ -358,6 +361,8 @@ TEST(MathOpTest, Sub) {
                          0.0f, 0.0f, -20000.0f});
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#elif defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //IntelEP: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
 #endif
@@ -412,6 +417,8 @@ TEST(MathOpTest, Mul) {
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
+#elif defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //Intel: Disabled due to accuracy issues for MYRIAD FP16
 #else
   test.Run();
 #endif
@@ -447,6 +454,8 @@ TEST(MathOpTest, Div) {
                          0.0f, 10.0f, -0.25f});
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Will be enabled in the next release
+#elif defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //Intel: Hardware limitation
 #else
   test.Run();
 #endif
@@ -493,7 +502,13 @@ TEST(MathOpTest, Neg_int8) {
   std::vector<int64_t> dims{4};
   test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
   test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
+
+//Intel EP: Disabled temporarily
+#if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //TensorRT: INT8 is not supported
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: INT8 is not supported
+#endif
 }
 
 TEST(MathOpTest, Neg_int32) {
@@ -676,6 +691,8 @@ TEST(MathOpTest, Sum_6) {
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_VAD_M)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  //OpenVINO: Disabled due to accuracy mismatch for FP16
+#elif defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_GPU_FP16)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider,kIntelExecutionProvider});  //Intel: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
 #endif
@@ -702,8 +719,9 @@ TEST(MathOpTest, Sum_8_Test1) {
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#elif defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
+#elif defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_MYRIAD)|| defined(INTEL_CONFIG_VAD_M)
   //Intel: Disabled temporarily due to accuarcy issues
+  //Intel VPU: Disabled due to software limitation for VPU Plugin
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //TensorRT: Input batch size is inconsistent
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                    //TensorRT: Expected output shape [{3,3,3}] did not match run output shape [{3,1,1}] for sum
@@ -740,7 +758,7 @@ TEST(MathOpTest, Sum_8_Test2) {
   //OpenVINO: Disabled due to software limitation for VPU Plugin.
   //This test runs fine on CPU and GPU Plugins
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-#elif defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
+#elif defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
   //Intel: Disabled temporarily due to accuarcy issues
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //TensorRT: Input batch size is inconsistent
 #else
@@ -767,7 +785,11 @@ TEST(MathOpTest, Min_6) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  test.Run();
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //Intel: Disabled due to accuracy mismatch
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Min_8) {
@@ -789,7 +811,11 @@ TEST(MathOpTest, Min_8) {
                         {1.0f, 0.0f, 1.0f,
                          -3.0f, 1.1f, -100.0f,
                          -5.4f, 0.01f, -10000.0f});
-  test.Run();
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //Intel: Disabled due to accuracy mismatch
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Max_6) {
@@ -811,7 +837,11 @@ TEST(MathOpTest, Max_6) {
                         {1.0f, 0.0f, 3.0f,
                          -1.0f, 3.3f, 64.0f,
                          5.4f, 0.03f, 10000.0f});
-  test.Run();
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});  //Intel: Disabled due to accuracy mismatch
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Max_8_Float) {
@@ -1176,7 +1206,12 @@ TEST(MathOpTest, Mean_6) {
                         {1.0f, 0.0f, 2.0f,
                          -2.0f, 2.2f, 10.0f,
                          -3.0f, 0.02f, -4.0f});
-  test.Run();
+  //Intel: Disabled due to accuracy mismatch
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Mean_8) {
@@ -1192,7 +1227,12 @@ TEST(MathOpTest, Mean_8) {
                         {12.0f / 3.0f, 22.0f / 3.0f, 32.0f / 3.0f,
                          43.0f / 3.0f, 53.0f / 3.0f, 63.0f / 3.0f,
                          74.0f / 3.0f, 84.0f / 3.0f, 94.0f / 3.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  //Intel: Disabled due to accuracy mismatch
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  #endif
 }
 
 template <float (&op)(float value)>

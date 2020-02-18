@@ -34,12 +34,16 @@ void TestUnaryElementwiseOp(const char* szOp, std::vector<float>& input_vals,
   }
 
 //Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
   int relu = strcmp(szOp, "Relu");
   int leaky = strcmp(szOp, "LeakyRelu");
+  int elu = strcmp(szOp, "Elu");
   if (relu == 0 || leaky == 0) {
     excluded_providers.insert(kOpenVINOExecutionProvider);
+    excluded_providers.insert(kIntelExecutionProvider);
   }
+  if(elu == 0)
+    excluded_providers.insert(kIntelExecutionProvider);
 #endif
 
 //Disabled because of accuracy issues for GPU
