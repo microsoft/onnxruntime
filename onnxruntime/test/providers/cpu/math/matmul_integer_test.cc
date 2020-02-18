@@ -32,6 +32,53 @@ TEST(MatmulIntegerOpTest, MatMulInteger) {
   test.AddOutput<int32_t>("T3", {1, 1}, {-1});
   test.Run();
 }
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("T2", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b_zero_point", {}, {5});
+  test.AddOutput<int32_t>("T3", {2, 4}, {-55, 16, 89, -44, 122, 154, 68, -39});
+  test.Run();
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {2, 2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7, -3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("T2", {4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b_zero_point", {}, {5});
+  test.AddOutput<int32_t>("T3", {2, 2, 4}, {-55, 16, 89, -44, 122, 154, 68, -39, -55, 16, 89, -44, 122, 154, 68, -39});
+  test.Run();
+}
+
+TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<int8_t>("T1", {2, 2, 4}, {-3, 7, 5, -6, 4, -5, 8, 7, -3, 7, 5, -6, 4, -5, 8, 7});
+  test.AddInput<int8_t>("T2", {2, 4, 4}, {5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7});
+  test.AddInput<int8_t>("a_zero_point", {}, {5});
+  test.AddInput<int8_t>("b_zero_point", {}, {5});
+  test.AddOutput<int32_t>("T3", {2, 2, 4}, {-55, 16, 89, -44, 122, 154, 68, -39, -55, 16, 89, -44, 122, 154, 68, -39});
+  test.Run();
+}
+
+//TEST( MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND )
+//{
+//   OpTester test( "MatMulInteger", 10 );
+//   test.AddInput<int8_t>( "T1", { 2, 8, 4 }, { 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7,
+//      5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7 } );
+//   test.AddInput<int8_t>( "T2", { 2, 4, 8 }, { 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7,
+//      5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7 } );
+//   test.AddInput<int8_t>( "a_zero_point", {}, { 5 } );
+//   test.AddInput<int8_t>( "b_zero_point", {}, { 5 } );
+//   test.AddOutput<int32_t>( "T3", { 2, 8, 8 }, { 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7,
+//      5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7,
+//      5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7,
+//      5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7, 5, -3, 7, 8, -6, -8, -3, 6, 7, 9, 9, -5, 8, 7, -6, 7 } );
+//   test.Run();
+//}
+
 TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
   OpTester test("MatMulInteger", 10);
   test.AddInput<uint8_t>("T1", {4, 3}, {11, 7, 3, 10, 6, 2, 9, 5, 1, 8, 4, 0});
