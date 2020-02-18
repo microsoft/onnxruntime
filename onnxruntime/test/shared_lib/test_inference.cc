@@ -184,7 +184,7 @@ TEST(CApiTest, dim_param) {
   ASSERT_EQ(strcmp(dim_param, ""), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(CApiTestWithProviders,
+INSTANTIATE_TEST_SUITE_P(CApiTestWithProviders,
                         CApiTestWithProvider,
                         ::testing::Values(0, 1, 2, 3, 4));
 

@@ -147,10 +147,11 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
   if (output_edges_count > 0) {
     graph_utils::RemoveNodeOutputEdges(graph_, node);
-  } else {
-    // Bias the edge count to handle the case of a node that produces a graph
-    // output.
-    output_edges_count = 1;
+  }
+  // Bias the edge count to handle the case of a node that produces a graph
+  // output.
+  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty()) {
+    output_edges_count++;
   }
   return output_edges_count;
 }

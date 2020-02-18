@@ -16,15 +16,16 @@ from onnx import helper, TensorProto, ModelProto
 from onnx.helper import make_node, make_tensor_value_info
 import numpy as np
 from onnx import numpy_helper
-from bert_model_optimization import optimize_model, run_onnxruntime
+from bert_model_optimization import optimize_model, optimize_by_onnxruntime
 from OnnxModel import OnnxModel
 
+BERT_TEST_MODELS = {
+    "bert_pytorch_0": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_0.onnx',
+    "bert_pytorch_1": 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_1.onnx',
+    "bert_keras_0": 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_1.onnx'
+}
+
 class TestBertOptimization(unittest.TestCase):
-    def get_model(self, framework, index):
-        if framework == "pytorch":
-            return 'test_data\\bert_squad_pytorch1.4_opset11\\BertForQuestionAnswering_{}.onnx'.format(index)
-        else:
-            return 'test_data\\bert_mrpc_tensorflow2.1_opset10\\TFBertForSequenceClassification_{}.onnx'.format(index)
 
     def verify_node_count(self, bert_model, expected_node_count):
         for op_type, count in expected_node_count.items():
@@ -33,14 +34,14 @@ class TestBertOptimization(unittest.TestCase):
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     def test_pytorch_model_0_cpu_onnxruntime(self):
-        input = self.get_model("pytorch", 0)
+        input = BERT_TEST_MODELS['bert_pytorch_0']
         output = 'temp.onnx'
-        run_onnxruntime(input, use_gpu=False, optimized_model_path=output)
+        optimize_by_onnxruntime(input, use_gpu=False, optimized_model_path=output)
         model = ModelProto()
         with open(output, "rb") as f:
             model.ParseFromString(f.read())
         os.remove(output)
-        bert_model = OnnxModel(model, verbose=False)
+        bert_model = OnnxModel(model)
         expected_node_count = {
             'EmbedLayerNormalization': 1,
             'Attention': 12,
@@ -56,14 +57,14 @@ class TestBertOptimization(unittest.TestCase):
             print("skip test_pytorch_model_0_gpu_onnxruntime since no gpu found")
             return
 
-        input = self.get_model("pytorch", 0)
+        input = BERT_TEST_MODELS['bert_pytorch_0']
         output = 'temp.onnx'
-        run_onnxruntime(input, use_gpu=True, optimized_model_path=output)
+        optimize_by_onnxruntime(input, use_gpu=True, optimized_model_path=output)
         model = ModelProto()
         with open(output, "rb") as f:
             model.ParseFromString(f.read())
         os.remove(output)
-        bert_model = OnnxModel(model, verbose=False)
+        bert_model = OnnxModel(model)
         expected_node_count = {
             'EmbedLayerNormalization': 1,
             'Attention': 12,
@@ -75,14 +76,14 @@ class TestBertOptimization(unittest.TestCase):
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_1_cpu_onnxruntime(self):
-        input = self.get_model("pytorch", 1)
+        input = BERT_TEST_MODELS['bert_pytorch_1']
         output = 'temp.onnx'
-        run_onnxruntime(input, use_gpu=False, optimized_model_path=output)
+        optimize_by_onnxruntime(input, use_gpu=False, optimized_model_path=output)
         model = ModelProto()
         with open(output, "rb") as f:
             model.ParseFromString(f.read())
         os.remove(output)
-        bert_model = OnnxModel(model, verbose=False)
+        bert_model = OnnxModel(model)
         expected_node_count = {
             'EmbedLayerNormalization': 1,
             'Attention': 12,
@@ -99,14 +100,14 @@ class TestBertOptimization(unittest.TestCase):
             print("skip test_pytorch_model_1_gpu_onnxruntime since no gpu found")
             return
 
-        input = self.get_model("pytorch", 1)
+        input = BERT_TEST_MODELS['bert_pytorch_1']
         output = 'temp.onnx'
-        run_onnxruntime(input, use_gpu=True, optimized_model_path=output)
+        optimize_by_onnxruntime(input, use_gpu=True, optimized_model_path=output)
         model = ModelProto()
         with open(output, "rb") as f:
             model.ParseFromString(f.read())
         os.remove(output)
-        bert_model = OnnxModel(model, verbose=False)
+        bert_model = OnnxModel(model)
         expected_node_count = {
             'EmbedLayerNormalization': 1,
             'Attention': 12,
@@ -119,18 +120,18 @@ class TestBertOptimization(unittest.TestCase):
         self.verify_node_count(bert_model, expected_node_count)
 
     def test_pytorch_model_0_cpu(self):
-        input = self.get_model("pytorch", 0)
-        bert_model = optimize_model(input, framework='pytorch', gpu_only=False,
+        input = BERT_TEST_MODELS['bert_pytorch_0']
+        bert_model = optimize_model(input, 'bert', gpu_only=False,
                                     num_heads=2, hidden_size=8, sequence_length=10,
-                                    input_int32=False, float16=False, verbose=False)
+                                    input_int32=False, float16=False)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
             'Attention': 12,
             'SkipLayerNormalization': 24,
-            'Gelu': 12,
+            'Gelu': 0,
             'FastGelu': 0,
-            'BiasGelu': 0
+            'BiasGelu': 12
             }
         self.verify_node_count(bert_model, expected_node_count)
 
@@ -139,10 +140,10 @@ class TestBertOptimization(unittest.TestCase):
             print("skip test_pytorch_model_0_gpu since no gpu found")
             return
 
-        input = self.get_model("pytorch", 0)
-        bert_model = optimize_model(input, framework='pytorch', gpu_only=True,
+        input = BERT_TEST_MODELS['bert_pytorch_0']
+        bert_model = optimize_model(input, 'bert', gpu_only=True,
                                     num_heads=2, hidden_size=8, sequence_length=10,
-                                    input_int32=False, float16=False, verbose=False)
+                                    input_int32=False, float16=False)
 
         expected_node_count = {
             'EmbedLayerNormalization': 1,
@@ -154,25 +155,18 @@ class TestBertOptimization(unittest.TestCase):
             }
         self.verify_node_count(bert_model, expected_node_count)
 
-    def test_tensorflow_model_1_cpu(self):
-        input = self.get_model("tensorflow", 1)
+    def test_keras_model_1_cpu(self):
+        input = BERT_TEST_MODELS['bert_keras_0']
 
-        # The model need constant folding. Use onnxruntime to do so for now.
-        temp = 'temp.onnx'
-        run_onnxruntime(input, use_gpu=False, optimized_model_path=temp)
-
-        bert_model = optimize_model(temp, framework='tensorflow', gpu_only=False,
+        bert_model = optimize_model(input, 'bert_keras', gpu_only=False,
                                     num_heads=2, hidden_size=8, sequence_length=7,
-                                    input_int32=False, float16=False, verbose=False)
-        os.remove(temp)
+                                    input_int32=False, float16=False)
 
-        # Optimization for tensorflow model is still on-going.
-        # TODO: update this after code complete.
         expected_node_count = {
-            'EmbedLayerNormalization': 0,
-            'Attention': 0,
+            'EmbedLayerNormalization': 1,
+            'Attention': 12,
             'LayerNormalization': 0,
-            'SkipLayerNormalization': 25,
+            'SkipLayerNormalization': 24,
             'BiasGelu': 0,
             'Gelu': 12,
             'FastGelu': 0

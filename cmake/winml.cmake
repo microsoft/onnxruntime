@@ -180,7 +180,9 @@ add_dependencies(winml_lib_ort winml_api_native)
 add_dependencies(winml_lib_ort winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_ort PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/packages/DirectML.0.0.1/build/DirectML.targets)
+if (onnxruntime_USE_DML)
+  target_add_dml(winml_lib_ort)
+endif()
 target_link_libraries(winml_lib_ort PRIVATE wil)
 
 

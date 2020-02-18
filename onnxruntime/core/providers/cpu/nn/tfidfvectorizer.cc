@@ -13,30 +13,13 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     TfIdfVectorizer,
     9,
-    string,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
-    TfIdfVectorizer);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    TfIdfVectorizer,
-    9,
-    int32_t,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
-    TfIdfVectorizer);
-
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
-    TfIdfVectorizer,
-    9,
-    int64_t,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<std::string>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
     TfIdfVectorizer);
 
@@ -405,10 +388,13 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
   std::vector<int64_t> output_dims;
   if (B == 0) {
     output_dims.push_back(impl.output_size_);
+    B = 1; // For use in the loops below
   } else {
     output_dims.push_back(B);
     output_dims.push_back(impl.output_size_);
   }
+
+  const auto row_size = impl.output_size_;
 
   TensorShape output_shape(output_dims);
   assert(frequences.size() == static_cast<size_t>(output_shape.Size()));
@@ -424,9 +410,11 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
     } break;
     case kIDF: {
       if (!w.empty()) {
-        assert(frequences.size() == w.size());
-        for (size_t i = 0; i < frequences.size(); ++i) {
-          *output_data++ = (frequences[i] > 0) ? w[i] : 0;
+        const auto* freqs = frequences.data();
+        for (size_t batch = 0; batch < B; ++batch) {
+          for (size_t i = 0; i < row_size; ++i) {
+            *output_data++ = (*freqs++ > 0) ? w[i] : 0;
+          }
         }
       } else {
         for (auto f : frequences) {
@@ -436,9 +424,11 @@ void TfIdfVectorizer::OutputResult(OpKernelContext* ctx, size_t B, const std::ve
     } break;
     case kTFIDF: {
       if (!w.empty()) {
-        assert(frequences.size() == w.size());
-        for (size_t i = 0; i < frequences.size(); ++i) {
-          *output_data++ = frequences[i] * w[i];
+        const auto* freqs = frequences.data();
+        for (size_t batch = 0; batch < B; ++batch) {
+          for (size_t i = 0; i < row_size; ++i) {
+            *output_data++ = *freqs++ * w[i];
+          }
         }
       } else {
         for (auto f : frequences) {
