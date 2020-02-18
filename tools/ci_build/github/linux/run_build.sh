@@ -82,7 +82,7 @@ else
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
     else #cpu, ngraph and openvino
-	export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
