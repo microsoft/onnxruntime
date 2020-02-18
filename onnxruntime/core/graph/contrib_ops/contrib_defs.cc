@@ -2387,7 +2387,7 @@ Example 4:
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("LayerNormalization")
       .Attr("axis",
