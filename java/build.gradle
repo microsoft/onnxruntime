@@ -21,10 +21,10 @@ wrapper {
 }
 
 spotless {
-	//java {
-	//	removeUnusedImports()
-	//	googleJavaFormat()
-	//}
+	java {
+		removeUnusedImports()
+		googleJavaFormat()
+	}
 	format 'gradle', {
 		target '**/*.gradle'
 		trimTrailingWhitespace()
