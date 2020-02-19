@@ -106,12 +106,12 @@ Status GatherNDBase::CommonComputeKernel(
   if (fwd) {
     MLDataType T_type = kernel_input_tensor->DataType();
     TYPED_FUNCTION_CALL_FWD(float);
-    TYPED_FUNCTION_CALL_FWD(MLFloat16);
+    //TYPED_FUNCTION_CALL_FWD(MLFloat16);
     TYPED_FUNCTION_CALL_FWD(double);
   } else {
     MLDataType T_type = kernel_input_tensor->DataType();
     TYPED_FUNCTION_CALL_BWD(float);
-    TYPED_FUNCTION_CALL_BWD(MLFloat16);
+    //TYPED_FUNCTION_CALL_BWD(MLFloat16);
     TYPED_FUNCTION_CALL_BWD(double);
   }
 
