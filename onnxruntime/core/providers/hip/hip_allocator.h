@@ -25,7 +25,7 @@ class HIPAllocator : public IDeviceAllocator {
 //TODO: add a default constructor
 class HIPPinnedAllocator : public IDeviceAllocator {
  public:
-  HIPPinnedAllocator(int device_id, const char* name) : info_(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id), device_id, OrtMemTypeCPUOutput) {}
+  HIPPinnedAllocator(int device_id, const char* name) : info_(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id), device_id, OrtMemTypeCPUOutput) {}
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
   virtual const OrtMemoryInfo& Info() const override;
