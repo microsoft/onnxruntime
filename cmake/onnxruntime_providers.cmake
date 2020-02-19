@@ -799,7 +799,25 @@ if (onnxruntime_USE_HIP)
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.cuh"
   )
   
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_hip_cc_srcs} ${onnxruntime_providers_hip_cu_srcs})
   set(onnxruntime_providers_hip_src ${onnxruntime_providers_hip_cc_srcs} ${onnxruntime_providers_hip_cu_srcs})
+
+  if (onnxruntime_ENABLE_TRAINING)
+    file(GLOB_RECURSE onnxruntime_hip_training_ops_cc_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip_training_kernels.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip_training_kernels.cc"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cc"
+    )
+
+    file(GLOB_RECURSE onnxruntime_hip_training_ops_cu_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cu"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/hip/*.cuh"
+    )
+
+    source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_hip_training_ops_cc_srcs} ${onnxruntime_hip_training_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_hip_src ${onnxruntime_hip_training_ops_cc_srcs} ${onnxruntime_hip_training_ops_cu_srcs})
+  endif()
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
     list(APPEND HIP_HCC_FLAGS -g)
@@ -815,13 +833,21 @@ if (onnxruntime_USE_HIP)
   # Generate GPU code for GFX9 Generation
   list(APPEND HIP_HCC_FLAGS --amdgpu-target=gfx900 --amdgpu-target=gfx906 --amdgpu-target=gfx908)
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_hip_src})
   hip_add_library(onnxruntime_providers_hip ${onnxruntime_providers_hip_src})
 
   target_link_libraries(onnxruntime_providers_hip PRIVATE  ${ONNXRUNTIME_HIP_LIBS})
   set_target_properties(onnxruntime_providers_hip PROPERTIES FOLDER "ONNXRuntime")
   target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-error=sign-compare -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_HIP_HOME}/include  ${onnxruntime_HIP_HOME}/hipblas)
+  target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_HIP_HOME}/include  ${onnxruntime_HIP_HOME}/hipblas)
+  target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT})
+
+  if (onnxruntime_ENABLE_TRAINING)
+    target_include_directories(onnxruntime_providers_hip PRIVATE ${ORTTRAINING_ROOT})
+    if (onnxruntime_USE_HOROVOD)
+      target_include_directories(onnxruntime_providers_hip PRIVATE ${HOROVOD_INCLUDE_DIRS})
+    endif()
+  endif()
+
   onnxruntime_add_include_to_target(onnxruntime_providers_hip onnxruntime_common onnxruntime_framework onnx)
   add_dependencies(onnxruntime_providers_hip ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
