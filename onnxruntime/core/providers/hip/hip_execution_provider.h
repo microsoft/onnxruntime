@@ -16,7 +16,6 @@ namespace onnxruntime {
 const int CPU_ALLOCATOR_DEVICE_ID = 0;
 
 struct HIPExecutionProviderInfo {
-  std::string target_device;
   OrtDevice::DeviceId device_id{0};
 };
 

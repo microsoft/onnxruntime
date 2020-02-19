@@ -1,38 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License
+// Licensed under the MIT License.
 
-#include <fstream>
-#include <hip/hip_runtime.h>
-
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/framework/compute_capability.h"
-#include "core/framework/allocatormgr.h"
+#include "hip_common.h"
+#include "hip_execution_provider.h"
+#include "hip_fence.h"
+#include "hip_allocator.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/compute_capability.h"
 #include "core/framework/memcpy.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
-#include "core/session/onnxruntime_cxx_api.h"
-
+#include "core/framework/allocatormgr.h"
+#include "core/graph/graph_utils.h"
 #include "core/providers/hip/gpu_data_transfer.h"
-#include "core/providers/hip/hip_execution_provider.h"
-#include "core/providers/hip/hip_allocator.h"
-#include "core/providers/hip/hip_call.h"
-#include "core/providers/hip/hip_common.h"
 
-#if defined(_MSC_VER)
-#pragma warning(disable : 4244 4245)
-#elif __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-#if defined(_MSC_VER)
-#pragma warning(default : 4244 4245)
-#elif __GNUC__
-#pragma GCC diagnostic pop
+#ifndef DISABLE_CONTRIB_OPS
+//#include "contrib_ops/hip_contrib_kernels.h"
 #endif
 
-#define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/hip_training_kernels.h"
+#endif
+
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace hip {
@@ -758,6 +746,13 @@ std::shared_ptr<KernelRegistry> GetHIPKernelRegistry() {
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   RegisterHIPKernels(*kernel_registry);
 
+#ifndef DISABLE_CONTRIB_OPS
+  //::onnxruntime::contrib::hip::RegisterHipContribKernels(*kernel_registry);
+#endif
+
+#ifdef ENABLE_TRAINING
+  ::onnxruntime::hip::RegisterHipTrainingKernels(*kernel_registry);
+#endif
   return kernel_registry;
 }
 
@@ -783,7 +778,7 @@ HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
       {OrtMemTypeCPUOutput, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPPinnedAllocator>(device_id, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(pinned_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 
-  // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+  // TODO: this is actually used for the hip kernels which explicitly ask for inputs from CPU.
   // This will be refactored/removed when allocator and execution provider are decoupled.
   DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUInput,
                                                    [](int device_id) { return onnxruntime::make_unique<CPUAllocator>(
