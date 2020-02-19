@@ -166,6 +166,12 @@ def generate_files(list, args):
     os.system('copy ' + source_props + ' ' + target_props)
     files_list.append('<file src=' + '"' + target_props + '" target="build\\native" />')
 
+    # Process targets file
+    source_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', 'targets.xml')
+    target_targets = os.path.join(args.sources_path, 'csharp', 'src', 'Microsoft.ML.OnnxRuntime', args.package_name + '.targets')    
+    os.system('copy ' + source_targets + ' ' + target_targets)
+    files_list.append('<file src=' + '"' + target_targets + '" target="build\\native" />')   
+    
     # Some tools to be packaged in nightly build only, should not be released 
     # These are copied to the runtimes folder for convenience of loading with the dlls    
     if args.is_release_build.lower() != 'true' and args.target_architecture == 'x64' and os.path.exists(os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')):
