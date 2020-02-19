@@ -74,6 +74,14 @@ function(get_winml_test_api_src
   set(${output_winml_test_api_src} ${winml_test_api_src} PARENT_SCOPE)
 endfunction()
 
+function(get_winml_test_concurrency_src
+  winml_test_src_path
+  output_winml_test_concurrency_src
+)
+  file(GLOB winml_test_concurrency_src CONFIGURE_DEPENDS "${winml_test_src_path}/concurrency/*.cpp")
+  set(${output_winml_test_concurrency_src} ${winml_test_concurrency_src} PARENT_SCOPE)
+endfunction()
+
 file(GLOB winml_test_common_src CONFIGURE_DEPENDS "${WINML_TEST_SRC_DIR}/common/*.cpp")
 add_library(winml_test_common STATIC ${winml_test_common_src})
 add_dependencies(winml_test_common
@@ -122,6 +130,16 @@ endif()
 # on dev machines but not on the aiinfra agent pool
 target_link_options(winml_test_scenario PRIVATE /ignore:4199)
 
+
+get_winml_test_concurrency_src(${WINML_TEST_SRC_DIR} winml_test_concurrency_src)
+add_winml_test(
+  TARGET winml_test_concurrency
+  SOURCES ${winml_test_concurrency_src}
+  LIBS winml_test_common
+)
+target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
+target_precompiled_header(winml_test_concurrency precomp.h)
+target_compile_definitions(winml_test_concurrency PRIVATE BUILD_GOOGLE_TEST)
 
 # During build time, copy any modified collaterals.
 # configure_file(source destination COPYONLY), which configures CMake to copy the file whenever source is modified,
