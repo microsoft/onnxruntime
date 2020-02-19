@@ -1215,7 +1215,27 @@ TEST(GraphTransformationTests, FastGeluFusionTest) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
@@ -1235,13 +1255,32 @@ TEST(GraphTransformationTests, FastGeluWithBiasFusionTest) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["FastGelu"] == 1);
 }
 
+TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_with_bias_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
 
 TEST(GraphTransformationTests, FastGeluFusionTest2) {
   auto model_uri = MODEL_FOLDER "fusion/fast_gelu2.onnx";
@@ -1256,15 +1295,15 @@ TEST(GraphTransformationTests, FastGeluFusionTest2) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);
   ASSERT_TRUE(op_to_count["FastGelu"] == 1);
 }
 
-TEST(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
-  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_with_bias2.onnx";
+TEST(GraphTransformationTests, FastGeluUseGraphInputFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2_use_graph_input.onnx";
   std::shared_ptr<Model> p_model;
   auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_TRUE(load_ret.IsOK());
@@ -1276,7 +1315,48 @@ TEST(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
   ASSERT_TRUE(ret.IsOK());
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+TEST(GraphTransformationTests, FastGeluWithBiasFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2_with_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 2);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Tanh"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 0);
+  ASSERT_TRUE(op_to_count["FastGelu"] == 1);
+}
+
+
+TEST(GraphTransformationTests, FastGeluWithBiasUseGraphInputFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu2_with_bias_use_graph_input.onnx";
+  std::shared_ptr<Model> p_model;
+  auto load_ret = Model::Load(model_uri, p_model, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(load_ret.IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(ret.IsOK());
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Identity"] == 0);
   ASSERT_TRUE(op_to_count["Add"] == 0);
   ASSERT_TRUE(op_to_count["Tanh"] == 0);
   ASSERT_TRUE(op_to_count["Mul"] == 0);

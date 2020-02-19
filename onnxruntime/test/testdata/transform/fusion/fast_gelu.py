@@ -7,6 +7,7 @@ import numpy as np
 # Gelu formula: x * 0.5 * (1.0 + tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
 has_bias = True # change it to True to generate fast_gelu_with_bias.onnx
+gelu_use_graph_input_and_out = True # change it to False to let Gelu don't have graph inputs/outputs as inputs/outputs.
 
 X = helper.make_tensor_value_info('input', TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info('output', TensorProto.FLOAT, ["batch", "seqlen", 64])
@@ -29,15 +30,28 @@ a_bias_initializer = numpy_helper.from_array(a_bias_np_vals, "add1_init")
 b_bias_np_vals = np.asarray([1.0]).astype(np.float32).reshape(())
 b_bias_initializer = numpy_helper.from_array(b_bias_np_vals, "add2_init")
 
-mul_input_name = "input"
+nodes = []
+gelu_input = "input"
+if not gelu_use_graph_input_and_out:
+    leading_identity = helper.make_node(
+        'Identity', 
+        [gelu_input], 
+        ['identity_leading'], 
+        name="identity_leading"
+    )
+    gelu_input = "identity_leading"
+    nodes.append(leading_identity)
+
+mul_input_name = gelu_input
 if has_bias:
     add0 = helper.make_node(
         'Add', 
-        ['input', bias_initializer.name], 
+        [gelu_input, bias_initializer.name], 
         ['add0'], 
         name="add0"
     )
     mul_input_name = "add0"
+    nodes.append(add0)
 
 
 mul1 = helper.make_node(
@@ -46,6 +60,7 @@ mul1 = helper.make_node(
     ['mul1'], 
     name="mul1"
 )
+nodes.append(mul1)
 
 mul2 = helper.make_node(
     'Mul', 
@@ -53,6 +68,7 @@ mul2 = helper.make_node(
     ['mul2'], 
     name="mul2"
 )
+nodes.append(mul2)
 
 add1 = helper.make_node(
     'Add', 
@@ -60,6 +76,7 @@ add1 = helper.make_node(
     ['add1'], 
     name="add1"
 )
+nodes.append(add1)
 
 mul3 = helper.make_node(
     'Mul', 
@@ -67,6 +84,7 @@ mul3 = helper.make_node(
     ['mul3'], 
     name="mul3"
 )
+nodes.append(mul3)
 
 mul4 = helper.make_node(
     'Mul', 
@@ -74,6 +92,7 @@ mul4 = helper.make_node(
     ['mul4'], 
     name="mul4"
 )
+nodes.append(mul4)
 
 tanh = helper.make_node(
     'Tanh', 
@@ -81,6 +100,7 @@ tanh = helper.make_node(
     ['tanh'], 
     name="tanh"
 )
+nodes.append(tanh)
 
 add2 = helper.make_node(
     'Add', 
@@ -88,6 +108,7 @@ add2 = helper.make_node(
     ['add2'], 
     name="add2"
 )
+nodes.append(add2)
 
 mul5 = helper.make_node(
     'Mul', 
@@ -95,27 +116,35 @@ mul5 = helper.make_node(
     ['mul5'], 
     name="mul5"
 )
+nodes.append(mul5)
 
-mul6 = helper.make_node(
-    'Mul', 
-    ['mul5', 'add2'], 
-    ['mul6'], 
-    name="mul6"
-)
+if not gelu_use_graph_input_and_out:
+    mul6 = helper.make_node(
+        'Mul', 
+        ['mul5', 'add2'], 
+        ['mul6'], 
+        name="mul6"
+    )
+    ending_identity = helper.make_node(
+        'Identity', 
+        ['mul6'], 
+        ['output'], 
+        name="identity_ending"
+    )
+    nodes.extend([mul6, ending_identity])
+else:
+    mul6 = helper.make_node(
+        'Mul', 
+        ['mul5', 'add2'], 
+        ['output'], 
+        name="mul6"
+    )
+    nodes.append(mul6)
 
-identity = helper.make_node(
-    'Identity', 
-    ['mul6'], 
-    ['output'], 
-    name="identity"
-)
-
-nodes = []
 initializers = []
 if has_bias:
-    nodes = [add0]
     initializers = [bias_initializer]
-nodes.extend([mul1, mul2, add1, mul3, mul4, tanh, add2, mul5, mul6, identity])
+
 initializers.extend([a_weight_initializer, a_bias_initializer, b_weight_initializer, b_bias_initializer, c_weight_initializer])
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
@@ -142,8 +171,11 @@ kwargs["opset_imports"] = opsets
 
 model_def = helper.make_model(graph_def, producer_name='onnx-example', **kwargs)
 
-file_name = "fast_gelu.onnx"
+file_name = "fast_gelu"
 if has_bias:
-    file_name = "fast_gelu_with_bias.onnx"
-onnx.save(model_def, file_name)
+    file_name += "_with_bias"
+
+if gelu_use_graph_input_and_out:
+    file_name += "_use_graph_input"
+onnx.save(model_def, file_name + ".onnx")
 

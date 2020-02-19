@@ -216,7 +216,8 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     }
 
     Node& mul5_node = *graph.GetNode(add2_node.OutputNodesBegin()->Index());
-    if (!CheckNode(mul5_node, "Mul", 7, node.GetExecutionProviderType(), true)) {
+    // This is the output of the Gelu subgraph, we don't need check it has single edge.
+    if (!CheckNode(mul5_node, "Mul", 7, node.GetExecutionProviderType(), false)) {
       continue;
     }
 
