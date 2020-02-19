@@ -96,6 +96,15 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.lib"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.lib')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb')
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
