@@ -53,7 +53,6 @@ TEST(PathTest, Parse) {
 #endif
 }
 
-#ifndef _WIN32
 TEST(PathTest, ParseFailure) {
     auto check_parse_failure =
         [](const std::string& path_string) {
@@ -61,9 +60,14 @@ TEST(PathTest, ParseFailure) {
         EXPECT_FALSE(Path::Parse(ToPathString(path_string), p).IsOK());
       };
 
-    check_parse_failure("//root_name_without_root_dir");
-}
+#ifdef _WIN32
+    check_parse_failure(R"(\\server_name_no_separator)");
+    check_parse_failure(R"(\\server_name_no_share_name\)");
+    check_parse_failure(R"(\\server_name\share_name_no_root_dir)");
+#else  // POSIX
+    check_parse_failure("//root_name_no_root_dir");
 #endif
+}
 
 TEST(PathTest, IsEmpty) {
     auto check_empty =
