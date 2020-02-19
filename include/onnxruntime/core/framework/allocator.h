@@ -30,7 +30,7 @@ struct OrtDevice {
     // Pre-defined memory types.
     static const MemoryType DEFAULT = 0;
     static const MemoryType CUDA_PINNED = 1;
-    static const MemoryType HIP_PINNED = 2;
+    //static const MemoryType HIP_PINNED = 2;
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
@@ -148,6 +148,8 @@ constexpr const char* MIGRAPHX = "MIGraphX";
 constexpr const char* MIGRAPHX_PINNED = "MIGraphXPinned";
 constexpr const char* HIP = "Hip";
 constexpr const char* HIP_PINNED = "HipPinned";
+//constexpr const char* HIP = "Hip";
+//constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* TRT = "Tensorrt";
 constexpr const char* TRT_PINNED = "TensorrtPinned";
 

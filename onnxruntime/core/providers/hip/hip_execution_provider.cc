@@ -774,14 +774,27 @@ HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
   //HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
-      {OrtMemTypeDefault, [](int id) { return onnxruntime::make_unique<HIPAllocator>(id, HIP); }, std::numeric_limits<size_t>::max()});
+      {OrtMemTypeDefault, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPAllocator>(device_id, CUDA); }, std::numeric_limits<size_t>::max()});
   allocator_ = CreateAllocator(default_memory_info, device_id_);
   InsertAllocator(allocator_);
 
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
-      {OrtMemTypeCPUOutput, [](int) { return onnxruntime::make_unique<HIPPinnedAllocator>(0, HIP_PINNED); }, std::numeric_limits<size_t>::max()});
-  InsertAllocator(CreateAllocator(pinned_memory_info, device_id_));
+      {OrtMemTypeCPUOutput, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPPinnedAllocator>(device_id, CUDA_PINNED); }, std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(pinned_memory_info, CPU_ALLOCATOR_DEVICE_ID));
+
+  // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+  // This will be refactored/removed when allocator and execution provider are decoupled.
+  DeviceAllocatorRegistrationInfo cpu_memory_info({OrtMemTypeCPUInput,
+                                                   [](int device_id) { return onnxruntime::make_unique<CPUAllocator>(
+                                                                           onnxruntime::make_unique<OrtMemoryInfo>(
+                                                                               "CUDA_CPU",
+                                                                               OrtAllocatorType::OrtDeviceAllocator,
+                                                                               OrtDevice(),
+                                                                               device_id,
+                                                                               OrtMemTypeCPUInput)); },
+                                                   std::numeric_limits<size_t>::max()});
+  InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 
 
   // create the target based on the device_id
@@ -980,7 +993,7 @@ HIPExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId dev
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<HIPAllocator>(id, HIP); }, std::numeric_limits<size_t>::max()});
+       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<HIPAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
 
   allocator_ = CreateAllocator(default_memory_info, device_id);
 }
