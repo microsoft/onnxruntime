@@ -64,9 +64,20 @@ target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_B
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 endif()
+
+if (onnxruntime_USE_HIP)
+  add_definitions(-DUSE_HIP=1)
+  target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_HIP_HOME}/include)
+endif()
+
 if(UNIX AND NOT APPLE)
   target_compile_options(onnxruntime_training_runner PUBLIC "-Wno-maybe-uninitialized")
 endif()
+
+if (onnxruntime_USE_HIP)
+  target_compile_options(onnxruntime_training_runner PUBLIC -D__HIP_PLATFORM_HCC__=1)
+endif()
+
 set_target_properties(onnxruntime_training_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
 
@@ -85,6 +96,7 @@ set(ONNXRUNTIME_LIBS
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
+    ${PROVIDERS_HIP}
     ${PROVIDERS_MKLDNN}
     onnxruntime_optimizer
     onnxruntime_providers
