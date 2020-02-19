@@ -91,7 +91,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-  ORT_RETURN_IF_NOT(strcmp(Y->Location().name, HIP) == 0, "Output should be allocated on HIP");
+  ORT_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
 
   HipT one = ToHipType<T>::FromFloat(1.0f);
   HipT zero = ToHipType<T>::FromFloat(0.0f);
