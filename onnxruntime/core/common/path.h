@@ -33,8 +33,13 @@ class Path {
   /** Gets the path components following the path root. */
   const std::vector<PathString>& GetComponents() const { return components_; }
 
+  /** Whether the path is absolute (refers unambiguously to a file location). */
   bool IsAbsolute() const;
+  /** Whether the path is relative (not absolute). */
   bool IsRelative() const { return !IsAbsolute(); }
+
+  /** Returns a copy of the path without the last component. */
+  Path ParentPath() const;
 
   /**
    * Normalizes the path.

@@ -139,6 +139,12 @@ bool Path::IsAbsolute() const {
 #endif
 }
 
+Path Path::ParentPath() const {
+  Path parent{*this};
+  if (!parent.components_.empty()) parent.components_.pop_back();
+  return parent;
+}
+
 Path& Path::Normalize() {
   // handle . and ..
   std::vector<PathString> normalized_components{};

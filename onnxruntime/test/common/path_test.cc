@@ -17,12 +17,13 @@ TEST(PathTest, Parse) {
          const std::vector<std::string>& expected_components) {
         Path p{};
         ASSERT_STATUS_OK(Path::Parse(ToPathString(path_string), p));
+
         std::vector<PathString> expected_components_ps{};
         std::transform(
             expected_components.begin(), expected_components.end(),
             std::back_inserter(expected_components_ps),
             [](const std::string& s) { return ToPathString(s); });
-        EXPECT_EQ(p.GetComponents(), expected_components);
+        EXPECT_EQ(p.GetComponents(), expected_components_ps);
         EXPECT_EQ(p.GetRootPathString(), ToPathString(expected_root));
       };
 
@@ -75,6 +76,22 @@ TEST(PathTest, IsAbsoluteOrRelative) {
   check_abs_or_rel("/absolute", true);
   check_abs_or_rel("/", true);
 #endif
+}
+
+TEST(PathTest, ParentPath) {
+  auto check_parent =
+      [](const std::string path_string, const std::string& expected_parent_path_string) {
+        Path p{}, p_expected_parent{};
+        ASSERT_STATUS_OK(Path::Parse(ToPathString(path_string), p));
+        ASSERT_STATUS_OK(Path::Parse(ToPathString(expected_parent_path_string), p_expected_parent));
+
+        EXPECT_EQ(p.ParentPath().ToPathString(), p_expected_parent.ToPathString());
+      };
+
+  check_parent("a/b", "a");
+  check_parent("/a/b", "/a");
+  check_parent("", "");
+  check_parent("/", "/");
 }
 
 TEST(PathTest, Normalize) {
