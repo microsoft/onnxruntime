@@ -183,6 +183,10 @@ See more information on the TensorRT Execution Provider [here](./docs/execution_
 
 Dockerfile instructions are available [here](./dockerfiles#tensorrt)
 
+#### Jetson (ARM64 Builds)
+
+See [instructions](https://github.com/microsoft/onnxruntime/issues/2684#issuecomment-568548387) for additional information and tips related to building Onnxruntime with TensorRT Execution Provider on Jetson platforms (TX1/TX2, Nano)
+
 ---
 
 ### DNNL and MKLML
@@ -550,13 +554,13 @@ git clone --recursive https://github.com/Microsoft/onnxruntime
 
 # Start the basic build
 cd /code/onnxruntime
-./build.sh --config MinSizeRel --arm --update --build
+./build.sh --config MinSizeRel --update --build
 
 # Build Shared Library
-./build.sh --config MinSizeRel --arm --build_shared_lib
+./build.sh --config MinSizeRel --build_shared_lib
 
 # Build Python Bindings and Wheel
-./build.sh --config MinSizeRel --arm --enable_pybind --build_wheel
+./build.sh --config MinSizeRel --enable_pybind --build_wheel
 
 # Build Output
 ls -l /code/onnxruntime/build/Linux/MinSizeRel/*.so

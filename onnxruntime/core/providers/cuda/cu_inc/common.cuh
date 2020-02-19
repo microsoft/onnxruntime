@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace cuda {
 
 // float16 arithmetic is supported after sm5.3 with intrinsics, and cuda does not provide fallback for lower versions
-#if __CUDA_ARCH__ < 530
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 __device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
 __device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
 __device__ __forceinline__ half operator*(const half& lh, const half& rh) { return half((float)lh * (float)rh); }
@@ -290,6 +290,15 @@ struct GridDim {
   CUDA_LONG id = GridDim::GetLinearThreadId();     \
   if (id >= N)                                     \
     return;
+
+// CUDA_KERNEL_ASSERT is a macro that wraps an assert() call inside cuda kernels.
+// This is not supported by Apple platforms so we special case it.
+// See http://docs.nvidia.com/cuda/cuda-c-programming-guide/#assertion
+#if defined(__APPLE__) || defined(__HIP_PLATFORM_HCC__)
+#define CUDA_KERNEL_ASSERT(...)
+#else // __APPLE__
+#define CUDA_KERNEL_ASSERT(...) assert(__VA_ARGS__)
+#endif // __APPLE__
 
 }  // namespace cuda
 }  // namespace onnxruntime

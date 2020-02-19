@@ -15,12 +15,23 @@ __global__ void _UnaryElementWise(
     OutT* output_data,
     const FuncT& functor,
     CUDA_LONG N) {
-  CUDA_LONG id = NumElementsPerThread * blockDim.x * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  InT value[NumElementsPerThread];
 
+  CUDA_LONG id = start;
+  #pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      value[i] = input_data[id];
+      id += NumThreadsPerBlock;
+    }
+  }
+
+id = start;
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      output_data[id] = functor(input_data[id]);
+      output_data[id] = functor(value[i]);
       id += NumThreadsPerBlock;
     }
   }

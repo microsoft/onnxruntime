@@ -53,22 +53,14 @@ import java.util.stream.Stream;
  */
 public class InferenceTest {
     private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
-    private static Path resourcePath;
-    private static Path otherTestPath;
 
     private static String propertiesFile = "Properties.txt";
 
     private static Pattern inputPBPattern = Pattern.compile("input_*.pb");
     private static Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
-    static {
-        if (System.getProperty("GRADLE_TEST") != null) {
-            resourcePath = Paths.get("..","csharp","testdata");
-            otherTestPath = Paths.get("..","onnxruntime","test", "testdata");
-        } else {
-            resourcePath = Paths.get("csharp","testdata");
-            otherTestPath = Paths.get("onnxruntime","test", "testdata");
-        }
+    private static Path getResourcePath(String path) {
+        return new File(InferenceTest.class.getResource(path).getFile()).toPath();
     }
 
     @Test
@@ -84,7 +76,7 @@ public class InferenceTest {
 
     @Test
     public void createSessionFromPath() throws OrtException {
-        String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
+        String modelPath = getResourcePath("/squeezenet.onnx").toString();
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("createSessionFromPath");
              OrtSession.SessionOptions options = new SessionOptions()) {
             try (OrtSession session = env.createSession(modelPath,options)) {
@@ -123,7 +115,7 @@ public class InferenceTest {
     }
     @Test
     public void createSessionFromByteArray() throws IOException, OrtException {
-        Path modelPath = resourcePath.resolve("squeezenet.onnx");
+        Path modelPath = getResourcePath("/squeezenet.onnx");
         byte[] modelBytes = Files.readAllBytes(modelPath);
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("createSessionFromByteArray");
              OrtSession.SessionOptions options = new SessionOptions()) {
@@ -171,7 +163,7 @@ public class InferenceTest {
     }
 
     private void canRunInferenceOnAModel(OptLevel graphOptimizationLevel, ExecutionMode exectionMode) throws OrtException {
-        String modelPath = resourcePath.resolve("squeezenet.onnx").toString();
+        String modelPath = getResourcePath("/squeezenet.onnx").toString();
 
         // Set the graph optimization level for this session.
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("canRunInferenceOnAModel");
@@ -184,7 +176,7 @@ public class InferenceTest {
                 Map<String,OnnxTensor> container = new HashMap<>();
                 NodeInfo inputMeta = inputMetaMap.values().iterator().next();
 
-                float[] inputData = loadTensorFromFile(resourcePath.resolve("bench.in"));
+                float[] inputData = loadTensorFromFile(getResourcePath("/bench.in"));
                 // this is the data for only one input tensor for this model
                 Object tensorData = OrtUtil.reshape(inputData,((TensorInfo) inputMeta.getInfo()).getShape());
                 OnnxTensor inputTensor = OnnxTensor.createTensor(env,tensorData);
@@ -194,7 +186,7 @@ public class InferenceTest {
                 try (OrtSession.Result results = session.run(container)) {
                     assertEquals(1, results.size());
 
-                    float[] expectedOutput = loadTensorFromFile(resourcePath.resolve("bench.expected_out"));
+                    float[] expectedOutput = loadTensorFromFile(getResourcePath("/bench.expected_out"));
                     // validate the results
                     // Only iterates once
                     for (Map.Entry<String, OnnxValue> r : results) {
@@ -485,7 +477,7 @@ public class InferenceTest {
     @Test
     public void testModelInputFLOAT() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_FLOAT.pb").toString();
+        String modelPath = getResourcePath("/test_types_FLOAT.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputFLOAT");
              SessionOptions options = new SessionOptions();
@@ -523,7 +515,7 @@ public class InferenceTest {
     @Test
     public void testModelInputBOOL() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_BOOL.pb").toString();
+        String modelPath = getResourcePath("/test_types_BOOL.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputBOOL");
              SessionOptions options = new SessionOptions();
@@ -545,7 +537,7 @@ public class InferenceTest {
     @Test
     public void testModelInputINT32() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_INT32.pb").toString();
+        String modelPath = getResourcePath("/test_types_INT32.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT32");
              SessionOptions options = new SessionOptions();
@@ -567,7 +559,7 @@ public class InferenceTest {
     @Test
     public void testModelInputDOUBLE() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_DOUBLE.pb").toString();
+        String modelPath = getResourcePath("/test_types_DOUBLE.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputDOUBLE");
              SessionOptions options = new SessionOptions();
@@ -589,7 +581,7 @@ public class InferenceTest {
     @Test
     public void testModelInputINT8() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_INT8.pb").toString();
+        String modelPath = getResourcePath("/test_types_INT8.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT8");
              SessionOptions options = new SessionOptions();
@@ -611,7 +603,7 @@ public class InferenceTest {
     @Test
     public void testModelInputINT16() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_INT16.pb").toString();
+        String modelPath = getResourcePath("/test_types_INT16.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT16");
              SessionOptions options = new SessionOptions();
@@ -633,7 +625,7 @@ public class InferenceTest {
     @Test
     public void testModelInputINT64() throws OrtException {
         // model takes 1x5 input of fixed type, echoes back
-        String modelPath = resourcePath.resolve("test_types_INT64.pb").toString();
+        String modelPath = getResourcePath("/test_types_INT64.pb").toString();
 
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputINT64");
              SessionOptions options = new SessionOptions();
@@ -660,7 +652,7 @@ public class InferenceTest {
         //   "probabilities" is a sequence<map<int64, float>>
         // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
 
-        String modelPath = resourcePath.resolve("test_sequence_map_int_float.pb").toString();
+        String modelPath = getResourcePath("/test_sequence_map_int_float.pb").toString();
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelSequenceOfMapIntFloat");
              SessionOptions options = new SessionOptions();
              OrtSession session = env.createSession(modelPath, options)) {
@@ -720,7 +712,7 @@ public class InferenceTest {
         //   "label" is a tensor,
         //   "probabilities" is a sequence<map<int64, float>>
         // https://github.com/onnx/sklearn-onnx/blob/master/docs/examples/plot_pipeline_lightgbm.py
-        String modelPath = resourcePath.resolve("test_sequence_map_string_float.pb").toString();
+        String modelPath = getResourcePath("/test_sequence_map_string_float.pb").toString();
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelSequenceOfMapStringFloat");
              SessionOptions options = new SessionOptions();
              OrtSession session = env.createSession(modelPath, options)) {
@@ -774,11 +766,13 @@ public class InferenceTest {
     }
 
     @Test
-    public void testModelSerialization() throws OrtException {
+    public void testModelSerialization() throws OrtException, IOException {
         String cwd = System.getProperty("user.dir");
-        Path squeezeNet = resourcePath.resolve("squeezenet.onnx");
+        Path squeezeNet = getResourcePath("/squeezenet.onnx");
         String modelPath = squeezeNet.toString();
-        String modelOutputPath = Paths.get(cwd, "optimized-squeezenet.onnx").toString();
+        File tmpFile = File.createTempFile("optimized-squeezenet", ".onnx");
+        String modelOutputPath = tmpFile.getAbsolutePath();
+        Assertions.assertEquals(0, tmpFile.length());
         try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
             // Set the optimized model file path to assert that no exception are thrown.
             SessionOptions options = new SessionOptions();
@@ -786,14 +780,17 @@ public class InferenceTest {
             options.setOptimizationLevel(OptLevel.BASIC_OPT);
             try (OrtSession session = env.createSession(modelPath, options)) {
                 Assertions.assertNotNull(session);
-                Assertions.assertTrue((new File(modelOutputPath)).exists());
+            } finally {
+                Assertions.assertTrue(tmpFile.length() > 0);
             }
+        } finally {
+            tmpFile.delete();
         }
     }
 
     @Test
     public void testStringIdentity() throws OrtException {
-        String modelPath = otherTestPath.resolve("identity_string.onnx").toString();
+        String modelPath = getResourcePath("/identity_string.onnx").toString();
         try (OrtEnvironment env = OrtEnvironment.getEnvironment("testStringIdentity");
              SessionOptions options = new SessionOptions();
              OrtSession session = env.createSession(modelPath, options)) {
@@ -871,7 +868,7 @@ public class InferenceTest {
     }
 
     private static SqueezeNetTuple openSessionSqueezeNet(int cudaDeviceId) throws OrtException {
-        Path squeezeNet = resourcePath.resolve("squeezenet.onnx");
+        Path squeezeNet = getResourcePath("/squeezenet.onnx");
         String modelPath = squeezeNet.toString();
         OrtEnvironment env = OrtEnvironment.getEnvironment();
         SessionOptions options = new SessionOptions();
@@ -879,8 +876,8 @@ public class InferenceTest {
             options.addCUDA(cudaDeviceId);
         }
         OrtSession session = env.createSession(modelPath,options);
-        float[] inputData = loadTensorFromFile(resourcePath.resolve("bench.in"));
-        float[] expectedOutput = loadTensorFromFile(resourcePath.resolve("bench.expected_out"));
+        float[] inputData = loadTensorFromFile(getResourcePath("/bench.in"));
+        float[] expectedOutput = loadTensorFromFile(getResourcePath("/bench.expected_out"));
         return new SqueezeNetTuple(env, session, inputData, expectedOutput);
     }
 

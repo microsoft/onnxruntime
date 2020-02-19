@@ -254,8 +254,8 @@ class OpTester {
   //        will find and run the CPU v2 implementation, but will not match the GPU v1 implementation.
   //        OpTester will say it was successful as at least one EP ran, and the GPU implementation of v1 no longer has
   //        test coverage.
-  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain)
-      : op_(op), domain_(domain), opset_version_(opset_version) {
+  explicit OpTester(const char* op, int opset_version = 7, const char* domain = onnxruntime::kOnnxDomain, bool verify_output = true)
+      : op_(op), domain_(domain), opset_version_(opset_version), verify_output_(verify_output) {
     if (opset_version_ < 0) {
       static int latest_onnx_version =
           ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
@@ -263,7 +263,7 @@ class OpTester {
     }
   }
 
-  ~OpTester();
+  virtual ~OpTester();
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
@@ -287,6 +287,11 @@ class OpTester {
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values,
                 bool is_initializer = false) {
     AddData(input_data_, name, dims, values.data(), values.size(), is_initializer);
+  }
+
+  template <typename T>
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false) {
+    AddData(input_data_, name, dims, p_values, size, is_initializer);
   }
 
   // Add other registered types, possibly experimental
@@ -347,10 +352,16 @@ class OpTester {
     AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false, sort_output);
   }
 
+  // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
   void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values,
                  bool sort_output = false) {
     AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false, sort_output);
+  }
+
+  template <typename T>
+  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size) {
+    AddData(output_data_, name, dims, p_values, size);
   }
 
   template <typename T>
@@ -422,18 +433,43 @@ class OpTester {
   enum class ExpectResult { kExpectSuccess,
                             kExpectFailure };
 
+  using CustomOutputVerifierFn =
+      std::function<void(const std::vector<OrtValue>& /*fetches*/, const std::string& /*provider_type*/)>;
+
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL);
+           ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
+           const CustomOutputVerifierFn& custom_output_verifier = {});
 
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
-           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+           const CustomOutputVerifierFn& custom_output_verifier = {});
+
+  std::vector<MLValue> GetFetches() { return fetches_; }
+
+  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+
+  // storing p_model as cache
+  void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
+     cached_model_ = model;
+  }
+
+  std::shared_ptr<onnxruntime::Model> GetModelCache() {
+    return cached_model_;
+  }
+
+  // clear input/output data, fetches will be cleared in Run()
+  void ClearData() {
+    input_data_.clear();
+    output_data_.clear();
+    initializer_index_.clear();
+  }
 
   struct Data {
     onnxruntime::NodeArg def_;
@@ -452,6 +488,14 @@ class OpTester {
     Data& operator=(Data&&) = default;
   };
 
+  std::vector<Data>& GetInputData() {
+    return input_data_;
+  }
+
+  std::vector<Data>& GetOutputData() {
+    return output_data_;
+  }
+
  protected:
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
@@ -462,15 +506,30 @@ class OpTester {
   void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names);
 
-  std::unique_ptr<onnxruntime::Model> BuildGraph();
+  template <class SessionType>
+  std::vector<MLValue> ExecuteModel(Model& model,
+                                    SessionType& session_object,
+                                    ExpectResult expect_result,
+                                    const std::string& expected_failure_string,
+                                    const RunOptions* run_options,
+                                    const std::unordered_map<std::string, OrtValue>& feeds,
+                                    const std::vector<std::string>& output_names,
+                                    const std::string& provider_type,
+                                    const CustomOutputVerifierFn& custom_output_verifier);
 
   const char* op_;
+  std::vector<Data> input_data_;
+  std::vector<Data> output_data_;
+  std::vector<OrtValue> fetches_;
+
+  // for gradient unit tests only 
+  std::shared_ptr<onnxruntime::Model> cached_model_;
 
 #ifndef NDEBUG
   bool run_called_{};
 #endif
 
- private:
+ protected:
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false) {
@@ -505,6 +564,7 @@ class OpTester {
     }
   }
 
+ private:
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
     auto num_tensors = seq_tensors.tensors.size();
@@ -540,23 +600,18 @@ class OpTester {
                         optional<float>(), optional<float>()));
   }
 
-  void ExecuteModel(Model& model, InferenceSession& session_object, ExpectResult expect_result,
-                    const std::string& expected_failure_string, const RunOptions* run_options,
-                    std::unordered_map<std::string, OrtValue> feeds, std::vector<std::string> output_names,
-                    const std::string& provider_type);
-
   const char* domain_;
   int opset_version_;
   bool add_shape_to_tensor_data_ = true;
   int add_symbolic_dim_to_tensor_data_ = -1;
   int num_run_calls_ = 1;
-  std::vector<Data> input_data_;
-  std::vector<Data> output_data_;
   std::vector<size_t> initializer_index_;
   std::vector<std::function<void(onnxruntime::Node& node)>> add_attribute_funcs_;
 
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_;
   std::vector<std::shared_ptr<CustomRegistry>> custom_session_registries_;
+
+  bool verify_output_;
 };
 
 template <typename TException>
@@ -574,14 +629,11 @@ void DebugTrap();
 
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type);
 
-// Only used for CUDA test since no toher kernel has float 16 support
-#ifdef USE_CUDA
 inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, int input_size) {
   auto in_vector = ConstEigenVectorMap<float>(f_datat, input_size);
   auto output_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(h_data)), input_size);
   output_vector = in_vector.template cast<Eigen::half>();
 }
-#endif
 
 inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, int input_size) {
   auto in_vector =

@@ -118,6 +118,14 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                 ::onnxruntime::common::code,     \
                                 ::onnxruntime::MakeString(__VA_ARGS__))
 
+// Check condition. if met, return status.
+#define ORT_RETURN_IF(condition, ...)                                                     \
+  if (condition) {                                                                        \
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                             \
+                           "Satisfied, but should not be: " #condition "\n",              \
+                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
+  }
+
 // Check condition. if not met, return status.
 #define ORT_RETURN_IF_NOT(condition, ...)                                                 \
   if (!(condition)) {                                                                     \
