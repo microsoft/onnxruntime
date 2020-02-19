@@ -112,7 +112,7 @@ InferenceEngine::Precision ConvertPrecisionONNXToIntel(
   } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
     return InferenceEngine::Precision::U8;
   } else {
-    throw "Unsupported Data type";
+    ORT_THROW("Unsupported Data type");
   }
 }
 
@@ -149,7 +149,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<In
         iter->second->setLayout(InferenceEngine::Layout::NCDHW);
         break;
       default:
-        throw "Invalid Dims type for input data map for: " + iter->first;
+        ORT_THROW("Invalid Dims type for input data map for: " + iter->first);
     };
   }
 
@@ -179,7 +179,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<In
         iter->second->setLayout(InferenceEngine::Layout::NCDHW);
         break;
       default:
-        throw "Invalid Dims type for output data map for: " + iter->first;
+        ORT_THROW("Invalid Dims type for output data map for: " + iter->first);
     };
   }
 }
