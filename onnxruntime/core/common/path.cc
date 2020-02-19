@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <array>
 
-#include "re2/re2.h"
-
 namespace onnxruntime {
 
 namespace {
@@ -24,6 +22,10 @@ constexpr PathChar k_preferred_path_separator = ORT_TSTR('/');
 constexpr std::array<PathChar, 2> k_valid_path_separators{
     ORT_TSTR('/'), ORT_TSTR('\\')};
 
+bool IsPreferredPathSeparator(PathChar c) {
+  return c == k_preferred_path_separator;
+}
+
 PathString NormalizePathSeparators(const PathString& path) {
   PathString result{};
   std::replace_copy_if(
@@ -38,46 +40,96 @@ PathString NormalizePathSeparators(const PathString& path) {
   return result;
 }
 
+// parse component and trailing path separator
+PathString::const_iterator ParsePathComponent(
+    PathString::const_iterator begin, PathString::const_iterator end,
+    PathString::const_iterator& component_end, bool* has_trailing_separator) {
+  component_end = std::find_if(begin, end, IsPreferredPathSeparator);
+  const auto sep_end = std::find_if_not(component_end, end, IsPreferredPathSeparator);
+  if (has_trailing_separator) *has_trailing_separator = sep_end != component_end;
+  return sep_end;
+}
+
+#ifdef _WIN32
+
 Status ParsePathRoot(
     const PathString& path,
     PathString& root, bool& has_root_dir, size_t& num_parsed_chars) {
-  const std::string working_path = ToMBString(path);
+  // assume NormalizePathSeparators() has been called
 
-// Note: Root patterns are regular expressions with two captures:
-//   1. the root name (as captured)
-//   2. the root directory (non-empty means there is one)
-//   Patterns are tried in order, so the most general should be last.
-#ifdef _WIN32
-  // Windows patterns
-  static const re2::RE2 root_patterns[]{
-      {R"(^(\\{2}[^\\]+\\[^\\]+)(\\+))"},  // e.g., "\\server\share\"
-      {R"(^([a-zA-Z]:)?(\\+)?)"},          // e.g., "C:\", "C:", "\", ""
-  };
-#else  // POSIX
-  // POSIX pattern
-  static const re2::RE2 root_patterns[]{
-      {R"(^(/{2}[^/]+)(/+))"},  // e.g., "//root_name/"
-      {R"(^()(/|/{3,}))"},  // "/", ""
-  };
-#endif
+  // drive letter
+  if (path.size() > 1 &&
+      (ORT_TSTR('a') <= path[0] && path[0] <= ORT_TSTR('z') ||
+       ORT_TSTR('A') <= path[0] && path[0] <= ORT_TSTR('Z')) &&
+      path[1] == ORT_TSTR(':')) {
+    const auto root_dir_begin = path.begin() + 2;
+    const auto root_dir_end = std::find_if_not(root_dir_begin, path.end(), IsPreferredPathSeparator);
 
-  for (const auto& root_pattern : root_patterns) {
-    re2::StringPiece working_path_sp{working_path}, root_dir_sp{};
-    std::string working_root{};
-    if (!RE2::Consume(&working_path_sp, root_pattern, &working_root, &root_dir_sp)) {
-      continue;
-    }
-
-    root = ToPathString(working_root);
-    has_root_dir = !root_dir_sp.empty();
-    num_parsed_chars = working_path_sp.data() - working_path.data();
+    root = path.substr(0, 2);
+    has_root_dir = root_dir_begin != root_dir_end;
+    num_parsed_chars = std::distance(path.begin(), root_dir_end);
 
     return Status::OK();
   }
 
-  return ORT_MAKE_STATUS(
-      ONNXRUNTIME, FAIL, "Failed to parse root from path: ", working_path);
+  // leading path separator
+  auto curr_it = std::find_if_not(path.begin(), path.end(), IsPreferredPathSeparator);
+  const auto num_initial_seps = std::distance(path.begin(), curr_it);
+
+  if (num_initial_seps == 2) {
+    // "\\server_name\share_name\"
+    // after "\\", parse 2 path components with trailing separators
+    PathString::const_iterator component_end;
+    bool has_trailing_separator;
+    curr_it = ParsePathComponent(curr_it, path.end(), component_end, &has_trailing_separator);
+    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToMBString(path));
+    curr_it = ParsePathComponent(curr_it, path.end(), component_end, &has_trailing_separator);
+    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToMBString(path));
+
+    root.assign(path.begin(), component_end);
+    has_root_dir = true;
+    num_parsed_chars = std::distance(path.begin(), curr_it);
+  } else {
+    // "\", ""
+    root.clear();
+    has_root_dir = num_initial_seps > 0;
+    num_parsed_chars = num_initial_seps;
+  }
+
+  return Status::OK();
 }
+
+#else  // POSIX
+
+Status ParsePathRoot(
+    const PathString& path,
+    PathString& root, bool& has_root_dir, size_t& num_parsed_chars) {
+  // assume NormalizePathSeparators() has been called
+  auto curr_it = std::find_if_not(path.begin(), path.end(), IsPreferredPathSeparator);
+  const auto num_initial_seps = std::distance(path.begin(), curr_it);
+
+  if (num_initial_seps == 2) {
+    // "//root_name/"
+    // after "//", parse path component with trailing separator
+    PathString::const_iterator component_end;
+    bool has_trailing_separator;
+    curr_it = ParsePathComponent(curr_it, path.end(), component_end, &has_trailing_separator);
+    ORT_RETURN_IF_NOT(has_trailing_separator, "Failed to parse path root: ", ToMBString(path));
+
+    root.assign(path.begin(), component_end);
+    has_root_dir = true;
+    num_parsed_chars = std::distance(path.begin(), curr_it);
+  } else {
+    // "/", ""
+    root.clear();
+    has_root_dir = num_initial_seps > 0;
+    num_parsed_chars = num_initial_seps;
+  }
+
+  return Status::OK();
+}
+
+#endif
 
 }  // namespace
 
@@ -93,17 +145,13 @@ Status Path::Parse(const PathString& original_path_str, Path& path) {
       path_str, result.root_name_, result.has_root_dir_, root_length));
 
   // parse components
-  auto is_delimiter = [](PathChar c) {
-    return c == k_preferred_path_separator;
-  };
-
-  auto component_begin = path_str.begin() + root_length;
+  PathString::const_iterator component_begin = path_str.begin() + root_length;
   while (component_begin != path_str.end()) {
-    auto component_end = std::find_if(
-        component_begin, path_str.end(), is_delimiter);
+    PathString::const_iterator component_end;
+    PathString::const_iterator next_component_begin = ParsePathComponent(
+        component_begin, path_str.end(), component_end, nullptr);
     result.components_.emplace_back(component_begin, component_end);
-    component_begin = std::find_if_not(
-        component_end, path_str.end(), is_delimiter);
+    component_begin = next_component_begin;
   }
 
   path = std::move(result);
@@ -138,7 +186,7 @@ bool Path::IsEmpty() const {
 bool Path::IsAbsolute() const {
 #ifdef _WIN32
   return has_root_dir_ && !root_name_.empty();
-#else // POSIX
+#else  // POSIX
   return has_root_dir_;
 #endif
 }
