@@ -17,9 +17,6 @@ def parse_arguments():
     parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")        
     parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")        
     parser.add_argument("--is_release_build", required=False, default=None, type=str, help="Flag indicating if the build is a release build. Accepted values: true/false.")        
-    parser.add_argument("--source_branch", required=False, default=None, type=str, help="Source branch set by Azure Dev pipeline. Pass 'notset' if not set.")        
-    parser.add_argument("--source_version", required=False, default=None, type=str, help="Source version set by Azure Dev pipeline. Pass 'notset' if not set.")        
-    parser.add_argument("--source_build_id", required=False, default=None, type=str, help="Source build id set by Azure Dev pipeline. Pass 'notset' if not set.")        
 
     return parser.parse_args()
 
@@ -74,14 +71,24 @@ def generate_dependencies(list, version):
     list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     list.append('</group>')
 
-    list.append('</dependencies>')    
+    list.append('</dependencies>')
 
-def generate_release_notes(list, branch, version, build_id):
+def get_env_var(key):
+    return os.environ.get(key)
+
+def generate_release_notes(list):
     list.append('<releaseNotes>')    
     list.append('Release Def:')
-    list.append('\t' + 'Branch: ' + (branch if branch != 'notset' else ''))
-    list.append('\t' + 'Commit: ' + (version if version != 'notset' else ''))
-    list.append('\t' + 'Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=' + (build_id if build_id != 'notset' else ''))
+    
+    branch = get_env_var('BUILD_SOURCEBRANCH')
+    list.append('\t' + 'Branch: ' + (branch if branch != None else ''))
+    
+    version = get_env_var('BUILD_SOURCEVERSION')
+    list.append('\t' + 'Commit: ' + (version if version != None else ''))
+
+    build_id = get_env_var('BUILD_BUILDID')
+    list.append('\t' + 'Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=' + (build_id if build_id != None else ''))
+
     list.append('</releaseNotes>')
 
 def generate_metadata(list, args):
@@ -98,7 +105,7 @@ def generate_metadata(list, args):
     generate_project_url(metadata_list, 'https://github.com/Microsoft/onnxruntime')
     generate_repo_url(metadata_list, 'https://github.com/Microsoft/onnxruntime.git', args.commit_id)  
     generate_dependencies(metadata_list, args.package_version)
-    generate_release_notes(metadata_list, args.source_branch, args.source_version, args.source_build_id)
+    generate_release_notes(metadata_list)
     metadata_list.append('</metadata>')
     
     list += metadata_list
