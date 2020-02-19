@@ -10,10 +10,19 @@ jobs:
     BuildCommand: >
       tools/ci_build/github/linux/run_dockerbuild.sh
       -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory)
-      -x "
+      -x " 
+      --config $(buildConfig) 
       --enable_training
       --skip_onnx_tests
       "
     DoNugetPack: 'false'
     ArtifactName: 'drop-linux'
     TimeoutInMinutes: 90
+    Strategy: 
+      maxParallel: 2
+      matrix:
+        Debug:
+          buildConfig: Debug
+        Release:
+          buildConfig: Release
+

@@ -7,6 +7,10 @@ parameters:
   NuPackScript: ''
   ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
+  # to inject strategy, you need to pass in the whole yaml structure - 
+  # https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema?view=azure-devops&tabs=schema#strategies
+  # see example in orttraining-linux-gpu-ci-pipeline.yml
+  Strategy: ''
 
 jobs:
 - job: ${{ parameters.JobName }}
@@ -14,6 +18,9 @@ jobs:
     clean: all
   timeoutInMinutes:  ${{ parameters.TimeoutInMinutes }}
   pool: ${{ parameters.AgentPool }}
+  ${{ if ne(parameters.Strategy, '') }}:
+    strategy:
+      ${{ parameters.Strategy }}
   steps:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
