@@ -19,7 +19,6 @@ struct HIPProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     HIPExecutionProviderInfo info;
     info.device_id = device_id_;
-    info.target_device = "gpu";
     return std::make_unique<HIPExecutionProvider>(info);
   }
 
