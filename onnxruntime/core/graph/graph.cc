@@ -810,7 +810,7 @@ Graph::Graph(const Model& owning_model,
 }
 
 Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto)
-    : Graph(parent_graph_->owning_model_,
+    : Graph(parent_graph.owning_model_,
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
