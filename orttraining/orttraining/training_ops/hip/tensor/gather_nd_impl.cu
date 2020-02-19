@@ -1,9 +1,9 @@
-#include "hip/hip_runtime.h"
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/hip/tensor/gather_nd_impl.h"
 
+#include "core/providers/hip/hip_common.h"
 #include "core/providers/hip/cu_inc/common.cuh"
 
 namespace onnxruntime {
@@ -122,10 +122,10 @@ SPECIALIZED_COMPUTE_SLICE_OFFSETS_IMPL(int64_t);
 
 SPECIALIZED_IMPL(float);
 SPECIALIZED_GRAD_IMPL(float);
-//#if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 700
-//SPECIALIZED_IMPL(half);
-//SPECIALIZED_GRAD_IMPL(half);
-//#endif
+// #if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 700
+// SPECIALIZED_IMPL(half);
+// SPECIALIZED_GRAD_IMPL(half);
+// #endif
 #if !defined(__HIP_ARCH__) || __HIP_ARCH__ >= 600
 SPECIALIZED_IMPL(double);
 SPECIALIZED_GRAD_IMPL(double);
