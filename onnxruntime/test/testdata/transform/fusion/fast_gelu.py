@@ -7,7 +7,7 @@ import numpy as np
 # Gelu formula: x * 0.5 * (1.0 + tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
 has_bias = True # change it to True to generate fast_gelu_with_bias.onnx
-gelu_use_graph_input_and_out = True # change it to False to let Gelu don't have graph inputs/outputs as inputs/outputs.
+gelu_use_graph_input = True # change it to False to let Gelu don't have graph inputs as inputs.
 
 X = helper.make_tensor_value_info('input', TensorProto.FLOAT, ["batch", "seqlen", 64])
 Y = helper.make_tensor_value_info('output', TensorProto.FLOAT, ["batch", "seqlen", 64])
@@ -32,7 +32,7 @@ b_bias_initializer = numpy_helper.from_array(b_bias_np_vals, "add2_init")
 
 nodes = []
 gelu_input = "input"
-if not gelu_use_graph_input_and_out:
+if not gelu_use_graph_input:
     leading_identity = helper.make_node(
         'Identity', 
         [gelu_input], 
@@ -118,28 +118,19 @@ mul5 = helper.make_node(
 )
 nodes.append(mul5)
 
-if not gelu_use_graph_input_and_out:
-    mul6 = helper.make_node(
-        'Mul', 
-        ['mul5', 'add2'], 
-        ['mul6'], 
-        name="mul6"
-    )
-    ending_identity = helper.make_node(
-        'Identity', 
-        ['mul6'], 
-        ['output'], 
-        name="identity_ending"
-    )
-    nodes.extend([mul6, ending_identity])
-else:
-    mul6 = helper.make_node(
-        'Mul', 
-        ['mul5', 'add2'], 
-        ['output'], 
-        name="mul6"
-    )
-    nodes.append(mul6)
+mul6 = helper.make_node(
+    'Mul', 
+    ['mul5', 'add2'], 
+    ['mul6'], 
+    name="mul6"
+)
+ending_identity = helper.make_node(
+    'Identity', 
+    ['mul6'], 
+    ['output'], 
+    name="identity_ending"
+)
+nodes.extend([mul6, ending_identity])
 
 initializers = []
 if has_bias:
@@ -175,7 +166,7 @@ file_name = "fast_gelu"
 if has_bias:
     file_name += "_with_bias"
 
-if gelu_use_graph_input_and_out:
+if gelu_use_graph_input:
     file_name += "_use_graph_input"
 onnx.save(model_def, file_name + ".onnx")
 

@@ -11,8 +11,6 @@ struct MatchResult {
   public:
     bool matched;
     NodeArg* gelu_without_bias_input_arg; // The Gelu input arg if not considering bias node.
-    NodeArg* gelu_input_arg; // The Gelu input arg if considering bias node.
-    NodeArg* bias_arg;
     Node* tanh_input_node;
 };
 
