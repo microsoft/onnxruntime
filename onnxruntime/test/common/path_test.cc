@@ -53,6 +53,32 @@ TEST(PathTest, Parse) {
 #endif
 }
 
+#ifndef _WIN32
+TEST(PathTest, ParseFailure) {
+    auto check_parse_failure =
+        [](const std::string& path_string) {
+        Path p{};
+        EXPECT_FALSE(Path::Parse(ToPathString(path_string), p).IsOK());
+      };
+
+    check_parse_failure("//root_name_without_root_dir");
+}
+#endif
+
+TEST(PathTest, IsEmpty) {
+    auto check_empty =
+        [](const std::string& path_string, bool is_empty) {
+        Path p{};
+        ASSERT_STATUS_OK(Path::Parse(ToPathString(path_string), p));
+
+        EXPECT_EQ(p.IsEmpty(), is_empty);
+      };
+
+    check_empty("", true);
+    check_empty(".", false);
+    check_empty("/", false);
+}
+
 TEST(PathTest, IsAbsoluteOrRelative) {
   auto check_abs_or_rel =
       [](const std::string& path_string, bool is_absolute) {
@@ -109,6 +135,8 @@ TEST(PathTest, Normalize) {
   check_normalize("a/b/./c/../../d/../e", "a/e");
   check_normalize("/../a/../../b", "/b");
   check_normalize("../a/../../b", "../../b");
+  check_normalize("", "");
+  check_normalize("a/..", ".");
 }
 
 TEST(PathTest, Append) {
@@ -127,7 +155,7 @@ TEST(PathTest, Append) {
   check_append("a/b", "c/d", "a/b/c/d");
   check_append("a/b", "/c/d", "/c/d");
 #ifdef _WIN32
-  check_append(R"(C:\a\b)", R"(c\d)", R"(a\b\c\d)");
+  check_append(R"(C:\a\b)", R"(c\d)", R"(C:\a\b\c\d)");
   check_append(R"(C:\a\b)", R"(\c\d)", R"(C:\c\d)");
   check_append(R"(C:\a\b)", R"(D:c\d)", R"(D:c\d)");
   check_append(R"(C:\a\b)", R"(D:\c\d)", R"(D:\c\d)");

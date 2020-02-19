@@ -56,7 +56,8 @@ Status ParsePathRoot(
 #else  // POSIX
   // POSIX pattern
   static const re2::RE2 root_patterns[]{
-      {R"(^(//[^/]+)?(/+)?)"},  // e.g., "//root_name/", "/", ""
+      {R"(^(/{2}[^/]+)(/+))"},  // e.g., "//root_name/"
+      {R"(^()(/|/{3,}))"},  // "/", ""
   };
 #endif
 
@@ -123,12 +124,15 @@ PathString Path::ToPathString() const {
     result += components_[i];
     if (i + 1 < components_size) result += k_preferred_path_separator;
   }
-  if (result.empty()) result = ORT_TSTR(".");
   return result;
 }
 
 PathString Path::GetRootPathString() const {
   return has_root_dir_ ? root_name_ + k_preferred_path_separator : root_name_;
+}
+
+bool Path::IsEmpty() const {
+  return !has_root_dir_ && root_name_.empty() && components_.empty();
 }
 
 bool Path::IsAbsolute() const {
@@ -146,6 +150,8 @@ Path Path::ParentPath() const {
 }
 
 Path& Path::Normalize() {
+  if (IsEmpty()) return *this;
+
   // handle . and ..
   std::vector<PathString> normalized_components{};
   for (const auto& component : components_) {
@@ -173,6 +179,8 @@ Path& Path::Normalize() {
         normalized_components.begin(), first_non_dotdot_it);
   }
 
+  if (normalized_components.empty()) normalized_components.emplace_back(k_dot);
+
   components_ = std::move(normalized_components);
 
   return *this;
@@ -185,6 +193,7 @@ Path& Path::Append(const Path& other) {
   }
 
   if (other.has_root_dir_) {
+    has_root_dir_ = true;
     components_.clear();
   }
 

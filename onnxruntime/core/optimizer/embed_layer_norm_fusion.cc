@@ -445,7 +445,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   assert(sequence_length > 0);
   assert(hidden_size > 0);
 
-  auto old_initializer = onnxruntime::make_unique<Initializer>(*tensor);
+  auto old_initializer = onnxruntime::make_unique<Initializer>(*tensor, graph.ModelPath());
   auto data_type = tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;

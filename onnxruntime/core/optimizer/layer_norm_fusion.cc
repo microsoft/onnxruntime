@@ -258,7 +258,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr) {
       if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto);
+        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
         layer_norm_node.AddAttribute("epsilon", initializer->data<float>()[0]);
       }
     }

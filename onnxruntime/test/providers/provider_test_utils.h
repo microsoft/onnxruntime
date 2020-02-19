@@ -16,6 +16,7 @@
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
+#include "test/util/include/gtest_utils.h"  // ASSERT/EXPECT_STATUS_OK()
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 
@@ -23,20 +24,6 @@
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
-
-// helpers to run a function and check the status, outputting any error if it fails.
-// note: wrapped in do{} while(false) so the _tmp_status variable has limited scope
-#define ASSERT_STATUS_OK(function)                  \
-  do {                                              \
-    auto _tmp_status = function;                    \
-    ASSERT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
-  } while (false)
-
-#define EXPECT_STATUS_OK(function)                  \
-  do {                                              \
-    auto _tmp_status = function;                    \
-    EXPECT_TRUE(_tmp_status.IsOK()) << _tmp_status; \
-  } while (false)
 
 namespace onnxruntime {
 class InferenceSession;

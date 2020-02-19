@@ -695,19 +695,23 @@ void Node::ReplaceDefs(const std::map<const onnxruntime::NodeArg*, onnxruntime::
 //}
 using google::protobuf::RepeatedPtrField;
 
-Graph::Graph(GraphProto* graph_proto,
+Graph::Graph(const Model& owning_model,
+             GraphProto* graph_proto,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : Graph(graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, model_functions) {}
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger,
+        model_functions) {}
 
-Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
+Graph::Graph(const Model& owning_model,
+             GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const logging::Logger& logger,
              const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_functions)
-    : graph_proto_(graph_proto),
+    : owning_model_(owning_model),
+      graph_proto_(graph_proto),
       schema_registry_(schema_registry),
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
@@ -806,7 +810,8 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
 }
 
 Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto)
-    : Graph(&subgraph_proto,
+    : Graph(parent_graph_->owning_model_,
+            &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
             &parent_node, parent_graph.logger_) {
@@ -2032,6 +2037,10 @@ const std::string& Graph::Description() const noexcept {
 
 void Graph::SetDescription(const std::string& description) {
   graph_proto_->set_doc_string(description);
+}
+
+const Path& Graph::ModelPath() const {
+  return owning_model_.ModelPath();
 }
 
 void Graph::AddInitializedTensor(const TensorProto& tensor) {
