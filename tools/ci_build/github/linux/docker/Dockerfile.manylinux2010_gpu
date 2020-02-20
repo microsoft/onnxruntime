@@ -32,7 +32,7 @@ cuda-libraries-dev-$CUDA_PKG_VERSION \
 cuda-minimal-build-$CUDA_PKG_VERSION \
 libcublas-devel-10.2.1.243-1 \
 && \
-    ln -s cuda-10.1 /usr/local/cuda && \    
+    ln -s cuda-10.1 /usr/local/cuda && \
     rpm -e --nodeps gcc gcc-c++ && \
     rm -rf /var/cache/yum/*
 
