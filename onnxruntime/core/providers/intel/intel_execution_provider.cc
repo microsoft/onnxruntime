@@ -554,7 +554,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         return;
       } else {
         for (const auto& dim : shape->dim()) {
-          if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+          if (!utils::HasDimParam(dim) && dim.dim_value() == 0) {
             has_unsupported_dimension = true;
             return;
           }
