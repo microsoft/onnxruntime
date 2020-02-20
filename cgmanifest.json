@@ -40,7 +40,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "8f50e4463c2c7ba9b3f580c61ca21abc91197b7c",
+               "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
                "repositoryUrl": "https://github.com/google/nsync.git"
             }
          }
