@@ -114,7 +114,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest  --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.1 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
+          docker run --gpus all -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD -e BUILD_BUILDNUMBER onnxruntime-manylinux-gpu-$(python.version) $(python.dir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest  --build_wheel --enable_onnx_tests --cmake_extra_defines PYTHON_INCLUDE_DIR=$(python.include.dir) PYTHON_LIBRARY=/usr/lib64/librt.so --use_cuda --cuda_version=10.0 --cuda_home=/usr/local/cuda-10.0  --cudnn_home=/usr/local/cuda-10.0
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CopyFiles@2
