@@ -54,7 +54,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   for (auto input : graph_inputs) {
     auto it = inputdef_index_map.find(input->Name());
     if (it == inputdef_index_map.end()) {
-      throw "Input not found in the input defs list";
+      ORT_THROW("Input not found in the input defs list");
     }
 
     int index = it->second;
@@ -63,7 +63,7 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
 
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
-  if (ModelHasSymbolicInputDims(model_proto_)) {
+  if (ModelHasSymbolicInputDims(fused_node)) {
     LOGS_DEFAULT(INFO) << "[Intel-EP] Model has symbolic input dims. Defering backend initialization";
     has_dynamic_input_shape_ = true;
   } else {
@@ -86,10 +86,15 @@ static common::Status SaveModel(ONNX_NAMESPACE::ModelProto& model_proto, const s
     return Status::OK();
 }
 
-bool BackendManager::ModelHasSymbolicInputDims(const ONNX_NAMESPACE::ModelProto& model_proto) const {
+bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
   bool has_sym_dims = false;
-  for (auto input : model_proto.graph().input()) {
-    for (auto dim : input.type().tensor_type().shape().dim()) {
+  auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  for (auto input : graph_inputs){
+    if(input->Shape() == nullptr){
+      has_sym_dims = true;
+      break;
+    }
+    for (auto dim : input->Shape()->dim()) {
       if (dim.value_case() == dim.kDimParam) {
         has_sym_dims = true;
         break;
