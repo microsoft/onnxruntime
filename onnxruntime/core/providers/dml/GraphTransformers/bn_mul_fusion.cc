@@ -54,7 +54,8 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     }
   }
 
-  auto BatchNormalization_Scale = std::make_unique<Initializer>(*BatchNormalization_Scale_tensor_proto);
+  auto BatchNormalization_Scale = std::make_unique<Initializer>(
+      *BatchNormalization_Scale_tensor_proto, graph.ModelPath());
   auto mul_B = std::make_unique<Initializer>(*mul_B_tensor_proto);
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_B_tensor_proto = nullptr;

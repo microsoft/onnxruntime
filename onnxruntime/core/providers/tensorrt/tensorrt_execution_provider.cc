@@ -115,7 +115,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const std::string fp16_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
-  }  
+  }
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -183,8 +183,8 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map,
 // Remove nodes with empty shape (for example [1, 0]) because TensorRT 7 doens't support empty shape
 SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph) {
   // Here only NonZero and NonMaxSuppression related empty shape nodes are removed, particularly for Faster-rcnn and Mask-rcnn models.
-  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around	
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();  
+  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   const std::string exclude_dim_name1 = "NonZero";
   const std::string exclude_dim_name2 = "NonMaxSuppression";
   SubGraphCollection_t parser_nodes_vector = {{{}, false}};
@@ -357,7 +357,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
-        onnxruntime::Model model_build(graph.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+        onnxruntime::Model model_build(graph.Name(), true, ModelMetaData(), PathString(),
+                                       IOnnxRuntimeOpSchemaRegistryList(), graph.DomainToVersionMap(),
+                                       std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         onnxruntime::Graph& graph_build = model_build.MainGraph();
 
         // Add node and node args
@@ -409,7 +411,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Serialize modelproto to string
         const onnxruntime::GraphViewer graph_viewer(graph_build);
 
-        onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+        onnxruntime::Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+                                 IOnnxRuntimeOpSchemaRegistryList(), graph_viewer.DomainToVersionMap(),
+                                 std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
         ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
         ToGraphProtoInternal(graph_viewer, *(model_proto.mutable_graph()));
         model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -586,7 +590,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
-  
+
   return result;
 }
 
@@ -621,7 +625,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     }
     const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(), std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
+    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(), PathString(),
+                             IOnnxRuntimeOpSchemaRegistryList(), graph_body.DomainToVersionMap(),
+                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
@@ -763,7 +769,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_, 
+            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_,
 			&max_workspace_size_};
       *state = p.release();
       return 0;

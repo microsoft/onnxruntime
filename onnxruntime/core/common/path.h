@@ -16,10 +16,10 @@ namespace onnxruntime {
 class Path {
  public:
   Path() = default;
-  Path(const Path& other) = default;
-  Path& operator=(const Path& other) = default;
-  Path(Path&& other) = default;
-  Path& operator=(Path&& other) = default;
+  Path(const Path&) = default;
+  Path& operator=(const Path&) = default;
+  Path(Path&&) = default;
+  Path& operator=(Path&&) = default;
 
   /** Parses a path from `path_str`. */
   static Status Parse(const PathString& path_str, Path& path);
