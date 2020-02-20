@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/upsample.h"
+#include "core/common/safeint.h"
 #include <sstream>
 
 using namespace onnxruntime::common;
@@ -28,7 +29,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     uint8_t,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
     Upsample<uint8_t>);
-
 
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
@@ -302,8 +302,8 @@ void UpsampleBilinear(int64_t batch_size,
   std::vector<float> y_original;
   std::vector<float> x_original;
 
-  size_t idx_buffer_size = 2 * sizeof(int64_t) * (output_height + output_width);
-  size_t scale_buffer_size = 2 * sizeof(float_t) * (output_height + output_width);
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) * (output_height + output_width);
   auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
   BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
   auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
@@ -592,11 +592,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);
-    
+
   if (dims.size() != scales.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales."
-                            : "Upsample: input tensor's dimension does not match the scales.");
+                             : "Upsample: input tensor's dimension does not match the scales.");
 
   if (roi.size() != 2 * X->Shape().GetDims().size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,

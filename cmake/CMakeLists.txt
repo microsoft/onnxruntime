@@ -400,6 +400,10 @@ if(onnxruntime_PREFER_SYSTEM_LIB)
   find_package(re2)  
 endif()
 
+set(SAFEINT_INCLUDE_DIR ${REPO_ROOT}/cmake/external/SafeInt)
+add_library(safeint_interface INTERFACE) 
+target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
+
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
