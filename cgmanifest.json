@@ -455,6 +455,15 @@
             },
             "type": "git"
          }
+      },
+      {
+         "component": {
+            "git": {
+               "commitHash": "39de59d5bca3a226a241b29571abe1493d15d07a",
+               "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
+            },
+            "type": "git"
+         }
       }
    ],
    "Version": 1
