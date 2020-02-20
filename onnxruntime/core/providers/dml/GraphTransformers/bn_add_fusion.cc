@@ -63,7 +63,7 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
   }
 
   auto BatchNormalization_B = std::make_unique<Initializer>(*BatchNormalization_B_tensor_proto, graph.ModelPath());
-  auto add_B = std::make_unique<Initializer>(*add_B_tensor_proto);
+  auto add_B = std::make_unique<Initializer>(*add_B_tensor_proto, graph.ModelPath());
 
   if (BatchNormalization_B->size() != add_B->size()) {
     return Status::OK();
