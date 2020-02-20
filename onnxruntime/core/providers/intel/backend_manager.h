@@ -24,7 +24,7 @@ class BackendManager {
 
  private:
   ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) const;
-  bool ModelHasSymbolicInputDims(const ONNX_NAMESPACE::ModelProto& model_proto) const;
+  bool ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const;
 
   std::string device_id_;
   InferenceEngine::Precision precision_;

@@ -7,9 +7,9 @@
 #include <list>
 #include <unordered_map>
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/customregistry.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 struct KernelCreateInfo;

@@ -16,7 +16,7 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     float,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    ReorderInput<float>);
+    ReorderInput);
 
 ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     ReorderOutput,
@@ -24,7 +24,7 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     float,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    ReorderOutput<float>);
+    ReorderOutput);
 
 ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
     Conv,
@@ -67,27 +67,41 @@ ONNX_CPU_OPERATOR_TYPED_NCHWC_KERNEL(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     NchwcAveragePool);
 
-template <typename T>
-Status ReorderInput<T>::Compute(OpKernelContext* context) const {
+Status ReorderInput::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
   auto* Y = context->Output(0, X_shape);
-  MlasReorderInput(X_shape.GetDims().data(), X->template Data<T>(), Y->template MutableData<T>());
+  MlasReorderInput(X_shape.GetDims().data(), X->template Data<float>(), Y->template MutableData<float>());
   return Status::OK();
 }
 
-template <typename T>
-Status ReorderOutput<T>::Compute(OpKernelContext* context) const {
+Status ReorderOutput::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
-  ORT_ENFORCE(X_shape.NumDimensions() == 4);
-  std::vector<int64_t> Y_shape(X_shape.GetDims());
-  ORT_ENFORCE(channels_ <= Y_shape[1]);
-  Y_shape[1] = channels_;
+  const auto X_rank = X_shape.NumDimensions();
+  ORT_ENFORCE(X_rank == 4);
+  ORT_ENFORCE(channels_ <= X_shape[1]);
+
+  // Build the output shape in NCHW or NHWC order.
+  std::vector<int64_t> Y_shape(X_rank);
+  Y_shape[0] = X_shape[0];
+  Y_shape[channels_last_ ? X_rank - 1 : 1] = channels_;
+  auto* Y_spatial_dims = Y_shape.data() + (channels_last_ ? 1 : 2);
+  for (size_t i = 0; i < X_rank - 2; i++) {
+    Y_spatial_dims[i] = X_shape[2 + i];
+  }
   auto* Y = context->Output(0, Y_shape);
-  MlasReorderOutput(Y_shape.data(), X->template Data<T>(), Y->template MutableData<T>());
+
+  const auto* x_data = X->template Data<float>();
+  auto* y_data = Y->template MutableData<float>();
+  if (channels_last_) {
+    MlasReorderOutputNhwc(Y_shape.data(), x_data, y_data);
+  } else {
+    MlasReorderOutputNchw(Y_shape.data(), x_data, y_data);
+  }
+
   return Status::OK();
 }
 

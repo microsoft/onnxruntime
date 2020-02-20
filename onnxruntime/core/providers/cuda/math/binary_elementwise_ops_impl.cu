@@ -32,8 +32,11 @@ namespace cuda {
                           count);                          \
   }
 
-#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, T) \
-  template void Impl_##x<T>(size_t output_rank, const int64_t* lhs_padded_strides, const T* lhs_data, const int64_t* rhs_padded_strides, const T* rhs_data, const fast_divmod* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
+#define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, T)                 \
+  template void Impl_##x<T>(int32_t output_rank,                  \
+    const TArray<int64_t>* lhs_padded_strides, const T* lhs_data, \
+    const TArray<int64_t>* rhs_padded_strides, const T* rhs_data, \
+    const TArray<fast_divmod>* fdm_output_strides, const fast_divmod& fdm_H, const fast_divmod& fdm_C, T* output_data, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_UZILHFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, uint32_t)     \

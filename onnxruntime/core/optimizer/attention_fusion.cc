@@ -68,7 +68,6 @@ static bool LoadQkvWeights(
     const ONNX_NAMESPACE::TensorProto*& q_tensor,
     const ONNX_NAMESPACE::TensorProto*& k_tensor,
     const ONNX_NAMESPACE::TensorProto*& v_tensor) {
-  
   if (!graph.GetInitializedTensor(q.InputDefs()[1]->Name(), q_tensor)) {
     return false;
   }
