@@ -22,7 +22,6 @@ bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 */
 bool IsInitializerWithExpectedValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float expected_value, bool is_constant);
 
-
 /** Check whether a input is initializer with specified integer value.
 @param expected_value is the expected value of the initializer.
 @param is_constant means whether the initializer is required to be constant.
