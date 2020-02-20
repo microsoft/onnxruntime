@@ -16,6 +16,9 @@ ORT_API(void, ReleaseTypeInfo, OrtTypeInfo*);
 ORT_API(void, ReleaseTensorTypeAndShapeInfo, OrtTensorTypeAndShapeInfo*);
 ORT_API(void, ReleaseSessionOptions, OrtSessionOptions*);
 ORT_API(void, ReleaseCustomOpDomain, OrtCustomOpDomain*);
+ORT_API(void, ReleaseMapTypeInfo, OrtMapTypeInfo*);
+ORT_API(void, ReleaseSequenceTypeInfo, OrtSequenceTypeInfo*);
+ORT_API(void, ReleaseModelMetadata, OrtModelMetadata*);
 
 ORT_API_STATUS_IMPL(CreateStatus, OrtErrorCode code, _In_ const char* msg);
 OrtErrorCode ORT_API_CALL GetErrorCode(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -71,6 +74,25 @@ ORT_API_STATUS_IMPL(SessionGetInputName, _In_ const OrtSession* sess, size_t ind
 ORT_API_STATUS_IMPL(SessionGetOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
 ORT_API_STATUS_IMPL(SessionGetOverridableInitializerName, _In_ const OrtSession* sess, size_t index,
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** out);
+ORT_API_STATUS_IMPL(SessionGetModelMetadata, _In_ const OrtSession* sess,
+                    _Outptr_ OrtModelMetadata** out);
+
+ORT_API_STATUS_IMPL(ModelMetadataGetProducerName, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetGraphName, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetDomain, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
+ORT_API_STATUS_IMPL(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
+                    _Inout_ OrtAllocator* allocator,
+                    _In_ const char* key, _Outptr_ char** value);
+
+ORT_API_STATUS_IMPL(ModelMetadataGetVersion, _In_ const OrtModelMetadata* model_metadata,
+                    _Out_ int64_t* value);
 
 ORT_API_STATUS_IMPL(CreateRunOptions, _Outptr_ OrtRunOptions** out);
 
@@ -143,5 +165,17 @@ ORT_API_STATUS_IMPL(KernelContext_GetInputCount, _In_ const OrtKernelContext* co
 ORT_API_STATUS_IMPL(KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out);
 ORT_API_STATUS_IMPL(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out);
+
+// OrtTypeInfo methods
+ORT_API_STATUS_IMPL(GetDenotationFromTypeInfo, _In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len);
+ORT_API_STATUS_IMPL(CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out);
+ORT_API_STATUS_IMPL(CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out);
+
+// OrtMapTypeInfo Accessors
+ORT_API_STATUS_IMPL(GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out);
+ORT_API_STATUS_IMPL(GetMapValueType, _In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info);
+
+// OrtSequenceTypeInfo Accessors
+ORT_API_STATUS_IMPL(GetSequenceElementType, _In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info);
 
 }  // namespace OrtApis

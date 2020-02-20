@@ -27,7 +27,7 @@ struct CufftPlanInfo {
 };
 
 // Hashing machinery for Params
-// Fowler–Noll–Vo hash function
+// Fowlerâ€“Nollâ€“Vo hash function
 // see https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 template <typename T>
 struct ParamsHash {

@@ -5,11 +5,35 @@
 #include <cmath>
 #include <sstream>
 
-#ifdef USE_FULL_PROTOBUF
-#include <google/protobuf/message.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-qualifiers"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #else
-#include <google/protobuf/message_lite.h>
+#pragma warning(push)
+#pragma warning(disable : 4018) /*'expression' : signed/unsigned mismatch */
+#pragma warning(disable : 4065) /*switch statement contains 'default' but no 'case' labels*/
+#pragma warning(disable : 4100)
+#pragma warning(disable : 4146) /*unary minus operator applied to unsigned type, result still unsigned*/
+#pragma warning(disable : 4244) /*'conversion' conversion from 'type1' to 'type2', possible loss of data*/
+#pragma warning(disable : 4251) /*'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'*/
+#pragma warning(disable : 4267) /*'var' : conversion from 'size_t' to 'type', possible loss of data*/
+#pragma warning(disable : 4305) /*'identifier' : truncation from 'type1' to 'type2'*/
+#pragma warning(disable : 4307) /*'operator' : integral constant overflow*/
+#pragma warning(disable : 4309) /*'conversion' : truncation of constant value*/
+#pragma warning(disable : 4334) /*'operator' : result of 32-bit shift implicitly converted to 64 bits (was 64-bit shift intended?)*/
+#pragma warning(disable : 4355) /*'this' : used in base member initializer list*/
+#pragma warning(disable : 4506) /*no definition for inline function 'function'*/
+#pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
+#pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
 #endif
+#include <google/protobuf/message_lite.h>
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#else
+#pragma warning(pop)
+#endif
+
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
@@ -42,7 +66,7 @@ template <typename FLOAT_TYPE>
 std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue, const Tensor& expected_value,
                                                           double per_sample_tolerance,
                                                           double relative_per_sample_tolerance, bool post_processing) {
-  const size_t size1 = expected_value.Shape().Size();
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const FLOAT_TYPE* expected_output = expected_value.template Data<FLOAT_TYPE>();
   const FLOAT_TYPE* real_output = outvalue.template Data<FLOAT_TYPE>();
   std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
@@ -51,8 +75,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
   for (size_t di = 0; di != size1; ++di) {
     const double real_value =
         post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di];
-    const double diff = fabs(expected_output[di] - real_value);
-    const double tol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_output[di]);
+    const double diff = std::fabs(expected_output[di] - real_value);
+    const double tol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_output[di]);
     if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
       res.first = COMPARE_RESULT::RESULT_DIFFERS;
       // update error message if this is a larger diff
@@ -83,7 +107,7 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
 
 template <typename T>
 std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outvalue, const Tensor& expected_value) {
-  const size_t size1 = expected_value.Shape().Size();
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const T* expected_output = expected_value.template Data<T>();
   const T* real_output = outvalue.template Data<T>();
   for (size_t di = 0; di != size1; ++di) {
@@ -100,15 +124,15 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
                                                             double per_sample_tolerance,
                                                             double relative_per_sample_tolerance,
                                                             bool post_processing) {
-  const size_t size1 = expected_value.Shape().Size();
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
   for (size_t di = 0; di != size1; ++di) {
     float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
     float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
-    const double diff = fabs(expected - real);
-    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
+    const double diff = std::fabs(expected - real);
+    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected);
     if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
       std::ostringstream oss;
       oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
@@ -123,15 +147,15 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
                                                              double per_sample_tolerance,
                                                              double relative_per_sample_tolerance,
                                                              bool post_processing) {
-  const size_t size1 = expected_value.Shape().Size();
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const BFloat16* expected_output = expected_value.template Data<BFloat16>();
   const BFloat16* real_output = outvalue.template Data<BFloat16>();
   for (size_t di = 0; di != size1; ++di) {
     float expected = expected_output[di].ToFloat();
     float real = real_output[di].ToFloat();
     real = post_processing ? std::max(0.0f, std::min(255.0f, real)) : real;
-    const double diff = fabs(expected - real);
-    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected);
+    const double diff = std::fabs(expected - real);
+    const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected);
     if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
       std::ostringstream oss;
       oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
@@ -213,8 +237,8 @@ std::pair<COMPARE_RESULT, std::string> CompareSeqOfMapToFloat(const T& real_outp
       const double real = post_processing
                               ? std::max<double>(0.0, std::min<double>(255.0, real_output_key_value_pair.second))
                               : real_output_key_value_pair.second;
-      const double diff = fabs(expected_key_value_pair->second - real);
-      const double rtol = per_sample_tolerance + relative_per_sample_tolerance * fabs(expected_key_value_pair->second);
+      const double diff = std::fabs(expected_key_value_pair->second - real);
+      const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_key_value_pair->second);
       if (!IsResultCloselyMatch<double>(real, expected_key_value_pair->second, diff, rtol)) {
         std::ostringstream oss;
         oss << "expected " << expected_key_value_pair->second << ", got " << real << ", diff: " << diff

@@ -5,6 +5,7 @@
 
 #include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO remove this after removing tvm::runtime
 #include "core/common/cpuid_info.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/shape_expr.h"  // TODO: remove this shape_expr after shape_infernece refinement
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
@@ -25,7 +26,7 @@ namespace onnxruntime {
 thread_local int64_t NupharSubgraphUnit::counter = 0;
 
 thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExecutionProvider::tls_realized_dims_;
-int NupharExecutionProvider::global_fused_count_ = 0;
+thread_local int NupharExecutionProvider::per_model_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
 #if USE_TVM_WITH_LLVM
@@ -312,12 +313,12 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   };
   GraphPartitioner graph_partitioner(is_supported_func);
 
-  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, global_fused_count_, results).IsOK());
+  ORT_ENFORCE(graph_partitioner.Partition(graph_viewer, per_model_fused_count_, results).IsOK());
 
-  // reset global_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
+  // reset per_model_fused_count_ for main graph, since there might be multiple sessions for subgraphs,
   // this is the time all graph cut should be finished as ORT handles main graph last
   if (!graph_viewer.IsSubgraph())
-    global_fused_count_ = 0;
+    per_model_fused_count_ = 0;
 
   // for any node being fused in results, save initializer tensors
   // because IExecutionProvider::Compile would be called without OpKernelInfo
@@ -366,7 +367,7 @@ Status NupharExecutionProvider::SaveInitializer(
     auto t = onnxruntime::make_unique<Tensor>(
         data_type,
         shape,
-        GetAllocator(0, OrtMemTypeDefault)->Alloc(shape.Size() * data_type->Size()),
+        GetAllocator(0, OrtMemTypeDefault)->Alloc(SafeInt<size_t>(shape.Size()) * data_type->Size()),
         GetAllocator(0, OrtMemTypeDefault)->Info());
 
 #define CASE_UNPACK_TENSOR(V, T)                                       \

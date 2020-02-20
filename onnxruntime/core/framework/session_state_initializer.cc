@@ -150,7 +150,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const Tensor& p_deserialize_tensor = tmp_ort_value.Get<Tensor>();
 
   p_tensor = onnxruntime::make_unique<Tensor>(p_deserialize_tensor.DataType(), p_deserialize_tensor.Shape(), m.GetBuffer(),
-                                      m.GetAllocInfo());
+                                              m.GetAllocInfo());
   // TODO: does this function work for string tensor?
   Status copy_status = data_transfer_mgr.CopyTensor(p_deserialize_tensor, *p_tensor);
   if (d.f) d.f(d.param);
@@ -177,7 +177,7 @@ common::Status SaveInitializedTensors(const Env& env, const std::basic_string<PA
                                       const T& save_tensor_func, const logging::Logger& logger,
                                       const DataTransferManager& data_transfer_mgr) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
-  ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > 0, "OrtValue indexes should have been populated.");
+  ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
   //1. first plan the memory
   const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();

@@ -9,7 +9,9 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
     : device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
-      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator, device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
+      info_(device_allocator_->Info().name, OrtAllocatorType::OrtArenaAllocator,
+            device_allocator_->Info().device, device_allocator_->Info().id, device_allocator_->Info().mem_type) {
+  LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name;
   curr_region_allocation_bytes_ = RoundedBytes(std::min(total_memory, size_t{1048576}));
 
   // Allocate the requested amount of memory.
@@ -20,10 +22,10 @@ BFCArena::BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
   // We create bins to fit all possible ranges that cover the
   // memory_limit_ starting from allocations up to 256 bytes to
   // allocations up to (and including) the memory limit.
+  LOGS_DEFAULT(VERBOSE) << "Creating " << kNumBins << " bins of max chunk size "
+                        << BinNumToSize(0) << " to " << BinNumToSize(kNumBins - 1);
   for (BinNum b = 0; b < kNumBins; b++) {
     size_t bin_size = BinNumToSize(b);
-    LOGS_DEFAULT(INFO) << "Creating bin of max chunk size "
-                       << bin_size;
     new (BinFromIndex(b)) Bin(this, bin_size);
     ORT_ENFORCE(BinForSize(bin_size) == BinFromIndex(b));
     ORT_ENFORCE(BinForSize(bin_size + 255) == BinFromIndex(b));
@@ -54,7 +56,7 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
 }
 
 bool BFCArena::Extend(size_t rounded_bytes) {
-  size_t available_bytes = memory_limit_ - stats_.total_allocated_bytes;
+  size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
@@ -82,6 +84,12 @@ bool BFCArena::Extend(size_t rounded_bytes) {
     } catch (const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
+    } catch (const OnnxRuntimeException& ort_exception) {
+      // swallow if exception is our throw from a failed cudaMalloc call.
+      // re-throw otherwise.
+      if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos) {
+        throw;
+      }
     }
 
     return new_mem;
@@ -103,7 +111,7 @@ bool BFCArena::Extend(size_t rounded_bytes) {
   }
 
   if (mem_addr == nullptr) {
-    return false;
+    ORT_THROW("Failed to allocate memory for requested buffer of size ", rounded_bytes);
   }
 
   // we allocated the same number of bytes as the current region, so we have 2x that now
@@ -185,8 +193,8 @@ void* BFCArena::Reserve(size_t size) {
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
   stats_.num_allocs += 1;
-  stats_.max_alloc_size = std::max<size_t>(stats_.max_alloc_size, size);
-  stats_.max_bytes_in_use = std::max<size_t>(stats_.max_bytes_in_use, stats_.bytes_in_use);
+  stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
+  stats_.max_bytes_in_use = std::max<int64_t>(static_cast<int64_t>(stats_.max_bytes_in_use), stats_.bytes_in_use);
   stats_.total_allocated_bytes += size;
   return ptr;
 }
@@ -210,7 +218,7 @@ size_t BFCArena::AllocatedSize(const void* ptr) {
 void* BFCArena::AllocateRawInternal(size_t num_bytes,
                                     bool dump_log_on_failure) {
   if (num_bytes == 0) {
-    LOGS_DEFAULT(WARNING) << "tried to allocate 0 bytes";
+    LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
     return nullptr;
   }
   // First, always allocate memory of at least kMinAllocationSize
@@ -226,6 +234,9 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (ptr != nullptr) {
     return ptr;
   }
+
+  LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
+                     << ". bin_num:" << bin_num << " rounded_bytes:" << rounded_bytes;
 
   // Try to extend
   if (Extend(rounded_bytes)) {
@@ -244,6 +255,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
                         << ".  Current allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
   }
+
   return nullptr;
 }
 
@@ -292,8 +304,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         stats_.max_bytes_in_use =
             std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
         stats_.max_alloc_size =
-            std::max<std::size_t>(stats_.max_alloc_size, chunk->size);
-
+            std::max<int64_t>(stats_.max_alloc_size, static_cast<int64_t>(chunk->size));
         return chunk->ptr;
       }
     }
@@ -503,21 +514,29 @@ BFCArena::get_bin_debug_info() {
 
 void BFCArena::DumpMemoryLog(size_t num_bytes) {
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
+  LOGS_DEFAULT(INFO) << "Allocator:" << device_allocator_->Info().name;
+  LOGS_DEFAULT(INFO) << "Bin size: Chunks in_use/total (if not zero). Allocated bytes in_use/total. Requested bytes.";
+
+  size_t waste = 0;
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
     Bin* b = BinFromIndex(bin_num);
     const BinDebugInfo& bin_info = bin_infos[bin_num];
     ORT_ENFORCE(b->free_chunks.size() ==
                 bin_info.total_chunks_in_bin - bin_info.total_chunks_in_use);
 
-    LOGS_DEFAULT(INFO) << "Bin (" << b->bin_size
-                       << "): \tTotal Chunks: " << bin_info.total_chunks_in_bin
-                       << ", Chunks in use: " << bin_info.total_chunks_in_use << ". "
-                       << bin_info.total_bytes_in_bin
-                       << " allocated for chunks. "
-                       << bin_info.total_bytes_in_use
-                       << " in use in bin. "
-                       << bin_info.total_requested_bytes_in_use
-                       << " client-requested in use in bin.";
+    if (bin_info.total_chunks_in_bin > 0) {
+      LOGS_DEFAULT(INFO) << b->bin_size
+                         << ": Chunks " << bin_info.total_chunks_in_use << "/" << bin_info.total_chunks_in_bin
+                         << ". Bytes "
+                         << bin_info.total_bytes_in_use << "/" << bin_info.total_bytes_in_bin << ". "
+                         << "Requested " << bin_info.total_requested_bytes_in_use << ".";
+
+      waste += bin_info.total_bytes_in_use - bin_info.total_requested_bytes_in_use;
+    }
+  }
+
+  if (waste > 0) {
+    LOGS_DEFAULT(INFO) << "Diff between in-use and requested bytes is " << waste;
   }
 
   // Find the bin that we would have liked to allocate in, so we
@@ -525,16 +544,17 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
   Bin* b = BinForSize(num_bytes);
 
   LOGS_DEFAULT(INFO) << "Bin for " << num_bytes
-                     << " was " << b->bin_size
+                     << " bytes has max bytes of " << b->bin_size
                      << ", Chunk State: ";
 
   for (ChunkHandle h : b->free_chunks) {
     Chunk* c = ChunkFromHandle(h);
-    LOGS_DEFAULT(INFO) << c->DebugString(this, true);
+    LOGS_DEFAULT(INFO) << "  " << c->DebugString(this, true);
   }
 
   // Next show the chunks that are in use, and also summarize their
   // number by size.
+  LOGS_DEFAULT(INFO) << "Overall chunks summary:";
   std::map<size_t, int> in_use_by_size;
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
@@ -543,21 +563,21 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      LOGS_DEFAULT(INFO) << (c->in_use() ? "Chunk" : "Free ") << " at " << c->ptr
+      LOGS_DEFAULT(INFO) << (c->in_use() ? "  Chunk" : "  Free ") << " at " << c->ptr
                          << " of size " << c->size;
       h = c->next;
     }
   }
 
-  LOGS_DEFAULT(INFO) << "     Summary of in-use Chunks by size: ";
+  LOGS_DEFAULT(INFO) << "Summary of in-use chunks by size: ";
   size_t total_bytes = 0;
   for (auto& it : in_use_by_size) {
-    LOGS_DEFAULT(INFO) << it.second << " Chunks of size " << it.first << " totalling "
-                       << it.first * it.second;
+    LOGS_DEFAULT(INFO) << "  " << it.second << " chunks of size " << it.first
+                       << ". Total " << it.first * it.second;
     total_bytes += (it.first * it.second);
   }
-  LOGS_DEFAULT(INFO) << "Sum Total of in-use chunks: "
-                     << total_bytes;
+
+  LOGS_DEFAULT(INFO) << "Sum Total of in-use chunks: " << total_bytes;
   LOGS_DEFAULT(INFO) << "Stats: \n"
                      << stats_.DebugString();
 }

@@ -17,6 +17,8 @@ y) YOCTO_VERSION=${OPTARG};;
 esac
 done
 
+export PATH=$PATH:/usr/local/gradle/bin
+
 if [ $BUILD_OS = "android" ]; then
     pushd /onnxruntime_src
     mkdir build-android && cd build-android
@@ -42,7 +44,13 @@ elif [ $BUILD_OS = "yocto" ]; then
     
     make -j$(nproc)
 else
-    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    # For the nocontribops pipeline we don't need openmp as it is used by the Edge browser team and
+    # (going forward) the vscode team. Both these teams don't want their users to install any external dependency to use
+    # ORT.
+    if [[ $BUILD_EXTR_PAR != *--disable_contrib_ops* ]]; then
+        COMMON_BUILD_ARGS="${COMMON_BUILD_ARGS} --use_openmp "
+    fi
     if [ $BUILD_OS = "manylinux2010" ]; then
         # FindPython3 does not work on manylinux2010 image, define things manually
         # ask python where to find includes
@@ -74,6 +82,7 @@ else
             --cuda_home /usr/local/cuda \
             --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
     else #cpu, ngraph and openvino
+        export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Debug Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi

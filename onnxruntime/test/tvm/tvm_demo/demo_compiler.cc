@@ -110,7 +110,7 @@ bool TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)::Evaluate(
 // Register the always inline Scheduler to sched_registry
 static void RegisterAlwaysInlineScheduler(tvm_codegen::TVMScheduleRegistry* sched_registry) {
   sched_registry->Register(
-      std::move(onnxruntime::make_unique<TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)>()));
+      onnxruntime::make_unique<TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)>());
 }
 
 // Declare a schedule dispatcher that always dispatches the always inline Scheduler

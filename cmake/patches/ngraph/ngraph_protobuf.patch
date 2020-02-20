@@ -11,7 +11,7 @@ index 32217f5d6..d33e9c631 100644
  # This version of PROTOBUF is required by Microsoft ONNX Runtime.
  set(NGRAPH_PROTOBUF_GIT_REPO_URL "https://github.com/protocolbuffers/protobuf")
 -set(NGRAPH_PROTOBUF_GIT_TAG "v3.5.2")
-+set(NGRAPH_PROTOBUF_GIT_TAG "v3.6.1")
++set(NGRAPH_PROTOBUF_GIT_TAG "v3.11.3")
  
  if (WIN32)
      ExternalProject_Add(

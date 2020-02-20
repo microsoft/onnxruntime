@@ -6,6 +6,7 @@
 #include "core/codegen/common/common.h"
 #include "core/codegen/common/utils.h"
 #include "core/codegen/mti/mti_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
+#include "core/common/safeint.h"
 #include "core/providers/nuphar/common/analysis/subgraph_codegen_stats.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO: remove this after decoupling layout compile and run
 #include <tvm/build_module.h>                         // TODO: remove this after decoupling layout compile and run
@@ -56,13 +57,16 @@ static tvm::runtime::PackedFunc LowerLayoutFunc(const tvm_codegen::WeightLayout*
 
   std::string func_name = layout->Name() + "_marshall";
 
-  tvm::runtime::PackedFunc cached_func = nuphar::LoadTVMPackedFuncFromCache(func_name);
-
-  if (cached_func == nullptr) {
+  tvm::runtime::PackedFunc cached_func;
+  auto cache_status = nuphar::LoadTVMPackedFuncFromCache(func_name, cached_func);
+  if (cache_status != nuphar::CacheStatus::Found) {
+    ORT_ENFORCE(cached_func == nullptr);
     auto lowered = tvm::lower(S, {inputs[0], outputs[0]}, func_name, {}, config);
     auto module = tvm::build(lowered, tvm::target::llvm(), tvm::Target(), config);
     tvm_codegen::DumpTVMModuleToFile(func_name, module);
-    nuphar::SaveTVMModuleToCache(func_name, module);
+    if (cache_status == nuphar::CacheStatus::Missing) {
+      nuphar::SaveTVMModuleToCache(func_name, module);
+    }
     cached_func = module.GetFunction(func_name);
   }
   return cached_func;
@@ -93,7 +97,7 @@ static const Tensor* Marshalling(
   auto byte_size = original_initializer->DataType()->Size();
 
   std::unique_ptr<Tensor> out_ptr;
-  void* p_data = allocator->Alloc(marshalled_size * byte_size);
+  void* p_data = allocator->Alloc(SafeInt<size_t>(marshalled_size) * byte_size);
   out_ptr = onnxruntime::make_unique<Tensor>(
       original_initializer->DataType(),
       TensorShape(marshalled_shape),

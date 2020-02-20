@@ -1,4 +1,4 @@
-[submodule "external/protobuf"]
+[submodule "cmake/external/protobuf"]
 	path = cmake/external/protobuf
 	url = https://github.com/google/protobuf.git
 [submodule "cmake/external/googletest"]
@@ -24,16 +24,10 @@
 	url = https://github.com/google/re2.git
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
-	url = https://github.com/eigenteam/eigen-git-mirror.git
-[submodule "cmake/external/grpc"]
-	path = cmake/external/grpc
-	url = https://github.com/grpc/grpc
+	url = https://gitlab.com/libeigen/eigen.git
 [submodule "cmake/external/DNNLibrary"]
 	path = cmake/external/DNNLibrary
 	url = https://github.com/JDAI-CV/DNNLibrary
-[submodule "cmake/external/spdlog"]
-	path = cmake/external/spdlog
-	url = https://github.com/gabime/spdlog.git
 [submodule "cmake/external/mimalloc"]
 	path = cmake/external/mimalloc
 	url = https://github.com/microsoft/mimalloc.git
@@ -43,9 +37,18 @@
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
 	url = https://github.com/microsoft/wil
-[submodule "cmake/external/onnx-tensorrt"]
-	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
 [submodule "cmake/external/json"]
 	path = cmake/external/json
 	url = https://github.com/nlohmann/json
+[submodule "server/external/spdlog"]
+	path = server/external/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "cmake/external/FeaturizersLibrary"]
+	path = cmake/external/FeaturizersLibrary
+	url = https://github.com/microsoft/FeaturizersLibrary.git
+[submodule "cmake/external/onnx-tensorrt"]
+	path = cmake/external/onnx-tensorrt
+	url = https://github.com/stevenlix/onnx-tensorrt.git
+[submodule "cmake/external/SafeInt/safeint"]
+	path = cmake/external/SafeInt/safeint
+	url = https://github.com/dcleblanc/SafeInt.git

@@ -25,11 +25,26 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
-add_library(onnxruntime SHARED ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+if(WIN32)
+    add_library(onnxruntime SHARED 
+      ${SYMBOL_FILE}
+      "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
+      "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
+    )
+else()
+    add_library(onnxruntime SHARED ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+endif()
+
 set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(onnxruntime)
+
+target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -37,12 +52,12 @@ endif()
 
 if(UNIX)
   if (APPLE)
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -dead_strip")
+    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections")
+    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
-  set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${SYMBOL_FILE}")
+  set(ONNXRUNTIME_SO_LINK_FLAG " -DEF:${SYMBOL_FILE}")
 endif()
 
 if (NOT WIN32)
@@ -53,7 +68,6 @@ if (NOT WIN32)
   endif()
 endif()
 
-#The BEGIN_WHOLE_ARCHIVE/END_WHOLE_ARCHIVE part should contain the implementations of all the C API functions
 target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
@@ -66,6 +80,7 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
+    ${onnxruntime_winml}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -80,7 +95,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG})
+set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
 if(onnxruntime_ENABLE_LTO)
   set_target_properties(onnxruntime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)

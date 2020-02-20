@@ -611,7 +611,7 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
   onnxruntime::RunOptions run_options;
   st = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(st.IsOK()) << st;
-  ASSERT_EQ(2, fetches.size());
+  ASSERT_EQ(2u, fetches.size());
 
   // prepare expected outputs
   float expected_value_b = 6.f;
@@ -620,7 +620,8 @@ TEST(Loop, SubgraphInputShadowsOuterScopeValue) {
 
   auto& b_out = fetches[0].Get<Tensor>();
   TensorShape expected_shape(scalar);
-  ASSERT_EQ(expected_shape, b_out.Shape());
+  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
+  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&b_out.Shape()));
   ASSERT_EQ(b_out.DataAsSpan<float>()[0], expected_value_b);
 
   auto user_defined_vals_out = fetches[1].Get<Tensor>().DataAsSpan<float>();

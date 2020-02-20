@@ -29,8 +29,6 @@ using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
 
-std::atomic<bool> Environment::is_initialized_{false};
-
 Status Environment::Create(std::unique_ptr<Environment>& environment) {
   environment = std::unique_ptr<Environment>(new Environment());
   auto status = environment->Initialize();
@@ -94,8 +92,6 @@ Internal copy node
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
-
-    is_initialized_ = true;
   } catch (std::exception& ex) {
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION, std::string{"Exception caught: "} + ex.what()};
   } catch (...) {
@@ -103,10 +99,6 @@ Internal copy node
   }
 
   return status;
-}
-
-Environment::~Environment() {
-  ::google::protobuf::ShutdownProtobufLibrary();
 }
 
 }  // namespace onnxruntime

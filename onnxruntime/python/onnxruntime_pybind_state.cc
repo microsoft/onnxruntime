@@ -110,7 +110,7 @@ std::string nuphar_settings;
 
 namespace onnxruntime {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CPU(int use_arena);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
@@ -587,7 +587,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_property(
           "graph_optimization_level",
           [](const SessionOptions* options) -> GraphOptimizationLevel {
-            GraphOptimizationLevel retval = ORT_ENABLE_BASIC;
+            GraphOptimizationLevel retval = ORT_ENABLE_ALL;
             switch (options->graph_optimization_level) {
               case onnxruntime::TransformerLevel::Default:
                 retval = ORT_DISABLE_ALL;
@@ -602,8 +602,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                 retval = ORT_ENABLE_ALL;
                 break;
               default:
-                retval = ORT_ENABLE_BASIC;
-                LOGS_DEFAULT(WARNING) << "Got invalid graph optimization level; defaulting to ORT_ENABLE_BASIC";
+                retval = ORT_ENABLE_ALL;
+                LOGS_DEFAULT(WARNING) << "Got invalid graph optimization level; defaulting to ORT_ENABLE_ALL";
                 break;
             }
             return retval;

@@ -4,7 +4,7 @@
 #include "precomp.h"
 #include "GraphDescBuilder.h"
 
-using namespace winrt::Windows::AI::MachineLearning::implementation;
+using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml::GraphDescBuilder
 {
@@ -127,7 +127,7 @@ namespace Dml::GraphDescBuilder
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
             const GraphNodeProperties& graphNodeProps = graphNodePropertyMap.find(GetUniqueNodeName(node))->second;
-            const auto& requiredConstantCpuInputs = graphNodeProps.graphNodeFactoryRegistration->requiredConstantCpuInputs;
+            const auto& requiredConstantCpuInputs = graphNodeProps.internalRegInfo->requiredConstantCpuInputs;
 
             MLOperatorTensorGetter constantCpuNodeInputGetter = [&node, &constantCpuGraphInputGetter, &requiredConstantCpuInputs](uint32_t inputIndex)
             {
@@ -144,7 +144,7 @@ namespace Dml::GraphDescBuilder
             };
 
             DmlGraphNodeCreateInfo graphNodeInfo;
-            graphNodeProps.graphNodeFactoryRegistration->factory(
+            graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
