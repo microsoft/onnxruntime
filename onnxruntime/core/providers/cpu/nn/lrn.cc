@@ -16,6 +16,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/lrn.h"
+
+#include "core/common/safeint.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -44,13 +46,13 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   const int Xsize = gsl::narrow_cast<int>(X->Shape().Size());
-  auto sdata = alloc->Alloc(sizeof(float) * Xsize);
+  auto sdata = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * Xsize);
   BufferUniquePtr scale_buffer(sdata, BufferDeleter(alloc));
   auto* scale_data = static_cast<float*>(scale_buffer.get());
   math::Set<float, CPUMathUtil>(Xsize, bias_, scale_data, &CPUMathUtil::Instance());
 
   const size_t padded_square_size = (C + size_ - 1) * H * W;
-  auto psdata = alloc->Alloc(sizeof(float) * padded_square_size);
+  auto psdata = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * padded_square_size);
   BufferUniquePtr padded_square_buffer(psdata, BufferDeleter(alloc));
   auto* padded_square_data = static_cast<float*>(padded_square_buffer.get());
   math::Set<float, CPUMathUtil>(padded_square_size, 0.0f, padded_square_data, &CPUMathUtil::Instance());

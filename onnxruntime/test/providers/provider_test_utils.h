@@ -19,6 +19,7 @@
 #include "test/util/include/gtest_utils.h"  // ASSERT/EXPECT_STATUS_OK()
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
+#include "test/util/include/asserts.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
