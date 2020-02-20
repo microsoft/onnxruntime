@@ -96,6 +96,8 @@ class Model {
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto();
 
+  bool InputsUseFP16();
+
 #ifdef _WIN32
   static common::Status Save(Model& model, const std::wstring& file_path);
 #endif

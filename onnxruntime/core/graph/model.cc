@@ -231,6 +231,10 @@ ModelProto Model::ToProto() {
   return *model_proto_;
 }
 
+bool Model::InputsUseFP16() {
+  return graph_->InputsUseFP16();
+}
+
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!model_istream.good()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid istream object.");

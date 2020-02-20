@@ -741,48 +741,6 @@ common::Status InferenceSession::InitializeSubgraphSessions(Graph& graph, Sessio
   return Status::OK();
 }
 
-static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
-  switch (type_proto.value_case()) {
-    case ::onnx::TypeProto::ValueCase::kTensorType: {
-      if (type_proto.has_tensor_type()) {
-        auto& tensor_type = type_proto.tensor_type();
-        if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-          return true;
-        }
-      }
-      break;
-    }
-    case ::onnx::TypeProto::ValueCase::kSequenceType: {
-      if (type_proto.has_sequence_type()) {
-        auto& sequence_type = type_proto.sequence_type();
-        return ModelUseFP16Helper(sequence_type.elem_type());
-      }
-      break;
-    }
-    case ::onnx::TypeProto::ValueCase::kMapType: {
-      if (type_proto.has_map_type()) {
-        auto& map_type = type_proto.map_type();
-        return ModelUseFP16Helper(map_type.value_type());
-      }
-      break;
-    }
-    default:
-      break;
-  }
-  return false;
-}
-
-static bool ModelUseFP16(const onnx::ModelProto& model_proto) {
-  auto& graph = model_proto.graph();
-  auto& inputs = graph.input();
-  for (auto& input : inputs) {
-    if (input.has_name() && input.has_type() && ModelUseFP16Helper(input.type())) {
-      return true;
-    }
-  }
-  return false;
-}
-
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -874,10 +832,9 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // and log telemetry
-    bool model_use_fp16 = ModelUseFP16(model_->ToProto());
     env.GetTelemetryProvider().LogSessionCreation(session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(),
                                                   model_->Domain(), model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(),
-                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_use_fp16);
+                                                  model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_->InputsUseFP16());
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   } catch (const NotImplementedException& ex) {
