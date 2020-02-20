@@ -102,71 +102,46 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
 }
 }  // namespace onnxruntime
 #else
-#ifdef USE_NSYNC
 #include "nsync.h"
 #include <mutex>               //for unique_lock
 #include <condition_variable>  //for cv_status
-#else
-#include <pthread.h>
-#include <mutex>
-#include <condition_variable>
-#include <chrono>
-#include <cmath>
-#endif
 namespace onnxruntime {
 
 class OrtMutex {
-#ifdef USE_NSYNC
   nsync::nsync_mu data_ = NSYNC_MU_INIT;
-#else
-  pthread_mutex_t data_ = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
  public:
   constexpr OrtMutex() = default;
-#ifdef USE_NSYNC
   ~OrtMutex() = default;
-#else
-  ~OrtMutex();
-#endif
-
   OrtMutex(const OrtMutex&) = delete;
   OrtMutex& operator=(const OrtMutex&) = delete;
 
-  void lock();
-  bool try_lock() noexcept;
-  void unlock() noexcept;
+  void lock() { nsync::nsync_mu_lock(&data_); }
+  bool try_lock() noexcept { return nsync::nsync_mu_trylock(&data_) == 0; }
+  void unlock() noexcept { nsync::nsync_mu_unlock(&data_); }
 
-#ifdef USE_NSYNC
   using native_handle_type = nsync::nsync_mu*;
-#else
-  using native_handle_type = pthread_mutex_t*;
-#endif
   native_handle_type native_handle() { return &data_; }
 };
 
 class OrtCondVar {
-#ifdef USE_NSYNC
   nsync::nsync_cv native_cv_object = NSYNC_CV_INIT;
-#else
-  pthread_cond_t native_cv_object = PTHREAD_COND_INITIALIZER;
-#endif
  public:
   constexpr OrtCondVar() noexcept = default;
 
-#ifdef USE_NSYNC
   ~OrtCondVar() = default;
-#else
-  ~OrtCondVar();
-#endif
-
   OrtCondVar(const OrtCondVar&) = delete;
   OrtCondVar& operator=(const OrtCondVar&) = delete;
 
-  void notify_one() noexcept;
-  void notify_all() noexcept;
+  void notify_one() noexcept { nsync::nsync_cv_signal(&native_cv_object); }
+  void notify_all() noexcept { nsync::nsync_cv_broadcast(&native_cv_object); }
 
-  void wait(std::unique_lock<OrtMutex>& __lk);
+  void wait(std::unique_lock<OrtMutex>& lk) {
+#ifndef NDEBUG
+    if (!lk.owns_lock())
+      throw std::runtime_error("OrtCondVar wait failed: mutex not locked");
+#endif
+    nsync::nsync_cv_wait(&native_cv_object, lk.mutex()->native_handle());
+  }
   template <class _Predicate>
   void wait(std::unique_lock<OrtMutex>& __lk, _Predicate __pred);
 
@@ -180,12 +155,7 @@ class OrtCondVar {
    */
   template <class Rep, class Period>
   std::cv_status wait_for(std::unique_lock<OrtMutex>& cond_mutex, const std::chrono::duration<Rep, Period>& rel_time);
-#ifdef USE_NSYNC
   using native_handle_type = nsync::nsync_cv*;
-#else
-  using native_handle_type = pthread_cond_t*;
-#endif
-
   native_handle_type native_handle() { return &native_cv_object; }
 
  private:
