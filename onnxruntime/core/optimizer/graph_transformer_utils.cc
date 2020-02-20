@@ -4,6 +4,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/slice_elimination.h"
+#include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -107,6 +108,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       std::unordered_set<std::string> l1_execution_providers = {};
 
       transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
