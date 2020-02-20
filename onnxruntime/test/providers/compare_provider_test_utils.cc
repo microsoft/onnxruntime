@@ -4,7 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
-#include "orttraining/test/training_ops/compare_provider_test_utils.h"
+#include "test/providers/compare_provider_test_utils.h"
 
 #include "test/compare_ortvalue.h"
 
@@ -128,7 +128,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
 
   //compare
   ASSERT_TRUE(cpu_fetches.size() == target_fetches.size());
-  for (auto i = 0; i < cpu_fetches.size(); i++) {
+  for (size_t i = 0; i < cpu_fetches.size(); i++) {
     auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], per_sample_tolerance, relative_per_sample_tolerance, false);
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
