@@ -555,11 +555,6 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         has_unsupported_dimension = true;
         return;
       }
-      //VPU devices can't run 1D inputs
-      if (device_id == "VPU" && shape->dim_size() == 1){
-        has_unsupported_dimension = true;
-        return;
-      }
       //Reject 1D symbolic shapes
       else if (shape->dim_size() == 1 && utils::HasDimParam(shape->dim(0))) {
         has_unsupported_dimension = true;
