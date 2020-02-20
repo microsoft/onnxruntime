@@ -45,7 +45,9 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
     excluded_eps.insert(kNGraphExecutionProvider);
     excluded_eps.insert(kIntelExecutionProvider);
   }
-  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+
+  //Intel: Disabled due to software limitations
+  #if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
     excluded_eps.insert(kIntelExecutionProvider);
   #endif
   test.Run(expect_result, err_str, excluded_eps);

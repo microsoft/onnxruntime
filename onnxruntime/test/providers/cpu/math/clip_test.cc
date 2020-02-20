@@ -22,7 +22,11 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-  test.Run();
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider});
+  #else
+    test.Run();
+  #endif
 }
 
 TEST(MathOpTest, Clip_Default) {
@@ -38,8 +42,11 @@ TEST(MathOpTest, Clip_Default) {
                          -1.3f, 3.5f, 64.0f,
                          -5.4f, 9.3f, 82.4f});
 
-  // nGraph does not support Clip opset 11 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});
+  #if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider, kNGraphExecutionProvider});
+  #else
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNGraphExecutionProvider});// nGraph does not support Clip opset 11 yet.
+  #endif
 }
 
 TEST(MathOpTest, Clip) {

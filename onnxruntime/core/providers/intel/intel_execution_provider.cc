@@ -154,9 +154,15 @@ bool IsUnsupportedOp(std::string name, std::string device) {
       "Asin",
       "Asinh",
       "HardSigmoid",
-      "Softsign"
+      "Softsign",
       "Atan",
       "Atanh",
+      "Sin",
+      "Tan",
+      "Mod",
+      "Atan",
+      "Sinh",
+      "Sign",
       "Cos",
       "Cosh"};
 
@@ -453,7 +459,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
         ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8,
-        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8
+        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
     };
 
     std::set<int> supported_types_gpu = {
@@ -541,9 +547,10 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   //Check 2
 
   bool has_unsupported_dimension = false;
-  node->ForEachDef([&has_unsupported_dimension](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
+  node->ForEachDef([&has_unsupported_dimension, &device_id](const onnxruntime::NodeArg& node_arg, bool /*is_input*/) {
     auto shape = node_arg.Shape();
     if (shape != nullptr) {
+      //Can't have no dimensions
       if (shape->dim_size() == 0) {
         has_unsupported_dimension = true;
         return;
@@ -553,6 +560,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
         has_unsupported_dimension = true;
         return;
       } else {
+        //Zero dimension check
         for (const auto& dim : shape->dim()) {
           if (!utils::HasDimParam(dim) && dim.dim_value() == 0) {
             has_unsupported_dimension = true;
@@ -766,6 +774,7 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
 
   //TODO: Handle If and Loop operators
   if (graph_viewer.IsSubgraph()) {
