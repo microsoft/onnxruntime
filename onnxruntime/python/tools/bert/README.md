@@ -33,7 +33,13 @@ def export_onnx(args, model, output_path):
 ```
 
 ## Convert an BERT model from Tensorflow
-Please refer to this notebook: https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb
+
+The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
+
+For Keras2onnx, please refere to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
+
+For tf2onnx, please refer to this notebook: https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb
+
 
 ## Model Optimization
 
@@ -48,8 +54,8 @@ See below for description of all the options:
 
 - **input**: input model path
 - **output**: output model path
-- **framework**:
-    Original framework. Only support TensorFlow and PyTorch
+- **model_type**: (*defaul: bert*)
+    There are 3 model types: *bert*, *bert_tf* and *bert_keras* for models exported by PyTorch, tf2onnx and keras2onnx respectively.
 - **num_heads**: (*default: 12*)
     Number of attention heads, like 24 for BERT-large model.
 - **hidden_size**: (*default: 768*)
@@ -63,5 +69,16 @@ See below for description of all the options:
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
-- **run_onnxruntime**: (*optional*)
-    Use onnxruntime to do optimization. This option is only avaiable for pytorch model right now.
+
+## Supported Models
+
+Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs, and attention mask. A model with less or addtional inputs might not be optimized.
+
+Most optimizations require exact match of a subgraph. That means this tool could only support similar models with such subgraphs. Any layout change in subgraph might cause optimization not working. Note that different training or export tool (including different versions) might get different graph layouts.
+
+Here is list of models that have been tested using this tool:
+- **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
+- **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
+- **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx 1.6.0.
+
+If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.

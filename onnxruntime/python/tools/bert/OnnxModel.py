@@ -4,20 +4,19 @@
 #--------------------------------------------------------------------------
 
 import logging
-import onnx
 import sys
 import argparse
 import numpy as np
 from collections import deque
+import onnx
 from onnx import ModelProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 
 class OnnxModel:
-    def __init__(self, model, verbose):
+    def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
-        self.verbose = verbose
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}
@@ -84,7 +83,7 @@ class OnnxModel:
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
-    def get_initializer(self,name):
+    def get_initializer(self, name):
         for tensor in self.model.graph.initializer:
             if tensor.name == name:
                 return tensor
@@ -146,7 +145,8 @@ class OnnxModel:
                 parent = output_name_to_node[input]
                 if parent.op_type == parent_op_type and parent not in exclude:
                     return parent, i
-
+                else:
+                    logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")
         return None, None
 
     def match_parent(self, node, parent_op_type, input_index=None, output_name_to_node=None, exclude=[], return_indice=None):
@@ -178,11 +178,15 @@ class OnnxModel:
             return parent
 
         if input_index >= len(node.input):
+            logger.debug(f"input_index {input_index} >= node inputs {len(node.input)}")
             return None
 
         parent = self.get_parent(node, input_index, output_name_to_node)
         if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
             return parent
+
+        if parent is not None:
+            logger.debug(f"Expect {parent_op_type}, Got {parent.op_type}")
 
         return None
 
@@ -211,6 +215,7 @@ class OnnxModel:
         for i, op_type in enumerate(parent_op_types):
             matched_parent = self.match_parent(current_node, op_type, parent_input_index[i], output_name_to_node, exclude=[], return_indice=return_indice)
             if matched_parent is None:
+                logger.debug(f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}")
                 return None
 
             matched_parents.append(matched_parent)
@@ -369,7 +374,6 @@ class OnnxModel:
 
         return full_name
 
-
     def find_graph_input(self, input_name):
         for input in self.model.graph.input:
             if input.name == input_name:
@@ -404,6 +408,23 @@ class OnnxModel:
 
         return unique_nodes
 
+    def get_graph_inputs(self, current_node, recursive=False):
+        """
+        Find graph inputs that linked to current node.
+        """
+        graph_inputs = []
+        for input in current_node.input:
+            if self.find_graph_input(input) and input not in graph_inputs:
+                graph_inputs.append(input)
+
+        if recursive:
+            parent_nodes = self.get_parent_subgraph_nodes(current_node, [])
+            for node in parent_nodes:
+                for input in node.input:
+                    if self.find_graph_input(input) and input not in graph_inputs:
+                        graph_inputs.append(input)
+        return graph_inputs
+
     @staticmethod
     def input_index(node_output, child_node):
         index = 0
@@ -428,7 +449,57 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.info(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def update_graph(self):
+    def prune_graph(self, outputs=None):
+        """
+        Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
+        Nodes are not linked (directly or indirectly) to any required output will be removed.
+
+        Args:
+            outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
+        """
+        if outputs is None:
+            outputs = [output.name for output in self.model.graph.output]
+
+        output_name_to_node = self.output_name_to_node()
+        all_nodes = []
+        for output in outputs:
+            if output in output_name_to_node:
+                last_node = output_name_to_node[output]
+                if last_node in all_nodes:
+                    continue
+                nodes = self.get_parent_subgraph_nodes(last_node, [])
+                all_nodes.append(last_node)
+                all_nodes.extend(nodes)
+
+        nodes_to_remove = []
+        for node in self.model.graph.node:
+            if node not in all_nodes:
+                nodes_to_remove.append(node)
+
+        self.remove_nodes(nodes_to_remove)
+
+        # remove outputs not in list
+        output_to_remove=[]
+        for output in self.model.graph.output:
+            if output.name not in outputs:
+                output_to_remove.append(output)
+        for output in output_to_remove:
+            self.model.graph.output.remove(output)
+
+        # remove inputs not used by any node.
+        input_name_to_nodes = self.input_name_to_nodes()
+        input_to_remove=[]
+        for input in self.model.graph.input:
+            if input.name not in input_name_to_nodes:
+                input_to_remove.append(input)
+        for input in input_to_remove:
+            self.model.graph.input.remove(input)
+
+        logger.info("Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(len(input_to_remove), len(output_to_remove), len(nodes_to_remove)))
+
+        self.update_graph()
+
+    def update_graph(self, verbose=False):
         graph = self.model.graph
 
         remaining_input_names = []
@@ -437,8 +508,8 @@ class OnnxModel:
                 for input_name in node.input:
                     if input_name not in remaining_input_names:
                         remaining_input_names.append(input_name)
-        if self.verbose:
-            logger.info(f"remaining input names: {remaining_input_names}" )
+        if verbose:
+            logger.debug(f"remaining input names: {remaining_input_names}" )
 
         # remove graph input that is not used
         inputs_to_remove = []
@@ -447,9 +518,9 @@ class OnnxModel:
                 inputs_to_remove.append(input)
         for input in inputs_to_remove:
             graph.input.remove(input)
-        if self.verbose:
-            names_to_remove = [input.name for input in inputs_to_remove]
-            logger.info(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
+
+        names_to_remove = [input.name for input in inputs_to_remove]
+        logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
         
         # remove weights that are not used
         weights_to_remove = []
@@ -462,10 +533,10 @@ class OnnxModel:
         for initializer in weights_to_remove:
             graph.initializer.remove(initializer)
 
-        if self.verbose:
-            names_to_remove = [initializer.name for initializer in weights_to_remove]
-            logger.info(f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}")
-            logger.info(f"remaining initializers:{weights_to_keep}")
+        names_to_remove = [initializer.name for initializer in weights_to_remove]
+        logger.debug(f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}")
+        if verbose:
+            logger.debug(f"remaining initializers:{weights_to_keep}")
 
         self.remove_unused_constant()
 
@@ -478,7 +549,17 @@ class OnnxModel:
                 if output_to_remove in input_name_to_nodes:
                     for impacted_node in input_name_to_nodes[output_to_remove]:
                         if impacted_node not in nodes_to_remove:
-                            if self.verbose:
-                                logger.warning(f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}")
+                            logger.debug(f"it is not safe to remove nodes since output {output_to_remove} is used by {impacted_node}")
                             return False
         return True
+
+    def save_model_to_file(self, output_path):
+        logger.info(f"Output model to {output_path}")
+
+        if output_path.endswith(".json"):
+            assert isinstance(self.model, ModelProto)
+            with open(output_path, "w") as out:
+                out.write(str(self.model))
+        else:
+            with open(output_path, "wb") as out:
+                out.write(self.model.SerializeToString())
