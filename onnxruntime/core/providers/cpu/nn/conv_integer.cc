@@ -58,18 +58,16 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims;
-  Y_dims.insert(Y_dims.begin(), {N, M});
+  std::vector<int64_t> Y_dims({N, M});
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims));
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(2);
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-
-  const auto* Xdata = X->template Data<uint8_t>();
-  auto* Ydata = Y->template MutableData<int32_t>();
+  // Bail out early if one of the dimensions is zero.
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
@@ -80,53 +78,72 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
   const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-  auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
-  BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+  const size_t kernel_rank = kernel_shape.size();
+
+  BufferUniquePtr col_buffer;
+  std::vector<int64_t> col_buffer_shape;
+
+  // Pointwise convolutions can use the original input tensor in place,
+  // otherwise a temporary buffer is required for the im2col transform.
+  if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+    auto* col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+
+    if (kernel_rank != 2) {
+      const auto& output_dims = output_shape.GetDims();
+      col_buffer_shape.reserve(1 + output_dims.size());
+      col_buffer_shape.push_back(kernel_dim);
+      col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
+    }
+  }
+
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
-  TensorShape image_shape = X->Shape().Slice(1);
-  std::vector<int64_t> col_buffer_shape{kernel_dim};
-  col_buffer_shape.insert(col_buffer_shape.end(), output_shape.GetDims().begin(),
-                          output_shape.GetDims().end());
-
-  const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+
+  const auto* Xdata = X->template Data<uint8_t>();
+  auto* Ydata = Y->template MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      if (kernel_rank == 2) {
-        math::Im2col<uint8_t, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            C / conv_attrs_.group,
-            input_shape[0],
-            input_shape[1],
-            kernel_shape[0],
-            kernel_shape[1],
-            dilations[0],
-            dilations[1],
-            pads[0],
-            pads[1],
-            pads[2],
-            pads[3],
-            strides[0],
-            strides[1],
-            col_buffer_data,
-            input_offset);
-      } else {
-        math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            image_shape.GetDims().data(),
-            col_buffer_shape.data(),
-            C * input_image_size,
-            col_buffer_size,
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<int>(kernel_shape.size()),
-            col_buffer_data,
-            false,
-            input_offset);
+      if (col_buffer_data != nullptr) {
+        if (kernel_rank == 2) {
+          math::Im2col<uint8_t, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              C / conv_attrs_.group,
+              input_shape[0],
+              input_shape[1],
+              kernel_shape[0],
+              kernel_shape[1],
+              dilations[0],
+              dilations[1],
+              pads[0],
+              pads[1],
+              pads[2],
+              pads[3],
+              strides[0],
+              strides[1],
+              col_buffer_data,
+              input_offset);
+        } else {
+          math::Im2colNd<uint8_t, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              X->Shape().GetDims().data() + 1,
+              col_buffer_shape.data(),
+              C * input_image_size,
+              col_buffer_size,
+              kernel_shape.data(),
+              strides.data(),
+              dilations.data(),
+              pads.data(),
+              static_cast<int>(kernel_rank),
+              col_buffer_data,
+              false,
+              input_offset);
+        }
       }
 
       QGemmu8u8_s32(static_cast<int>(M / conv_attrs_.group),
@@ -135,7 +152,7 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
                     W->template Data<uint8_t>() + group_id * W_offset,
                     static_cast<int>(kernel_dim),
                     filter_offset,
-                    col_buffer_data,
+                    col_buffer_data == nullptr ? Xdata + group_id * X_offset : col_buffer_data,
                     static_cast<int>(output_image_size),
                     input_offset,
                     Ydata + group_id * Y_offset,

@@ -123,7 +123,7 @@ elseif (APPLE)
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${PYTHON_LIBRARY} ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\$ORIGIN")
 endif()
 

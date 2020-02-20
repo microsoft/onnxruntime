@@ -138,6 +138,24 @@ struct NchwcTestHelper {
     return node;
   }
 
+  Node& AddTransposeNode(NodeArg* input_arg, NodeArg* output_arg, const std::vector<int64_t>& perm) {
+    auto& node = AddNode("Transpose", {input_arg}, {output_arg});
+    node.AddAttribute("perm", perm);
+    return node;
+  }
+
+  Node& AddTransposeToNchwNode(NodeArg* input_arg, NodeArg* output_arg) {
+    return AddTransposeNode(input_arg, output_arg, {0, 3, 1, 2});
+  }
+
+  Node& AddTransposeToNhwcNode(NodeArg* input_arg, NodeArg* output_arg) {
+    return AddTransposeNode(input_arg, output_arg, {0, 2, 3, 1});
+  }
+
+  Node& AddTransposeToCnhwNode(NodeArg* input_arg, NodeArg* output_arg) {
+    return AddTransposeNode(input_arg, output_arg, {1, 0, 2, 3});
+  }
+
   std::vector<float> FillRandomData(size_t count) {
     constexpr int min_fill_value = -23;
     constexpr int max_fill_value = 23;
@@ -933,6 +951,37 @@ TEST(NchwcOptimizerTests, TensorAlignment) {
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
+TEST(NchwcOptimizerTests, IntermediatesAsGraphOutputs) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput({1, 48, 34, 34});
+    auto* conv_output_arg = helper.MakeOutput();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {112, 48, 4, 4});
+
+    auto& pool_node = helper.AddNode("MaxPool", {conv_output_arg}, {output_arg});
+    pool_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 3, 3});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{4, 4});
+
+    // conv_output_arg is not marked as an output by default because the node
+    // argument is used as an input to another node, so the graph outputs must
+    // be set explicitly.
+    helper.graph_.SetOutputs({output_arg, conv_output_arg});
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["nchwc.MaxPool"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 2);
+  };
+
+  // Verify that intermediates used inside the graph but that are also graph
+  // outputs result in the expected number of ReorderOutput nodes.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
 TEST(NchwcOptimizerTests, BatchNormalization) {
   auto test_case = [&](bool training_outputs) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
@@ -1008,6 +1057,75 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
   // outputs supplied.
   test_case(false);
   test_case(true);
+}
+
+TEST(NchwcOptimizerTests, ConvReorderOutputNhwc) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput({1, 64, 28, 32});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* nhwc_output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {130, 64, 1, 1});
+    helper.AddTransposeToNhwcNode(conv_output_arg, nhwc_output_arg);
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  // Verify that a NHWC transpose is fused into ReorderOutput.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+TEST(NchwcOptimizerTests, ConvReorderOutputBoth) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput({5, 64, 33, 37});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* nchw_output_arg = helper.MakeOutput();
+    auto* nhwc_output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {7, 64, 1, 1});
+    helper.AddTransposeToNhwcNode(conv_output_arg, nhwc_output_arg);
+    helper.AddNode("Neg", {conv_output_arg}, {nchw_output_arg});
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  // Verify that if an output argument is used as both NCHW and NHWC, then
+  // two ReorderOutput nodes are inserted.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+}
+
+TEST(NchwcOptimizerTests, ConvReorderOutputCnhw) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto* input_arg = helper.MakeInput({1, 64, 28, 32});
+    auto* conv_output_arg = helper.MakeIntermediate();
+    auto* nhwc_output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input_arg, conv_output_arg, {130, 64, 1, 1});
+    helper.AddTransposeToCnhwNode(conv_output_arg, nhwc_output_arg);
+  };
+
+  auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
+    auto op_to_count = session.CountOpsInGraph();
+    EXPECT_EQ(op_to_count["nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderInput"], 1);
+    EXPECT_EQ(op_to_count["nchwc.ReorderOutput"], 1);
+    EXPECT_EQ(op_to_count["Transpose"], 1);
+  };
+
+  // Verify that a CNHW transpose is not fused into ReorderOutput.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
 #endif

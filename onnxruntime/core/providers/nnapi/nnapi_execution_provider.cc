@@ -34,7 +34,11 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
 std::vector<std::vector<int>> NnapiExecutionProvider::GetSupportedNodes(const ONNX_NAMESPACE::ModelProto& model_proto) const {
   dnn::OnnxConverter converter;
-  return converter.GetSupportedNodes(model_proto);
+  const auto nodes = converter.GetSupportedNodes(model_proto);
+  if (!nodes) {
+      return {{}};
+  }
+  return nodes.value();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

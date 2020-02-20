@@ -33,12 +33,32 @@ from onnx import ModelProto, TensorProto, numpy_helper
 import onnxruntime
 from BertOnnxModel import BertOnnxModel
 from BertOnnxModelTF import BertOnnxModelTF
+from BertOnnxModelKeras import BertOnnxModelKeras
 
 logger = logging.getLogger('')
 
-def run_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None):
+# Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx) and whether OnnxRuntime has the optimization.
+MODEL_CLASSES = {
+    "bert" : (BertOnnxModel, "pytorch", True),
+    "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
+    "bert_keras" : (BertOnnxModelKeras, "keras2onnx", False)
+}
+
+def optimize_by_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None):
+    """
+    Use onnxruntime package to optimize model. It could support models exported by PyTorch.
+
+    Args:
+        onnx_model_path (str): th path of input onnx model.
+        use_gpu (bool): whether the optimized model is targeted to run in GPU.
+        optimized_model_path (str or None): the path of optimized model.
+
+    Returns:
+        optimized_model_path: the path of optimized model
+    """
     if use_gpu and 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
         logger.error("There is no gpu for onnxruntime to do optimization.")
+        return onnx_model_path
 
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
@@ -61,85 +81,79 @@ def run_onnxruntime(onnx_model_path, use_gpu, optimized_model_path=None):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', required=True, type=str)
-    parser.add_argument('--output', required=True, type=str)
-    parser.add_argument('--framework', required=True, type=str.lower, choices=["tensorflow", "pytorch"], help="Original framework")
+    parser.add_argument('--input', required=True, type=str,
+                        help="input onnx model path")
 
-    # model parameters.
-    parser.add_argument('--num_heads', required=False, type=int, default=12, help="number of attention heads")
-    parser.add_argument('--hidden_size', required=False, type=int, default=768)
-    parser.add_argument('--sequence_length', required=False, type=int, default=128)
+    parser.add_argument('--output', required=True, type=str,
+                        help="optimized onnx model path")
 
-    # Use int32 (instead of int64) tensor as input to avoid unnecessary data
-    # type cast.
-    parser.add_argument('--input_int32', required=False, action='store_true')
+    parser.add_argument('--model_type', required=False, type=str.lower, default="bert",
+                        choices=list(MODEL_CLASSES.keys()),
+                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+
+    parser.add_argument('--num_heads', required=False, type=int, default=12,
+                        help="number of attention heads")
+
+    parser.add_argument('--hidden_size', required=False, type=int, default=768,
+                        help="bert model hidden size. 768 for base model and 1024 for large")
+
+    parser.add_argument('--sequence_length', required=False, type=int, default=128,
+                        help="max sequence length")
+
+    parser.add_argument('--input_int32', required=False, action='store_true',
+                         help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast")
     parser.set_defaults(input_int32=False)
 
-    # For NVidia GPU with Tensor Core like V100 and T4, half-precision float
-    # brings better performance.
-    parser.add_argument('--float16', required=False, action='store_true')
+    parser.add_argument('--float16', required=False, action='store_true',
+                        help="If your target device is V100 or T4 GPU, use this to convert float32 to float16 for best performance")
     parser.set_defaults(float16=False)
 
-    parser.add_argument('--gpu_only', required=False, action='store_true')
+    parser.add_argument('--gpu_only', required=False, action='store_true',
+                        help="whether the target device is gpu or not")
     parser.set_defaults(gpu_only=False)
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
 
-    parser.add_argument('--use_onnxruntime', required=False, action='store_true')
-    parser.set_defaults(use_onnxruntime=False)
-
     args = parser.parse_args()
 
     return args
 
-def optimize_model(input, framework, gpu_only, num_heads, hidden_size, sequence_length, input_int32, float16, verbose):
+def optimize_model(input, model_type, gpu_only, num_heads, hidden_size, sequence_length, input_int32, float16):
+    (optimizer_class, framework, run_onnxruntime) = MODEL_CLASSES[model_type]
+
+    input_model_path = input
+    if run_onnxruntime:
+        input_model_path = optimize_by_onnxruntime(input_model_path, gpu_only)
+        logger.info("Use OnnxRuntime to optimize and save the optimized model to {}".format(input_model_path))
+
     model = ModelProto()
-    with open(input, "rb") as f:
+    with open(input_model_path, "rb") as f:
         model.ParseFromString(f.read())
 
-    if framework == 'tensorflow':
-        bert_model = BertOnnxModelTF(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only, verbose)
-    else: #framework == 'pytorch'
-        bert_model = BertOnnxModel(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only, verbose)
-
+    bert_model = optimizer_class(model, num_heads, hidden_size, sequence_length, input_int32, float16, gpu_only)
     bert_model.optimize()
-    
-    return bert_model
 
-def output_model(model, output):
-    if output.endswith(".json"): # output to JSON. Only for test purpose.
-        if isinstance(model, ModelProto):
-            with open(output, "w") as out:
-                out.write(str(model))
-            logger.info("Output JSON to {}.json".format(output))
-    else:
-        with open(output, "wb") as out:
-            out.write(model.SerializeToString())
-        logger.info("Output final model to {}".format(output))
+    return bert_model
 
 def main():
     args = parse_arguments()
 
     # output logging to stdout
     log_handler = logging.StreamHandler(sys.stdout)
-    log_handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
-    log_handler.setLevel(logging.DEBUG)
+    if args.verbose:
+        log_handler.setFormatter(logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s'))
+        logging_level = logging.DEBUG
+    else:
+        log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
+        logging_level = logging.INFO
+    log_handler.setLevel(logging_level)
     logger.addHandler(log_handler)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging_level)
 
-    input_model_path = args.input
-    if args.use_onnxruntime:
-        if framework == 'tensorflow':
-            logger.warning("onnxruntime does not have optimization for tensorflow model. Ignore the option --use_onnxruntime.")
-        else:
-            input_model_path = run_onnxruntime(input_model_path, args.gpu_only)
+    bert_model = optimize_model(args.input, args.model_type, args.gpu_only, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16)
 
-    bert_model = optimize_model(input_model_path, args.framework, args.gpu_only, args.num_heads, args.hidden_size, args.sequence_length, args.input_int32, args.float16, args.verbose)
-
-    output_model(bert_model.model, args.output)
-
-
+    bert_model.save_model_to_file(args.output)
 
 if __name__ == "__main__":
     main()

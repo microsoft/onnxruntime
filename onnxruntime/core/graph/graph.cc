@@ -1746,13 +1746,14 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       const TensorProto* tensor_proto = initializer_pair.second;
       TypeProto tensor_type;
       tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
-      auto inferred_type = DataTypeUtils::ToType(tensor_type);
-      auto existing_type = node_arg->Type();
-      if (nullptr == existing_type)
-        node_arg->SetType(inferred_type);
-      else if (inferred_type != existing_type) {
-        return Status(ONNXRUNTIME, FAIL,
-                      "Type Error: Value of initializer " + name + " does not match its type.");
+      auto initializer_type = DataTypeUtils::ToType(tensor_type);
+      auto nodearg_type = node_arg->Type();
+      if (nullptr == nodearg_type)
+        node_arg->SetType(initializer_type);
+      else if (initializer_type != nodearg_type) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Type Error: Data in initializer '", name, "' has element type ", *initializer_type,
+                               " but usage of initializer in graph expects ", *nodearg_type);
       }
 
       // Set shape accordingly.
