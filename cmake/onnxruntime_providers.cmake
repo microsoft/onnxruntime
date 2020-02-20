@@ -25,6 +25,18 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB_RECURSE onnxruntime_hip_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/hip_contrib_kernels.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/hip_contrib_kernels.cc"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cc"
+)
+
+file(GLOB_RECURSE onnxruntime_hip_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cu"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/hip/*.cuh"
+)
+
 file(GLOB onnxruntime_cpu_featurizers_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/featurizers_ops/cpu/*.cc"
@@ -805,6 +817,13 @@ if (onnxruntime_USE_HIP)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_hip_cc_srcs} ${onnxruntime_providers_hip_cu_srcs})
   set(onnxruntime_providers_hip_src ${onnxruntime_providers_hip_cc_srcs} ${onnxruntime_providers_hip_cu_srcs})
 
+  # disable contrib ops conditionally
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_hip_contrib_ops_cc_srcs} ${onnxruntime_hip_contrib_ops_cu_srcs})
+    list(APPEND onnxruntime_providers_hip_src ${onnxruntime_hip_contrib_ops_cc_srcs} ${onnxruntime_hip_contrib_ops_cu_srcs})
+  endif()
+
   if (onnxruntime_ENABLE_TRAINING)
     file(GLOB_RECURSE onnxruntime_hip_training_ops_cc_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/hip_training_kernels.h"
@@ -841,7 +860,7 @@ if (onnxruntime_USE_HIP)
   target_link_libraries(onnxruntime_providers_hip PRIVATE  ${ONNXRUNTIME_HIP_LIBS})
   set_target_properties(onnxruntime_providers_hip PROPERTIES FOLDER "ONNXRuntime")
   target_compile_options(onnxruntime_providers_hip PRIVATE -Wno-error=sign-compare -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_HIP_HOME}/include)
+  target_include_directories(onnxruntime_providers_hip PRIVATE ${onnxruntime_HIP_HOME}/include ${onnxruntime_HIP_HOME}/include/hiprand ${onnxruntime_HIP_HOME}/include/rocrand)
   target_include_directories(onnxruntime_providers_hip PRIVATE ${ONNXRUNTIME_ROOT})
 
   if (onnxruntime_ENABLE_TRAINING)
