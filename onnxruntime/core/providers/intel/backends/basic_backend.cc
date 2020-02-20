@@ -108,7 +108,6 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   StartAsyncInference(ort, input_tensors, infer_request_, ie_cnn_network_);
   CompleteAsyncInference(ort, output_tensors, infer_request_, ie_cnn_network_);
 
-  std::cout << "Inference successful" << std::endl;
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
