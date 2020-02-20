@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 
-#include "test/util/include/gtest_utils.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

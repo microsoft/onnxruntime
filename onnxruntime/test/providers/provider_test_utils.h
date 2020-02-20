@@ -16,7 +16,6 @@
 #include "core/framework/data_types.h"
 #include "test/test_environment.h"
 #include "test/framework/TestAllocatorManager.h"
-#include "test/util/include/gtest_utils.h"  // ASSERT/EXPECT_STATUS_OK()
 #include "core/framework/TensorSeq.h"
 #include "core/framework/session_options.h"
 #include "test/util/include/asserts.h"
@@ -510,7 +509,7 @@ class OpTester {
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
 
-  // for gradient unit tests only 
+  // for gradient unit tests only
   std::shared_ptr<onnxruntime::Model> cached_model_;
 
 #ifndef NDEBUG
