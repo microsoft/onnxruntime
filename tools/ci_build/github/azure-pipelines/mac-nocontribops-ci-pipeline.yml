@@ -5,7 +5,7 @@ variables:
 jobs:
 - job: MacOS_CI_Dev
   pool:
-    vmImage: 'macOS-10.13'
+    vmImage: 'macOS-10.14'
   steps:
     - template: templates/set-test-data-variables-step.yml
     - task: CmdLine@2

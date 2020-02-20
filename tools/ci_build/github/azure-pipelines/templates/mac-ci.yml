@@ -10,7 +10,8 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes:  120
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    vmImage: 'macOS-10.14'
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
   steps:
