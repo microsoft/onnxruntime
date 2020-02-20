@@ -4,9 +4,9 @@
 #include "common_subexpression_elimination.h"
 #include "core/graph/graph_utils.h"
 
-#include <set>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace onnxruntime {
@@ -54,6 +54,10 @@ namespace {
 
   constexpr OutputIndex kInvalidOutputIndex = -1;
 
+  const NodeArg* Normalize(const NodeArg* node_arg) {
+    return node_arg == nullptr || !node_arg->Exists() ? nullptr : node_arg;
+  }
+
   // Represents an equivalence class of expressions (inputs, constant initializers and node outputs)
   // that will always evaluate to the same runtime value.
   class EquivalenceClass {
@@ -62,11 +66,12 @@ namespace {
     bool operator!=(const EquivalenceClass& other) const;
 
     friend struct ::std::hash<EquivalenceClass>;
+    friend std::vector<const EquivalenceClass*> Normalize(std::vector<const EquivalenceClass*> inputs);
 
     explicit EquivalenceClass(const NodeArg* non_op_value)
       : attributes_(nullptr)
       , output_index_(kInvalidOutputIndex)
-      , non_op_value_(non_op_value)
+      , non_op_value_(Normalize(non_op_value))
       , discriminator_(0)
       , hash_(CalculateHash())
     { }
@@ -75,7 +80,7 @@ namespace {
                 OutputIndex output_index, int discriminator)
       : op_type_(node->OpType())
       , domain_(node->Domain())
-      , inputs_(std::move(inputs))
+      , inputs_(Normalize(std::move(inputs)))
       , attributes_(&node->GetAttributes())
       , output_index_(output_index)
       , non_op_value_(nullptr)
@@ -112,6 +117,15 @@ namespace {
 
     const std::size_t hash_;
   };
+
+  std::vector<const EquivalenceClass*> Normalize(std::vector<const EquivalenceClass*> inputs) {
+    // Remove missing optional inputs from the back
+    while (!inputs.empty() && inputs.back()->output_index_ == kInvalidOutputIndex && inputs.back()->non_op_value_ == nullptr) {
+      inputs.pop_back();
+    }
+
+    return inputs;
+  }
 
   template<typename Range>
   bool AreRangesEqual(const Range& lhs, const Range& rhs) {
@@ -230,6 +244,18 @@ namespace {
     NodeIndex node_index;
     OutputIndex output_index;
   };
+
+  struct NodeArgPtrHash {
+    std::size_t operator()(const NodeArg* node_arg) const {
+      return std::hash<const NodeArg*>{}(Normalize(node_arg));
+    }
+  };
+
+  struct NodeArgPtrEquality {
+    bool operator()(const NodeArg* lhs, const NodeArg* rhs) const {
+      return Normalize(lhs) == Normalize(rhs);
+    }
+  };
 }
 
 }
@@ -258,13 +284,14 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     DeepPointerHash, DeepPointerEquality> value_to_representative;
 
   // Reverse mapping.
-  std::unordered_map<const NodeArg*, const EquivalenceClass*> equivalence_classes;
+  std::unordered_map<const NodeArg*, const EquivalenceClass*, NodeArgPtrHash, NodeArgPtrEquality> equivalence_classes;
 
   {
-    std::set<const NodeArg*> non_ops;
+    std::unordered_set<const NodeArg*, NodeArgPtrHash, NodeArgPtrEquality> non_ops;
 
     const auto& inputs = graph.GetInputs();
     non_ops.insert(inputs.begin(), inputs.end());
+    non_ops.insert(nullptr); // Signifies missing input.
 
     const auto& initializers = graph.GetAllInitializedTensors();
     for (const auto& kv : initializers) {
@@ -318,7 +345,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     }
   }
 
-  std::set<const NodeArg*> graph_outputs;
+  std::unordered_set<const NodeArg*> graph_outputs;
   graph_outputs.insert(graph.GetOutputs().begin(), graph.GetOutputs().end());
 
   for (NodeIndex node_index : node_topology_list) {

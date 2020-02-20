@@ -83,6 +83,28 @@ TEST(CseTests, GraphOutput) {
   ASSERT_EQ(op_count.at("Add"), 2);
 }
 
+TEST(CseTests, OptionalArgs) {
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse_optional_args.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
+  ApplyCse(*model);
+
+  Graph& graph = model->MainGraph();
+
+  const auto& graph_inputs = graph.GetInputs();
+  ASSERT_EQ(graph_inputs.size(), 1);
+  ASSERT_EQ(graph_inputs[0]->Name(), "x");
+
+  std::vector<std::string> output_names = GetSortedNames(graph.GetOutputs());
+  ASSERT_EQ(output_names.size(), 1);
+  ASSERT_EQ(output_names[0], "Result");
+
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count.at("Clip"), 1);
+}
+
 }
 }
 
