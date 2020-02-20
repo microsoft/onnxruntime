@@ -124,7 +124,7 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h"
-          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.h')
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.h')
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
@@ -133,7 +133,7 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h"
-          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.native.h')
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.native.h')
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
