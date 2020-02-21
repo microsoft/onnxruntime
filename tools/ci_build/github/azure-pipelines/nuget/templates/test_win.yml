@@ -1,5 +1,6 @@
 parameters:
   AgentPool : 'Win-CPU'
+  Skipx86Tests: 'false'
 
 jobs:
 - job: NuGet_Test_Win
@@ -13,6 +14,7 @@ jobs:
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
+    SKIPNONPACKAGETESTS: 'ON'
 
   steps:
   - task: UsePythonVersion@0
@@ -65,11 +67,12 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .Net Core x86'
+  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+      - script: |
+         @echo "Running Runtest.bat"
+         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Run End to End Test (C#) .Net Core x86'
 
   - script: |
      @echo "Running Runtest.bat"
@@ -77,11 +80,12 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework'
 
-  - script: |
-     @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
-    workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    displayName: 'Run End to End Test (C#) .NetFramework x86'
+  - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
+      - script: |
+         @echo "Running Runtest.bat"
+         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Run End to End Test (C#) .NetFramework x86'
 
   - script: |
      @echo "Running runtest.bat"

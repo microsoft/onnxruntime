@@ -577,8 +577,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        /*
-        [Fact]
+        [SkipNonPackageTests]
         private void TestRegisterCustomOpLibrary()
         {
             using (var option = new SessionOptions())
@@ -656,7 +655,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-        */
 
         [Fact]
         private void TestSymbolicDimsMetadata()
@@ -1459,6 +1457,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 if (testOnGpu == null || !testOnGpu.Equals("ON"))
                 {
                     Skip = "GPU testing not enabled";
+                }
+            }
+        }
+
+        private class SkipNonPackageTests : FactAttribute
+        {
+            public SkipNonPackageTests()
+            {
+                var skipNonPackageTests = System.Environment.GetEnvironmentVariable("SKIPNONPACKAGETESTS");
+                if (skipNonPackageTests != null && skipNonPackageTests.Equals("ON"))
+                {
+                    Skip = "Test skipped while testing the package as it is not within the scope";
                 }
             }
         }
