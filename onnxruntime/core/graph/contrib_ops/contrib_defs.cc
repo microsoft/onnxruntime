@@ -5,6 +5,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/nchwc_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "onnx/defs/schema.h"
@@ -18,7 +19,6 @@ void convPoolShapeInference(
     bool use_dilation, bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
-void globalPoolTypeShapeInference(ONNX_NAMESPACE::InferenceContext& ctx);
 void matmulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
@@ -166,37 +166,6 @@ using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL;
 
-void NchwcPoolOpSchemaGenerator(OpSchema& schema) {
-  schema.SetDomain(kMSNchwcDomain);
-  schema.SinceVersion(1);
-  schema.SetDoc(R"DOC(For internal use.)DOC");
-  schema.Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"));
-  schema.Attr("kernel_shape", "", AttributeProto::INTS);
-  schema.Attr("dilations", "", AttributeProto::INTS, OPTIONAL);
-  schema.Attr("strides", "", AttributeProto::INTS, OPTIONAL);
-  schema.Attr("pads", "", AttributeProto::INTS, OPTIONAL);
-  schema.Attr("ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0));
-  schema.Input(0, "X", "", "T");
-  schema.Output(0, "Y", "", "T");
-  schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
-  schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-    ONNX_NAMESPACE::convPoolShapeInference(ctx, true, true, 0, 1);
-  });
-}
-
-void NchwcGlobalPoolOpSchemaGenerator(OpSchema& schema) {
-  schema.SetDomain(kMSNchwcDomain);
-  schema.SinceVersion(1);
-  schema.SetDoc(R"DOC(For internal use.)DOC");
-  schema.Input(0, "X", "", "T");
-  schema.Output(0, "Y", "", "T");
-  schema.TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors");
-  schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-    ONNX_NAMESPACE::globalPoolTypeShapeInference(ctx);
-  });
-}
-
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize = 0) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
@@ -319,132 +288,6 @@ const char* contrib_ops_auto_pad_doc =
     "SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input."
     "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
     "beginning for SAME_LOWER. VALID mean no padding.";
-
-void RegisterNchwcSchemas() {
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderInput)
-      .SetDomain(kMSNchwcDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(For internal use.)DOC")
-      .Input(0, "X", "", "T")
-      .Output(0, "Y", "", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
-          "Constrain input and output types to float/quantized tensors")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ReorderOutput)
-      .SetDomain(kMSNchwcDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(For internal use.)DOC")
-      .Attr(
-          "channels",
-          "",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(0, "X", "", "T")
-      .Output(0, "Y", "", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float)", "tensor(int8)", "tensor(uint8)"},
-          "Constrain input and output types to float/quantized tensors")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        if (!hasNInputShapes(ctx, 1)) {
-          return;
-        }
-        propagateShapeFromInputToOutput(ctx, 0, 0);
-
-        // Update the output shape with the actual number of channels.
-        auto channels = getAttribute(ctx, "channels", 0);
-        if (channels <= 0) {
-          fail_shape_inference("invalid channel count");
-        }
-        auto output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-        if (output_shape->dim_size() < 2) {
-          fail_shape_inference("tensor rank too small");
-        }
-        auto* channels_dim = output_shape->mutable_dim(1);
-        channels_dim->clear_dim_param();
-        channels_dim->set_dim_value(channels);
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Conv)
-      .SetDomain(kMSNchwcDomain)
-      .SinceVersion(1)
-      .SetDoc(R"DOC(For internal use.)DOC")
-      .Attr(
-          "auto_pad",
-          "",
-          AttributeProto::STRING,
-          std::string("NOTSET"))
-      .Attr(
-          "kernel_shape",
-          "",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "dilations",
-          "",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "strides",
-          "",
-          AttributeProto::INTS,
-          OPTIONAL)
-      .Attr(
-          "pads",
-          "",
-          AttributeProto::INTS, OPTIONAL)
-      .Attr(
-          "group",
-          "",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
-      .Attr(
-          "activation",
-          "",
-          AttributeProto::STRING,
-          OPTIONAL)
-      .Attr(
-          "activation_params",
-          "",
-          AttributeProto::FLOATS,
-          OPTIONAL)
-      .Input(0, "X", "", "T")
-      .Input(1, "W", "", "T")
-      .Input(2, "B", "", "T", OpSchema::Optional)
-      .Input(3, "Sum", "", "T", OpSchema::Optional)
-      .Output(0, "Y", "", "T")
-      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MaxPool)
-      .FillUsing(NchwcPoolOpSchemaGenerator)
-      .Attr(
-          "storage_order",
-          "",
-          AttributeProto::INT,
-          static_cast<int64_t>(0));
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(AveragePool)
-      .FillUsing(NchwcPoolOpSchemaGenerator)
-      .Attr(
-          "count_include_pad",
-          "",
-          AttributeProto::INT,
-          static_cast<int64_t>(0));
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalMaxPool)
-      .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GlobalAveragePool)
-      .FillUsing(NchwcGlobalPoolOpSchemaGenerator);
-}
 
 void RegisterBertSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
@@ -2594,7 +2437,7 @@ Example 4:
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
       .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
+      .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("LayerNormalization")
       .Attr("axis",

@@ -736,35 +736,7 @@ set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRU
 
 if (onnxruntime_BUILD_JAVA)
     message(STATUS "Running Java tests")
-    # Build and run tests
-    set(onnxruntime4j_test_src
-        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/InferenceTest.java
-        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/TestHelpers.java
-        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/OnnxMl.java
-        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/UtilTest.java
-        )
-
-    # Create test directories
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/java-tests/")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/java-tests/results")
-
-    # Download test dependencies
-    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar)
-        message("Downloading JUnit 5")
-        file(DOWNLOAD https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.5.2/junit-platform-console-standalone-1.5.2.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar EXPECTED_HASH SHA1=8d937d2b461018a876836362b256629f4da5feb1)
-    endif()
-
-    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar)
-        message("Downloading protobuf-java 3.10.0")
-        file(DOWNLOAD https://repo1.maven.org/maven2/com/google/protobuf/protobuf-java/3.10.0/protobuf-java-3.10.0.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar EXPECTED_HASH SHA1=410b61dd0088aab4caa05739558d43df248958c9)
-    endif()
-
-    # Build the test jar
-    add_jar(onnxruntime4j_test SOURCES ${onnxruntime4j_test_src} VERSION ${ORT_VERSION} INCLUDE_JARS ${onnxruntime_jar_name} ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar)
-
-    add_dependencies(onnxruntime4j_test onnxruntime4j_jni onnxruntime4j)
-    get_property(onnxruntime_test_jar_name TARGET onnxruntime4j_test PROPERTY JAR_FILE)
-
-    # Run the tests with JUnit's console launcher
-    add_test(NAME java-api COMMAND ${Java_JAVA_EXECUTABLE} -jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar -cp ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar -cp ${onnxruntime_test_jar_name} -cp ${onnxruntime_jar_binaries_platform} --scan-class-path --fail-if-no-tests --reports-dir=${CMAKE_CURRENT_BINARY_DIR}/java-tests/results --disable-banner WORKING_DIRECTORY ${REPO_ROOT})
+    # delegate to gradle's test runner
+    add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${REPO_ROOT}/java)
+    set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
 endif()
