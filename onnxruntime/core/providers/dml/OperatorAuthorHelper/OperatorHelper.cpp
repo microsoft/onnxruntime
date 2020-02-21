@@ -770,7 +770,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
     {
         int32_t inputDimCount = gsl::narrow_cast<int>(inputDimensions.size());
         m_axis = HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, -1), inputDimCount);
-        ML_CHECK_VALID_ARGUMENT(m_axis < inputDimensions.size());
+        ML_CHECK_VALID_ARGUMENT(m_axis < static_cast<uint32_t>(inputDimensions.size()));
     }
 
     std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
