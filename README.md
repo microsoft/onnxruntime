@@ -39,13 +39,13 @@ ONNX Runtime stays up to date with the ONNX standard and supports all operators 
 ## Key Features
 * **Cross Platform:** The runtime provides a cross platform API compatible with Windows, Linux, and Mac and a variety of architectures. Both CPU and GPUs are supported, and language bindings are available for a variety of languages and architectures See more details ([below](apis-and-official-builds)). *If you have specific scenarios that are not supported, please share your suggestions and scenario details via [Github Issues](https://github.com/microsoft/onnxruntime/issues).*
 * **Run any ONNX model:** ONNX Runtime provides comprehensive support of the ONNX spec and can be used to run all models based on ONNX v1.2.1 and higher. Both ONNX (DNN) and ONNX-ML (traditional ML) operator sets are supported. *The full set of operators and types supported is listed [here](./docs/OperatorKernels.md). Some operators not supported in the current ONNX version may be available as a [Contrib Operator](./docs/ContribOperators.md).*
-* **Backwards and Forward Compatible**: Models updated to a newer ONNX version will continue to run with ONNX Runtime, and ONNX Runtime version updates should not break integrations. *See version compatibility details [here](./docs/Versioning.md).*
+* **Backwards Compatible**: Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations. *See version compatibility details [here](./docs/Versioning.md).*
 
 
 ## Performance Focused Design
  [High level architectural design](docs/HighLevelDesign.md)
  
- Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs. See  [Performance Tuning guidance](./docs/ONNX_Runtime_Perf_Tuning.md).
+Using various graph optimizations and accelerators, ONNX Runtime can provide lower latency compared to other runtimes for faster end-to-end customer experiences and minimized machine utilization costs. See  [Performance Tuning guidance](./docs/ONNX_Runtime_Perf_Tuning.md).
 
 ### Supported Accelerators
 The list of currently supported accelerators (termed [Execution Providers](./docs/execution_providers)) is below. Please see [BUILD.md](./BUILD.md) for build instructions. If you are interested in contributing a new execution provider, please see [this page](docs/AddingExecutionProvider.md).
@@ -84,12 +84,13 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 
 |Language|Supported Versions|Samples|
 |--|--|--|
-[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)|[Samples](./samples#python)|
+[Python](https://aka.ms/onnxruntime-python)| 3.5, 3.6, 3.7<br>[Python Dev Notes](./docs/Python_Dev_Notes.md)| [Samples](./samples#python)|
 |[C#](docs/CSharp_API.md)| | [Samples](./samples#C)|
 |[C++](./include/onnxruntime/core/session/onnxruntime_cxx_api.h)| |[Samples](./samples#CC)|
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.5| [Samples](https://ankane.org/tensorflow-ruby)|
+[WinML](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| Windows 8.1 - CPU, RS3 (1709) - GPU | [Samples](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop)
 
 ## Builds and Packages
 
@@ -112,6 +113,7 @@ Contributed non-official packages (including Homebrew, Linuxbrew, and nixpkgs) a
 
 ### System Requirements
 These system requirements must be met for using the compiled binaries. 
+
 #### System language
 * Installation of the **English language package** and configuring `en_US.UTF-8 locale` is required, as certain operators makes use of system locales. 
 * For Ubuntu, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
@@ -120,18 +122,20 @@ These system requirements must be met for using the compiled binaries.
     `update-locale LANG=en_US.UTF-8`
   * Follow similar procedure to configure other locales on other platforms.
   
-#### CPU
+#### Default CPU
 * ONNX Runtime binaries in the CPU packages use OpenMP and depend on the library being available at runtime in the
 system.
   * For Windows, **OpenMP** support comes as part of VC runtime. It is also available as redist packages:
     [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 
-#### GPU
-* GPU builds require CUDA runtime libraries being installed on the system:
-	 * Version: **CUDA 10.0** and **cuDNN 7.6** on Linux / **cuDNN 7.3** on Windows
-  * Older ONNX Runtime releases used **CUDA 9.1** and **cuDNN 7.1** - please refer to [prior release notes](https://github.com/microsoft/onnxruntime/releases) for more details.
+#### GPU (CUDA)
+* The default GPU build requires CUDA runtime libraries being installed on the system:
+	 * Version: **CUDA 10.1** and **cuDNN 7.6.5**
+* Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
 
+#### Other Execution Providers
+* For requirements and dependencies of other build options, see detailed build instructions on the [BUILD.md](./BUILD.md#additional-build-instructions) page.
 ***
 # Usage
 Please see [Samples and Tutorials](./samples) for examples.
