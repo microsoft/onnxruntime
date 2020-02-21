@@ -159,7 +159,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
         kernels.push_back(val);
       }
 
-      votes.resize(class_count_, 0);
+      votes.assign(class_count_, 0);
       for (int64_t i = 0; i < class_count_; i++) {        // for each class
         for (int64_t j = i + 1; j < class_count_; j++) {  // for each class
           double sum = 0;
