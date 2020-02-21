@@ -13,8 +13,8 @@ jobs:
   variables:
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
+  - SKIPNONPACKAGETESTS: 'ON'
     value: '$(Build.BinariesDirectory)'
-    SKIPNONPACKAGETESTS: 'ON'
 
   steps:
   - task: UsePythonVersion@0
