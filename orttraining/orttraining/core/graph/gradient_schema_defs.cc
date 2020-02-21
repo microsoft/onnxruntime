@@ -553,7 +553,7 @@ void RegisterGradientSchemas() {
       .Input(0, "logits", "Unscaled log probabilities, N-D input of shape (-1, num_classes).", "T")
       .Input(1, "label", "The onehot label is N-D input with the same shape as logits.", "T")
       .Output(0, "Y", "loss.", "T")
-      .Output(1, "probability", "softmax(logits)", "T", OpSchema::Optional)
+      .Output(1, "log_prob", "logsoftmax(logits)", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -568,7 +568,7 @@ void RegisterGradientSchemas() {
             AttributeProto::STRING,
             std::string("mean"))
       .Input(0, "dY", "gradient of Y", "T")
-      .Input(1, "probability", "normalized exponential probabilities, N-D input of shape (-1, num_classes).", "T")
+      .Input(1, "log_prob", "logsoftmax(logits), N-D input of shape (-1, num_classes).", "T")
       .Input(2, "label", "The onehot label is N-D input with the same shape as logits.", "T")
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint(
@@ -661,7 +661,7 @@ void RegisterGradientSchemas() {
              "Tind")
       .Input(2, "weight", "weight for each sample. The shape is the same as label's", "T", OpSchema::Optional)
       .Output(0, "Y", "loss.", "T")
-      .Output(1, "probability", "softmax(logits)", "T", OpSchema::Optional)
+      .Output(1, "log_prob", "logsoftmax(logits)", "T", OpSchema::Optional)
       .TypeConstraint("T",
                       {"tensor(float16)", "tensor(float)", "tensor(double)"},
                       "Constrain to float, float16 and double tensors.")
@@ -678,7 +678,7 @@ void RegisterGradientSchemas() {
             AttributeProto::STRING,
             std::string("mean"))
       .Input(0, "dY", "gradient of Y", "T")
-      .Input(1, "probability", "normalized exponential probabilities, (N+1)-D input of shape (batch_size).", "T")
+      .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
       .Input(2, "label",
              "label is N-D input whose shape should match that of logits. "
              "It is a tensor of nonnegative integers, "
@@ -1242,17 +1242,17 @@ Return true if all elements are true and false otherwise.
           "TBool",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx){
-          if (ctx.getNumInputs() != 2)
-            fail_shape_inference("Send must have two inputs.");
-          if (ctx.getNumOutputs() != 1)
-            fail_shape_inference("Send must have one output.");
-          
-          auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
-          output_element_type->set_elem_type(TensorProto::BOOL);
-          ONNX_NAMESPACE::TensorShapeProto output_shape;
-          updateOutputShape(ctx, 0, {});
-          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != 2)
+          fail_shape_inference("Send must have two inputs.");
+        if (ctx.getNumOutputs() != 1)
+          fail_shape_inference("Send must have one output.");
+
+        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
+        output_element_type->set_elem_type(TensorProto::BOOL);
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Recv)
@@ -1281,15 +1281,15 @@ Return true if all elements are true and false otherwise.
           "TBool",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx){
-          if (ctx.getNumInputs() != 1)
-            fail_shape_inference("Recv must have one inputs.");
-          if (ctx.getNumOutputs() != 2)
-            fail_shape_inference("Recv must have two output.");
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != 1)
+          fail_shape_inference("Recv must have one inputs.");
+        if (ctx.getNumOutputs() != 2)
+          fail_shape_inference("Recv must have two output.");
 
-          updateOutputShape(ctx, 0, {});
-          updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-          propagateElemTypeFromAttributeToOutput(ctx, "element_type", 1);
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        propagateElemTypeFromAttributeToOutput(ctx, "element_type", 1);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)

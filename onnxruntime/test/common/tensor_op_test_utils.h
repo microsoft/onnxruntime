@@ -34,6 +34,18 @@ class RandomValueGenerator {
     return val;
   }
 
+  template <class T>
+  inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
+    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    std::vector<T> val(size, T(0));
+    std::uniform_int_distribution<int64_t> distribution(0, stride - 1);
+    for (size_t offset = 0; offset < val.size(); offset += stride) {
+      size_t rand_index = static_cast<size_t>(distribution(generator_));
+      val[offset + rand_index] = T(1);
+    }
+    return val;
+  }
+
  private:
   std::default_random_engine generator_;
 };

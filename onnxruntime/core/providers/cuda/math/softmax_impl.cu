@@ -115,7 +115,7 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   for (int i = 0; i < WARP_BATCH; ++i) {
     if (i >= local_batches)
       break;
-    //if (is_log_softmax) sum[i] = max_value[i] + std::log(sum[i]);
+    if (is_log_softmax) sum[i] = max_value[i] + std::log((float)(sum[i]));
 #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       int element_index = local_idx + it * WARP_SIZE;
@@ -206,7 +206,8 @@ void dispatch_softmax_forward(output_t* dst, const input_t* src, int softmax_ele
 }
 
 #define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_softmax_forward<input_t, output_t, acc_t, false>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+template void dispatch_softmax_forward<input_t, output_t, acc_t, false>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
+template void dispatch_softmax_forward<input_t, output_t, acc_t, true>(output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)
