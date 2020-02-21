@@ -1,6 +1,6 @@
 schedules:
-- cron: "0 8 * * *"
-  displayName: Daily Build
+- cron: "0 3 * * *"
+  displayName: Featurizers Nightly Build
   branches:
     include:
     - master
