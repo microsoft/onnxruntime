@@ -61,10 +61,10 @@ class Softmax final : public OpKernel {
     int N = static_cast<int>(input_shape.SizeToDimension(axis));
     int D = static_cast<int>(input_shape.SizeFromDimension(axis));
 
-    Eigen::TensorMap<Eigen::Tensor<const float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> X_tensor(
-        X.Data<float>(), N, D);
-    Eigen::TensorMap<Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> Y_tensor(
-        Y->MutableData<float>(), N, D);
+    Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> X_tensor(
+        X.Data<T>(), N, D);
+    Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned> Y_tensor(
+        Y->MutableData<T>(), N, D);
 #ifndef USE_OPENMP
     if (tp == nullptr)
 #endif
