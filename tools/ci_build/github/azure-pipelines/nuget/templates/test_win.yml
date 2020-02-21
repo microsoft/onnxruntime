@@ -13,7 +13,7 @@ jobs:
   variables:
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
-  - SKIPNONPACKAGETESTS: 'ON'
+  - SKIPNONPACKAGETESTS: ON
     value: '$(Build.BinariesDirectory)'
 
   steps:
