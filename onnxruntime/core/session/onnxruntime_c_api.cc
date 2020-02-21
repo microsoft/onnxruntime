@@ -1440,7 +1440,6 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::GetDimensionsCount,
     &OrtApis::GetDimensions,
     &OrtApis::GetSymbolicDimensions,
-    &OrtApis::GetSymbolicDimensionsWithDenotations,
     &OrtApis::GetTensorShapeElementCount,
     &OrtApis::GetTensorTypeAndShape,
     &OrtApis::GetTypeInfo,
@@ -1501,6 +1500,7 @@ static constexpr OrtApi ort_api_1_to_2 = {
     &OrtApis::ModelMetadataLookupCustomMetadataMap,
     &OrtApis::ModelMetadataGetVersion,
     &OrtApis::ReleaseModelMetadata,
+    &OrtApis::GetSymbolicDimensionsWithDenotations,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
