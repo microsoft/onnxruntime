@@ -768,7 +768,7 @@ int64_t ReadAsInt64(MLOperatorTensorDataType tensorDataType, const void* p)
         gsl::span<const DimensionType> inputDimensions
         )
     {
-        int32_t inputDimCount = gsl::narrow_cast<int>(inputDimensions.size());
+        uint32_t inputDimCount = gsl::narrow_cast<uint32_t>(inputDimensions.size());
         m_axis = static_cast<int>(HandleNegativeAxis(operatorAttributes.GetOptionalAttribute<int>(AttrName::Axis, -1), inputDimCount));
         ML_CHECK_VALID_ARGUMENT(m_axis < static_cast<int>(inputDimensions.size()));
     }
