@@ -139,8 +139,11 @@ TEST(PathTest, Normalize) {
   check_normalize("a/b/./c/../../d/../e", "a/e");
   check_normalize("/../a/../../b", "/b");
   check_normalize("../a/../../b", "../../b");
-  check_normalize("", "");
+  check_normalize("/a/..", "/");
   check_normalize("a/..", ".");
+  check_normalize("", "");
+  check_normalize("/", "/");
+  check_normalize(".", ".");
 }
 
 TEST(PathTest, Append) {

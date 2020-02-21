@@ -227,7 +227,10 @@ Path& Path::Normalize() {
         normalized_components.begin(), first_non_dotdot_it);
   }
 
-  if (normalized_components.empty()) normalized_components.emplace_back(k_dot);
+  // if empty at this point, add a dot
+  if (!has_root_dir_ && root_name_.empty() && normalized_components.empty()) {
+    normalized_components.emplace_back(k_dot);
+  }
 
   components_ = std::move(normalized_components);
 
