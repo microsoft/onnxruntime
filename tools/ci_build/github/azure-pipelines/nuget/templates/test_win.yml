@@ -11,7 +11,7 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-    SKIPNONPACKAGETESTS: 'ON'
+  - SKIPNONPACKAGETESTS: 'ON'
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
