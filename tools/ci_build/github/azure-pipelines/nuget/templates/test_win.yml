@@ -11,10 +11,11 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-  SKIPNONPACKAGETESTS: 'ON'
   - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
+  - name: SKIPNONPACKAGETESTS
+    value: 'ON'
 
   steps:
   - task: UsePythonVersion@0
