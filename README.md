@@ -133,7 +133,7 @@ system.
     [vc_redist.x64.exe](https://aka.ms/vs/16/release/vc_redist.x64.exe) and [vc_redist.x86.exe](https://aka.ms/vs/16/release/vc_redist.x86.exe)
   * For Linux, the system must have **libgomp.so.1** which can be installed using `apt-get install libgomp1`.
 
-#### GPU (CUDA)
+#### Default GPU (CUDA)
 * The default GPU build requires CUDA runtime libraries being installed on the system:
 	 * Version: **CUDA 10.1** and **cuDNN 7.6.5**
 * Version dependencies from older ONNX Runtime releases can be found in [prior release notes](https://github.com/microsoft/onnxruntime/releases).
