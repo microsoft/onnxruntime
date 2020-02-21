@@ -231,7 +231,7 @@ ModelProto Model::ToProto() {
   return *model_proto_;
 }
 
-bool Model::InputsUseFP16() {
+bool Model::InputsUseFP16() const {
   return graph_->InputsUseFP16();
 }
 

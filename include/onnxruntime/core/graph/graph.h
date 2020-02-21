@@ -809,8 +809,8 @@ class Graph {
   virtual ~Graph();
 
   /** Returns true if the inputs to the graph proto contains FP16 datatype */
-  bool InputsUseFP16() {
-    return inputsHaveFp16_;
+  bool InputsUseFP16() const{
+    return inputs_have_fp16_;
   }
 
  private:
@@ -845,10 +845,10 @@ class Graph {
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
 
-  common::Status DoInputsHaveFP16();
+  common::Status SetIfInputsHaveFP16();
 
   // Do the inputs of graph proto have FP16 datatype
-  bool inputsHaveFp16_ = false;
+  bool inputs_have_fp16_ = false;
 
   Version IrVersion() const noexcept {
     return ir_version_;

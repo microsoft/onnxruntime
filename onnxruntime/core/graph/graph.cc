@@ -803,6 +803,7 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
   for (const auto& node_proto : graph_proto_->node()) {
     AddNode(node_proto, name_to_type_map);
   }
+  SetIfInputsHaveFP16();
 }
 
 Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto)
@@ -1916,7 +1917,7 @@ Status Graph::InitInputsInitializersOutputs() {
   ORT_RETURN_IF_ERROR(SetGraphInputsOutputs());
   ORT_RETURN_IF_ERROR(VerifyInputAndInitializerNames());
   ORT_RETURN_IF_ERROR(VerifyNoDuplicateName());
-  ORT_RETURN_IF_ERROR(DoInputsHaveFP16());
+
   return Status::OK();
 }
 
@@ -2476,16 +2477,15 @@ static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
   return false;
 }
 
-Status Graph::DoInputsHaveFP16()
-{
+Status Graph::SetIfInputsHaveFP16() {
   auto& inputs = graph_proto_->input();
   for (auto& input : inputs) {
     if (input.has_name() && input.has_type() && ModelUseFP16Helper(input.type())) {
-      inputsHaveFp16_ = true;
+      inputs_have_fp16_ = true;
       return Status::OK();
     }
   }
-  inputsHaveFp16_ = false;
+  inputs_have_fp16_ = false;
   return Status::OK();
 }
 
