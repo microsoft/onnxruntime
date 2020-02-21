@@ -90,7 +90,11 @@ The list of currently supported accelerators (termed [Execution Providers](./doc
 |[C](docs/C_API.md)| | [Samples](./samples#CC)|
 |[Java](docs/Java_API.md)|8-13|[Samples](./samples#Java)| 
 [Ruby](https://github.com/ankane/onnxruntime) (external project)| 2.5| [Samples](https://ankane.org/tensorflow-ruby)|
-[WinML](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)| Windows 8.1 - CPU, RS3 (1709) - GPU | [Samples](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop)
+
+The ORT package also includes the Windows Machine Learning APIs, which provide an thin layer on top of the ONNX Runtime API optimized for Windows development.
+* [API Reference](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference)
+* Compatibility: Windows 8.1 - CPU, RS3 (1709) - GPU
+* [Samples](https://docs.microsoft.com/en-us/windows/ai/windows-ml/get-started-desktop)
 
 ## Builds and Packages
 
