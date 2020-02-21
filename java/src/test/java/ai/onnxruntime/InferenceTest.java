@@ -268,6 +268,7 @@ public class InferenceTest {
             inputMap.clear();
             requestedOutputs.clear();
 
+            /*
             // Request single output ab, supply required inputs
             inputMap.put("a:0",a);
             inputMap.put("b:0",b);
@@ -291,6 +292,7 @@ public class InferenceTest {
             }
             inputMap.clear();
             requestedOutputs.clear();
+            */
 
             // Request output but don't supply the inputs
             inputMap.put("c:0",c);
@@ -298,7 +300,7 @@ public class InferenceTest {
             try (Result r = session.run(inputMap,requestedOutputs)) {
                 fail("Expected to throw OrtException due to incorrect inputs");
             } catch (OrtException e) {
-                System.out.println(e.getMessage());
+                //System.out.println(e.getMessage());
                 //pass
             }
             inputMap.clear();
@@ -310,7 +312,7 @@ public class InferenceTest {
             try (Result r = session.run(inputMap,requestedOutputs)) {
                 fail("Expected to throw OrtException due to incorrect inputs");
             } catch (OrtException e) {
-                System.out.println(e.getMessage());
+                //System.out.println(e.getMessage());
                 //pass
             }
         }
