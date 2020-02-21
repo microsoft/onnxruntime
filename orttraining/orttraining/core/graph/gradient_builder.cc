@@ -883,13 +883,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetMegatronGGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
+  std::vector<ArgDef> inputs {GO(0), IA("I0_shape")};
+  for (int i = 1; i < GetSrcNodeInputSize(); i++) {
+    inputs.push_back(I(i));
+  }
+
   return std::vector<NodeDef>{
       NodeDef("Shape",
               {I(0)},
               {IA("I0_shape")}),
-      NodeDef(OpDef{"SliceGrad", kMSDomain, 1},
-              {GO(0), IA("I0_shape"), I(1), I(2), I(3), I(4)},
-              {GI(0)})};
+      NodeDef(OpDef{"SliceGrad", kMSDomain, 1}, inputs, {GI(0)})};
 }
 
 }  // namespace training

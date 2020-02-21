@@ -470,13 +470,17 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   }
 
   // Create a simple model
-  std::unordered_map<std::string, int> domain_to_version(
-      extra_domain_to_version.begin(), extra_domain_to_version.end());
+  std::unordered_map<std::string, int> domain_to_version(extra_domain_to_version);
   if (domain_to_version.count(domain_) == 0) {
     domain_to_version.insert({domain_, opset_version_});
   } else {
-    ORT_ENFORCE(extra_domain_to_version.find(domain_)->second ==
-                opset_version_);
+    auto key_val = extra_domain_to_version.find(domain_);
+
+    ORT_ENFORCE(key_val->second <= opset_version_);
+
+    if (key_val->second < opset_version_) {
+      domain_to_version[domain_] = opset_version_;
+    }
   }
 
   auto p_model = onnxruntime::make_unique<onnxruntime::Model>(

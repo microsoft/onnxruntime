@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "slice_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/tensor/slice_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T >
+template <bool is_grad, typename T>
 __global__ void _SliceKernel(const int32_t dimension_count,
                              const TArray<int64_t> starts,
                              const TArray<int64_t> steps,
@@ -23,7 +23,7 @@ __global__ void _SliceKernel(const int32_t dimension_count,
   int mod = id;
   int value = id;
   int dim = 0;
-  #pragma unroll
+#pragma unroll
   for (; dim < starts.GetCapacity(); ++dim) {
     if (dim >= dimension_count - 1) {
       break;
@@ -34,44 +34,74 @@ __global__ void _SliceKernel(const int32_t dimension_count,
     value = mod;
   }
   input_index += starts.data_[dim] + mod * steps.data_[dim];
-  output_data[id] = input_data[input_index];
+  if (is_grad)
+    output_data[input_index] = input_data[id];
+  else
+    output_data[id] = input_data[input_index];
 }
 
 Status SliceImpl(const size_t element_size,
-                const int32_t dimension_count,
-                const TArray<int64_t>& starts,
-                const TArray<int64_t>& steps,
-                const TArray<int64_t>& input_strides,
-                const TArray<fast_divmod>& output_strides,
-                const void* input_data,
-                void* output_data,
-                const size_t N) {
+                 const int32_t dimension_count,
+                 const TArray<int64_t>& starts,
+                 const TArray<int64_t>& steps,
+                 const TArray<int64_t>& input_strides,
+                 const TArray<fast_divmod>& output_strides,
+                 const void* input_data,
+                 void* output_data,
+                 const size_t N) {
+  return SliceImplEx<false>(element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
+                            output_data, N);
+}
+
+Status SliceImplGrad(const size_t element_size,
+                     const int32_t dimension_count,
+                     const TArray<int64_t>& starts,
+                     const TArray<int64_t>& steps,
+                     const TArray<int64_t>& input_strides,
+                     const TArray<fast_divmod>& output_strides,
+                     const void* input_data,
+                     void* output_data,
+                     const size_t N) {
+  return SliceImplEx<true>(element_size, dimension_count, starts, steps, input_strides, output_strides, input_data,
+                           output_data, N);
+}
+
+template <bool is_grad>
+Status SliceImplEx(const size_t element_size,
+                   const int32_t dimension_count,
+                   const TArray<int64_t>& starts,
+                   const TArray<int64_t>& steps,
+                   const TArray<int64_t>& input_strides,
+                   const TArray<fast_divmod>& output_strides,
+                   const void* input_data,
+                   void* output_data,
+                   const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
 
   switch (element_size) {
     case sizeof(int8_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<is_grad><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int8_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int8_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int16_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<is_grad><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int16_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int16_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int32_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<is_grad><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int32_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int32_t>::MappedType*>(output_data),
           (CUDA_LONG)N);
       break;
     case sizeof(int64_t):
-      _SliceKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _SliceKernel<is_grad><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
           dimension_count, starts, steps, input_strides, output_strides,
           reinterpret_cast<const ToCudaType<int64_t>::MappedType*>(input_data),
           reinterpret_cast<ToCudaType<int64_t>::MappedType*>(output_data),

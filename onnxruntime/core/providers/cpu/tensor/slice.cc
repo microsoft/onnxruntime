@@ -260,15 +260,14 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // Slice V10 & DynamicSlice
-void SliceBase::FillVectorsFromInput(std::vector<int64_t>& input_starts,
-                                     std::vector<int64_t>& input_ends,
-                                     std::vector<int64_t>& input_axes,
-                                     std::vector<int64_t>& input_steps,
-                                     const Tensor* start_tensor,
+void SliceBase::FillVectorsFromInput(const Tensor* start_tensor,
                                      const Tensor* ends_tensor,
                                      const Tensor* axes_tensor,
-                                     const Tensor* steps_tensor) const {
-
+                                     const Tensor* steps_tensor,
+                                     std::vector<int64_t>& input_starts,
+                                     std::vector<int64_t>& input_ends,
+                                     std::vector<int64_t>& input_axes,
+                                     std::vector<int64_t>& input_steps) const {
   ORT_ENFORCE(nullptr != start_tensor && start_tensor->Shape().NumDimensions() == 1, "Starts must be a 1-D array");
   ORT_ENFORCE(nullptr != ends_tensor && ends_tensor->Shape().NumDimensions() == 1, "Ends must be a 1-D array");
   ORT_ENFORCE(start_tensor->Shape() == ends_tensor->Shape(), "Starts and ends shape mismatch");
@@ -380,9 +379,8 @@ Status Slice<T, dynamic>::Compute(OpKernelContext* ctx) const {
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
     std::vector<int64_t> input_steps;
-    FillVectorsFromInput(input_starts, input_ends, input_axes, input_steps,
-                         ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
-                         ctx->InputCount() == 5 ? ctx->Input<Tensor>(4) : nullptr);
+    FillVectorsFromInput(ctx->Input<Tensor>(1), ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                         ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
 
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
                                           input_dimensions, starts, steps, output_dims,

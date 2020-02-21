@@ -37,9 +37,8 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   std::vector<int64_t> input_ends;
   std::vector<int64_t> input_axes;
   std::vector<int64_t> input_steps;
-  FillVectorsFromInput(input_starts, input_ends, input_axes, input_steps,
-                       context->Input<Tensor>(2), context->Input<Tensor>(3), context->Input<Tensor>(4),
-                       context->Input<Tensor>(5));
+  FillVectorsFromInput(context->Input<Tensor>(2), context->Input<Tensor>(3), context->Input<Tensor>(4),
+                       context->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
 
   ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps,
                                         data_shape.GetDims(), starts, steps, output_dims,
@@ -64,7 +63,6 @@ Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
                               std::vector<int64_t>* flattened_output_dims,
                               const std::vector<int64_t>& starts,
                               const std::vector<int64_t>& steps) const {
-
   TensorShape output_shape(output_dims);
   // output tensor's size is 0, nothing to fill - return
   if (output_shape.Size() == 0)
@@ -86,7 +84,6 @@ Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
     }
 
     ORT_ENFORCE(grad_data == grad_data_end);
-
   };
 
   if (flattened_output_dims) {

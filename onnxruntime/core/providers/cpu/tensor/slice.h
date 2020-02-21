@@ -43,14 +43,14 @@ class SliceBase {
                            std::vector<int64_t>*& flattened_output_dims) const;
 
   // Slice V10 & DynamicSlice
-  void FillVectorsFromInput(std::vector<int64_t>& input_starts,
-                            std::vector<int64_t>& input_ends,
-                            std::vector<int64_t>& input_axes,
-                            std::vector<int64_t>& input_steps,
-                            const Tensor* start_tensor,
+  void FillVectorsFromInput(const Tensor* start_tensor,
                             const Tensor* ends_tensor,
                             const Tensor* axes_tensor,
-                            const Tensor* steps_tensor) const;
+                            const Tensor* steps_tensor,
+                            std::vector<int64_t>& input_starts,
+                            std::vector<int64_t>& input_ends,
+                            std::vector<int64_t>& input_axes,
+                            std::vector<int64_t>& input_steps) const;
 
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
 };

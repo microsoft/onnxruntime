@@ -1325,8 +1325,8 @@ Return true if all elements are true and false otherwise.
     .Input(1, "shape", "Shape of the Slice input X.", "I")
     .Input(2, "starts", "Tensor of starting indices of corresponding axis in axes", "Tind")
     .Input(3, "ends", "Tensor of starting indices of corresponding axis in 'axes'", "Tind")
-    .Input(4, "axes", "Tensor of axes that `starts` and `ends` apply to", "Tind")
-    .Input(5, "steps", "Tensor of slice step of corresponding axis in `axes`", "Tind")
+    .Input(4, "axes", "Tensor of axes that `starts` and `ends` apply to", "Tind", OpSchema::Optional)
+    .Input(5, "steps", "Tensor of slice step of corresponding axis in `axes`", "Tind", OpSchema::Optional)
     .Output(0, "dX", "Gradient of input", "T")
     .TypeConstraint(
         "I",
