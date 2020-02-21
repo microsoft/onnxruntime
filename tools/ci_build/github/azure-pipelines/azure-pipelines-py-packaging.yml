@@ -300,7 +300,7 @@ jobs:
     - script: |
         sudo python -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
-        ./build.sh --config Release --skip_submodule_sync --parallel --enable_lto --build_wheel --use_openmp
+        ./build.sh --config Release --skip_submodule_sync --parallel --build_wheel --use_openmp
       displayName: 'Command Line Script' 
       
     - task: CopyFiles@2
