@@ -33,12 +33,15 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
     const T3& beta,
     const T1& lambda,
     const T3& epsilon,
+    const T3& alpha_correction,
+    const T3& beta_correction,
     T2& d,
     T3& m1_new,
     T3& m2_new) {
   // Actual gradient. The scale is a product of loss' scale and
   // global gradient norm (if the norm > 1).
   const T3 g_scaled = T3(T1(g) / g_scale);
+
   // A constant in Lamb's equation.
   const T3 one = T3(1.0f);
 
@@ -48,8 +51,19 @@ __device__ __forceinline__ void _LambComputeDirectionRule(
   // Update exponentially-averaged historical squared gradient
   const T3 m2_new_tmp = beta * m2 + (one - beta) * g_scaled * g_scaled;
 
+  // Compute unbiased 1st-order momentom.
+  // The value alpha_correction is usually (1-alpha^t),
+  // where t is the number of executed training iterations.
+  const T3 m1_new_tmp_corrected = m1_new_tmp / alpha_correction;
+
+  // Compute unbiased 2nd-order momentom.
+  // The value beta_correction is usually (1-beta^t),
+  // where t is the number of executed training iterations.
+  const T3 m2_new_tmp_corrected = m2_new_tmp / beta_correction;
+
   // Save regularized update direction to output.
-  const T2 d_tmp = lambda * w + T1(m1_new_tmp / (_Sqrt(m2_new_tmp) + epsilon));
+  const T2 d_tmp = lambda * w + 
+    T1(m1_new_tmp_corrected / (_Sqrt(m2_new_tmp_corrected) + epsilon));
 
   // Things are updated only if the direction is finite.
   if (_IsFiniteScalar(d_tmp)) {
@@ -75,6 +89,8 @@ __global__ void _LambComputeDirectionImpl(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 alpha_correction,
+    T3 beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -93,6 +109,8 @@ __global__ void _LambComputeDirectionImpl(
       beta,
       lambda,
       epsilon,
+      alpha_correction,
+      beta_correction,
       update_direction[id],
       moment_1_out[id],
       moment_2_out[id]);
@@ -110,6 +128,8 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 alpha_correction,
+    T3 beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -128,6 +148,8 @@ void LambComputeDirection(
       beta,
       lambda,
       epsilon,
+      alpha_correction,
+      beta_correction,
       update_direction,
       moment_1_out,
       moment_2_out,
@@ -146,6 +168,8 @@ void LambComputeDirection(
       T3 beta,                                            \
       T1 lambda,                                          \
       T3 epsilon,                                         \
+      T3 alpha_correction,                                \
+      T3 beta_correction,                                 \
       T2* weights_out,                                    \
       T3* moment_1_out,                                   \
       T3* moment_2_out,                                   \
@@ -286,7 +310,9 @@ __global__ void LambMultiTensorComputeDirectionImpl(
     const T1 lambda,
     const T3 alpha,
     const T3 beta,
-    const T3 epsilon) {
+    const T3 epsilon,
+    const T3 alpha_correction,
+    const T3 beta_correction) {
   const int group_index = chunk_group.block_index_to_tensor_group_index[blockIdx.x];
   const int tensor_size = chunk_group.tensor_sizes[group_index];
   const int chunk_size = chunk_group.chunk_size;
@@ -311,6 +337,8 @@ __global__ void LambMultiTensorComputeDirectionImpl(
         beta,
         lambda,
         epsilon,
+        alpha_correction,
+        beta_correction,
         g[i],
         m1_new[i],
         m2_new[i]);
@@ -325,7 +353,9 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
     const T1 lambda,
     const T3 alpha,
     const T3 beta,
-    const T3 epsilon) {
+    const T3 epsilon,
+    const T3 alpha_correction,
+    const T3 beta_correction) {
   const int thread_count = ChunkGroup<6>::thread_count_per_block;
   const int block_count = chunk_group.chunk_count;
 
@@ -336,7 +366,9 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       lambda,
       alpha,
       beta,
-      epsilon);
+      epsilon,
+      alpha_correction,
+      beta_correction);
 }
 
 #define INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(T1, T2, T3, T_GRAD_NORM)   \
@@ -347,7 +379,9 @@ void LambMultiTensorComputeDirectionFunctor<T1, T2, T3, T_GRAD_NORM>::operator()
       const T1 lambda,                                                          \
       const T3 alpha,                                                           \
       const T3 beta,                                                            \
-      const T3 epsilon);
+      const T3 epsilon,                                                         \
+      const T3 alpha_correction,                                                \
+      const T3 beta_correction);
 
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, float, float, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(double, double, double, double)

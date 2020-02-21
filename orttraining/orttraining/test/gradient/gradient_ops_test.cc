@@ -1597,7 +1597,8 @@ void compute_lamb(
     /* updated weights */ std::vector<float>& w_new,
     /* updated gradients */ std::vector<float>& g_new,
     /* updated momentum */ std::vector<float>& m_new,
-    /* updated 2nd-order momentum */ std::vector<float>& v_new) {
+    /* updated 2nd-order momentum */ std::vector<float>& v_new,
+    const int64_t step = 0) {
   // Element counts of all vector-typed arguments.
   const int64_t size = std::accumulate(shape.begin(), shape.end(), (int64_t)1, std::multiplies<int64_t>());
 
@@ -1609,12 +1610,19 @@ void compute_lamb(
     g_scale *= g_norm / loss_scale;
   }
 
+  const float alpha_correction = step > 0 ?
+    1.f - std::pow(alpha, static_cast<float>(step)) : 1.f;
+  const float beta_correction = step > 0 ?
+    1.f - std::pow(beta, static_cast<float>(step)) : 1.f;
+
   // Compute new 1st-, 2nd-order momentums, and the update direction.
   for (int i = 0; i < size; ++i) {
     const float g_scaled = g[i] / g_scale;
     m_new[i] = alpha * m[i] + (1.0f - alpha) * g_scaled;
     v_new[i] = beta * v[i] + (1.0f - beta) * g_scaled * g_scaled;
-    r[i] = m_new[i] / (std::sqrt(v_new[i]) + epsilon) + lambda * w[i];
+    const float m_new_tmp = m_new[i] / alpha_correction;
+    const float v_new_tmp = v_new[i] / beta_correction;
+    r[i] = lambda * w[i] + m_new_tmp / (std::sqrt(v_new_tmp) + epsilon);
   }
 
   // Compute squared sum of all elements. Note that Eigen sqrt could lead to significant
@@ -1654,13 +1662,19 @@ void run_lamb_test_with_baseline(
     const std::vector<T4>& v_new,
     const std::vector<MLFloat16>& w_half = {},
     const std::vector<MLFloat16>& w_new_half = {},
-    bool do_update = true) {
+    const bool do_update = true,
+    const int64_t step = 0) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
   test.AddInput<bool>("update_signal", {1}, {do_update});
   test.AddMissingOptionalInput<T2>();
   test.AddMissingOptionalInput<T2>();
   test.AddInput<T1>("ETA", {1}, eta);
+  if (step > 0) {
+    test.AddInput<int64_t>("Step", {}, {step});
+  } else {
+    test.AddMissingOptionalInput<int64_t>();
+  }
   test.AddInput<T2>("W", shape, w);
   test.AddInput<T3>("G", shape, g);
   test.AddInput<T4>("Moment_1", shape, m);
@@ -1679,6 +1693,11 @@ void run_lamb_test_with_baseline(
   // so we assign a big value here.
   test.AddAttribute("threshold", std::vector<float>(1, 10000.0f));
 
+  if (step > 0) {
+    test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
+  } else {
+    test.AddMissingOptionalOutput<int64_t>();
+  }
   if (!w_new.empty()) {
     test.AddOutput<T2>("W_Out", shape, w_new);
   } else {
@@ -1720,7 +1739,8 @@ void run_multi_tensor_lamb_test_with_baseline(
     const std::vector<std::vector<T4>>& v_news,
     const std::vector<std::vector<MLFloat16>>& w_halfs = {},
     const std::vector<std::vector<MLFloat16>>& w_new_halfs = {},
-    bool do_update = true) {
+    const bool do_update = true,
+    const int64_t step = 0) {
   OpTester test("LambOptimizer", 9, onnxruntime::kOnnxDomain, true);
 
   ORT_ENFORCE(shapes.size() == ws.size());
@@ -1752,6 +1772,13 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddInput<T1>("loss_scale", {}, {loss_scale});
   test.AddInput<T1>("gradient_norm", {}, {g_norm});
   test.AddInput<T1>("ETA", {}, {eta});
+  if (step > 0) {
+    test.AddInput<int64_t>("Step", {}, {step});
+    test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
+  } else {
+    test.AddMissingOptionalInput<int64_t>();
+    test.AddMissingOptionalOutput<int64_t>();
+  }
   for (int i = 0; i < group_count; ++i) {
     std::string w_name = "W_" + std::to_string(i);
     std::string g_name = "G_" + std::to_string(i);
@@ -1819,7 +1846,8 @@ void run_multi_tensor_lamb_test(
     const std::vector<float> lambdas,
     const std::vector<float> alphas,
     const std::vector<float> betas,
-    const std::vector<float> epsilons) {
+    const std::vector<float> epsilons,
+    const int64_t step = 0) {
   // Check if parallel vectors have the same length.
   ORT_ENFORCE(shapes.size() == ws.size());
   ORT_ENFORCE(shapes.size() == gs.size());
@@ -1849,7 +1877,7 @@ void run_multi_tensor_lamb_test(
         shapes[i], ws[i], gs[i], ms[i], vs[i],
         eta, loss_scale, g_norm,
         lambdas[i], alphas[i], betas[i], epsilons[i],
-        w_news[i], g_news[i], m_news[i], v_news[i]);
+        w_news[i], g_news[i], m_news[i], v_news[i], step);
   }
 
   // Create tests to make sure the output is correct.
@@ -1859,14 +1887,14 @@ void run_multi_tensor_lamb_test(
       shapes, eta, loss_scale, g_norm,
       ws, gs, ms, vs,
       alphas, betas, lambdas, epsilons,
-      w_news, {}, m_news, v_news);
+      w_news, {}, m_news, v_news, {}, {}, true, step);
 
-  // Output new gradients.
-  run_multi_tensor_lamb_test_with_baseline(
+    // Output new gradients.
+    run_multi_tensor_lamb_test_with_baseline(
       shapes, eta, loss_scale, g_norm,
       ws, gs, ms, vs,
       alphas, betas, lambdas, epsilons,
-      {}, g_news, m_news, v_news);
+      {}, g_news, m_news, v_news, {}, {}, true, step);
 }
 
 void run_lamb_mix_precision_test(
@@ -1879,7 +1907,8 @@ void run_lamb_mix_precision_test(
     const float lambda,
     const float alpha,
     const float beta,
-    const float epsilon) {
+    const float epsilon,
+    const int64_t step = 0) {
   std::vector<float> w_new(w.size(), 0);
   std::vector<float> g_new(g.size(), 0);
   std::vector<float> m_new(m.size(), 0);
@@ -1889,7 +1918,7 @@ void run_lamb_mix_precision_test(
   compute_lamb(
       shape, w, g, m, v,
       eta[0], 1.f, 1.f, lambda, alpha, beta, epsilon,
-      w_new, g_new, m_new, v_new);
+      w_new, g_new, m_new, v_new, step);
 
   std::vector<MLFloat16> eta_half(eta.size());
   std::vector<MLFloat16> g_half(w.size());
@@ -1913,47 +1942,47 @@ void run_lamb_mix_precision_test(
 
   // Half momentums, without fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half, {}, {}, true, step);
 
   // Float momentums, without fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, {}, {}, true, step);
 
   // Half momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half, w_half, w_new_half);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w_new, {}, m_new_half, v_new_half, {}, {}, true, step);
 
   // Float momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half, true, step);
 
   // Half momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, {}, m_half, v_half, w_half, w_half, false);
+      shape, eta_half, w, g_half, m_half, v_half, alpha, beta, lambda, epsilon, w, {}, m_half, v_half, w_half, w_half, false, step);
 
   // Float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false, step);
 
   // Float eta, float momentums, with fp16 weight
   run_lamb_test_with_baseline(
-      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half);
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w_new, {}, m_new, v_new, w_half, w_new_half, true, step);
 
   // Float eta, float momentums, with fp16 weight, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false);
+      shape, eta, w, g_half, m, v, alpha, beta, lambda, epsilon, w, {}, m, v, w_half, w_half, false, step);
 
   // Float momentums, without fp16 weight, output gradients only
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new, {}, {}, true, step);
 
   // Float momentums, with fp16 weight, output gradients only
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new, w_half, {});
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_new_half, m_new, v_new, w_half, {}, true, step);
 
   // Float momentums, with fp16 weight, output gradients only, skip weight update
   run_lamb_test_with_baseline(
-      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_half, m, v, w_half, {}, false);
+      shape, eta_half, w, g_half, m, v, alpha, beta, lambda, epsilon, {}, g_half, m, v, w_half, {}, false, step);
 }
 
 // A optimizer test with an 2-element vector.
@@ -1983,6 +2012,64 @@ TEST(OptimizerTest, LambOptimizerTestVector) {
       {alpha},
       {beta},
       {epsilon});
+}
+
+TEST(OptimizerTest, LambOptimizerTestBiasCorrectionFirst) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {2};
+  const float eta = 0.5f;
+  const std::vector<float> w = {1.0f, 2.0f};
+  const std::vector<float> g = {3.0f, 4.0f};
+  const std::vector<float> m = {-1.0f, -2.0f};
+  const std::vector<float> v = {2.0f, 1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    1.f,
+    1.f,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon},
+    1);
+}
+
+TEST(OptimizerTest, LambOptimizerTestBiasCorrectionThird) {
+  // Input tensors and attributes.
+  const std::vector<int64_t> shape = {2};
+  const float eta = 0.5f;
+  const std::vector<float> w = {1.0f, 2.0f};
+  const std::vector<float> g = {3.0f, 4.0f};
+  const std::vector<float> m = {-1.0f, -2.0f};
+  const std::vector<float> v = {2.0f, 1.0f};
+  const float lambda = 0.5f;
+  const float alpha = 0.2f;
+  const float beta = 0.8f;
+  const float epsilon = 1e-6f;
+
+  run_multi_tensor_lamb_test(
+    {shape},
+    eta,
+    1.f,
+    1.f,
+    {w},
+    {g},
+    {m},
+    {v},
+    {lambda},
+    {alpha},
+    {beta},
+    {epsilon},
+    3);
 }
 
 // A optimizer test with an 2-by-1-by-1-by-1 tensor.
@@ -2268,6 +2355,10 @@ TEST(OptimizerTest, LambOptimizerTestScalarMixPrecision32_16) {
   run_lamb_mix_precision_test(
       shape, eta, w, g, m, v,
       lambda, alpha, beta, epsilon);
+
+  run_lamb_mix_precision_test(
+      shape, eta, w, g, m, v,
+      lambda, alpha, beta, epsilon, 2);
 }
 
 TEST(OptimizerTest, LambOptimizerTestLarge) {

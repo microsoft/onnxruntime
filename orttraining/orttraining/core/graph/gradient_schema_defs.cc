@@ -130,7 +130,11 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
       .TypeConstraint(
           "T_BOOL",
           {"tensor(bool)"},
-          "Constrain types to boolean tensors.");
+          "Constrain types to boolean tensors.")
+      .TypeConstraint(
+          "TInt64",
+          {"tensor(int64)"},
+          "Constrain update count to 64-bit integer");
 
   op_schema
       .Input(
@@ -156,11 +160,17 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
           "R",
           "The initial learning rate.",
           "T1",
+          OpSchema::Optional)
+      .Input(
+          4,
+          "step",
+          "One-based index of the current training iteration.",
+          "TInt64",
           OpSchema::Optional);
 
   AddRepeatedInputs(
       op_schema,
-      4,
+      5,
       1024,
       {"weights",
        "gradients",
@@ -179,9 +189,17 @@ OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
        "T_FP16"},
       OpSchema::Optional);
 
+  op_schema
+      .Output(
+          0,
+          "new_step",
+          "One-based index of the next training iteration.",
+          "TInt64",
+          OpSchema::Optional);
+
   AddRepeatedOutputs(
       op_schema,
-      0,
+      1,
       1024,
       {"new_weights",
        "new_gradients",

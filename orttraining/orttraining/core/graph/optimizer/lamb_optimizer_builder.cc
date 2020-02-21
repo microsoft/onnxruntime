@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/graph/optimizer/lamb_optimizer_builder.h"
+#include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "core/util/math.h"
 #include "onnx/defs/attr_proto_util.h"
@@ -51,6 +53,17 @@ Status LambOptimizerBuilder::Build(
 
   // Learning rate ArgDef.
   input_argdefs.emplace_back(ArgDef(opt_configs[0].lr_feed_name));
+
+  // Update count, which should be 1 at the first training iteration.
+  // At the end of each Lamb call, the update count may be increased by one.
+  const std::string step_tensor_name = "Step";  // per weight optimizer requires a per weight update count
+  // Add step as an initializer.
+  new_external_initializers.emplace_back(CreateTensorProto<int64_t>(step_tensor_name, 1));
+  input_argdefs.emplace_back(ArgDef(step_tensor_name));
+
+  // Add the first output, which is the updated step.
+  TypeProto* step_type_proto = graph_defs.CreateTypeProto({}, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  output_argdefs.emplace_back(ArgDef(step_tensor_name + "_Out", step_type_proto));
 
   // Lamb optimizer's attributes.
   std::vector<float> alpha;

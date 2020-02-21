@@ -47,6 +47,8 @@ void LambComputeDirection(
     T3 beta,
     T1 lambda,
     T3 epsilon,
+    T3 alpha_correction,
+    T3 beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -96,7 +98,9 @@ struct LambMultiTensorComputeDirectionFunctor {
       const T1 lambda,
       const T3 alpha,
       const T3 beta,
-      const T3 epsilon);
+      const T3 epsilon,
+      const T3 alpha_correction,
+      const T3 beta_correction);
 };
 
 // Lamb's reduction maps [w, d] to [w_norm, d_norm] where
