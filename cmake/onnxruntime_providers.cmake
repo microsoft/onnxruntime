@@ -431,7 +431,7 @@ if (onnxruntime_USE_DML)
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
 
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
-    if(NOT onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_target_platform STREQUAL "x64")
+    if(NOT onnxruntime_target_platform STREQUAL "Win32" AND NOT onnxruntime_target_platform STREQUAL "x64")
       message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
     endif()
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
