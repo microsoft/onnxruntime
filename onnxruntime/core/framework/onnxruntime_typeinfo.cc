@@ -84,10 +84,14 @@ ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
   delete ptr;
 }
 
-OrtStatus* GetTensorShapeAndType(const TensorShape& shape, const onnxruntime::DataTypeImpl& tensor_data_type,
+OrtStatus* GetTensorShapeAndType(const TensorShape& shape,
+                                 const onnxruntime::DataTypeImpl& tensor_data_type,
                                  OrtTensorTypeAndShapeInfo** out);
-OrtStatus* GetTensorShapeAndType(const TensorShape& shape, const std::vector<std::string>* dim_params,
-                                 const ONNX_NAMESPACE::TypeProto& type_proto, OrtTensorTypeAndShapeInfo** out);
+OrtStatus* GetTensorShapeAndType(const TensorShape& shape,
+                                 const std::vector<std::string>* dim_params,
+                                 const std::vector<std::string>* dim_denotations,
+                                 const ONNX_NAMESPACE::TypeProto& type_proto,
+                                 OrtTensorTypeAndShapeInfo** out);
 
 OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   onnxruntime::MLDataType type = value.Type();
@@ -223,9 +227,13 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
         const on::TensorShapeProto& s = *sp;
         std::vector<int64_t> dims(s.dim_size());
         std::vector<std::string> dim_params(s.dim_size());
+        std::vector<std::string> dim_denotations(s.dim_size(), "");
         TensorShape shape_data(std::move(dims));
         for (int i = 0; i < s.dim_size(); ++i) {
           auto& t = s.dim(i);
+          if (t.has_denotation()) {
+            dim_denotations[i] = t.denotation();
+          }
           switch (t.value_case()) {
             case on::TensorShapeProto::Dimension::kDimValue:
               shape_data[i] = t.dim_value();
@@ -240,9 +248,9 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
               assert(false);
           }
         }
-        st = GetTensorShapeAndType(shape_data, &dim_params, *input, &info);
+        st = GetTensorShapeAndType(shape_data, &dim_params, &dim_denotations, *input, &info);
       } else {
-        st = GetTensorShapeAndType(TensorShape(), nullptr, *input, &info);
+        st = GetTensorShapeAndType(TensorShape(), nullptr, nullptr, *input, &info);
       }
       if (st != nullptr) return st;
       auto type_info = new OrtTypeInfo(ten_type, info);
@@ -292,8 +300,7 @@ OrtStatus* OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto* input, Or
 OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
   switch (type) {
     case ONNX_TYPE_TENSOR:
-    case ONNX_TYPE_SPARSETENSOR:
-    {
+    case ONNX_TYPE_SPARSETENSOR: {
       OrtTensorTypeAndShapeInfo* clone;
       if (auto status = data->Clone(&clone)) {
         return status;
@@ -302,8 +309,7 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
       (*out)->denotation = denotation;
       return nullptr;
     }
-    case ONNX_TYPE_SEQUENCE:
-    {
+    case ONNX_TYPE_SEQUENCE: {
       OrtSequenceTypeInfo* clone;
       if (auto status = sequence_type_info->Clone(&clone)) {
         return status;
@@ -321,8 +327,7 @@ OrtStatus* OrtTypeInfo::Clone(OrtTypeInfo** out) {
       (*out)->denotation = denotation;
       return nullptr;
     }
-    case ONNX_TYPE_OPAQUE:
-    {
+    case ONNX_TYPE_OPAQUE: {
       *out = new OrtTypeInfo(type);
       (*out)->denotation = denotation;
       return nullptr;

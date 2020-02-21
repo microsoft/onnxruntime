@@ -70,6 +70,19 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions, _In_ const struct OrtTensorT
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensionsWithDenotations,
+                    _In_ const struct OrtTensorTypeAndShapeInfo* info,
+                    _Out_ const char** names,
+                    _Out_ const char** denotations,
+                    size_t dim_params_length) {
+  for (size_t idx = 0, end = std::min(info->dim_params.size(), dim_params_length); idx < end; ++idx) {
+    names[idx] = info->dim_params[idx].c_str();
+    denotations[idx] = info->dim_denotations[idx].c_str();
+  }
+
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
   *out = static_cast<size_t>(this_ptr->shape.Size());
   return nullptr;
@@ -140,8 +153,11 @@ ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   return TensorDataTypeToOnnxRuntimeTensorElementDataType(prim_type->GetDataType());
 }
 
-OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape shape,
-                                       const std::vector<std::string>* dim_params, OrtTensorTypeAndShapeInfo** out) {
+OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type,
+                                       const onnxruntime::TensorShape shape,
+                                       const std::vector<std::string>* dim_params,
+                                       const std::vector<std::string>* dim_denotations,
+                                       OrtTensorTypeAndShapeInfo** out) {
   OrtTensorTypeAndShapeInfo* ret;
   if (auto* status = OrtApis::CreateTensorTypeAndShapeInfo(&ret))
     return status;
@@ -164,21 +180,29 @@ OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onn
     ret->dim_params.resize(shape.NumDimensions(), "");
   }
 
+  if (dim_denotations != nullptr) {
+    ret->dim_denotations = *dim_denotations;
+  }
+
   *out = ret;
   return nullptr;
 }
 
 OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape,
-                                 const onnxruntime::DataTypeImpl& tensor_data_type, OrtTensorTypeAndShapeInfo** out) {
+                                 const onnxruntime::DataTypeImpl& tensor_data_type,
+                                 OrtTensorTypeAndShapeInfo** out) {
   ONNXTensorElementDataType type = MLDataTypeToOnnxRuntimeTensorElementDataType(&tensor_data_type);
   if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Not implemented");
   }
-  return GetTensorShapeAndTypeHelper(type, shape, nullptr, out);
+  return GetTensorShapeAndTypeHelper(type, shape, nullptr, nullptr, out);
 }
 
-OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape, const std::vector<std::string>* dim_params,
-                                 const ONNX_NAMESPACE::TypeProto& type_proto, OrtTensorTypeAndShapeInfo** out) {
+OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape,
+                                 const std::vector<std::string>* dim_params,
+                                 const std::vector<std::string>* dim_denotations,
+                                 const ONNX_NAMESPACE::TypeProto& type_proto,
+                                 OrtTensorTypeAndShapeInfo** out) {
   auto value_case = type_proto.value_case();
   assert(value_case == ONNX_NAMESPACE::TypeProto::kTensorType ||
          value_case == ONNX_NAMESPACE::TypeProto::kSparseTensorType);
@@ -189,12 +213,11 @@ OrtStatus* GetTensorShapeAndType(const onnxruntime::TensorShape& shape, const st
   if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Not implemented");
   }
-  return GetTensorShapeAndTypeHelper(type, shape, dim_params, out);
+  return GetTensorShapeAndTypeHelper(type, shape, dim_params, dim_denotations, out);
 }
 
-OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out)
-{
-  return GetTensorShapeAndTypeHelper(type, shape, &dim_params, out);
+OrtStatus* OrtTensorTypeAndShapeInfo::Clone(OrtTensorTypeAndShapeInfo** out) {
+  return GetTensorShapeAndTypeHelper(type, shape, &dim_params, &dim_denotations, out);
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorTypeAndShape, _In_ const OrtValue* v, _Out_ OrtTensorTypeAndShapeInfo** out) {
