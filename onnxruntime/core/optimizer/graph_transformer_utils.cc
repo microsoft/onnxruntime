@@ -112,7 +112,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
-      //transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+      // Enabled for inference only scenario.
+#ifndef ENABLE_TRAINING
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(l1_execution_providers));
+#endif
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
