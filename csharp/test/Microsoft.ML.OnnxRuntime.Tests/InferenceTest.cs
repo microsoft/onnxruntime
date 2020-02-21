@@ -577,6 +577,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        /*
         [Fact]
         private void TestRegisterCustomOpLibrary()
         {
@@ -655,6 +656,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+        */
 
         [Fact]
         private void TestSymbolicDimsMetadata()
