@@ -132,11 +132,6 @@ namespace {
     return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
   }
 
-  template<typename Range, typename Pred>
-  bool AreRangesEqual(const Range& lhs, const Range& rhs, const Pred& pred) {
-    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), pred);
-  }
-
   bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::AttributeProto& rhs) {
     if (&lhs == &rhs) {
       return true;
@@ -207,7 +202,7 @@ namespace {
     return hash_ == other.hash_ && output_index_ == other.output_index_ && discriminator_ == other.discriminator_ &&
       non_op_value_ == other.non_op_value_ &&
       op_type_ == other.op_type_ && domain_ == other.domain_ &&
-      AreRangesEqual(inputs_, other.inputs_) &&
+      inputs_ == other.inputs_ &&
       SameAttributes(attributes_, other.attributes_);
   }
 

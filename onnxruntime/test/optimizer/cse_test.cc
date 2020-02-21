@@ -22,7 +22,6 @@ namespace {
     GraphTransformerManager graph_transformation_mgr(num_steps);
     graph_transformation_mgr.Register(onnxruntime::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1);
     graph_transformation_mgr.ApplyTransformers(model.MainGraph(), TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger());
-    Model::Save(model, "testdata/transform/cse/optimized.onnx");
   }
 
   std::vector<std::string> GetSortedNames(const std::vector<const NodeArg*>& node_args) {
@@ -33,6 +32,16 @@ namespace {
 
     std::sort(node_arg_names.begin(), node_arg_names.end());
     return node_arg_names;
+  }
+
+  std::vector<std::string> GetNodeNames(const Graph& graph) {
+    std::vector<std::string> res;
+    for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+      const auto* node = graph.GetNode(i);
+      if (node != nullptr)
+        res.push_back(node->Name());
+    }
+    return res;
   }
 }
 
@@ -89,9 +98,11 @@ TEST(CseTests, OptionalArgs) {
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
                           DefaultLoggingManager().DefaultLogger())
                   .IsOK());
-  ApplyCse(*model);
-
   Graph& graph = model->MainGraph();
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count.at("Clip"), 5);
+
+  ApplyCse(*model);
 
   const auto& graph_inputs = graph.GetInputs();
   ASSERT_EQ(graph_inputs.size(), 1);
@@ -101,8 +112,11 @@ TEST(CseTests, OptionalArgs) {
   ASSERT_EQ(output_names.size(), 1);
   ASSERT_EQ(output_names[0], "Result");
 
-  auto op_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_count.at("Clip"), 1);
+  op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count.at("Clip"), 3);
+  auto node_names = GetNodeNames(graph);
+  ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "clip_3"), 1);
+  ASSERT_EQ(std::count(node_names.begin(), node_names.end(), "clip_4"), 1);
 }
 
 }
