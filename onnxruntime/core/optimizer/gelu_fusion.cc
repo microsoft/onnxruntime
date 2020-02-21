@@ -45,7 +45,10 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     }
 
     // Check second input is sqrt(2)
-    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2), true)) {
+    // Some Bert model uses this approximation of SQRT2 in the Gelu function
+    float approximated_sqrt_two = 1.4142099618911743f;
+    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), approximated_sqrt_two, true) &&
+        !optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2), true)) {
       continue;
     }
 

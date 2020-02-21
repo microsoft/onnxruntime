@@ -6,8 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 
-// This value is used in structures passed to ORT so that a newer version of ORT will still work with
-#define ORT_API_VERSION 1
+// This value is used in structures passed to ORT so that a newer version of ORT will still work with them
+#define ORT_API_VERSION 2
 
 #ifdef __cplusplus
 extern "C" {
@@ -156,6 +156,9 @@ ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
 ORT_RUNTIME_CLASS(SessionOptions);
 ORT_RUNTIME_CLASS(CustomOpDomain);
+ORT_RUNTIME_CLASS(MapTypeInfo);
+ORT_RUNTIME_CLASS(SequenceTypeInfo);
+ORT_RUNTIME_CLASS(ModelMetadata);
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -214,6 +217,8 @@ typedef struct OrtApi OrtApi;
 
 struct OrtApiBase {
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
+  // nullptr will be returned if the version is unsupported, for example when using a runtime older than this header file
+
   const char*(ORT_API_CALL* GetVersionString)() NO_EXCEPTION;
 };
 typedef struct OrtApiBase OrtApiBase;
@@ -377,7 +382,7 @@ struct OrtApi {
   OrtStatus*(ORT_API_CALL* SessionGetOverridableInitializerTypeInfo)(_In_ const OrtSession* sess, size_t index, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
 
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible in freeing it.
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
    */
   OrtStatus*(ORT_API_CALL* SessionGetInputName)(_In_ const OrtSession* sess, size_t index,
                                                 _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
@@ -646,6 +651,102 @@ struct OrtApi {
   ORT_CLASS_RELEASE(TensorTypeAndShapeInfo);
   ORT_CLASS_RELEASE(SessionOptions);
   ORT_CLASS_RELEASE(CustomOpDomain);
+
+  // End of Version 1 - DO NOT MODIFY ABOVE (see above text for more information)
+
+  // Version 2 - In development, feel free to add/remove/rearrange here
+
+  /**
+    * GetDenotationFromTypeInfo
+	 * This api augments OrtTypeInfo to return denotations on the type.
+	 * This is used by WinML to determine if an input/output is intended to be an Image or a Tensor.
+    */
+  OrtStatus*(ORT_API_CALL* GetDenotationFromTypeInfo)(_In_ const OrtTypeInfo*, _Out_ const char** const denotation, _Out_ size_t* len)NO_EXCEPTION;
+
+  // OrtTypeInfo Casting methods
+
+  /**
+    * CastTypeInfoToMapTypeInfo
+	 * This api augments OrtTypeInfo to return an OrtMapTypeInfo when the type is a map.
+	 * The OrtMapTypeInfo has additional information about the map's key type and value type.
+	 * This is used by WinML to support model reflection APIs.
+	 *
+	 * Don't free the 'out' value
+    */
+  OrtStatus*(ORT_API_CALL* CastTypeInfoToMapTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtMapTypeInfo** out)NO_EXCEPTION;
+
+  /**
+    * CastTypeInfoToSequenceTypeInfo
+	 * This api augments OrtTypeInfo to return an OrtSequenceTypeInfo when the type is a sequence.
+	 * The OrtSequenceTypeInfo has additional information about the sequence's element type.
+    * This is used by WinML to support model reflection APIs.
+	 *
+	 * Don't free the 'out' value
+    */
+  OrtStatus*(ORT_API_CALL* CastTypeInfoToSequenceTypeInfo)(_In_ const OrtTypeInfo* type_info, _Out_ const OrtSequenceTypeInfo** out)NO_EXCEPTION;
+
+  // OrtMapTypeInfo Accessors
+
+  /**
+    * GetMapKeyType
+	 * This api augments get the key type of a map. Key types are restricted to being scalar types and use ONNXTensorElementDataType.
+	 * This is used by WinML to support model reflection APIs.
+    */
+  OrtStatus*(ORT_API_CALL* GetMapKeyType)(_In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out)NO_EXCEPTION;
+
+  /**
+    * GetMapValueType
+	 * This api augments get the value type of a map.
+    */
+  OrtStatus*(ORT_API_CALL* GetMapValueType)(_In_ const OrtMapTypeInfo* map_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
+
+  // OrtSequenceTypeInfo Accessors
+
+  /**
+    * GetSequenceElementType
+	 * This api augments get the element type of a sequence.
+	 * This is used by WinML to support model reflection APIs.
+    */
+  OrtStatus*(ORT_API_CALL* GetSequenceElementType)(_In_ const OrtSequenceTypeInfo* sequence_type_info, _Outptr_ OrtTypeInfo** type_info)NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(MapTypeInfo);
+  ORT_CLASS_RELEASE(SequenceTypeInfo);
+
+  /**
+   * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling() 
+   * on the SessionOptions instance used to create the session.  
+   */
+  OrtStatus*(ORT_API_CALL* SessionEndProfiling)(_In_ OrtSession* sess, _Inout_ OrtAllocator* allocator,
+                                                _Outptr_ char** out)NO_EXCEPTION;
+
+  /**
+   * \param out is a pointer to the newly created object. The pointer should be freed by calling ReleaseModelMetadata after use.
+   */
+  OrtStatus*(ORT_API_CALL* SessionGetModelMetadata)(_In_ const OrtSession* sess,
+                                                    _Outptr_ OrtModelMetadata** out)NO_EXCEPTION;
+
+  /**
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetProducerName)(_In_ const OrtModelMetadata* model_metadata,
+                                                         _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetGraphName)(_In_ const OrtModelMetadata* model_metadata,
+                                                      _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetDomain)(_In_ const OrtModelMetadata* model_metadata,
+                                                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetDescription)(_In_ const OrtModelMetadata* model_metadata,
+                                                        _Inout_ OrtAllocator* allocator, _Outptr_ char** value)NO_EXCEPTION;
+  /**
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * 'value' will be a nullptr if the given key is not found in the custom metadata map.
+   */
+  OrtStatus*(ORT_API_CALL* ModelMetadataLookupCustomMetadataMap)(_In_ const OrtModelMetadata* model_metadata, _Inout_ OrtAllocator* allocator,
+                                                                 _In_ const char* key, _Outptr_ char** value)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* ModelMetadataGetVersion)(_In_ const OrtModelMetadata* model_metadata, _Out_ int64_t* value)NO_EXCEPTION;
+
+  ORT_CLASS_RELEASE(ModelMetadata);
 };
 
 /*

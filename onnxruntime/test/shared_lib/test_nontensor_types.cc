@@ -3,10 +3,10 @@
 
 #include <core/common/make_unique.h>
 #include "core/session/onnxruntime_cxx_api.h"
-#include "test_fixture.h"
 #include <functional>
 #include <set>
 #include "test_allocator.h"
+#include <gtest/gtest.h>
 #include <iostream>
 
 template <typename T>
@@ -25,12 +25,12 @@ struct RelAllocations {
   }
 };
 
-TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
+TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type seq(map(int64, float))
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int N = 3;
+  const size_t N = 3;
   const int NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   std::vector<int64_t> keys{3, 1, 2, 0};
@@ -85,12 +85,12 @@ TEST_F(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output ty
   }
 }
 
-TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
+TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output type seq(map(string, float))
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  const int N = 3;
+  const size_t N = 3;
   const int64_t NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};
@@ -150,7 +150,7 @@ TEST_F(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output t
   }
 }
 
-TEST_F(CApiTest, CreateGetSeqTensors) {
+TEST(CApiTest, CreateGetSeqTensors) {
   // Creation
   auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
@@ -175,4 +175,43 @@ TEST_F(CApiTest, CreateGetSeqTensors) {
     ASSERT_EQ(std::set<int64_t>(ret, ret + vals.size()),
               std::set<int64_t>(std::begin(vals), std::end(vals)));
   }
+}
+
+TEST(CApiTest, CreateGetSeqStringTensors) {
+  // Creation
+  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> in;
+  const char* string_input_data[] = {"abs", "def"};
+  const int N = 2;
+  for (int i = 0; i < N; ++i) {
+    // create tensor
+    std::vector<int64_t> shape{2};
+    auto value = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+    Ort::GetApi().FillStringTensor(value, string_input_data, 2);
+    in.push_back(std::move(value));
+  }
+
+  Ort::Value seq_ort = Ort::Value::CreateSequence(in);
+
+  // Fetch
+  std::set<std::string> string_set;
+  for (int idx = 0; idx < N; ++idx) {
+    Ort::Value out = seq_ort.GetValue(idx, default_allocator.get());
+    size_t data_len = out.GetStringTensorDataLength();
+    std::string result(data_len, '\0');
+    std::vector<size_t> offsets(N);
+    out.GetStringTensorContent((void*)result.data(), data_len, offsets.data(), offsets.size());
+
+    const char* s = result.data();
+    for (size_t i = 0; i < offsets.size(); ++i) {
+      size_t start = offsets[i];
+      size_t count = (i + 1) < offsets.size() ? offsets[i + 1] - start : data_len - start;
+      std::string stemp(s + start, count);
+      string_set.insert(stemp);
+    }
+  }
+  ASSERT_EQ(string_set, std::set<std::string>(std::begin(string_input_data), std::end(string_input_data)));
 }

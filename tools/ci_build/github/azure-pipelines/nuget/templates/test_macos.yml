@@ -1,12 +1,12 @@
 parameters:
-  AgentPool : 'Hosted macOS High Sierra'
   IsMacOS : 'true'
 
 jobs:
 - job: NuGet_Test_MacOS
   workspace:
     clean: all
-  pool: ${{ parameters.AgentPool }}
+  pool:
+    vmImage: 'macOS-10.14'
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
@@ -52,8 +52,8 @@ jobs:
         DisableContribOps: $(DisableContribOps)
         IsReleaseBuild: $(IsReleaseBuild)
 
-  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-    displayName: 'Component Detection'
-    condition: always()
+  - template: ../../templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'always'
 
   - template: ../../templates/clean-agent-build-directory-step.yml

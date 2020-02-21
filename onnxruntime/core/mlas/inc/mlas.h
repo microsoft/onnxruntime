@@ -333,7 +333,15 @@ MlasReorderInput(
 
 void
 MLASCALL
-MlasReorderOutput(
+MlasReorderOutputNchw(
+    const int64_t* OutputShape,
+    const float* S,
+    float* D
+    );
+
+void
+MLASCALL
+MlasReorderOutputNhwc(
     const int64_t* OutputShape,
     const float* S,
     float* D

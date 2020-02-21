@@ -311,7 +311,7 @@ namespace Onnx {
     /// implementations needed to use has_field hueristics to determine
     /// which value field was in use.  For IR_VERSION 0.0.2 or later, this
     /// field MUST be set and match the f|i|s|t|... field in use.  This
-    /// change was made to accomodate proto3 implementations.
+    /// change was made to accommodate proto3 implementations.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Onnx.AttributeProto.Types.AttributeType Type {

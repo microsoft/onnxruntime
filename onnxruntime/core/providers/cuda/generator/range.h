@@ -9,8 +9,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 class Range final : public CudaKernel {
  public:
   explicit Range(const OpKernelInfo& info) : CudaKernel(info) {}

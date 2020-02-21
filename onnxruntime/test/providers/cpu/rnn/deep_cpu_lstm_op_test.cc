@@ -139,7 +139,8 @@ static void RunLstmTest(const std::vector<float>& X_data,
     test.AddMissingOptionalOutput<float>();
   }
 
-  test.Run();
+  // TensorRT failed on LSTM tests
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 void SimpleWeightsNoBiasTwoRows(std::string direction,

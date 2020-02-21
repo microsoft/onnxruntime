@@ -6,7 +6,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
-#include "Archive.h"
+#include "Featurizers/../Archive.h"
 #include "Featurizers/LabelEncoderFeaturizer.h"
 #include "Featurizers/TestHelpers.h"
 
@@ -18,14 +18,16 @@ namespace test {
 template <typename KeyT, typename IndexT>
 using IndexMap = std::unordered_map<KeyT, IndexT>;
 
+namespace {
 template <typename InputType>
-std::vector<uint8_t> GetStream(const IndexMap<InputType, uint32_t>& map, bool allowMissingValues) {
+std::vector<uint8_t> GetStream(const IndexMap<InputType, uint32_t>& map, bool allow_missing_values) {
   ft::Archive ar;
   using TransType = ft::Featurizers::LabelEncoderTransformer<InputType>;
-  TransType inst(map, allowMissingValues);
+  TransType inst(map, allow_missing_values);
   inst.save(ar);
   return ar.commit();
 }
+}  // namespace
 
 TEST(FeaturizersTests, LabelEncodeTransformer_uint32) {
   OpTester test("LabelEncoderTransformer", 1, onnxruntime::kMSFeaturizersDomain);

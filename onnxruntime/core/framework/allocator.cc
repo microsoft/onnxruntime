@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/utils.h"
@@ -9,6 +10,27 @@
 #include <sstream>
 
 namespace onnxruntime {
+
+// private helper for calculation so SafeInt usage doesn't bleed into the public allocator.h header
+bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
+  bool ok = true;
+
+  try {
+    SafeInt<size_t> alloc_size(size);
+    if (alignment == 0) {
+      *out = alloc_size * nmemb;
+    } else {
+      size_t alignment_mask = alignment - 1;
+      *out = (alloc_size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
+    }
+  } catch (const OnnxRuntimeException& ex) {
+    // overflow in calculating the size thrown by SafeInt.
+    LOGS_DEFAULT(ERROR) << ex.what();
+    ok = false;
+  }
+
+  return ok;
+}
 
 #if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 void* MiMallocAllocator::Alloc(size_t size) {

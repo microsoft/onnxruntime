@@ -1,8 +1,3 @@
-# Defined as pipeline variables
-# variables:
-#   AgentPoolLinux : 'Linux-CPU'
-#   AgentPoolMacOS : 'macOS-10.13'
-
 parameters:
   DoEsrp: 'false'
 
@@ -13,7 +8,6 @@ jobs:
     JobName: 'Windows_CI_Dev'
     BuildCommand:  '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --use_mklml --build_shared_lib --enable_onnx_tests  --cmake_generator "Visual Studio 16 2019"'
     BuildArch: 'x64'
-    msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'x64'
     DoDebugBuild: 'false'
@@ -42,7 +36,7 @@ jobs:
     - task: CmdLine@2
       inputs:
         script: |
-          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_featurizers --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --use_mklml --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
         workingDirectory: $(Build.SourcesDirectory)
     - script: |
        set -e -x
@@ -62,9 +56,9 @@ jobs:
       inputs:
         artifactName: 'drop-linux'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
     - template: ../../templates/clean-agent-build-directory-step.yml
 
 - template: ../../templates/mac-ci.yml
