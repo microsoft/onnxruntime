@@ -26,7 +26,6 @@ constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kNGraphExecutionProvider = "NGRAPHExecutionProvider";
-constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kIntelExecutionProvider = "IntelExecutionProvider";
 constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
 constexpr const char* kBrainSliceExecutionProvider = "BrainSliceExecutionProvider";

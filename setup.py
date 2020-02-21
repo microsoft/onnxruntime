@@ -38,9 +38,6 @@ elif '--use_ngraph' in sys.argv:
 elif '--use_dnnl' in sys.argv:
     package_name = 'onnxruntime-dnnl'
     sys.argv.remove('--use_dnnl')
-
-elif '--use_openvino' in sys.argv:
-    package_name = 'onnxruntime-openvino'
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
@@ -160,13 +157,6 @@ else:
     data = [path.join('capi', x) for x in libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = []
 
-
-python_modules_list = list()
-if '--use_openvino' in sys.argv:
-  #Adding python modules required for openvino ep
-  python_modules_list.extend(['openvino_mo', 'openvino_emitter'])
-  sys.argv.remove('--use_openvino')
-
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
@@ -225,7 +215,6 @@ setup(
     package_data={
         'onnxruntime': data + examples + extra,
     },
-    py_modules=python_modules_list,
     install_requires=[
         'onnx>=1.2.3',
         'numpy>=1.18.0'

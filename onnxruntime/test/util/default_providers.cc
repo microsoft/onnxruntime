@@ -15,7 +15,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Intel(const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 
@@ -28,14 +27,6 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
   return CreateExecutionProviderFactory_Tensorrt(0)->CreateProvider();
-#else
-  return nullptr;
-#endif
-}
-
-std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
-#ifdef USE_OPENVINO
-  return CreateExecutionProviderFactory_OpenVINO("CPU")->CreateProvider();
 #else
   return nullptr;
 #endif

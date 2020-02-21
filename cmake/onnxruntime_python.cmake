@@ -77,7 +77,6 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_INTEL}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
@@ -241,16 +240,6 @@ if (onnxruntime_USE_INTEL)
         ${OPENVINO_LIB_DIR}/plugins.xml
         $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
     )
-endif()
-
-
-if (onnxruntime_USE_OPENVINO)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${OPENVINO_CPU_EXTENSION_DIR}/${OPENVINO_CPU_EXTENSION_LIB}
-        $<TARGET_FILE_DIR:${test_data_target}>/onnxruntime/capi/
-  )
 endif()
 
 if (onnxruntime_USE_TVM)

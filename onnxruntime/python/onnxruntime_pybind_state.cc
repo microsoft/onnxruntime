@@ -48,25 +48,6 @@
 #define BACKEND_NGRAPH ""
 #endif
 
-#if OPENVINO_CONFIG_CPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
-
-#elif OPENVINO_CONFIG_GPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
-
-#elif OPENVINO_CONFIG_GPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
-
-#elif OPENVINO_CONFIG_MYRIAD
-#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
-
-#elif OPENVINO_CONFIG_VAD_M
-#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
-
-#else
-#define BACKEND_OPENVINO ""
-#endif
-
 #if INTEL_CONFIG_CPU_FP32
 #define BACKEND_INTEL "-INTEL_CPU_FP32"
 
@@ -99,7 +80,7 @@
 #define BACKEND_OPENBLAS ""
 #endif
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_INTEL
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_MKLML BACKEND_NGRAPH BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_INTEL
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -116,9 +97,6 @@
 #endif
 #ifdef USE_NGRAPH
 #include "core/providers/ngraph/ngraph_provider_factory.h"
-#endif
-#ifdef USE_OPENVINO
-#include "core/providers/openvino/openvino_provider_factory.h"
 #endif
 #ifdef USE_INTEL
 #include "core/providers/intel/intel_provider_factory.h"
@@ -137,7 +115,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(O
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_NGraph(const char* ng_backend_type);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Intel(const char* device);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_BrainSlice(uint32_t ip, int, int, bool, const char*, const char*, const char*);
@@ -288,7 +265,7 @@ inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime::IExec
 // ordered by default priority. highest to lowest.
 const std::vector<std::string>& GetAllProviders() {
   static std::vector<std::string> all_providers = {kTensorrtExecutionProvider, kCudaExecutionProvider, kDnnlExecutionProvider,
-                                                   kNGraphExecutionProvider, kOpenVINOExecutionProvider, kIntelExecutionProvider, kNupharExecutionProvider,
+                                                   kNGraphExecutionProvider, kIntelExecutionProvider, kNupharExecutionProvider,
                                                    kBrainSliceExecutionProvider, kCpuExecutionProvider};
   return all_providers;
 }
@@ -307,9 +284,6 @@ const std::vector<std::string>& GetAvailableProviders() {
 #endif
 #ifdef USE_NGRAPH
     available_providers.push_back(kNGraphExecutionProvider);
-#endif
-#ifdef USE_OPENVINO
-    available_providers.push_back(kOpenVINOExecutionProvider);
 #endif
 #ifdef USE_INTEL
     available_providers.push_back(kIntelExecutionProvider);
@@ -346,10 +320,6 @@ void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::s
     } else if (type == kNGraphExecutionProvider) {
 #if USE_NGRAPH
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"));
-#endif
-    } else if (type == kOpenVINOExecutionProvider) {
-#ifdef USE_OPENVINO
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"));
 #endif
     } else if (type == kIntelExecutionProvider) {
 #ifdef USE_INTEL
@@ -443,9 +413,6 @@ void addGlobalMethods(py::module& m) {
 #endif
 #ifdef USE_NGRAPH
             onnxruntime::CreateExecutionProviderFactory_NGraph("CPU"),
-#endif
-#ifdef USE_OPENVINO
-            onnxruntime::CreateExecutionProviderFactory_OpenVINO("CPU"),
 #endif
 #ifdef USE_INTEL
 	    onnxruntime::CreateExecutionProviderFactory_Intel("CPU"),

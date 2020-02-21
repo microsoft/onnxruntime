@@ -694,8 +694,8 @@ void OpTester::Run(
         kCpuExecutionProvider, kCudaExecutionProvider,
         kDnnlExecutionProvider, kNGraphExecutionProvider,
         kNupharExecutionProvider, kTensorrtExecutionProvider,
-        kOpenVINOExecutionProvider, kDmlExecutionProvider,
-        kIntelExecutionProvider, kAclExecutionProvider,
+        kIntelExecutionProvider, kDmlExecutionProvider,
+        kAclExecutionProvider,
     };
 
     bool has_run = false;
@@ -755,11 +755,8 @@ void OpTester::Run(
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
-        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
-          execution_provider = DefaultOpenVINOExecutionProvider();
-	else if (provider_type == onnxruntime::kIntelExecutionProvider)
-	  execution_provider = DefaultIntelExecutionProvider();
-
+	      else if (provider_type == onnxruntime::kIntelExecutionProvider)
+	        execution_provider = DefaultIntelExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
@@ -779,8 +776,7 @@ void OpTester::Run(
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-	      provider_type == onnxruntime::kIntelExecutionProvider ||
+	            provider_type == onnxruntime::kIntelExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();

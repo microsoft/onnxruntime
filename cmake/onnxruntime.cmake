@@ -76,7 +76,6 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_TENSORRT}
-    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_DML}
     ${PROVIDERS_INTEL}

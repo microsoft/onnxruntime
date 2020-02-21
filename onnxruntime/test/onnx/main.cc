@@ -37,7 +37,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'ngraph', "
-      "'openvino', 'nuphar', 'intel' or 'acl'. "
+      "'nuphar', 'intel' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
@@ -97,7 +97,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
-  bool enable_openvino = false;
   bool enable_intel = false;
   bool enable_nnapi = false;
   bool enable_dml = false;
@@ -160,8 +159,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
-            enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("intel"))) {
             enable_intel = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
@@ -258,8 +255,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
+    // when intel/openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_intel ? 0.009 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -279,15 +276,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
-      return -1;
-#endif
-    }
-
-    if (enable_openvino) {
-#ifdef USE_OPENVINO
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, "CPU"));
-#else
-      fprintf(stderr, "OpenVINO is not supported in this build");
       return -1;
 #endif
     }
@@ -531,22 +519,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"maxpool_2d_dilations", "maxpool dilations not supported"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "test pass on dev box but fails on CI build"});
     broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-  }
-
-  if (enable_openvino) {
-    broken_tests.insert({"fp16_shufflenet", "accuracy mismatch with fp16 precision"});
-    broken_tests.insert({"fp16_inception_v1", "accuracy mismatch with fp16 precision"});
-    broken_tests.insert({"fp16_tiny_yolov2", "accuaracy mismatch with fp16 precision"});
-    broken_tests.insert({"scan_sum", "disable temporarily"});
-    broken_tests.insert({"scan9_sum", "disable temporarily"});
-    broken_tests.insert({"convtranspose_1d", "1d convtranspose not supported yet"});
-#ifdef OPENVINO_CONFIG_GPU_FP32
-    broken_tests.insert({"tiny_yolov2", "accuracy mismatch"});
-    broken_tests.insert({"div", "will be fixed in the next release"});
-#ifdef OPENVINO_CONFIG_GPU_FP16
-    broken_tests.insert({"div", "will be fixed in the next release"});
-#endif
-#endif
   }
 
   if (enable_nnapi) {

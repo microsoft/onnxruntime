@@ -55,7 +55,6 @@ option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
-option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_INTEL "Build with Intel support" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
@@ -659,36 +658,6 @@ if (onnxruntime_USE_NGRAPH)
   include(ngraph)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ngraph)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_ngraph)
-endif()
-
-if(onnxruntime_USE_OPENVINO)
-
-  add_definitions(-DUSE_OPENVINO=1)
-
-    if(onnxruntime_USE_OPENVINO_MYRIAD)
-        add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-    endif()
-
-    if(onnxruntime_USE_OPENVINO_GPU_FP32)
-        add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
-    endif()
-
-    if(onnxruntime_USE_OPENVINO_GPU_FP16)
-        add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
-    endif()
-
-    if(onnxruntime_USE_OPENVINO_CPU_FP32)
-        add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
-    endif()
-
-    if(onnxruntime_USE_OPENVINO_VAD_M)
-        add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
-    endif()
-
-    if(onnxruntime_USE_OPENVINO_VAD_F)
-        add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
-    endif()
-
 endif()
 
 if(onnxruntime_USE_INTEL)

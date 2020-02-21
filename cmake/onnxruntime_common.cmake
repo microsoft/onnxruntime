@@ -73,7 +73,7 @@ if (onnxruntime_USE_TELEMETRY)
 endif()
 
 if (onnxruntime_USE_MIMALLOC)
-    if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO) 
+    if(onnxruntime_USE_CUDA) 
         message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
     elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
         # Some of the non-windows targets see strange runtime failures

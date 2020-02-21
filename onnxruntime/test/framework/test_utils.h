@@ -18,9 +18,6 @@
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_execution_provider.h"
 #endif
-#ifdef USE_OPENVINO
-#include "core/providers/openvino/openvino_execution_provider.h"
-#endif
 #ifdef USE_INTEL
 #include "core/providers/intel/intel_execution_provider.h"
 #endif
@@ -43,10 +40,6 @@ IExecutionProvider* TestCudaExecutionProvider();
 #ifdef USE_TENSORRT
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestTensorrtExecutionProvider();
-#endif
-
-#ifdef USE_OPENVINO
-IExecutionProvider* TestOpenVINOExecutionProvider();
 #endif
 
 #ifdef USE_INTEL
