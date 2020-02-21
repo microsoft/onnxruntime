@@ -124,14 +124,22 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
   const T* x_data = X->template Data<T>();
   int64_t zindex = 0;
 
+  std::vector<float> scores;
+  std::vector<float> kernels;
+  std::vector<int64_t> votes;
+  std::vector<float> probsp2;
+
+  const int64_t class_count_squared = class_count_ * class_count_;
+  probsp2.reserve(class_count_squared);
+  scores.reserve(class_count_squared);
+
   for (int64_t n = 0; n < N; n++)  //for each example
   {
+    scores.clear();
+    kernels.clear();
+
     int64_t current_weight_0 = n * stride;
     int64_t maxclass = -1;
-    std::vector<float> decisions;
-    std::vector<float> scores;
-    std::vector<float> kernels;
-    std::vector<int64_t> votes;
 
     if (vector_count_ == 0 && mode_ == SVM_TYPE::SVM_LINEAR) {
       for (int64_t j = 0; j < class_count_; j++) {  //for each class
@@ -150,6 +158,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
                               feature_count_, get_kernel_type());
         kernels.push_back(val);
       }
+
       votes.resize(class_count_, 0);
       for (int64_t i = 0; i < class_count_; i++) {        // for each class
         for (int64_t j = i + 1; j < class_count_; j++) {  // for each class
@@ -182,9 +191,7 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
 
     if (proba_.size() > 0 && mode_ == SVM_TYPE::SVM_SVC) {
       //compute probabilities from the scores
-      int64_t num = class_count_ * class_count_;
-      std::vector<float> probsp2(num, 0.f);
-      std::vector<float> estimates(class_count_, 0.f);
+      probsp2.assign(class_count_squared, 0.f);
       int64_t index = 0;
       for (int64_t i = 0; i < class_count_; ++i) {
         int64_t p1 = i * class_count_ + i + 1;
@@ -199,10 +206,9 @@ Status SVMClassifier<T>::Compute(OpKernelContext* ctx) const {
           p2 += class_count_;
         }
       }
-      multiclass_probability(class_count_, probsp2, estimates);
-      // copy probabilities back into scores
-      scores.resize(estimates.size());
-      std::copy(estimates.begin(), estimates.end(), scores.begin());
+
+      scores.assign(class_count_, 0.f);
+      multiclass_probability(class_count_, probsp2, scores);
     }
 
     float max_weight = 0;
