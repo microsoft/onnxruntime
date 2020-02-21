@@ -35,6 +35,16 @@ class UsageError(BaseError):
     def __init__(self, message):
         super().__init__(message)
 
+def checkPythonVersion():
+    # According to the BUILD.md, python 3.5+ is required:
+    # Python 2 is definitely not supported and it should be safer to consider it wont run with python 4:
+    if sys.version_info[0] != 3 :
+        raise BuildError("Bad python major version: expecting python 3, found version '{}'".format(sys.version))
+    if sys.version_info[1] < 5 :
+        raise BuildError("Bad python minor version: expecting python 3.5+, found version '{}'".format(sys.version))
+
+checkPythonVersion()
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
                                      usage='''
