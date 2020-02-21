@@ -803,7 +803,6 @@ Graph::Graph(GraphProto* graph_proto, const std::unordered_map<std::string, int>
   for (const auto& node_proto : graph_proto_->node()) {
     AddNode(node_proto, name_to_type_map);
   }
-  SetIfInputsHaveFP16();
 }
 
 Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto)
@@ -2444,49 +2443,6 @@ void Graph::CleanUnusedInitializers() {
                     inputs_including_initializers.erase(j);
                   }
                 });
-}
-
-static bool ModelUseFP16Helper(const onnx::TypeProto& type_proto) {
-  switch (type_proto.value_case()) {
-    case ::onnx::TypeProto::ValueCase::kTensorType: {
-      if (type_proto.has_tensor_type()) {
-        auto& tensor_type = type_proto.tensor_type();
-        if (tensor_type.elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
-          return true;
-        }
-      }
-      break;
-    }
-    case ::onnx::TypeProto::ValueCase::kSequenceType: {
-      if (type_proto.has_sequence_type()) {
-        auto& sequence_type = type_proto.sequence_type();
-        return ModelUseFP16Helper(sequence_type.elem_type());
-      }
-      break;
-    }
-    case ::onnx::TypeProto::ValueCase::kMapType: {
-      if (type_proto.has_map_type()) {
-        auto& map_type = type_proto.map_type();
-        return ModelUseFP16Helper(map_type.value_type());
-      }
-      break;
-    }
-    default:
-      break;
-  }
-  return false;
-}
-
-Status Graph::SetIfInputsHaveFP16() {
-  auto& inputs = graph_proto_->input();
-  for (auto& input : inputs) {
-    if (input.has_name() && input.has_type() && ModelUseFP16Helper(input.type())) {
-      inputs_have_fp16_ = true;
-      return Status::OK();
-    }
-  }
-  inputs_have_fp16_ = false;
-  return Status::OK();
 }
 
 GSL_SUPPRESS(es .84)  // warning about ignoring return value from insert(...)
