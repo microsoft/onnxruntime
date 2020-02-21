@@ -689,7 +689,8 @@ TEST(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 TEST(GraphTransformationTests, ReluClip6Fusion) {
   // Clip op schema changed for opset version 11. Until Clip op is updated in ORT hard coding this model to use
   // older opset.
-  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}}, {}, DefaultLoggingManager().DefaultLogger());
+  Model model("ReluClip6Fusion", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{"", 10}},
+              {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
   std::vector<NodeArg*> inputs;

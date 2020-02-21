@@ -62,18 +62,18 @@ Status BatchNormalizationAddFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     return Status::OK();
   }
 
-  auto BatchNormalization_B = std::make_unique<Initializer>(*BatchNormalization_B_tensor_proto, graph.ModelPath());
-  auto add_B = std::make_unique<Initializer>(*add_B_tensor_proto, graph.ModelPath());
+  Initializer BatchNormalization_B{*BatchNormalization_B_tensor_proto, graph.ModelPath()};
+  Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
 
-  if (BatchNormalization_B->size() != add_B->size()) {
+  if (BatchNormalization_B.size() != add_B.size()) {
     return Status::OK();
   }
   // Calculate new value of initializers of BatchNormalization node
-  BatchNormalization_B->add(*add_B);
+  BatchNormalization_B.add(add_B);
 
   // Create new initializers of BatchNormalization
   ONNX_NAMESPACE::TensorProto new_BatchNormalization_B_tensor_proto;
-  BatchNormalization_B->ToProto(new_BatchNormalization_B_tensor_proto);
+  BatchNormalization_B.ToProto(new_BatchNormalization_B_tensor_proto);
 
   // Replace initializers of BatchNormalization node
   graph.RemoveInitializedTensor(BatchNormalization_inputs[2]->Name());

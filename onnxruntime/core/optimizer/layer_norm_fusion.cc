@@ -24,21 +24,21 @@ static bool IsSupportedDataType(const Node& node) {
 }
 
 /**
-Layer Normalization will fuse LayerNormalization into one node : 
-+---------------------+ 
+Layer Normalization will fuse LayerNormalization into one node :
++---------------------+
 |                     |
-|                     v 
-X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
-                      |                                               ^ 
+|                     v
+X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
+                      |                                               ^
                       |                                               |
                       +-----------------------------------------------+
-It also handles cases of duplicated sub nodes exported from older version of PyTorch : 
-+---------------------+ 
-|                     v 
-|          +-------> Sub ---------------------------------------------+ 
+It also handles cases of duplicated sub nodes exported from older version of PyTorch :
++---------------------+
+|                     v
+|          +-------> Sub ---------------------------------------------+
 |          |                                                          |
-|          |                                                          v 
-X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add 
+|          |                                                          v
+X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
 |                     ^
 |                     |
 +---------------------+
@@ -258,8 +258,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr) {
       if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-        layer_norm_node.AddAttribute("epsilon", initializer->data<float>()[0]);
+        Initializer initializer{*tensor_proto, graph.ModelPath()};
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
       }
     }
 

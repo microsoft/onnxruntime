@@ -54,12 +54,10 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
     }
   }
 
-  auto BatchNormalization_Scale = std::make_unique<Initializer>(
-      *BatchNormalization_Scale_tensor_proto, graph.ModelPath());
-  auto mul_B = std::make_unique<Initializer>(*mul_B_tensor_proto, graph.ModelPath());
+  Initializer BatchNormalization_Scale{*BatchNormalization_Scale_tensor_proto, graph.ModelPath()};
+  Initializer mul_B{*mul_B_tensor_proto, graph.ModelPath()};
 
   const ONNX_NAMESPACE::TensorProto* BatchNormalization_B_tensor_proto = nullptr;
-  std::unique_ptr<Initializer> BatchNormalization_B = nullptr;
   if (!graph.GetInitializedTensor(BatchNormalization_inputs[2]->Name(), BatchNormalization_B_tensor_proto))
     return Status::OK();
   if (BatchNormalization_B_tensor_proto == nullptr)
@@ -69,27 +67,27 @@ Status BatchNormalizationMulFusion::Apply(Graph& graph, Node& node, RewriteRuleE
       BatchNormalization_B_tensor_proto->dims_size() != 1) {
     return Status::OK();
   }
-  BatchNormalization_B = std::make_unique<Initializer>(*BatchNormalization_B_tensor_proto, graph.ModelPath());
+  Initializer BatchNormalization_B{*BatchNormalization_B_tensor_proto, graph.ModelPath()};
 
   // Calculate new value of initializers of BatchNormalization node
-  BatchNormalization_Scale->scale_by_axis(*mul_B, 1);
+  BatchNormalization_Scale.scale_by_axis(mul_B, 1);
 
   if (mul_B_tensor_proto->dims_size() != 0) {
-    BatchNormalization_B->mul(*mul_B);
+    BatchNormalization_B.mul(mul_B);
   } else {
-    BatchNormalization_B->scale_by_axis(*mul_B, 0);
+    BatchNormalization_B.scale_by_axis(mul_B, 0);
   }
 
   // Create new initializers of BatchNormalization
   ONNX_NAMESPACE::TensorProto new_BatchNormalization_Scale_tensor_proto(*BatchNormalization_Scale_tensor_proto);
-  BatchNormalization_Scale->ToProto(new_BatchNormalization_Scale_tensor_proto);
+  BatchNormalization_Scale.ToProto(new_BatchNormalization_Scale_tensor_proto);
 
   // Replace initializers of BatchNormalization node
   graph.RemoveInitializedTensor(BatchNormalization_inputs[1]->Name());
   graph.AddInitializedTensor(new_BatchNormalization_Scale_tensor_proto);
 
   ONNX_NAMESPACE::TensorProto new_BatchNormalization_B_tensor_proto(*BatchNormalization_B_tensor_proto);
-  BatchNormalization_B->ToProto(new_BatchNormalization_B_tensor_proto);
+  BatchNormalization_B.ToProto(new_BatchNormalization_B_tensor_proto);
   graph.RemoveInitializedTensor(BatchNormalization_inputs[2]->Name());
   graph.AddInitializedTensor(new_BatchNormalization_B_tensor_proto);
 
