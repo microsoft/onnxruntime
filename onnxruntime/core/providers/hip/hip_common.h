@@ -105,6 +105,7 @@ class HipKernel : public OpKernel {
     provider_->AddDeferredReleaseCPUPtr(p);
   }
 
+  const hipDeviceProp_t& GetDeviceProp() const { return provider_->GetDeviceProp(); };
   // To support hipMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished
   template <typename T>
@@ -189,7 +190,6 @@ class HipKernel : public OpKernel {
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
-
  private:
   HIPExecutionProvider* provider_;
 };
