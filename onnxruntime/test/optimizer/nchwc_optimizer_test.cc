@@ -237,7 +237,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
                         helper.per_sample_tolerance_,
                         relative_per_sample_tolerance,
                         false);
-    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS);
+    EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
 }
 
