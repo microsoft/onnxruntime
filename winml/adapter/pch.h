@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "cppwinrt_onnx.h"
 #include "wil/wrl.h"
 #include "dx.h"
 
