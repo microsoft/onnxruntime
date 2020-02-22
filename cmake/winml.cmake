@@ -555,13 +555,6 @@ if (onnxruntime_USE_DML)
   set(delayload_dml "/DELAYLOAD:directml.dll")
 endif(onnxruntime_USE_DML)
 
-# The default libraries to link with in Windows are kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib
-# Remove them and use the onecore umbrella library instead
-foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdgl32.lib advapi32.lib)
-  set(removed_libs "${removed_libs} /NODEFAULTLIB:${default_lib}")
-endforeach()
-set(CMAKE_C_STANDARD_LIBRARIES "${removed_libs} windowsapp.lib")
-set(CMAKE_CXX_STANDARD_LIBRARIES "${removed_libs} windowsapp.lib")
 
 target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll ${delayload_dml})
 

@@ -155,6 +155,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
+    parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -333,6 +334,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
+                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF")
                  ]
 
     # nGraph and TensorRT providers currently only supports full_protobuf option.
