@@ -3,8 +3,6 @@
 # Licensed under the MIT License.
 
 import argparse
-import fileinput
-import getpass
 import glob
 import logging
 import multiprocessing
@@ -14,9 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
-import hashlib
 import itertools
-from os.path import expanduser
 
 logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("Build")
@@ -35,7 +31,7 @@ class UsageError(BaseError):
     def __init__(self, message):
         super().__init__(message)
 
-def checkPythonVersion():
+def check_python_version():
     # According to the BUILD.md, python 3.5+ is required:
     # Python 2 is definitely not supported and it should be safer to consider it wont run with python 4:
     if sys.version_info[0] != 3 :
@@ -43,7 +39,7 @@ def checkPythonVersion():
     if sys.version_info[1] < 5 :
         raise BuildError("Bad python minor version: expecting python 3.5+, found version '{}'".format(sys.version))
 
-checkPythonVersion()
+check_python_version()
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
@@ -129,7 +125,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_vstest", action='store_true', help="Use use_vstest for running unitests.")
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
     parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
-    parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
@@ -177,18 +172,6 @@ def resolve_executable_path(command_or_path):
 def is_windows():
     return sys.platform.startswith("win")
 
-def get_linux_distro():
-    try:
-        with open('/etc/os-release', 'r') as f:
-            dist_info = dict(line.strip().split('=', 1) for line in f.readlines())
-        return dist_info.get('NAME', '').strip('"'), dist_info.get('VERSION', '').strip('"')
-    except:
-        return '', ''
-
-def is_ubuntu_1604():
-    dist, ver = get_linux_distro()
-    return dist == 'Ubuntu' and ver.startswith('16.04')
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -215,42 +198,6 @@ def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
-def is_docker():
-    path = '/proc/self/cgroup'
-    return (
-        os.path.exists('/.dockerenv') or
-        os.path.isfile(path) and any('docker' in line for line in open(path))
-    )
-
-def is_sudo():
-    return 'SUDO_UID' in os.environ.keys()
-
-def install_apt_package(package):
-    have = package in str(run_subprocess(["apt", "list", "--installed", package], capture=True).stdout)
-    if not have:
-        if is_sudo():
-            run_subprocess(['apt-get', 'install', '-y', package])
-        else:
-            raise BuildError(package + " APT package missing. Please re-run this script using sudo to install.")
-
-def install_ubuntu_deps(args):
-    'Check if the necessary Ubuntu dependencies are installed. Not required on docker. Provide help output if missing.'
-
-    # check we need the packages first
-    if not (args.enable_pybind or args.use_openblas):
-        return
-
-    # not needed on docker as packages are pre-installed
-    if not is_docker():
-        try:
-            if args.enable_pybind:
-                install_apt_package("python3")
-
-            if args.use_openblas:
-                install_apt_package("libopenblas-dev")
-
-        except Exception as e:
-            raise BuildError("Error setting up required APT packages. {}".format(str(e)))
 
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
@@ -258,25 +205,6 @@ def install_python_deps(numpy_version=""):
     dep_packages.append('sympy>=1.1')
     dep_packages.append('packaging')
     run_subprocess([sys.executable, '-m', 'pip', 'install', '--trusted-host', 'files.pythonhosted.org'] + dep_packages)
-
-def check_md5(filename, expected_md5):
-    if not os.path.exists(filename):
-        return False
-    hash_md5 = hashlib.md5()
-    BLOCKSIZE = 1024*64
-    with open(filename, "rb") as f:
-        buf = f.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hash_md5.update(buf)
-            buf = f.read(BLOCKSIZE)
-    hex = hash_md5.hexdigest()
-    if hex != expected_md5:
-        log.info('md5 mismatch, expect %s, got %s' % (expected_md5, hex))
-        os.remove(filename)
-        return False
-    return True
-
-
 
 def setup_test_data(build_dir, configs):
     # create a shortcut for test models if there is a 'models' folder in build_dir
@@ -311,8 +239,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
                  "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
                  "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
-                 "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + ("OFF" if args.use_openblas else "ON"),
-                 "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
@@ -946,14 +872,7 @@ def main():
                 log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
                 args.test = False
           else:            
-            if args.msvc_toolset == '14.16' and args.cmake_generator == 'Visual Studio 16 2019':
-                #CUDA 10.0 requires _MSC_VER >= 1700 and _MSC_VER < 1920, aka Visual Studio version in [2012, 2019)
-                #In VS2019, we have to use Side-by-side minor version MSVC toolsets from Visual Studio 2017
-                #14.16 is MSVC version
-                #141 is MSVC Toolset Version
-                #Cuda VS extension should be installed to C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations
-                toolset = 'v141,host=x64,version=' + args.msvc_toolset
-            elif args.msvc_toolset:
+            if args.msvc_toolset:
                 toolset = 'host=x64,version=' + args.msvc_toolset
             else:
                 toolset = 'host=x64'
@@ -964,13 +883,7 @@ def main():
         if args.android:
             # Cross-compiling for Android
             path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-        if is_ubuntu_1604():
-            if (args.arm or args.arm64):
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            install_ubuntu_deps(args)
-            if not is_docker():
-                install_python_deps()
-        if (args.enable_pybind and is_windows()):
+        if args.enable_pybind:
             install_python_deps(args.numpy_version)
         if (not args.skip_submodule_sync):
             update_submodules(source_dir)
