@@ -66,7 +66,7 @@ namespace {
     bool operator!=(const EquivalenceClass& other) const;
 
     friend struct ::std::hash<EquivalenceClass>;
-    friend std::vector<const EquivalenceClass*> Normalize(std::vector<const EquivalenceClass*> inputs);
+    friend std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs);
 
     explicit EquivalenceClass(const NodeArg* non_op_value)
       : attributes_(nullptr)
@@ -76,11 +76,11 @@ namespace {
       , hash_(CalculateHash())
     { }
 
-    EquivalenceClass(const Node* node, std::vector<const EquivalenceClass*> inputs,
+    EquivalenceClass(const Node* node, const std::vector<const EquivalenceClass*>& explicit_inputs,
                 OutputIndex output_index, int discriminator)
       : op_type_(node->OpType())
       , domain_(node->Domain())
-      , inputs_(Normalize(std::move(inputs)))
+      , inputs_(Normalize(node, explicit_inputs))
       , attributes_(&node->GetAttributes())
       , output_index_(output_index)
       , non_op_value_(nullptr)
@@ -95,8 +95,8 @@ namespace {
     const std::string op_type_;
     const std::string domain_;
 
-    // Inputs to the operation.
-    const std::vector<const EquivalenceClass*> inputs_;
+    // Explicit inputs to the operation, sequence of inputs for each formal parameter.
+    const std::vector<std::vector<const EquivalenceClass*>> inputs_;
 
     // Attributes of the operation.
     const NodeAttributes* attributes_;
@@ -118,13 +118,27 @@ namespace {
     const std::size_t hash_;
   };
 
-  std::vector<const EquivalenceClass*> Normalize(std::vector<const EquivalenceClass*> inputs) {
-    // Remove missing optional inputs from the back
-    while (!inputs.empty() && inputs.back()->output_index_ == kInvalidOutputIndex && inputs.back()->non_op_value_ == nullptr) {
-      inputs.pop_back();
+  std::vector<std::vector<const EquivalenceClass*>> Normalize(const Node* node, const std::vector<const EquivalenceClass*>& inputs) {
+    const auto& arg_count = node->InputArgCount();
+    auto input_iter = inputs.begin();
+    std::vector<std::vector<const EquivalenceClass*>> result(arg_count.size());
+
+    for (std::size_t arg_index = 0; arg_index < arg_count.size(); ++arg_index) {
+      auto& arg = result[arg_index];
+      for (int i = 0; i < arg_count[arg_index]; ++i) {
+        if (input_iter != inputs.end()) {
+          arg.push_back(*input_iter);
+          ++input_iter;
+        }
+      }
+
+      // Remove missing optional inputs from the back
+      while (!arg.empty() && arg.back()->output_index_ == kInvalidOutputIndex && arg.back()->non_op_value_ == nullptr) {
+        arg.pop_back();
+      }
     }
 
-    return inputs;
+    return result;
   }
 
   template<typename Range>
@@ -224,8 +238,10 @@ namespace {
       }
     }
 
-    for (const EquivalenceClass* input : inputs_) {
-      UpdateHash(input, DeepPointerHash{}, hash);
+    for (const auto& arg : inputs_) {
+      for (const EquivalenceClass* input : arg) {
+        UpdateHash(input, DeepPointerHash{}, hash);
+      }
     }
 
     return hash;
@@ -281,28 +297,6 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   // Reverse mapping.
   std::unordered_map<const NodeArg*, const EquivalenceClass*, NodeArgPtrHash, NodeArgPtrEquality> equivalence_classes;
 
-  {
-    std::unordered_set<const NodeArg*, NodeArgPtrHash, NodeArgPtrEquality> non_ops;
-
-    const auto& inputs = graph.GetInputs();
-    non_ops.insert(inputs.begin(), inputs.end());
-    non_ops.insert(nullptr); // Signifies missing input.
-
-    const auto& initializers = graph.GetAllInitializedTensors();
-    for (const auto& kv : initializers) {
-      const auto* node_arg = graph.GetNodeArg(kv.first);
-      non_ops.insert(node_arg);
-    }
-
-    for (const NodeArg* non_op : non_ops) {
-      auto value = onnxruntime::make_unique<EquivalenceClass>(non_op);
-      const auto* raw_ptr = value.get();
-      unique_equivalence_classes.emplace_back(std::move(value));
-      value_to_representative.emplace(raw_ptr, Representative{non_op, 0, kInvalidOutputIndex});
-      equivalence_classes[non_op] = raw_ptr;
-    }
-  }
-
   int unique_discriminator = 1;
 
   for (NodeIndex node_index : node_topology_list) {
@@ -315,7 +309,18 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     std::vector<const EquivalenceClass*> input_values;
     input_values.reserve(node->InputDefs().size());
     for (const NodeArg* input_def : node->InputDefs()) {
-      input_values.push_back(equivalence_classes.at(input_def));
+      auto it = equivalence_classes.find(input_def);
+      if (it == equivalence_classes.end()) {
+        // Because nodes are processed in topological order, this will always be
+        // a non-op value (graph input or constant initializer).
+        auto value = onnxruntime::make_unique<EquivalenceClass>(input_def);
+        const auto* raw_ptr = value.get();
+        unique_equivalence_classes.emplace_back(std::move(value));
+        value_to_representative.emplace(raw_ptr, Representative{input_def, 0, kInvalidOutputIndex});
+        it = equivalence_classes.emplace_hint(it, input_def, raw_ptr);
+      }
+
+      input_values.push_back(it->second);
     }
 
     int discriminator = 0;
@@ -341,7 +346,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   }
 
   std::unordered_set<const NodeArg*> graph_outputs;
-  graph_outputs.insert(graph.GetOutputs().begin(), graph.GetOutputs().end());
+  graph_outputs.insert(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end());
 
   for (NodeIndex node_index : node_topology_list) {
     Node* node = graph.GetNode(node_index);
