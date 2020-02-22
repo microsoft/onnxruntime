@@ -875,9 +875,9 @@ static void RegisterHIPKernels(KernelRegistry& kernel_registry) {
       // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, ReverseSequence)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, float, RoiAlign)>,
       // // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, double, RoiAlign)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, 10, int32_t, Slice)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, 10, int64_t, Slice)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, 10, float, Slice)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, 10, int32_t, Slice)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, 10, int64_t, Slice)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, 10, float, Slice)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, float, ThresholdedRelu)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, double, ThresholdedRelu)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 10, MLFloat16, ThresholdedRelu)>,
@@ -942,9 +942,9 @@ static void RegisterHIPKernels(KernelRegistry& kernel_registry) {
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, MLFloat16, ReduceSumSquare)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, Scan)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, ScatterElements)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, int32_t, Slice)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, int64_t, Slice)>,
-      // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, float, Slice)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, int32_t, Slice)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, int64_t, Slice)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, float, Slice)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, float, Softmax)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, double, Softmax)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kHipExecutionProvider, kOnnxDomain, 11, MLFloat16, Softmax)>,
@@ -1010,8 +1010,6 @@ std::shared_ptr<KernelRegistry> HIPExecutionProvider::GetKernelRegistry() const 
 
 HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kHipExecutionProvider}, device_id_(info.device_id) {
-  //HIP_CALL_THROW(hipSetDevice(device_id_));
-  //HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault, [](OrtDevice::DeviceId device_id) { return onnxruntime::make_unique<HIPAllocator>(device_id, CUDA); }, std::numeric_limits<size_t>::max()});
@@ -1037,9 +1035,9 @@ HIPExecutionProvider::HIPExecutionProvider(const HIPExecutionProviderInfo& info)
   InsertAllocator(CreateAllocator(cpu_memory_info, CPU_ALLOCATOR_DEVICE_ID));
 
 
-  // create the target based on the device_id
-  hipDeviceProp_t prop;
-  hipGetDeviceProperties(&prop, device_id_);
+  // must wait GPU idle, otherwise hipGetDeviceProperties might fail
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  HIP_CALL_THROW(hipGetDeviceProperties(&prop_, device_id_));
 }
 
 HIPExecutionProvider::~HIPExecutionProvider() {
