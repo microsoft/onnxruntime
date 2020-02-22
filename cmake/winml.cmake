@@ -223,12 +223,7 @@ add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_precompiled_header(winml_adapter pch.h)
 
 # Includes
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
-target_include_directories(winml_adapter PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
-target_include_directories(winml_adapter PRIVATE ${winml_lib_api_dir})                                    # needed for generated headers
-target_include_directories(winml_adapter PRIVATE ${winml_lib_dir})
+#target_include_directories(winml_adapter PRIVATE ${winml_lib_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
@@ -236,12 +231,6 @@ set_target_properties(winml_adapter
   PROPERTIES
   FOLDER
   ${target_folder})
-
-# Add deps
-add_dependencies(winml_adapter winml_sdk_cppwinrt)
-add_dependencies(winml_adapter winml_api)
-add_dependencies(winml_adapter winml_api_native)
-add_dependencies(winml_adapter winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_adapter PRIVATE wil)
