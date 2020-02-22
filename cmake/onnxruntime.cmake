@@ -108,7 +108,6 @@ install(TARGETS onnxruntime
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
-
 if (onnxruntime_ENABLE_WCOS)
   if (NOT onnxruntime_BUILD_SHARED_LIB)
       message(
@@ -116,10 +115,7 @@ if (onnxruntime_ENABLE_WCOS)
         "Option onnxruntime_ENABLE_WCOS can only be used when onnxruntime_BUILD_SHARED_LIB is also enabled")
   endif()
   target_link_libraries(onnxruntime PRIVATE windowsapp.lib)
-  foreach(default_lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib)
-      set(removed_libs "${removed_libs} /NODEFAULTLIB:${default_lib}")
-  endforeach()
-  target_link_options(onnxruntime PRIVATE removed_libs)
+  target_link_options(onnxruntime PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
   if (onnxruntime_USE_DML)
     set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll")
   else()
