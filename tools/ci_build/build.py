@@ -35,6 +35,16 @@ class UsageError(BaseError):
     def __init__(self, message):
         super().__init__(message)
 
+def checkPythonVersion():
+    # According to the BUILD.md, python 3.5+ is required:
+    # Python 2 is definitely not supported and it should be safer to consider it wont run with python 4:
+    if sys.version_info[0] != 3 :
+        raise BuildError("Bad python major version: expecting python 3, found version '{}'".format(sys.version))
+    if sys.version_info[1] < 5 :
+        raise BuildError("Bad python minor version: expecting python 3.5+, found version '{}'".format(sys.version))
+
+checkPythonVersion()
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNXRuntime CI build driver.",
                                      usage='''
@@ -128,7 +138,6 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
                         choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16","VAD-F_FP32"], help="Build with OpenVINO for specific hardware.")
     parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
-    parser.add_argument("--use_nsync", action='store_true', help="Build with NSYNC.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
     parser.add_argument("--use_tvm", action="store_true", help="Build with tvm")
@@ -155,7 +164,11 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
+<<<<<<< HEAD
     parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
+=======
+    parser.add_argument("--enable_lto", action='store_true', help="Enable Link Time Optimization")
+>>>>>>> master
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
@@ -269,7 +282,7 @@ def check_md5(filename, expected_md5):
 
 
 
-def setup_test_data(build_dir, configs):    
+def setup_test_data(build_dir, configs):
     # create a shortcut for test models if there is a 'models' folder in build_dir
     if is_windows():
         src_model_dir = os.path.join(build_dir, 'models')
@@ -293,7 +306,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
                  "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
-                 "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
@@ -335,6 +347,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
                  "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF")
+                 "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  ]
 
     # nGraph and TensorRT providers currently only supports full_protobuf option.
@@ -542,10 +555,13 @@ def setup_tensorrt_vars(args):
 
         # Set maximum number of iterations to detect unsupported nodes and partition the models for TensorRT
         os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "1000"
-        
+
         # Set minimum subgraph node size in graph partitioning for TensorRT
         os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
-        
+
+        # Set FP16 flag
+        os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
+
     return tensorrt_home
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
@@ -674,7 +690,8 @@ def run_onnx_tests(build_dir, configs, onnx_test_data_dir, provider, enable_mult
           run_subprocess([exe,'-x'] + cmd, cwd=cwd)
 
 # tensorrt function to run onnx test and model test.
-def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
+def tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir, provider, num_parallel_models, num_parallel_tests=0):
+    dll_path = os.path.join(args.tensorrt_home, 'lib')
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -683,23 +700,32 @@ def tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
         else:
            exe = os.path.join(cwd, 'onnx_test_runner')
            model_dir = os.path.join(build_dir, "models")
-        cmd_base = ['-e', 'tensorrt', '-j', '1'] 
+           
+        cmd_base = []
+        if provider:
+          cmd_base += ["-e", provider] 
+          
+        if num_parallel_tests != 0:
+          cmd_base += ['-c', str(num_parallel_tests)]
+
+        if num_parallel_models > 0:
+          cmd_base += ["-j", str(num_parallel_models)]
 
         #onnx test
         if os.path.exists(onnx_test_data_dir):
           onnx_test_cmd = cmd_base + [onnx_test_data_dir]
-          run_subprocess([exe] + onnx_test_cmd, cwd=cwd)
+          run_subprocess([exe] + onnx_test_cmd, cwd=cwd, dll_path=dll_path)
 
         # model test
         # TensorRT can run most of the model tests, but only part of them is enabled here to save CI build time.
         if config != 'Debug' and os.path.exists(model_dir):
-          model_dir_opset8 = os.path.join(model_dir, "opset8")          
+          model_dir_opset8 = os.path.join(model_dir, "opset8")
           model_dir_opset8 = glob.glob(os.path.join(model_dir_opset8, "test_*"))
           model_dir_opset10 = os.path.join(model_dir, "opset10")
           model_dir_opset10 = glob.glob(os.path.join(model_dir_opset10, "tf_inception_v1"))
           for dir_path in itertools.chain(model_dir_opset8, model_dir_opset10):
             model_test_cmd = cmd_base + [dir_path]
-            run_subprocess([exe] + model_test_cmd, cwd=cwd)
+            run_subprocess([exe] + model_test_cmd, cwd=cwd, dll_path=dll_path)
 
 # dnnl temporary function for running onnx tests and model tests separately.
 def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
@@ -717,7 +743,7 @@ def dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir):
           # /data/onnx
           run_subprocess([exe] + onnxdata_cmd, cwd=cwd)
           run_subprocess([exe,'-x'] + onnxdata_cmd, cwd=cwd)
-        
+
         if config != 'Debug' and os.path.exists(model_dir):
           opset7_model_dir = os.path.join(model_dir, 'opset7')
           opset7_cmd = cmd_base + [opset7_model_dir]
@@ -986,10 +1012,10 @@ def main():
             if args.use_tensorrt:
               # Disable some onnx unit tests that TensorRT doesn't supported yet
               if not is_windows():
-                onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
-                tensorrt_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
+                trt_onnx_test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test", "data", "simple")
               else:
-                tensorrt_run_onnx_tests(build_dir, configs, "")
+                trt_onnx_test_data_dir = ""                 
+              tensorrt_run_onnx_tests(args, build_dir, configs, trt_onnx_test_data_dir, "tensorrt",1)
 
             if args.use_cuda and not args.use_tensorrt:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'cuda', args.enable_multi_device_test, False, 2)           
@@ -1004,16 +1030,19 @@ def main():
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'nuphar', args.enable_multi_device_test, False, 1, 1)
 
             if args.use_dml:
-              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)  
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'dml', args.enable_multi_device_test, False, 1)
 
             # Run some models are disabled to keep memory utilization under control
             if args.use_dnnl:
               dnnl_run_onnx_tests(build_dir, configs, onnx_test_data_dir)
 
-            run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
-              1 if args.x86 or platform.system() == 'Darwin' else 0,
-              1 if args.x86 or platform.system() == 'Darwin' else 0)                       
-
+            if args.use_tensorrt:
+              tensorrt_run_onnx_tests(args, build_dir, configs, onnx_test_data_dir, None,1)
+            else:
+              run_onnx_tests(build_dir, configs, onnx_test_data_dir, None, args.enable_multi_device_test, False,
+                1 if args.x86 or platform.system() == 'Darwin' else 0,
+                1 if args.x86 or platform.system() == 'Darwin' else 0)
+                
         # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)

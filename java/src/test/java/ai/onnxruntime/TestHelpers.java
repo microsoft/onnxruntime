@@ -8,228 +8,229 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Test helpers for manipulating primitive arrays.
- */
+/** Test helpers for manipulating primitive arrays. */
 class TestHelpers {
 
-    static boolean[] toPrimitiveBoolean(List<Boolean> input) {
-        boolean[] output = new boolean[input.size()];
+  static boolean[] toPrimitiveBoolean(List<Boolean> input) {
+    boolean[] output = new boolean[input.size()];
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
-
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static byte[] toPrimitiveByte(List<Byte> input) {
-        byte[] output = new byte[input.size()];
+    return output;
+  }
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
+  static byte[] toPrimitiveByte(List<Byte> input) {
+    byte[] output = new byte[input.size()];
 
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static short[] toPrimitiveShort(List<Short> input) {
-        short[] output = new short[input.size()];
+    return output;
+  }
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
+  static short[] toPrimitiveShort(List<Short> input) {
+    short[] output = new short[input.size()];
 
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static int[] toPrimitiveInteger(List<Integer> input) {
-        int[] output = new int[input.size()];
+    return output;
+  }
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
+  static int[] toPrimitiveInteger(List<Integer> input) {
+    int[] output = new int[input.size()];
 
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static long[] toPrimitiveLong(List<Long> input) {
-        long[] output = new long[input.size()];
+    return output;
+  }
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
+  static long[] toPrimitiveLong(List<Long> input) {
+    long[] output = new long[input.size()];
 
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static float[] toPrimitiveFloat(List<Float> input) {
-        float[] output = new float[input.size()];
+    return output;
+  }
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
+  static float[] toPrimitiveFloat(List<Float> input) {
+    float[] output = new float[input.size()];
 
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static double[] toPrimitiveDouble(List<Double> input) {
-        double[] output = new double[input.size()];
+    return output;
+  }
 
-        for (int i = 0; i < output.length; i++) {
-            output[i] = input.get(i);
-        }
+  static double[] toPrimitiveDouble(List<Double> input) {
+    double[] output = new double[input.size()];
 
-        return output;
+    for (int i = 0; i < output.length; i++) {
+      output[i] = input.get(i);
     }
 
-    static boolean[] flattenBoolean(Object o) {
-        List<Boolean> output = new ArrayList<>();
+    return output;
+  }
 
-        flatten((Object[]) o,output, boolean.class);
+  static boolean[] flattenBoolean(Object o) {
+    List<Boolean> output = new ArrayList<>();
 
-        return toPrimitiveBoolean(output);
-    }
+    flatten((Object[]) o, output, boolean.class);
 
-    static byte[] flattenByte(Object o) {
-        List<Byte> output = new ArrayList<>();
+    return toPrimitiveBoolean(output);
+  }
 
-        flatten((Object[]) o,output, byte.class);
+  static byte[] flattenByte(Object o) {
+    List<Byte> output = new ArrayList<>();
 
-        return toPrimitiveByte(output);
-    }
+    flatten((Object[]) o, output, byte.class);
 
-    static short[] flattenShort(Object o) {
-        List<Short> output = new ArrayList<>();
+    return toPrimitiveByte(output);
+  }
 
-        flatten((Object[]) o,output, short.class);
+  static short[] flattenShort(Object o) {
+    List<Short> output = new ArrayList<>();
 
-        return toPrimitiveShort(output);
-    }
+    flatten((Object[]) o, output, short.class);
 
-    static int[] flattenInteger(Object o) {
-        List<Integer> output = new ArrayList<>();
+    return toPrimitiveShort(output);
+  }
 
-        flatten((Object[]) o,output, int.class);
+  static int[] flattenInteger(Object o) {
+    List<Integer> output = new ArrayList<>();
 
-        return toPrimitiveInteger(output);
-    }
+    flatten((Object[]) o, output, int.class);
 
-    static long[] flattenLong(Object o) {
-        List<Long> output = new ArrayList<>();
+    return toPrimitiveInteger(output);
+  }
 
-        flatten((Object[]) o,output, long.class);
+  static long[] flattenLong(Object o) {
+    List<Long> output = new ArrayList<>();
 
-        return toPrimitiveLong(output);
-    }
+    flatten((Object[]) o, output, long.class);
 
-    static float[] flattenFloat(Object o) {
-        List<Float> output = new ArrayList<>();
+    return toPrimitiveLong(output);
+  }
 
-        flatten((Object[]) o,output, float.class);
+  static float[] flattenFloat(Object o) {
+    List<Float> output = new ArrayList<>();
 
-        return toPrimitiveFloat(output);
-    }
+    flatten((Object[]) o, output, float.class);
 
-    static double[] flattenDouble(Object o) {
-        List<Double> output = new ArrayList<>();
+    return toPrimitiveFloat(output);
+  }
 
-        flatten((Object[]) o,output, double.class);
+  static double[] flattenDouble(Object o) {
+    List<Double> output = new ArrayList<>();
 
-        return toPrimitiveDouble(output);
-    }
+    flatten((Object[]) o, output, double.class);
 
-    static String[] flattenString(Object o) {
-        List<String> output = new ArrayList<>();
+    return toPrimitiveDouble(output);
+  }
 
-        flatten((Object[]) o,output, String.class);
+  static String[] flattenString(Object o) {
+    List<String> output = new ArrayList<>();
 
-        return output.toArray(new String[0]);
-    }
+    flatten((Object[]) o, output, String.class);
 
-    static void flatten(Object[] input, List output, Class<?> primitiveClazz) {
-        for (Object i : input) {
-            Class<?> iClazz = i.getClass();
-            if (iClazz.isArray()) {
-                if (iClazz.getComponentType().isArray()) {
-                    flatten((Object[]) i, output, primitiveClazz);
-                } else if ((iClazz.getComponentType().isPrimitive() || iClazz.getComponentType().equals(String.class)) && iClazz.getComponentType().equals(primitiveClazz)){
-                    flattenBase(i,output,primitiveClazz);
-                } else {
-                    throw new IllegalStateException("Found a non-primitive, non-array element type, " + iClazz);
-                }
-            } else {
-                throw new IllegalStateException("Found an element type where there should have been an array. Class = " + iClazz);
-            }
-        }
-    }
+    return output.toArray(new String[0]);
+  }
 
-    static void flattenBase(Object input, List output, Class<?> primitiveClass) {
-        if (primitiveClass.equals(boolean.class)) {
-            flattenBooleanBase((boolean[])input,output);
-        } else if (primitiveClass.equals(byte.class)) {
-            flattenByteBase((byte[])input,output);
-        } else if (primitiveClass.equals(short.class)) {
-            flattenShortBase((short[])input,output);
-        } else if (primitiveClass.equals(int.class)) {
-            flattenIntBase((int[])input,output);
-        } else if (primitiveClass.equals(long.class)) {
-            flattenLongBase((long[])input,output);
-        } else if (primitiveClass.equals(float.class)) {
-            flattenFloatBase((float[])input,output);
-        } else if (primitiveClass.equals(double.class)) {
-            flattenDoubleBase((double[]) input, output);
-        } else if (primitiveClass.equals(String.class)) {
-            flattenStringBase((String[]) input, output);
+  static void flatten(Object[] input, List output, Class<?> primitiveClazz) {
+    for (Object i : input) {
+      Class<?> iClazz = i.getClass();
+      if (iClazz.isArray()) {
+        if (iClazz.getComponentType().isArray()) {
+          flatten((Object[]) i, output, primitiveClazz);
+        } else if ((iClazz.getComponentType().isPrimitive()
+                || iClazz.getComponentType().equals(String.class))
+            && iClazz.getComponentType().equals(primitiveClazz)) {
+          flattenBase(i, output, primitiveClazz);
         } else {
-            throw new IllegalStateException("Flattening a non-primitive class");
+          throw new IllegalStateException(
+              "Found a non-primitive, non-array element type, " + iClazz);
         }
+      } else {
+        throw new IllegalStateException(
+            "Found an element type where there should have been an array. Class = " + iClazz);
+      }
     }
+  }
 
-    static void flattenBooleanBase(boolean[] input, List<Boolean> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenBase(Object input, List output, Class<?> primitiveClass) {
+    if (primitiveClass.equals(boolean.class)) {
+      flattenBooleanBase((boolean[]) input, output);
+    } else if (primitiveClass.equals(byte.class)) {
+      flattenByteBase((byte[]) input, output);
+    } else if (primitiveClass.equals(short.class)) {
+      flattenShortBase((short[]) input, output);
+    } else if (primitiveClass.equals(int.class)) {
+      flattenIntBase((int[]) input, output);
+    } else if (primitiveClass.equals(long.class)) {
+      flattenLongBase((long[]) input, output);
+    } else if (primitiveClass.equals(float.class)) {
+      flattenFloatBase((float[]) input, output);
+    } else if (primitiveClass.equals(double.class)) {
+      flattenDoubleBase((double[]) input, output);
+    } else if (primitiveClass.equals(String.class)) {
+      flattenStringBase((String[]) input, output);
+    } else {
+      throw new IllegalStateException("Flattening a non-primitive class");
     }
+  }
 
-    static void flattenByteBase(byte[] input, List<Byte> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenBooleanBase(boolean[] input, List<Boolean> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
-    static void flattenShortBase(short[] input, List<Short> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenByteBase(byte[] input, List<Byte> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
-    static void flattenIntBase(int[] input, List<Integer> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenShortBase(short[] input, List<Short> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
-    static void flattenLongBase(long[] input, List<Long> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenIntBase(int[] input, List<Integer> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
-    static void flattenFloatBase(float[] input, List<Float> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenLongBase(long[] input, List<Long> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
-    static void flattenDoubleBase(double[] input, List<Double> output) {
-        for (int i = 0; i < input.length; i++) {
-            output.add(input[i]);
-        }
+  static void flattenFloatBase(float[] input, List<Float> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
-    static void flattenStringBase(String[] input, List<String> output) {
-        output.addAll(Arrays.asList(input));
+  static void flattenDoubleBase(double[] input, List<Double> output) {
+    for (int i = 0; i < input.length; i++) {
+      output.add(input[i]);
     }
+  }
 
+  static void flattenStringBase(String[] input, List<String> output) {
+    output.addAll(Arrays.asList(input));
+  }
 }

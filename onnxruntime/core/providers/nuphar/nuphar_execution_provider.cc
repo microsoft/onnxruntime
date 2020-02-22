@@ -5,6 +5,7 @@
 
 #include "core/codegen/passes/utils/ort_tvm_utils.h"  // TODO remove this after removing tvm::runtime
 #include "core/common/cpuid_info.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/nuphar/common/analysis/shape_expr.h"  // TODO: remove this shape_expr after shape_infernece refinement
 #include "core/providers/nuphar/common/analysis/subgraph_partition_stats.h"
@@ -366,7 +367,7 @@ Status NupharExecutionProvider::SaveInitializer(
     auto t = onnxruntime::make_unique<Tensor>(
         data_type,
         shape,
-        GetAllocator(0, OrtMemTypeDefault)->Alloc(shape.Size() * data_type->Size()),
+        GetAllocator(0, OrtMemTypeDefault)->Alloc(SafeInt<size_t>(shape.Size()) * data_type->Size()),
         GetAllocator(0, OrtMemTypeDefault)->Info());
 
 #define CASE_UNPACK_TENSOR(V, T)                                       \

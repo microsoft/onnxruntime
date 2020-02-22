@@ -4,6 +4,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/framework/error_code_helper.h"
 #include <cassert>
 using onnxruntime::common::Status;
@@ -16,7 +17,7 @@ struct OrtStatus {
 //Even we say it may not return NULL, indeed it may.
 ORT_EXPORT _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtErrorCode code, _In_ const char* msg) NO_EXCEPTION {
   assert(!(code == 0 && msg != nullptr));
-  size_t clen = strlen(msg);
+  SafeInt<size_t> clen(strlen(msg));
   OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
   if (p == nullptr) return nullptr;  // OOM. What we can do here? abort()?
   p->code = code;
@@ -29,7 +30,7 @@ namespace onnxruntime {
 OrtStatus* ToOrtStatus(const Status& st) {
   if (st.IsOK())
     return nullptr;
-  size_t clen = st.ErrorMessage().length();
+  SafeInt<size_t> clen(st.ErrorMessage().length());
   OrtStatus* p = reinterpret_cast<OrtStatus*>(::malloc(sizeof(OrtStatus) + clen));
   p->code = static_cast<OrtErrorCode>(st.Code());
   memcpy(p->msg, st.ErrorMessage().c_str(), clen);

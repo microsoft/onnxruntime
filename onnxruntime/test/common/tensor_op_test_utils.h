@@ -1,6 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
-#include<random>
+#include <random>
 
 #include "core/util/math.h"
 #include "test/providers/provider_test_utils.h"
@@ -8,13 +11,38 @@
 namespace onnxruntime {
 namespace test {
 
-template <class T>
-inline void FillRandom(std::vector<T>& val, T min, T max) {
-  static std::default_random_engine generator;
-  std::uniform_real_distribution<float> distribution(min, max);
-  for (size_t i = 0; i < val.size(); ++i) {
-    val[i] = T(distribution(generator));
+class RandomValueGenerator {
+ public:
+  enum class RandomSeedType {
+    kStatic,      // static value
+    kPerProcess,  // value that is fixed per process (generated or static)
+    kDynamic,     // dynamic value
+  };
+
+  static constexpr auto k_default_random_seed_type = RandomSeedType::kPerProcess;
+
+  explicit RandomValueGenerator(RandomSeedType random_seed_type = k_default_random_seed_type);
+
+  template <class T>
+  inline std::vector<T> Uniform(const std::vector<int64_t>& dims, float min, float max) {
+    int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+    std::vector<T> val(size);
+    std::uniform_real_distribution<float> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = T(distribution(generator_));
+    }
+    return val;
   }
+
+ private:
+  std::default_random_engine generator_;
+};
+
+template <class T>
+inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
+  int64_t size = std::accumulate(dims.cbegin(), dims.cend(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  std::vector<T> val(size, T(0));
+  return val;
 }
 
 inline std::pair<float, float> MeanStdev(std::vector<float>& v) {

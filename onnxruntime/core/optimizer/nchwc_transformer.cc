@@ -119,6 +119,7 @@ class NchwcTransformerImpl {
   void TransformConcat(Node& node);
   void TransformActivation(Node& node);
   void TransformBatchNormalization(Node& node);
+  void TransformTranspose(Node& node);
 
   Graph& graph_;
 
@@ -147,10 +148,11 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
   if (output_edges_count > 0) {
     graph_utils::RemoveNodeOutputEdges(graph_, node);
-  } else {
-    // Bias the edge count to handle the case of a node that produces a graph
-    // output.
-    output_edges_count = 1;
+  }
+  // Bias the edge count to handle the case of a node that produces a graph
+  // output.
+  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty()) {
+    output_edges_count++;
   }
   return output_edges_count;
 }
@@ -198,7 +200,7 @@ void NchwcTransformerImpl::InsertReorderInput(Node& node) {
                                               {input_nchwc_arg},
                                               nullptr,
                                               kMSNchwcDomain);
-    reorder_input_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    reorder_input_node.SetExecutionProviderType(kCpuExecutionProvider);
     input_defs[0] = input_nchwc_arg;
   } else {
     input_defs[0] = it->second;
@@ -425,7 +427,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
                                     output_defs,
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
-  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
 
   nchwc_node.MutableInputDefs()[1] = nchwc_conv_W_arg;
 
@@ -484,7 +486,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                                     output_defs,
                                     &node.GetAttributes(),
                                     kMSNchwcDomain);
-  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
 
   NchwcArgument::Shape output_shape(output_defs[0]);
 
@@ -773,12 +775,53 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
                                     output_defs,
                                     nullptr,
                                     kMSNchwcDomain);
-  nchwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
   nchwc_node.AddAttribute("group", nchwc_channels);
 
   nchwc_input->remaining_original_uses_--;
 
   CreateNchwcArgument(node, nchwc_node, channels, nchwc_input->shape_);
+  removed_nodes_.push_front(node.Index());
+}
+
+void NchwcTransformerImpl::TransformTranspose(Node& node) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  const ONNX_NAMESPACE::AttributeProto* perm_attr = graph_utils::GetNodeAttribute(node, "perm");
+  if (perm_attr == nullptr || perm_attr->ints_size() != 4) {
+    return;
+  }
+
+  // Test if this transposes from NCHW to NHWC layout order.
+  const int64_t* perm_data = perm_attr->ints().data();
+  if (perm_data[0] != 0 || perm_data[1] != 2 || perm_data[2] != 3 || perm_data[3] != 1) {
+    return;
+  }
+
+  // Don't transform the node if the input is not already in NCHWc format.
+  auto it = nchwc_args_.find(input_defs[0]);
+  if (it == nchwc_args_.end()) {
+    return;
+  }
+  auto* nchwc_input = it->second.get();
+
+  // Create the replacement node.
+  Node& reorder_output_node = graph_.AddNode(graph_.GenerateNodeName("ReorderOutput"),
+                                             "ReorderOutput",
+                                             "ReorderOutput",
+                                             {nchwc_input->nchwc_arg_},
+                                             output_defs,
+                                             nullptr,
+                                             kMSNchwcDomain);
+  reorder_output_node.SetExecutionProviderType(kCpuExecutionProvider);
+  reorder_output_node.AddAttribute("channels", nchwc_input->channels_);
+  reorder_output_node.AddAttribute("channels_last", static_cast<int64_t>(1));
+
+  nchwc_input->remaining_original_uses_--;
+
+  graph_utils::RemoveNodeOutputEdges(graph_, node);
+
   removed_nodes_.push_front(node.Index());
 }
 
@@ -806,6 +849,8 @@ void NchwcTransformerImpl::Transform(Node& node) {
       TransformActivation(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
       TransformBatchNormalization(node);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1})) {
+      TransformTranspose(node);
     }
   }
 

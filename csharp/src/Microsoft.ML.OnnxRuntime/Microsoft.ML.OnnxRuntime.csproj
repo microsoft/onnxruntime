@@ -96,6 +96,15 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
+    <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.lib"
+          Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.lib')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\runtimes\win-$(TargetArchitecture)\native"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
     <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb')
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
@@ -103,6 +112,33 @@
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
           CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.winmd"
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.winmd')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\build\native\metadata"
+          Pack="true"
+          CopyToOutputDirectory="Always"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h"
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.h')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\build\native\include"
+          Pack="true"
+          CopyToOutputDirectory="Never"
+          Visible="false"
+    />
+    <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h"
+          Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.native.h')
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
+          PackagePath="\build\native\include"
+          Pack="true"
+          CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(NativeBuildOutputDir)\DirectML.dll"
@@ -162,7 +198,7 @@
           Visible="false"
     />
     <!-- Some tools to be packaged in nightly build only, should not be released -->
-    <!-- These are copied to the runtimes folder for coveniennce of loading with the dlls -->
+    <!-- These are copied to the runtimes folder for convenience of loading with the dlls -->
     <None Include="$(NativeBuildOutputDir)\onnxruntime_perf_test.exe"
           Condition="('$(IsReleaseBuild)' != 'true') And ($(TargetArchitecture)=='x64') And Exists('$(NativeBuildOutputDir)\onnxruntime_perf_test.exe')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
