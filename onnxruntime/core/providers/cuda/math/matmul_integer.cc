@@ -77,6 +77,9 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   // k*a_offset*b_offset -
   // b_offset * (a[i,0] + a[i,1] ...+a[i,k]) -
   // a_offset * (b[0,j] + b[1,j] ... + b[k,j])
+  // ReduceRowSumOnMatrixA computes the b_offset * (a[i,0] + a[i,1] ...+a[i,k]) part
+  // ReduceColSumOnMatrixB computes the a_offset * (b[0,j] + b[1,j] ... + b[k,j]) part
+  // OffsetOutput computes gets the final result
   IAllocatorUniquePtr<int32_t> a_row_buf;
   if (has_b_zero_point_) {
     a_row_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.N());
