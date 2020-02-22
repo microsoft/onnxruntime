@@ -58,32 +58,34 @@ int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set)
 bool IsDimensionSupported(const Node* node, std::string device) {
   auto node_inputs = node->InputDefs();
   size_t input_dims = 0;
-  if (node_inputs[0]->Shape() != nullptr) {
+  if (node_inputs[0]->Shape() == nullptr) {
+    return true;
+  }
+  else{
     input_dims = node_inputs[0]->Shape()->dim_size();
-  }
-
-  if (node->OpType().find("Pool") != std::string::npos) {
-    if (input_dims != 4 && input_dims != 5)
-      return false;
-  }
-
-  if (node->OpType() == "Unsqueeze") {
-    auto attributes = node->GetAttributes();
-    auto axes = attributes["axes"].ints();
-    if (input_dims + axes.size() > 5)
-      return false;
-  }
-
-  if (node->OpType() == "Softmax") {
-    auto attributes = node->GetAttributes();
-    auto axis = attributes["axis"].i();
-    if (input_dims - axis != 1)
-      return false;
-
-    //3D input not supported on GPU, MYRIAD and HDDL
-    if (device == "GPU" || device == "MYRIAD" || device == "HDDL") {
-      if (input_dims == 3)
+    if (node->OpType().find("Pool") != std::string::npos) {
+      if (input_dims != 4 && input_dims != 5)
         return false;
+    }
+
+    if (node->OpType() == "Unsqueeze") {
+      auto attributes = node->GetAttributes();
+      auto axes = attributes["axes"].ints();
+      if (input_dims + axes.size() > 5)
+        return false;
+    }
+
+    if (node->OpType() == "Softmax") {
+      auto attributes = node->GetAttributes();
+      auto axis = attributes["axis"].i();
+      if (input_dims - axis != 1)
+        return false;
+
+      //3D input not supported on GPU, MYRIAD and HDDL
+      if (device == "GPU" || device == "MYRIAD" || device == "HDDL") {
+        if (input_dims == 3)
+          return false;
+      }
     }
   }
   return true;
