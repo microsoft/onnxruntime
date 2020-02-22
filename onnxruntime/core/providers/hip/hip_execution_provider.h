@@ -53,7 +53,6 @@ class HIPExecutionProvider : public IExecutionProvider {
 
   hipblasHandle_t PerThreadHipblasHandle() {
     return GetPerThreadContext().HipblasHandle();
-    //return hipblas_handle_;
   }
 
   // cudnnHandle_t PerThreadCudnnHandle() {
@@ -64,11 +63,12 @@ class HIPExecutionProvider : public IExecutionProvider {
   // }
 
   void AddDeferredReleaseCPUPtr(void* p);
+  const hipDeviceProp_t& GetDeviceProp() { return prop_; };
 
 private:
   OrtDevice::DeviceId device_id_;
   AllocatorPtr allocator_;
-  hipblasHandle_t hipblas_handle_ = nullptr;
+  hipDeviceProp_t prop_;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
