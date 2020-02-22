@@ -48,8 +48,6 @@ struct OrtEnv {
 
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
 
-  void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
-
  private:
   static OrtEnv* p_instance_;
   static onnxruntime::OrtMutex m_;

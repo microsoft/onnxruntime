@@ -84,7 +84,3 @@ LoggingManager* OrtEnv::GetLoggingManager() const {
   return logging_manager_.get();
 }
 
-void OrtEnv::SetLoggingManager(std::unique_ptr<LoggingManager> logging_manager) {
-  std::lock_guard<onnxruntime::OrtMutex> lock(m_);
-  logging_manager_ = std::move(logging_manager);
-}
