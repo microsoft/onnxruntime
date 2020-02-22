@@ -1,3 +1,6 @@
+REM Copyright (c) Microsoft Corporation. All rights reserved.
+REM Licensed under the MIT License.
+
 @ECHO ON
 SETLOCAL EnableDelayedExpansion
 
@@ -14,18 +17,12 @@ IF NOT "%4"=="" (
     echo "Usage: runtest.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion"
 )
 
-IF "%TargetArch%"=="AnyCPU" (
-    IF "%TargetFramework%"=="net461" (
-        @echo "Can't build AnyCPU app for .NET Framework"
-        EXIT 1
-    )
-)
-
 IF "%TargetArch%"=="x64" (
   SET RuntimeIdentifier=win-x64
 )
 
 IF "%TargetArch%"=="x86" (
+  SET dn="C:\Program Files (x86)\dotnet\dotnet"
   SET RuntimeIdentifier=win-x86
 )
 
