@@ -267,6 +267,20 @@ namespace {
       return Normalize(lhs) == Normalize(rhs);
     }
   };
+
+  bool IsNodeSupported(const Node& node) {
+    if (node.Domain() != kOnnxDomain || node.ContainsSubgraph()) {
+      return false;
+    }
+
+    const std::string& op = node.OpType();
+    if (op.substr(0, 6) == "Random" && node.GetAttributes().count("seed") == 0) {
+      // a unique seed will be generated, so this node is unique
+      return false;
+    }
+
+    return true;
+  }
 }
 
 }
@@ -324,8 +338,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     }
 
     int discriminator = 0;
-    const bool is_supported_node = node->Domain() == kOnnxDomain && !node->ContainsSubgraph();
-    if (!is_supported_node) {
+    if (!IsNodeSupported(*node)) {
       discriminator = ++unique_discriminator;
     }
 
