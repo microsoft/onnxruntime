@@ -223,7 +223,6 @@ add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_precompiled_header(winml_adapter pch.h)
 
 # Includes
-#target_include_directories(winml_adapter PRIVATE ${winml_lib_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_adapter_dir})
 target_include_directories(winml_adapter PRIVATE ${winml_lib_common_dir}/inc)
 
