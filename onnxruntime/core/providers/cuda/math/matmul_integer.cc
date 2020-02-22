@@ -80,13 +80,13 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   IAllocatorUniquePtr<int32_t> a_row_buf;
   if (has_b_zero_point_) {
     a_row_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.N());
-    ReduceRowSumOnMatrixA(a_ptr, a_row_buf.get(), b_offset, helper);
+    ORT_RETURN_IF_ERROR(ReduceRowSumOnMatrixA(a_ptr, a_row_buf.get(), b_offset, helper));
   }
 
   IAllocatorUniquePtr<int32_t> b_col_buf;
   if (has_a_zero_point_) {
     b_col_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.M());
-    ReduceColSumOnMatrixB(b_ptr, b_col_buf.get(), a_offset, helper);
+    ORT_RETURN_IF_ERROR(ReduceColSumOnMatrixB(b_ptr, b_col_buf.get(), a_offset, helper));
   }
 
   int alpha = 1;
@@ -110,8 +110,18 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   int64_t b_pad_size = 0;
   IAllocatorUniquePtr<int8_t> a_padded;
   IAllocatorUniquePtr<int8_t> b_padded;
-  PadMatrix(a->Shape().Size() / helper.K(), helper.K(), align_size, a_ptr, a_pad_size, a_padded);
-  PadMatrix(b->Shape().Size() / helper.N(), helper.N(), align_size, b_ptr, b_pad_size, b_padded);
+  ORT_RETURN_IF_ERROR(PadMatrix(a->Shape().Size() / helper.K(),
+                                helper.K(),
+                                align_size,
+                                a_ptr,
+                                a_pad_size,
+                                a_padded));
+  ORT_RETURN_IF_ERROR(PadMatrix(b->Shape().Size() / helper.N(),
+                                helper.N(),
+                                align_size,
+                                b_ptr,
+                                b_pad_size,
+                                b_padded));
 
   for (int batch = 0; batch < helper.OutputOffsets().size(); batch++) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmEx(
@@ -122,10 +132,10 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        b_ptr + helper.RightOffsets()[batch] + b_pad_size * helper.K() * batch,
+        b_ptr + helper.RightOffsets()[batch] + helper.RightOffsets()[batch] / helper.N() * b_pad_size,
         CUDA_R_8I,
         static_cast<int>(helper.N() + b_pad_size),
-        a_ptr + helper.LeftOffsets()[batch] + a_pad_size * helper.M() * batch,
+        a_ptr + helper.LeftOffsets()[batch] + helper.LeftOffsets()[batch] / helper.K() * a_pad_size,
         CUDA_R_8I,
         static_cast<int>(helper.K() + a_pad_size),
         &beta,
