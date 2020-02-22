@@ -660,6 +660,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], nb_dims);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], nb_dims);
       } else {  // Execution tensor
+	bool is_dynamic_shape = false;
         for (int j = 0, end = nb_dims; j < end; ++j) {
           // For dynamic shape subgraph, a dummy engine is created at compile phase.
           // Real engine will be created at compute phase based on input data
@@ -667,12 +668,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
             dims_min.d[j] = 1;
             dims_opt.d[j] = 1;
             dims_max.d[j] = 1;
+	    is_dynamic_shape = true;
           }
         }
-        // TRT6: Optimization profile need to be provided for all inputs if any of them has dynamic shape
-        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+        
+	if (is_dynamic_shape) {
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+	}
       }
     }
 
@@ -790,14 +794,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int total_bindings = num_binding_inputs + num_binding_outputs;
       std::vector<void*> buffers(total_bindings);
 
-      bool dynamic_shape = false;
-      auto trt_context = trt_state->context;
-      if (!trt_context->allInputDimensionsSpecified() || !trt_context->allInputShapesSpecified()) {
-        dynamic_shape = true;
-      }
-
       // Update shape ranges
       bool dimension_update = false;
+      auto trt_context = trt_state->context;	    
       auto trt_builder = trt_state->builder;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
@@ -856,13 +855,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
               trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
             }
           }
-        }
-
-        // TensorRT6 requires optimization profile to be defined for all inputs if any input dimension is symbolic
-        if (dimension_update && dynamic_shape) {
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
         }
       }
 
