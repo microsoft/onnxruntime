@@ -1030,7 +1030,7 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
       // tests generate bit identical results when run with and without
       // optimizations, but the BatchNormalizationtransform does introduce
       // small bit differences.
-      helper.per_sample_tolerance_ = .000125;
+      helper.per_sample_tolerance_ = .00025;
     };
 
     auto check_nchwc_graph = [&](NchwcInferenceSession& session) {
