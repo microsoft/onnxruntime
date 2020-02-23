@@ -129,28 +129,28 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 //   return hipblasDasum(handle, n, x, incx, result);
 // }
 // inline hipblasStatus_t hipblasAsumHelper(hipblasHandle_t, int n, const half* x, int incx, half* result) {
-//   // pass in cudnn handle/descriptor to remove overhead?
-//   hipdnnHandle_t cudnnHandle;
-//   hipdnnTensorDescriptor_t srcTensorDesc, dstTensorDesc;
-//   hipdnnReduceTensorDescriptor_t reduceTensorDesc;
+//   // pass in miopen handle/descriptor to remove overhead?
+//   miopenHandle_t miopenHandle;
+//   miopenTensorDescriptor_t srcTensorDesc, dstTensorDesc;
+//   miopenReduceTensorDescriptor_t reduceTensorDesc;
 
-//   hipdnnCreate(&cudnnHandle);
-//   hipdnnCreateTensorDescriptor(&srcTensorDesc);
-//   hipdnnCreateTensorDescriptor(&dstTensorDesc);
-//   hipdnnCreateReduceTensorDescriptor(&reduceTensorDesc);
+//   miopenCreate(&miopenHandle);
+//   miopenCreateTensorDescriptor(&srcTensorDesc);
+//   miopenCreateTensorDescriptor(&dstTensorDesc);
+//   miopenCreateReduceTensorDescriptor(&reduceTensorDesc);
 
-//   hipdnnSetTensor4dDescriptorEx(srcTensorDesc, HIPDNN_DATA_HALF, 1, 1, 1, n, 1, 1, 1, incx);
-//   hipdnnSetTensor4dDescriptorEx(dstTensorDesc, HIPDNN_DATA_HALF, 1, 1, 1, 1, 1, 1, 1, 1);
-//   hipdnnSetReduceTensorDescriptor(reduceTensorDesc,
-//                                  HIPDNN_REDUCE_TENSOR_NORM1,
-//                                  HIPDNN_DATA_FLOAT,
-//                                  HIPDNN_NOT_PROPAGATE_NAN,
-//                                  HIPDNN_REDUCE_TENSOR_NO_INDICES,
-//                                  HIPDNN_32BIT_INDICES);
+//   miopenSetTensor4dDescriptorEx(srcTensorDesc, MIOPEN_DATA_HALF, 1, 1, 1, n, 1, 1, 1, incx);
+//   miopenSetTensor4dDescriptorEx(dstTensorDesc, MIOPEN_DATA_HALF, 1, 1, 1, 1, 1, 1, 1, 1);
+//   miopenSetReduceTensorDescriptor(reduceTensorDesc,
+//                                  MIOPEN_REDUCE_TENSOR_NORM1,
+//                                  MIOPEN_DATA_FLOAT,
+//                                  MIOPEN_NOT_PROPAGATE_NAN,
+//                                  MIOPEN_REDUCE_TENSOR_NO_INDICES,
+//                                  MIOPEN_32BIT_INDICES);
 
 //   void* workspace = NULL;
 //   size_t workspaceSizeInBytes = 0;
-//   hipdnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
+//   miopenGetReductionWorkspaceSize(miopenHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
 //   if (workspaceSizeInBytes > 0) hipMalloc(&workspace, workspaceSizeInBytes);
 
 //   float alpha = 1.0f;
@@ -159,7 +159,7 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 //   void* d_res;
 //   hipMalloc(&d_res, sizeof(half));
 
-//   hipdnnReduceTensor(cudnnHandle,
+//   miopenReduceTensor(miopenHandle,
 //                     reduceTensorDesc,
 //                     NULL,
 //                     0,
@@ -174,10 +174,10 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 
 //   hipMemcpy((void*)result, d_res, sizeof(half), hipMemcpyDeviceToHost);
 
-//   hipdnnDestroyReduceTensorDescriptor(reduceTensorDesc);
-//   hipdnnDestroyTensorDescriptor(srcTensorDesc);
-//   hipdnnDestroyTensorDescriptor(dstTensorDesc);
-//   hipdnnDestroy(cudnnHandle);
+//   miopenDestroyReduceTensorDescriptor(reduceTensorDesc);
+//   miopenDestroyTensorDescriptor(srcTensorDesc);
+//   miopenDestroyTensorDescriptor(dstTensorDesc);
+//   miopenDestroy(miopenHandle);
 //   hipFree(d_res);
 //   hipFree(workspace);
 
@@ -193,28 +193,28 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 // }
 // inline hipblasStatus_t hipblasAmaxHelper(hipblasHandle_t, int n, const half* x, int incx, int* result) {
 //   unsigned int h_result_uint = 0;
-//   // pass in cudnn handle/descriptor to remove overhead?
-//   hipdnnHandle_t cudnnHandle;
-//   hipdnnTensorDescriptor_t srcTensorDesc, dstTensorDesc;
-//   hipdnnReduceTensorDescriptor_t reduceTensorDesc;
+//   // pass in miopen handle/descriptor to remove overhead?
+//   miopenHandle_t miopenHandle;
+//   miopenTensorDescriptor_t srcTensorDesc, dstTensorDesc;
+//   miopenReduceTensorDescriptor_t reduceTensorDesc;
 
-//   hipdnnCreate(&cudnnHandle);
-//   hipdnnCreateTensorDescriptor(&srcTensorDesc);
-//   hipdnnCreateTensorDescriptor(&dstTensorDesc);
-//   hipdnnCreateReduceTensorDescriptor(&reduceTensorDesc);
+//   miopenCreate(&miopenHandle);
+//   miopenCreateTensorDescriptor(&srcTensorDesc);
+//   miopenCreateTensorDescriptor(&dstTensorDesc);
+//   miopenCreateReduceTensorDescriptor(&reduceTensorDesc);
 
-//   hipdnnSetTensor4dDescriptorEx(srcTensorDesc, HIPDNN_DATA_HALF, 1, 1, 1, n, 1, 1, 1, incx);
-//   hipdnnSetTensor4dDescriptorEx(dstTensorDesc, HIPDNN_DATA_HALF, 1, 1, 1, 1, 1, 1, 1, 1);
-//   hipdnnSetReduceTensorDescriptor(reduceTensorDesc,
-//                                  HIPDNN_REDUCE_TENSOR_AMAX,
-//                                  HIPDNN_DATA_FLOAT,
-//                                  HIPDNN_NOT_PROPAGATE_NAN,
-//                                  HIPDNN_REDUCE_TENSOR_FLATTENED_INDICES,
-//                                  HIPDNN_32BIT_INDICES);
+//   miopenSetTensor4dDescriptorEx(srcTensorDesc, MIOPEN_DATA_HALF, 1, 1, 1, n, 1, 1, 1, incx);
+//   miopenSetTensor4dDescriptorEx(dstTensorDesc, MIOPEN_DATA_HALF, 1, 1, 1, 1, 1, 1, 1, 1);
+//   miopenSetReduceTensorDescriptor(reduceTensorDesc,
+//                                  MIOPEN_REDUCE_TENSOR_AMAX,
+//                                  MIOPEN_DATA_FLOAT,
+//                                  MIOPEN_NOT_PROPAGATE_NAN,
+//                                  MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES,
+//                                  MIOPEN_32BIT_INDICES);
 
 //   void* workspace = NULL;
 //   size_t workspaceSizeInBytes = 0;
-//   hipdnnGetReductionWorkspaceSize(cudnnHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
+//   miopenGetReductionWorkspaceSize(miopenHandle, reduceTensorDesc, srcTensorDesc, dstTensorDesc, &workspaceSizeInBytes);
 //   if (workspaceSizeInBytes > 0) hipMalloc(&workspace, workspaceSizeInBytes);
 
 //   float alpha = 1.0f;
@@ -224,7 +224,7 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 //   void* d_result_uint;
 //   hipMalloc(&d_result_uint, sizeof(unsigned int));
 
-//   hipdnnReduceTensor(cudnnHandle,
+//   miopenReduceTensor(miopenHandle,
 //                     reduceTensorDesc,
 //                     d_result_uint,
 //                     sizeof(unsigned int),
@@ -239,10 +239,10 @@ inline hipblasStatus_t hipblasTransposeHelper(hipblasHandle_t handle, hipblasOpe
 
 //   hipMemcpy(&h_result_uint, d_result_uint, sizeof(unsigned int), hipMemcpyDeviceToHost);
 
-//   hipdnnDestroyReduceTensorDescriptor(reduceTensorDesc);
-//   hipdnnDestroyTensorDescriptor(srcTensorDesc);
-//   hipdnnDestroyTensorDescriptor(dstTensorDesc);
-//   hipdnnDestroy(cudnnHandle);
+//   miopenDestroyReduceTensorDescriptor(reduceTensorDesc);
+//   miopenDestroyTensorDescriptor(srcTensorDesc);
+//   miopenDestroyTensorDescriptor(dstTensorDesc);
+//   miopenDestroy(miopenHandle);
 //   hipFree(workspace);
 //   hipFree(d_max);
 //   hipFree(d_result_uint);

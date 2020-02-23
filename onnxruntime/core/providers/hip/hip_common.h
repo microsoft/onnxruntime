@@ -42,17 +42,16 @@ namespace hip {
   ORT_RETURN_IF_ERROR(CURAND_CALL(expr)          \
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CURAND error executing ", #expr))
-
-#define CUDNN_RETURN_IF_ERROR(expr)              \
-  ORT_RETURN_IF_ERROR(CUDNN_CALL(expr)           \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN error executing ", #expr))
-
-#define CUDNN2_RETURN_IF_ERROR(expr, m)          \
-  ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m)       \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN2 error executing ", #expr))
 */
+#define MIOPEN_RETURN_IF_ERROR(expr)              \
+  ORT_RETURN_IF_ERROR(MIOPEN_CALL(expr)           \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOPEN error executing ", #expr))
+
+#define MIOPEN2_RETURN_IF_ERROR(expr, m)          \
+  ORT_RETURN_IF_ERROR(MIOPEN_CALL2(expr, m)       \
+                          ? common::Status::OK() \
+                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOPEN2 error executing ", #expr))
 
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
@@ -173,9 +172,9 @@ class HipKernel : public OpKernel {
     return provider_->PerThreadHipblasHandle();
   }
 
-  // inline hipdnnHandle_t CudnnHandle() const {
-  //   return provider_->PerThreadCudnnHandle();
-  // }
+  inline miopenHandle_t MiopenHandle() const {
+    return provider_->PerThreadMiopenHandle();
+  }
   // inline hiprandGenerator_t CurandGenerator() const {
   //   return provider_->PerThreadCurandGenerator();
   // }
