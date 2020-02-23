@@ -10,6 +10,7 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_runtime_api.h>
 #include <hipblas.h>
+#include <miopen/miopen.h>
 //#include <hiprand/hiprand.h>
 
 #include "core/common/common.h"
@@ -62,11 +63,11 @@ const char* HipErrString<hipblasStatus_t>(hipblasStatus_t e) {
 //   return "(see hiprand.h & look for hiprandStatus_t)";
 // }
 
-// template <>
-// const char* HipErrString<hipdnnStatus_t>(hipdnnStatus_t e) {
-//   hipDeviceSynchronize();
-//   return hipdnnGetErrorString(e);
-// }
+template <>
+const char* HipErrString<miopenStatus_t >(miopenStatus_t  e) {
+  hipDeviceSynchronize();
+  return miopenGetErrorString(e);
+}
 
 // #ifdef USE_NCCL
 // template <>
@@ -125,8 +126,8 @@ template bool HipCall<hipError_t, false>(hipError_t retCode, const char* exprStr
 template bool HipCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 template bool HipCall<hipblasStatus_t, false>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
 template bool HipCall<hipblasStatus_t, true>(hipblasStatus_t retCode, const char* exprString, const char* libName, hipblasStatus_t successCode, const char* msg);
-// template bool HipCall<hipdnnStatus_t, false>(hipdnnStatus_t retCode, const char* exprString, const char* libName, hipdnnStatus_t successCode, const char* msg);
-// template bool HipCall<hipdnnStatus_t, true>(hipdnnStatus_t retCode, const char* exprString, const char* libName, hipdnnStatus_t successCode, const char* msg);
+template bool HipCall<miopenStatus_t , false>(miopenStatus_t  retCode, const char* exprString, const char* libName, miopenStatus_t  successCode, const char* msg);
+template bool HipCall<miopenStatus_t , true>(miopenStatus_t  retCode, const char* exprString, const char* libName, miopenStatus_t  successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, false>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
 // template bool HipCall<hiprandStatus_t, true>(hiprandStatus_t retCode, const char* exprString, const char* libName, hiprandStatus_t successCode, const char* msg);
 // #ifdef USE_NCCL
