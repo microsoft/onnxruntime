@@ -15,16 +15,12 @@ steps:
     addToPath: true 
     architecture: 'x64'
 
-- task: CmdLine@1
-  displayName: 'Install conda modules mysql-connector-python'
-  inputs:
-    filename: '%CONDA%\condabin\conda.bat'
-    arguments: 'install -q --insecure -y mysql-connector-python'
-  timeoutInMinutes: 10
+- script: |
+   python -m pip install -q mysql-connector-python    
+  displayName: 'Install mysql-connector-python'
 
 - task: CmdLine@2
   displayName: 'Post binary sizes to the dashboard database using command line'
-  continueOnError: true # Recently the database connection is failing, so ignoring the error until that is fixed
   inputs:
     script: |
       echo changing directory to artifact download path
@@ -42,7 +38,7 @@ steps:
         7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,openmp,%%a >> binary_size_data.txt
         7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,openmp,%%a >> binary_size_data.txt
         echo calling python script to post to database
-        %CONDA%\python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{ parameters.gitCommitHash }} --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId) 
+        python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=${{ parameters.gitCommitHash }} --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
       )
 
   env: 
