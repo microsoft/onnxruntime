@@ -713,14 +713,15 @@ if (onnxruntime_USE_HIP)
   add_definitions(-DUSE_HIP=1)
 
   # Add search paths for default hip installation
-  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_HIP_HOME} ${onnxruntime_HIP_HOME}/hip ${onnxruntime_HIP_HOME}/hcc)
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_HIP_HOME} ${onnxruntime_HIP_HOME}/hip ${onnxruntime_HIP_HOME}/hcc ${onnxruntime_HIP_HOME}/miopen)
 
   set(CMAKE_MODULE_PATH "${onnxruntime_HIP_HOME}/hip/cmake" ${CMAKE_MODULE_PATH})
   find_package(HIP)
 
-  find_library(HIP_LIB hip_hcc)
-  find_library(HIP_BLAS hipblas)
-  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS})
+  find_library(HIP_LIB hip_hcc REQUIRED)
+  find_library(HIP_BLAS hipblas REQUIRED)
+  find_library(MIOPEN_LIB MIOpen REQUIRED)
+  set(ONNXRUNTIME_HIP_LIBS ${HIP_LIB} ${HIP_BLAS} ${MIOPEN_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_hip_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/hip/*.h"

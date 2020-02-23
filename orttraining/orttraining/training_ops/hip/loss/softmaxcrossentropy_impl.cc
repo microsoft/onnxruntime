@@ -52,7 +52,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(logit_data,
                                               logit_reshape,
                                               probability_data,
-                                              /*CudnnHandle(),*/
+                                              MiopenHandle(),
                                               1 /*axis default*/));
 
   size_t normalize_factor = N;
@@ -72,12 +72,12 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(2, 1);
   Tensor* Y __attribute__((__unused__)) = ctx->Output(0, TensorShape({}));
   // Sum((label - log(softmax)) using Reduction
-  // ReduceKernelShared<T, T, HIPDNN_REDUCE_TENSOR_NO_INDICES>(
+  // ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
   //     temp_X.get(),
   //     logit_reshape,
   //     Y->template MutableData<T>(),
   //     TensorShape({}),
-  //     HIPDNN_REDUCE_TENSOR_ADD,
+  //     MIOPEN_REDUCE_TENSOR_ADD,
   //     output_dims);
 
   return Status::OK();
@@ -151,7 +151,7 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   ORT_RETURN_IF_ERROR(SoftMaxComputeHelper<T>(logit_data,
                                               logit_reshape,
                                               probability_data,
-                                              /*CudnnHandle(),*/
+                                              MiopenHandle(),
                                               1 /*axis default*/));
 
   // calculate  (label - log(softmax)) for each sample
@@ -196,12 +196,12 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
 
   // ReduceSum on loss_per_sample
   // std::vector<int64_t> output_dims(1, 1);
-  // ReduceKernelShared<T, T, HIPDNN_REDUCE_TENSOR_NO_INDICES>(
+  // ReduceKernelShared<T, T, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
   //     tmp_loss_sample.get(),
   //     label_reshape,
   //     total_loss_data,
   //     TensorShape({}),
-  //     HIPDNN_REDUCE_TENSOR_ADD,
+  //     MIOPEN_REDUCE_TENSOR_ADD,
   //     output_dims);
 
   return Status::OK();

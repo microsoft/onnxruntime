@@ -10,7 +10,7 @@ extern "C" {
 /**
  * \param device_id hip device id, starts from zero.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_HIP, _In_ OrtSessionOptions* options, int device_id, size_t cuda_mem_limit);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_HIP, _In_ OrtSessionOptions* options, int device_id, size_t hip_mem_limit);
 
 #ifdef __cplusplus
 }
