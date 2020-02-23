@@ -280,7 +280,7 @@ class CPUAllocator : public IDeviceAllocator {
   std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 class MiMallocAllocator : public IDeviceAllocator {
  public:
   explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
@@ -302,10 +302,10 @@ class MiMallocAllocator : public IDeviceAllocator {
 
 #endif
 
-#ifdef USE_MIMALLOC
-using TAllocator = MiMallocAllocator;
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
+  using TAllocator = MiMallocAllocator;
 #else
-using TAllocator = CPUAllocator;
+  using TAllocator = CPUAllocator;
 #endif
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;
