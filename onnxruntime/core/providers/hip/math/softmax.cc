@@ -1,0 +1,88 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "softmax.h"
+#include "core/providers/common.h"
+//#include "core/providers/hip/cudnn_common.h"
+
+namespace onnxruntime {
+namespace hip {
+
+template <typename T>
+Status SoftMaxComputeHelper(
+    const T* X,
+    const TensorShape& input_shape,
+    T* Y,
+    //hipdnnHandle_t handle,
+    int64_t axis) {
+  typedef typename ToHipType<T>::MappedType HipT;
+
+  const int64_t normalized_axis = HandleNegativeAxis(axis, input_shape.NumDimensions());
+
+  int64_t N = input_shape.SizeToDimension(normalized_axis);
+  int64_t D = input_shape.SizeFromDimension(normalized_axis);
+  auto Y_data = reinterpret_cast<HipT*>(Y);
+  auto X_data = reinterpret_cast<const HipT*>(X);
+
+  // hipdnnSoftmaxForward/Backward is not optimal implementation.
+  // TODO: remove cudnn path completely in the future.
+  if (D == input_shape[normalized_axis] && D <= 1024 && D * sizeof(T) <= 4096) {
+    dispatch_softmax_forward<HipT, HipT, AccType<T>, false>(Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+    return Status::OK();
+  }
+
+  // std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
+
+  // const auto alpha = Consts<HipT>::One;
+  // const auto beta = Consts<HipT>::Zero;
+  // CudnnTensor input_tensor;
+  // CudnnTensor output_tensor;
+  // ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<HipT>()));
+  // ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<HipT>()));
+  // CUDNN_RETURN_IF_ERROR(hipdnnSoftmaxForward(handle, HIPDNN_SOFTMAX_ACCURATE, HIPDNN_SOFTMAX_MODE_INSTANCE, &alpha, input_tensor, X_data, &beta, output_tensor, Y_data));
+
+  // return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SoftmaxForward is not supported");
+}
+
+#define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      1, 10,                                                                    \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);                                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      Softmax,                                                                  \
+      kOnnxDomain,                                                              \
+      11,                                                                       \
+      T,                                                                        \
+      kHipExecutionProvider,                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Softmax<T>);
+
+template <typename T>
+Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* X = ctx->Input<Tensor>(0);
+  const TensorShape& input_shape{X->Shape()};
+  const T* X_data = X->template Data<T>();
+  T* Y_data = ctx->Output(0, input_shape)->template MutableData<T>();
+  // special case when there is a dim value of 0 in the shape.
+  if (input_shape.Size() == 0)
+    return Status::OK();
+
+  return SoftMaxComputeHelper<T>(X_data, input_shape, Y_data, /*CudnnHandle(),*/ axis_);
+}
+
+#define SPECIALIZED_COMPUTE(T) \
+  REGISTER_KERNEL_TYPED(T)     \
+  template Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const;
+
+SPECIALIZED_COMPUTE(float)
+SPECIALIZED_COMPUTE(double)
+SPECIALIZED_COMPUTE(MLFloat16)
+
+}  // namespace hip
+}  // namespace onnxruntime
