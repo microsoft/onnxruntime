@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
   using TArenaAllocator = MiMallocArena;
 #else
   using TArenaAllocator = BFCArena;
