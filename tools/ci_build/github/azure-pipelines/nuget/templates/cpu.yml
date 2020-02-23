@@ -221,13 +221,7 @@ jobs:
     clean: all
   variables:
   - group: Dashboard_MySQL_Secret
-  pool: 
-    name: Hosted Windows 2019 with VS2019
-    # AzureFileCopy@3 task has some bug that it depends on a particular version of azure power shell, 
-    # which is not available in OnnxRuntime build VMs, but available in the latest hosted agents. 
-    # So, all the copy/publish jobs are being run on hosted agent
-    # TODO: install the desired azureps on our VMs or use later bugfixed version of AzureFileCopy   
-    demands: azureps
+  pool: 'Win-CPU-2019'
   condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
