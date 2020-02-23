@@ -103,9 +103,9 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
 #pragma unroll
     for (int it = 0; it < WARP_ITERATIONS; ++it) {
       if (is_log_softmax) {
-        //sum[i] += std::exp((float)(elements[i][it] - max_value[i]));
+        sum[i] += expf((float)(elements[i][it] - max_value[i]));
       } else {
-        //elements[i][it] = std::exp((float)(elements[i][it] - max_value[i]));
+        elements[i][it] = expf((float)(elements[i][it] - max_value[i]));
         sum[i] += elements[i][it];
       }
     }

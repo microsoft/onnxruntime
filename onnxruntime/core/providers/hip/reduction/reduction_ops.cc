@@ -132,8 +132,8 @@ static Status PrepareForReduce(OpKernelContext* ctx,
                                int64_t& input_count,
                                int64_t& output_count,
                                std::vector<int64_t>& output_dims,
-                               std::vector<int64_t>& input_dims_cudnn,
-                               std::vector<int64_t>& output_dims_cudnn,
+                               std::vector<int64_t>& input_dims_miopen,
+                               std::vector<int64_t>& output_dims_miopen,
                                int64_t& rank,
                                int64_t& stride) {
   const Tensor* X = ctx->Input<Tensor>(0);
@@ -193,13 +193,13 @@ static Status PrepareForReduce(OpKernelContext* ctx,
   HIP_RETURN_IF_ERROR(hipMemset(Y->MutableDataRaw(), 0, Y->SizeInBytes()));
   *y_pp = Y;
 
-  // CUDNN requires at least 3D input, so pad 1s if needed
-  input_dims_cudnn = input_dims;
-  output_dims_cudnn = output_dims;
+  // MIOPEN requires at least 3D input, so pad 1s if needed
+  input_dims_miopen = input_dims;
+  output_dims_miopen = output_dims;
   if (rank < 3) {
     std::vector<int64_t> pads(3 - rank, 1);
-    input_dims_cudnn.insert(input_dims_cudnn.end(), pads.begin(), pads.end());
-    output_dims_cudnn.insert(output_dims_cudnn.end(), pads.begin(), pads.end());
+    input_dims_miopen.insert(input_dims_miopen.end(), pads.begin(), pads.end());
+    output_dims_miopen.insert(output_dims_miopen.end(), pads.begin(), pads.end());
   }
 
   output_count = Y->Shape().Size();
@@ -217,8 +217,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, HipRedu
   int64_t input_count = 0;
   int64_t output_count = 0;
   std::vector<int64_t> output_dims;
-  std::vector<int64_t> input_dims_cudnn;
-  std::vector<int64_t> output_dims_cudnn;
+  std::vector<int64_t> input_dims_miopen;
+  std::vector<int64_t> output_dims_miopen;
   int64_t rank = 0;
   int64_t stride = 0;
   ORT_RETURN_IF_ERROR(PrepareForReduce(ctx,
@@ -229,8 +229,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, HipRedu
                                        input_count,
                                        output_count,
                                        output_dims,
-                                       input_dims_cudnn,
-                                       output_dims_cudnn,
+                                       input_dims_miopen,
+                                       output_dims_miopen,
                                        rank, stride));
 
   // special case when there is a dim value of 0 in the shape.

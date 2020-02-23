@@ -1226,7 +1226,7 @@ thread_local std::unique_ptr<HIPExecutionProvider::PerThreadContextMap> HIPExecu
 HIPExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id) {
   HIP_CALL_THROW(hipSetDevice(device_id));
   HIPBLAS_CALL_THROW(hipblasCreate(&hipblas_handle_));
-  // CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
   // CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
@@ -1246,11 +1246,11 @@ HIPExecutionProvider::PerThreadContext::~PerThreadContext() {
     LOGS_DEFAULT(ERROR) << "hipblasDestroy threw:" << ex.what();
   }
 
-  // try {
-  //   CUDNN_CALL(cudnnDestroy(cudnn_handle_));
-  // } catch (const std::exception& ex) {
-  //   LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
-  // }
+  try {
+    MIOPEN_CALL(miopenDestroy(miopen_handle_));
+  } catch (const std::exception& ex) {
+    LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
+  }
   // CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 

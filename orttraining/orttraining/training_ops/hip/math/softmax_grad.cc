@@ -31,7 +31,7 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   int64_t N = input_shape.SizeToDimension(normalized_axis);
   int64_t D = input_shape.SizeFromDimension(normalized_axis);
-  std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
+  std::vector<int64_t> dims({N, 1, 1, D});  // miopen expects 4D shape in NCHW format
 
   auto dY_data = reinterpret_cast<const HipT*>(dY->template Data<T>());
   auto Y_data = reinterpret_cast<const HipT*>(Y->template Data<T>());
@@ -44,15 +44,15 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // const auto alpha = Consts<HipT>::One;
   // const auto beta = Consts<HipT>::Zero;
-  // CudnnTensor input_tensor;
-  // CudnnTensor output_tensor;
-  // ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<HipT>()));
-  // ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<HipT>()));
-  // CUDNN_RETURN_IF_ERROR(
-  //     hipdnnSoftmaxBackward(
-  //         CudnnHandle(),
-  //         HIPDNN_SOFTMAX_ACCURATE,
-  //         HIPDNN_SOFTMAX_MODE_INSTANCE,
+  // MiopenTensor input_tensor;
+  // MiopenTensor output_tensor;
+  // ORT_RETURN_IF_ERROR(input_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
+  // ORT_RETURN_IF_ERROR(output_tensor.Set(dims, MiopenTensor::GetDataType<HipT>()));
+  // MIOPEN_RETURN_IF_ERROR(
+  //     miopenSoftmaxBackward(
+  //         MiopenHandle(),
+  //         MIOPEN_SOFTMAX_ACCURATE,
+  //         MIOPEN_SOFTMAX_MODE_INSTANCE,
   //         &alpha,
   //         input_tensor,
   //         Y_data,
