@@ -6,6 +6,7 @@
 #include <deque>
 
 #include <hipblas.h>
+#include <miopen/miopen.h>
 
 #include "core/platform/ort_mutex.h"
 #include "core/framework/allocator.h"
@@ -55,9 +56,9 @@ class HIPExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().HipblasHandle();
   }
 
-  // cudnnHandle_t PerThreadCudnnHandle() {
-  //   return GetPerThreadContext().CudnnHandle();
-  // }
+  miopenHandle_t PerThreadMiopenHandle() {
+    return GetPerThreadContext().MiopenHandle();
+  }
   // curandGenerator_t PerThreadCurandGenerator() {
   //   return GetPerThreadContext().CurandGenerator();
   // }
@@ -86,9 +87,9 @@ private:
       return hipblas_handle_;
     }
 
-    // cudnnHandle_t CudnnHandle() const {
-    //   return cudnn_handle_;
-    // }
+    miopenHandle_t MiopenHandle() const {
+      return miopen_handle_;
+    }
 
     // curandGenerator_t CurandGenerator() const {
     //   return curand_generator_;
@@ -126,7 +127,7 @@ private:
 
    private:
     hipblasHandle_t hipblas_handle_ = nullptr;
-    // cudnnHandle_t cudnn_handle_ = nullptr;
+    miopenHandle_t miopen_handle_ = nullptr;
     // curandGenerator_t curand_generator_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in hipMemcpyAsync
