@@ -164,11 +164,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument("--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument("--use_telemetry", action='store_true', help="Only official builds can set this flag to enable telemetry.")
-<<<<<<< HEAD
     parser.add_argument("--enable_wcos", action='store_true', help="Build for Windows Core OS.")
-=======
     parser.add_argument("--enable_lto", action='store_true', help="Enable Link Time Optimization")
->>>>>>> master
     return parser.parse_args()
 
 def resolve_executable_path(command_or_path):
