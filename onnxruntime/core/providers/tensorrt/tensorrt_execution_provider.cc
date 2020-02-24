@@ -407,6 +407,18 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
+        // Check if input tensors have shapes
+		if (iterations > 1) {
+          for (const auto* input_arg : graph_build.GetInputs()) {
+            if (input_arg->Shape() == nullptr) {
+              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
+                                 "Please run shape inference on the onnx model first. Details can be found in " +
+                                 "https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md"));
+            }
+          }
+		}
+		
         // Serialize modelproto to string
         const onnxruntime::GraphViewer graph_viewer(graph_build);
 

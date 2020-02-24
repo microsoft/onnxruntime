@@ -19,6 +19,8 @@ status = session_object.Load(model_file_name);
 ```
 The C API details are [here](../C_API.md#c-api).
 
+If certain operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires all inputs of the subgraph have shape specified, ONNX Runtime will thow error if there is no shape for any inputs. In this case please infer shapes on the model first by running shape inference [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nuphar/scripts/symbolic_shape_infer.py).
+
 #### Sample
 To run Faster R-CNN model on TensorRT execution provider,
 
