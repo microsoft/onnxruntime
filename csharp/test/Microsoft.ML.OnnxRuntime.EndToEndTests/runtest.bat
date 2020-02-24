@@ -19,11 +19,13 @@ IF NOT "%4"=="" (
 
 IF "%TargetArch%"=="x64" (
   SET RuntimeIdentifier=win-x64
+  SET PlatformTarget=x64
 )
 
 IF "%TargetArch%"=="x86" (
   SET dn="C:\Program Files (x86)\dotnet\dotnet"
   SET RuntimeIdentifier=win-x86
+  SET PlatformTarget=x86
 )
 
 ECHO Target Framework is %TargetFramework%
