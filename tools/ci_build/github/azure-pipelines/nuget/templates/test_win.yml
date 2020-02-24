@@ -62,6 +62,8 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)\nuget-artifact'
 
+  # TODO: Add .Net Core AnyCPU test task
+
   - script: |
      @echo "Running Runtest.bat"
      test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
@@ -74,6 +76,8 @@ jobs:
          test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .Net Core x86'
+
+  # TODO: Add .Net Framework AnyCPU test task
 
   - script: |
      @echo "Running Runtest.bat"
