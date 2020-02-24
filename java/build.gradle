@@ -39,6 +39,8 @@ def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+
 compileJava {
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
 }
