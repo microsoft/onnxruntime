@@ -242,6 +242,8 @@ endif()
 
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers onnxruntime_featurizers_comp)
+   list(APPEND onnxruntime_test_providers_libs re2 onnxruntime_featurizers onnxruntime_featurizers_comp)
+   list(APPEND TEST_INC_DIR ${RE2_INCLUDE_DIR})
 endif()
 
 if(onnxruntime_USE_DML)
