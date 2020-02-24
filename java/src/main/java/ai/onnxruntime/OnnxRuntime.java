@@ -44,14 +44,16 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    Path tempDirectory = Files.createTempDirectory("onnxruntime-java");
+    Path tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
       load(tempDirectory, ONNXRUNTIME_LIBRARY_NAME);
       load(tempDirectory, ONNXRUNTIME_JNI_LIBRARY_NAME);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_1);
       loaded = true;
     } finally {
-      cleanUp(tempDirectory.toFile());
+      if (!isAndroid()) {
+        cleanUp(tempDirectory.toFile());
+      }
     }
   }
 
