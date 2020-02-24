@@ -19,13 +19,13 @@ jobs:
         pythonInterpreter: '/usr/bin/python3'
         workingDirectory: $(Build.BinariesDirectory)
     
-    # The latest TensorRT container (R19.09) only supports ubuntu18.04
+    # Latest TensorRT container only supports ubuntu18.04
     - script: 'tools/ci_build/github/linux/run_dockerbuild.sh -o ubuntu18.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.6 -x "--build_wheel"'
 
       displayName: 'Command Line Script'
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'ci_only'
 
     - template: templates/clean-agent-build-directory-step.yml

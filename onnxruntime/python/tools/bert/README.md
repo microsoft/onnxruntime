@@ -1,8 +1,8 @@
 # BERT Model Optimization Tool Overview
 
-This tool converts a BERT ONNX model exported from PyTorch, and generates an optimized model to run faster in NVidia GPU.
+This tool showcases how to fuse a BERT ONNX model either exported from PyTorch or converted from TensorFlow, and generates an optimized model to run faster with OnnxRuntime.
 
-Currently, this script **cannot** process BERT models exported from Tensorflow since the graph has some difference.
+Note that OnnxRuntime can fuse the Bert ONNX model exported from PyTorch automatically. You don't need this tool to fuse the model. It is only required for Bert Model converted from Tensorflow. 
 
 ## Export an BERT model from PyTorch
 For example, after using https://github.com/huggingface/transformers to train a BERT model in PyTorch 1.3, you can use the following function to export ONNX model. 
@@ -31,6 +31,16 @@ def export_onnx(args, model, output_path):
                                     'segment_ids' : {0 : 'batch_size'},
                                     'output' : {0 : 'batch_size'}})
 ```
+
+## Convert an BERT model from Tensorflow
+
+The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
+
+For Keras2onnx, please refere to its [example script](https://github.com/onnx/keras-onnx/blob/master/applications/nightly_build/test_transformers.py).
+
+For tf2onnx, please refer to this notebook: https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb
+
+
 ## Model Optimization
 
 Example of using the script bert_model_optimization.py to convert a BERT-large model to run in V100 GPU:
@@ -44,6 +54,8 @@ See below for description of all the options:
 
 - **input**: input model path
 - **output**: output model path
+- **model_type**: (*defaul: bert*)
+    There are 3 model types: *bert*, *bert_tf* and *bert_keras* for models exported by PyTorch, tf2onnx and keras2onnx respectively.
 - **num_heads**: (*default: 12*)
     Number of attention heads, like 24 for BERT-large model.
 - **hidden_size**: (*default: 768*)
@@ -51,8 +63,22 @@ See below for description of all the options:
     Maximum sequence length.
 - **input_int32**: (*optional*)
     Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
+- **gpu_only**: (*optional*)
+    Specify the option if running on GPU only.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
 
+## Supported Models
+
+Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs, and attention mask. A model with less or addtional inputs might not be optimized.
+
+Most optimizations require exact match of a subgraph. That means this tool could only support similar models with such subgraphs. Any layout change in subgraph might cause optimization not working. Note that different training or export tool (including different versions) might get different graph layouts.
+
+Here is list of models that have been tested using this tool:
+- **BertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_glue.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
+- **BertForQuestionAnswering** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_squad.py) exported by PyTorch 1.2-1.4 using opset version 10 or 11.
+- **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx 1.6.0.
+
+If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.

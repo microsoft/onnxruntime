@@ -1,48 +1,43 @@
 jobs:
 - job: Windows_ARM_CrossCompile_CI_Dev
   timeoutInMinutes: 120
+  pool: Win-CPU-2019
   variables:
     buildDirectory: '$(Build.BinariesDirectory)'
+    ortPackageId: 'Microsoft.ML.OnnxRuntime'
+  strategy:
+    maxParallel: 2
+    matrix:
+      debug:
+        BuildConfig: 'Debug'
+      release:
+        BuildConfig: 'Release'
   steps:
     - template: templates/set-test-data-variables-step.yml
-    - task: UniversalPackages@0
-      displayName: 'Download python'
+    - task: UsePythonVersion@0
       inputs:
-        command: download
-        vstsFeed: '$(System.TeamProject)'
-        vstsFeedPackage: 'miniconda3_win64'
-        vstsPackageVersion: '4.5.11'
-        downloadDirectory: '$(Build.BinariesDirectory)\python'
-    - task: CmdLine@1
-      displayName: 'Run python installer'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\python\installer.exe'
-        arguments: '/S /NoRegistry=1 /AddToPath=0 /RegisterPython=0 /D=$(Build.BinariesDirectory)\packages\python'
-      timeoutInMinutes: 10
+        versionSpec: '3.7'
     - task: BatchScript@1
       displayName: 'setup env'
       inputs:
         filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
-    - task: CmdLine@1
-      displayName: 'Download cmake'
+    - task: DotNetCoreCLI@2
+      displayName: 'Restore nuget packages'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\download_cmake.py --build_dir $(Build.BinariesDirectory)'
+        command: restore
+        projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: '$(BuildConfig)'
+        arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OrtPackageId=$(ortPackageId)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
     - task: CmdLine@1
-      displayName: 'Generate cmake config and build Debug'
+      displayName: 'Generate cmake config and build'
       inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --arm'
+        filename: python.exe
+        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --arm --build_shared_lib --use_winml'
         workingDirectory: "$(Build.BinariesDirectory)"
-    - task: CmdLine@1
-      displayName: 'Generate cmake config and build Release'
-      inputs:
-        filename: '$(Build.BinariesDirectory)\packages\python\python.exe'
-        arguments: '$(Build.SourcesDirectory)\tools\ci_build\build.py --config Release --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_path $(Build.BinariesDirectory)\cmake\bin\cmake.exe --arm'
-        workingDirectory: "$(Build.BinariesDirectory)"
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))   
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'ci_only'
     - template: templates/clean-agent-build-directory-step.yml

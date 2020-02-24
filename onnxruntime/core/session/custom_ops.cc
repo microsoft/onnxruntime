@@ -4,7 +4,7 @@
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
-
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/customregistry.h"
@@ -72,7 +72,7 @@ namespace onnxruntime {
 
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version != 1)
+    if (op_.version > ORT_API_VERSION)
       throw std::invalid_argument("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<OrtKernelInfo*>(const_cast<OpKernelInfo*>(&info)));
   }

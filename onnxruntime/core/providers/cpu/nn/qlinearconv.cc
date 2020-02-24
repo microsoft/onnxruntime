@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/qlinearconv.h"
+
+#include "core/common/safeint.h"
+#include "core/providers/common.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 ONNX_OPERATOR_KERNEL_EX(
@@ -104,7 +106,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
   const int64_t col_buffer_size = kernel_dim * output_image_size;
   const int bias_offset = static_cast<int>(M / conv_attrs_.group);
 
-  auto col_data = alloc->Alloc(sizeof(uint8_t) * col_buffer_size);
+  auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 

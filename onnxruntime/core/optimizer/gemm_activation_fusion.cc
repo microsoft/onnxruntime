@@ -4,7 +4,6 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/graph/graph_utils.h"
-#include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -23,7 +22,6 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::deque<onnxruntime::NodeIndex> removed_nodes;
   for (auto index : order) {
     auto* node_ptr = graph.GetNode(index);
     if (!node_ptr)
@@ -68,7 +66,9 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (act_node.OpType() == "LeakyRelu") {
       const NodeAttributes& attrs = act_node.GetAttributes();
       for (const auto& attr : attrs) {
-        fused_gemm.AddAttribute("leaky_relu_" + attr.first, attr.second);
+        AttributeProto fused_gemm_attr(attr.second);
+        fused_gemm_attr.set_name("leaky_relu_" + attr.first);
+        fused_gemm.AddAttribute("leaky_relu_" + attr.first, fused_gemm_attr);
       }
     }
 

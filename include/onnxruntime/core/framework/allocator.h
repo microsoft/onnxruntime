@@ -85,26 +85,27 @@ struct OrtMemoryInfo {
 
   // use string for name, so we could have customized allocator in execution provider.
   const char* name;
-  int id;
-  OrtMemType mem_type;
-  OrtAllocatorType type;
+  int id = -1;
+  OrtMemType mem_type = OrtMemTypeDefault;
+  OrtAllocatorType alloc_type = Invalid;
   OrtDevice device;
 
-  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0, OrtMemType mem_type_ = OrtMemTypeDefault)
+  constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,
+                          OrtMemType mem_type_ = OrtMemTypeDefault)
 #if (defined(__GNUC__) || defined(__clang__))
       __attribute__((nonnull))
 #endif
       : name(name_),
         id(id_),
         mem_type(mem_type_),
-        type(type_),
+        alloc_type(type_),
         device(device_) {
   }
 
   // To make OrtMemoryInfo become a valid key in std map
-  inline bool operator<(const OrtMemoryInfo& other) const {
-    if (type != other.type)
-      return type < other.type;
+  bool operator<(const OrtMemoryInfo& other) const {
+    if (alloc_type != other.alloc_type)
+      return alloc_type < other.alloc_type;
     if (mem_type != other.mem_type)
       return mem_type < other.mem_type;
     if (id != other.id)
@@ -113,20 +114,22 @@ struct OrtMemoryInfo {
     return strcmp(name, other.name) < 0;
   }
 
-  inline std::string ToString() const {
+  std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo: ["
          << " name:" << name
          << " id:" << id
          << " mem_type:" << mem_type
-         << " type:" << type
+         << " alloc_type:" << alloc_type
          << "]";
     return ostr.str();
   }
 };
 
 inline bool operator==(const OrtMemoryInfo& left, const OrtMemoryInfo& other) {
-  return left.mem_type == other.mem_type && left.type == other.type && left.id == other.id &&
+  return left.mem_type == other.mem_type &&
+         left.alloc_type == other.alloc_type &&
+         left.id == other.id &&
          strcmp(left.name, other.name) == 0;
 }
 
@@ -150,6 +153,9 @@ using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 class IAllocator {
  public:
   virtual ~IAllocator() = default;
+  /**
+  @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
+  */
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void* p) = 0;
   virtual const OrtMemoryInfo& Info() const = 0;
@@ -160,19 +166,32 @@ class IAllocator {
   virtual FencePtr CreateFence(const SessionState* /*unused*/) { return nullptr; }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
-    return CalcMemSizeForArrayWithAlignment<0>(nmemb, size, out);
+    return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
   }
+
+  /**
+  * Calculate the memory size for an array. The size is bounds checked using SafeInt. 
+   * \tparam alignment must be power of 2
+   * \param nmemb Number of members or elements in the array
+   * \param size Size of each element
+   * \param out Total size required after any alignment is applied
+   * \return true, successful. false, overflow
+   */
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept ORT_MUST_USE_RESULT;
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html
    * \tparam alignment must be power of 2
-   * \param nmemb
-   * \param size
-   * \param out
+   * \param nmemb Number of members or elements in the array
+   * \param size Size of each element
+   * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
+   * \remarks This was the original API and was implemented in the header. Replaced with the above version 
+   *          implemented in the .cc file so that the SafeInt dependency is internal.
    */
   template <size_t alignment>
   static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
+
   /**
    * allocate memory for an array which has nmemb items of data, each size bytes long
    */
@@ -189,7 +208,7 @@ class IAllocator {
   template <size_t alignment>
   void* AllocArrayWithAlignment(size_t nmemb, size_t size) {
     size_t len;
-    if (!CalcMemSizeForArrayWithAlignment<alignment>(nmemb, size, &len))
+    if (!CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, &len))
       return nullptr;
     return Alloc(len);
   }
@@ -213,9 +232,11 @@ class IAllocator {
     if (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      if (!CalcMemSizeForArray(count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
+      if (!CalcMemSizeForArray(count_or_bytes,
+                               sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type),
                                &alloc_size)) return nullptr;
     }
+
     return IAllocatorUniquePtr<T>{
         static_cast<T*>(allocator->Alloc(alloc_size)),  // allocate
         [=](T* ptr) { allocator->Free(ptr); }};         // capture IAllocator so it's always valid, and use as deleter
@@ -224,23 +245,7 @@ class IAllocator {
 
 template <size_t alignment>
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
-  static constexpr size_t max_allowed = (static_cast<size_t>(1) << (static_cast<size_t>(std::numeric_limits<size_t>::digits >> 1))) - alignment;
-  static constexpr size_t max_size = std::numeric_limits<size_t>::max() - alignment;
-  static constexpr size_t alignment_mask = alignment - 1;
-  //Indeed, we only need to check if max_size / nmemb < size
-  //max_allowed is for avoiding unnecessary DIV.
-  if (nmemb >= max_allowed && max_size / nmemb < size) {
-    return false;
-  }
-  if (size >= max_allowed &&
-      nmemb > 0 && max_size / nmemb < size) {
-    return false;
-  }
-  if (alignment == 0)
-    *out = size * nmemb;
-  else
-    *out = (size * nmemb + alignment_mask) & ~static_cast<size_t>(alignment_mask);
-  return true;
+  return CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
 /**
@@ -275,7 +280,7 @@ class CPUAllocator : public IDeviceAllocator {
   std::unique_ptr<OrtMemoryInfo> memory_info_;
 };
 
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
 class MiMallocAllocator : public IDeviceAllocator {
  public:
   explicit MiMallocAllocator(std::unique_ptr<OrtMemoryInfo> memory_info) {
@@ -297,8 +302,7 @@ class MiMallocAllocator : public IDeviceAllocator {
 
 #endif
 
-
-#ifdef USE_MIMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR)
   using TAllocator = MiMallocAllocator;
 #else
   using TAllocator = CPUAllocator;

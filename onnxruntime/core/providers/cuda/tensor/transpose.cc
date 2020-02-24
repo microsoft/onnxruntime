@@ -91,20 +91,22 @@ Status Transpose::DoTranspose(const Transpose& kernel,
   const std::vector<int64_t>& input_dims = input.Shape().GetDims();
   const std::vector<int64_t>& output_dims = output.Shape().GetDims();
 
-  auto rank = input_dims.size();
-  CudaAsyncBuffer<int64_t> input_strides(&kernel, rank);
-  CudaAsyncBuffer<size_t> perm(&kernel, permutations);
-  CudaAsyncBuffer<fast_divmod> fdm_output_strides(&kernel, rank);
-  ORT_ENFORCE(TensorPitches::Calculate(input_strides.CpuSpan(), input_dims));
-  ORT_ENFORCE(CalculateFdmStrides(fdm_output_strides.CpuSpan(), output_dims));
+  auto rank = static_cast<int32_t>(input_dims.size());
+  TensorPitches original_input_strides(input_dims);
+  TensorPitches original_output_strides(output_dims);
 
-  ORT_RETURN_IF_ERROR(input_strides.CopyToGpu());
-  ORT_RETURN_IF_ERROR(perm.CopyToGpu());
-  ORT_RETURN_IF_ERROR(fdm_output_strides.CopyToGpu());
+  TArray<int64_t> input_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    input_strides.data_[i] = original_input_strides[permutations[i]];
+  }
+  TArray<fast_divmod> output_strides(rank);
+  for (auto i = 0; i < rank; i++) {
+    output_strides.data_[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+  }
 
   size_t element_size = input.DataType()->Size();
-  auto status = TransposeImpl(element_size, rank, input_strides.GpuPtr(), perm.GpuPtr(), input.DataRaw(),
-                              fdm_output_strides.GpuPtr(), output.MutableDataRaw(), output.Shape().Size());
+  auto status = TransposeImpl(element_size, rank, input_strides, input.DataRaw(),
+                              output_strides, output.MutableDataRaw(), output.Shape().Size());
 
   return status;
 }
@@ -115,7 +117,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& X = *X_ptr;
   const TensorShape& input_shape = X.Shape();
   const std::vector<int64_t>& input_dims = input_shape.GetDims();
-  size_t rank = input_dims.size();
+  int32_t rank = gsl::narrow_cast<int32_t>(input_dims.size());
 
   std::vector<int64_t> output_dims(rank);
   std::vector<size_t> default_perm(rank);

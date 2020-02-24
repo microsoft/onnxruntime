@@ -10,6 +10,7 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/math/softmax.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -121,7 +122,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   // STEP.1: gemm_data(BS, 3NH) = input(BS, NH) x weights(NH, 3NH) + bias(3NH)
-  auto gemm_data = allocator->Alloc(batch_size * sequence_length * 3 * hidden_size * element_size);
+  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
   auto Q = reinterpret_cast<T*>(gemm_data);
   auto K = Q + batch_size * sequence_length * hidden_size;
@@ -177,11 +178,12 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // STEP.2: scratch(B, N, S, S) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, S, H -> B, N, H, S) + 1 x mask_index(B -> B, 1, 1, 1)
-  auto scratch_data = allocator->Alloc(batch_size * num_heads_ * sequence_length * sequence_length * element_size);
+  auto scratch_data = allocator->Alloc(
+      SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * sequence_length * element_size);
   BufferUniquePtr scratch_buffer(scratch_data, BufferDeleter(allocator));
 
   {
-    auto scratch_broadcast_data = allocator->Alloc(batch_size * sequence_length * element_size);
+    auto scratch_broadcast_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * element_size);
     BufferUniquePtr scratch_broadcast_buffer(scratch_broadcast_data, BufferDeleter(allocator));
     memset(scratch_broadcast_data, 0, batch_size * sequence_length * element_size);
     T* p_scratch_broadcast_current_data = reinterpret_cast<T*>(scratch_broadcast_data);
@@ -238,8 +240,17 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       float* x = reinterpret_cast<T*>(scratch_data) + j * D;
       float* y = x;
 
-      for (int i = 0; i < D; i++)
-        y[i] = expf(x[i]);
+      // e^x is represented as infinity if x is large enough, like 100.f.
+      // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
+      // a math transform as below is leveraged to get a stable softmax:
+      // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
+      float max = -std::numeric_limits<float>::infinity();
+      for (int i = 0; i < D; i++) {
+        if (max < x[i]) max = x[i];
+      }
+      for (int i = 0; i < D; i++) {
+        y[i] = expf(x[i] - max);
+      }
 
       double sum = 0.0;
 
@@ -260,7 +271,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   }
 
   // STEP.4: out_tmp(B, N, S, H) = P(B, N, S, S) x V(B, N, S, H)
-  auto out_tmp_data = allocator->Alloc(batch_size * num_heads_ * sequence_length * head_size * element_size);
+  auto out_tmp_data = allocator->Alloc(
+      SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * element_size);
   BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
   concurrency::ThreadPool::TryParallelFor(context->GetOperatorThreadPool(), batch_size * num_heads_, [&](int i) {

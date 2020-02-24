@@ -4,30 +4,34 @@
 #include "core/framework/tensor.h"
 
 #include <utility>
+#include "core/common/safeint.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/data_types.h"
 
 namespace onnxruntime {
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-               int64_t offset)
+               ptrdiff_t offset)
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);
   Init(p_type, shape, p_data, nullptr, offset);
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset)
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, ptrdiff_t offset)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(p_type != nullptr);
-  int64_t shape_size = shape.Size();
-  if (shape_size < 0 || static_cast<uint64_t>(shape_size) >= std::numeric_limits<size_t>::max())
+  int64_t shape_size = shape.Size();  // value returned is checked for overflow by TensorShape::Size()
+  if (shape_size < 0)
     ORT_THROW("shape.Size() must >=0");
 
   void* p_data = nullptr;
   if (shape_size > 0) {
-    size_t len = 0;
-    if (!allocator->CalcMemSizeForArray(static_cast<size_t>(shape_size), p_type->Size(), &len))
+    SafeInt<size_t> len = 0;
+    if (!allocator->CalcMemSizeForArray(SafeInt<size_t>(shape_size), p_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
+
+    // TODO: Use case for this isn't clear. We allocate a buffer based on the tensor shape and increase it by offset.
+    // Who is going to use the memory prior to offset, and/or why should it be allocated here?
     len += offset;
     p_data = allocator->Alloc(len);
   }
@@ -37,17 +41,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
 
 size_t Tensor::SizeInBytes() const {
   size_t ret;
-  int64_t l = shape_.Size();
-  if (l >= static_cast<int64_t>(std::numeric_limits<ptrdiff_t>::max())) {
-    ORT_THROW("tensor size overflow");
-  }
-  if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
+  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
     ORT_THROW("tensor size overflow");
   }
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, int64_t offset) {
+void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, ptrdiff_t offset) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
   dtype_ = p_type->AsPrimitiveDataType();
