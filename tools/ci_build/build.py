@@ -128,7 +128,7 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--skip_submodule_sync", action='store_true', help="Don't do a 'git submodule update'. Makes the Update phase faster.")
     parser.add_argument("--use_vstest", action='store_true', help="Use use_vstest for running unitests.")
     parser.add_argument("--use_jemalloc", action='store_true', help="Use jemalloc.")
-    parser.add_argument("--use_mimalloc", action='store_true', help="Use mimalloc.")
+    parser.add_argument("--use_mimalloc", default=['none'], choices=['none', 'stl', 'arena', 'all'], help="Use mimalloc.")
     parser.add_argument("--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument("--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument("--use_mklml", action='store_true', help="Build with MKLML.")
@@ -307,7 +307,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
                  "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
                  "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
-                 "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
+                 "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + ("ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
+                 "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + ("ON" if args.use_mimalloc == "arena" or args.use_mimalloc == "all" else "OFF"),
                  "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
                  "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
                  "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
