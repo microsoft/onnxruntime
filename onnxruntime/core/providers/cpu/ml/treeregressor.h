@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "ml_common.h"
+#include "tree_ensemble_common.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -16,57 +14,7 @@ class TreeEnsembleRegressor final : public OpKernel {
   ~TreeEnsembleRegressor();
 
  private:
-  struct TreeNodeElementId {
-    int tree_id;
-    int node_id;
-    inline bool operator==(const TreeNodeElementId& xyz) const {
-      return (tree_id == xyz.tree_id) && (node_id == xyz.node_id);
-    }
-    inline bool operator<(const TreeNodeElementId& xyz) const {
-      return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
-    }
-  };
-
-  struct SparseValue {
-    int64_t i;
-    float value;  // T value?
-  };
-
-  enum MissingTrack {
-    NONE,
-    TRUE,
-    FALSE
-  };
-
-  struct TreeNodeElement {
-    TreeNodeElementId id;
-    int feature_id;
-    float value;     // T value?
-    float hitrates;  // T value?
-    NODE_MODE mode;
-    TreeNodeElement* truenode;
-    TreeNodeElement* falsenode;
-    MissingTrack missing_tracks;
-
-    std::vector<SparseValue> weights;
-  };
-
-  std::vector<float> base_values_;  // T value?
-  int64_t n_targets_;
-  POST_EVAL_TRANSFORM post_transform_;
-  AGGREGATE_FUNCTION aggregate_function_;
-  int64_t nbnodes_;
-  TreeNodeElement* nodes_;
-  std::vector<TreeNodeElement*> roots_;
-
-  int64_t max_tree_depth_;
-  int64_t nbtrees_;
-  bool same_mode_;
-  bool has_missing_tracks_;
-
-  common::Status ProcessTreeNode(float* predictions, TreeNodeElement* root,
-                                 const T* x_data,
-                                 unsigned char* has_predictions) const;
+  RuntimeTreeEnsembleCommonP<T> tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime
