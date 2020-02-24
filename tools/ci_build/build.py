@@ -343,7 +343,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
-                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF")
+                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  ]
 
