@@ -695,27 +695,11 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-
-
-
-  std::string onnx_string_buffer;
-  model_proto.SerializeToString(&onnx_string_buffer);
-  std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
-  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-  ofs.close();
-
-  // migraphx can support multiple outputs now
-  // // migraphx now can only support on output. if there are multiple
-  // // outputs, we cannot support this model
-  // std::size_t num_outputs = model_proto.graph().output().size();
-  // if (num_outputs > 1)
-  // {
-  //     LOGS_DEFAULT(WARNING) << "MIGraphX can support only one output, but input model";
-  //     LOGS_DEFAULT(WARNING) << "has " << num_outputs << " outputs, so fall back to";
-  //     LOGS_DEFAULT(WARNING) << "default CPU implementation!";
-
-  //     return result;
-  // }
+  // std::string onnx_string_buffer;
+  // model_proto.SerializeToString(&onnx_string_buffer);
+  // std::ofstream ofs("ort_getcapability.onnx", std::ios::binary);
+  // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+  // ofs.close();
 
   // migraphx now cannot support inputs with dynamic shape
   std::size_t num_inputs = model_proto.graph().input_size();
@@ -723,21 +707,11 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   {
     auto in_node = model_proto.graph().input(in_index);
     const NodeArg* node_arg = graph_viewer.GetNodeArg(in_node.name());
-    std::cout << "node_name = " << in_node.name() << std::endl;
     if (node_arg == nullptr) continue;
     auto&& type_as_proto = node_arg->TypeAsProto();
     auto& dims = type_as_proto->tensor_type().shape().dim();
-    std::cout << "dim_size = " << type_as_proto->tensor_type().shape().dim_size() << std::endl;
     for (auto&& d : dims)
     {
-      std::cout << "has_dim_param = " << d.has_dim_param() << std::endl;
-      std::cout << "has_dim_value = " << d.has_dim_value() << std::endl;
-      if (d.has_dim_value())
-      {
-        std::cout << "dim_value = " << d.dim_value() << std::endl;
-      }
-      std::cout << std::endl;
-
       if (not d.has_dim_value())
       {
         LOGS_DEFAULT(WARNING) << "MIGraphX, model input " << in_node.name(); 
@@ -824,77 +798,67 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::size_t fused_node_index = 0;
   for (const auto& fused_node : fused_nodes) {
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
     const auto& input_defs = fused_node->InputDefs();
     input_name_index.reserve(input_defs.size());
-    std::cout << "\n" << "graph_viewer input names = " << std::endl;
     for (std::size_t i = 0; i < input_defs.size(); ++i) {
-      std::cout << "\t" << input_defs[i]->Name() << std::endl;
       input_name_index[input_defs[i]->Name()] = i;
     }
 
     // record name of each output
-    std::unordered_map<std::string, std::size_t> output_name_index;
-    const auto& output_defs = fused_node->OutputDefs();
-    output_name_index.reserve(output_defs.size());
-    std::cout << "\n" << "graph_viewer output names = " << std::endl;
-    for (std::size_t i = 0; i < output_defs.size(); ++i) {
-      // migraphx prepend a "output_" before the actual output name
-      std::string output_name = "output_" + output_defs[i]->Name();
-      std::cout << "\t" << output_name << std::endl;
-      output_name_index[output_name] = i;
-    }
-
-    // // FIXME later, hack
-    // output_name_index.clear();
-    // output_name_index["output"] = 0;
+    // std::unordered_map<std::string, std::size_t> output_name_index;
+    // const auto& output_defs = fused_node->OutputDefs();
+    // output_name_index.reserve(output_defs.size());
+    // for (std::size_t i = 0; i < output_defs.size(); ++i) {
+    //   // migraphx prepend a "output_" before the actual output name
+    //   std::string output_name = "output_" + output_defs[i]->Name();
+    //   output_name_index[output_name] = i;
+    // }
 
     // reconstruct the subgraph proto from fused nodes
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
 
-    std::ofstream ofs("ort_compile.onnx", std::ios::binary);
-    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-    ofs.close();
+    // std::ofstream ofs("ort_compile.onnx", std::ios::binary);
+    // ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    // ofs.close();
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
-    migraphx::program prog = migraphx::parse_onnx_buffer(onnx_string_buffer.data(), onnx_string_buffer.size());
+    std::cout << "Finished write buffer and begin parsing" << std::endl;
+    migraphx::program prog = migraphx::parse_onnx_buffer(onnx_string_buffer);
+    //migraphx::program prog = migraphx::parse_onnx_buffer(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    //migraphx::program prog = migraphx::parse_onnx("ort_compile.onnx");
+    std::cout << "prog = " << std::endl;
+    prog.print();
+    std::cout << std::endl;
 
     // compile the program
     prog.compile(t_);
-    std::cout << "prog" << fused_node_index++ << " = " << std::endl;
-    prog.print();
-    std::cout << std::endl;
     map_progs_[fused_node->Name()] = prog;
 
     std::unordered_map<std::size_t, std::size_t> input_index_map;
     std::unordered_map<std::size_t, std::size_t> output_index_map;
     migraphx::program_parameter_shapes param_shapes = prog.get_parameter_shapes();
     std::size_t param_index = 0;
-std::cout << "Loc1" << std::endl;    
     for(auto&& name : param_shapes.names())
     {
       // process the input
-std::cout << "Loc2" << std::endl;    
       auto iit = input_name_index.find(name);
       if (iit != input_name_index.end())
       {
         input_index_map[param_index] = iit->second;
       }
 
-std::cout << "Loc3" << std::endl;    
-      // process the output
-      auto oit = output_name_index.find(name);
-      if (oit != output_name_index.end())
-      {
-        output_index_map[param_index] = oit->second;
-      }
-std::cout << "Loc4" << std::endl;    
+      // // process the output
+      // auto oit = output_name_index.find(name);
+      // if (oit != output_name_index.end())
+      // {
+      //   output_index_map[param_index] = oit->second;
+      // }
       ++param_index;
     }
 
@@ -909,42 +873,31 @@ std::cout << "Loc4" << std::endl;
       *state = p.release();
       return 0;
     };
-std::cout << "Loc5" << std::endl;    
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state)
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-std::cout << "Loc5.1" << std::endl;    
-
     compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
-std::cout << "Loc5.2" << std::endl;    
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
-std::cout << "Loc5.3" << std::endl;    
       std::unordered_map<std::size_t, std::size_t>& map_input_index = mgx_state->input_indexes;
-std::cout << "Loc5.4" << std::endl;    
-      std::unordered_map<std::size_t, std::size_t>& map_output_index = mgx_state->output_indexes;
-std::cout << "Loc5.5" << std::endl;    
+      //std::unordered_map<std::size_t, std::size_t>& map_output_index = mgx_state->output_indexes;
       migraphx::target t = mgx_state->t;
-std::cout << "Loc5.6" << std::endl;    
       migraphx::program& prog = mgx_state->prog;
 
-std::cout << "Loc6" << std::endl;    
       migraphx::program_parameter_shapes param_shapes = prog.get_parameter_shapes();
       migraphx::program_parameters m;
+      auto prog_output_shapes = prog.get_output_shapes();
 
-std::cout << "Loc7" << std::endl;    
       std::vector<std::size_t> prog_output_indices;
       std::size_t param_index = 0;
       for (auto&& name : param_shapes.names())
       {
-        std::cout << "param_name = " << name << std::endl;
+        std::cout << "name = " << name << std::endl;
         if (map_input_index.count(param_index) > 0)
         {
-          std::cout << "mgx_input: param_index = " << param_index << std::endl;
-          std::cout << "ort_input_index = " << map_input_index[param_index] << std::endl;
           const OrtValue* input_tensor = ort.KernelContext_GetInput(context, map_input_index[param_index]);
           auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
           const auto& tensor_shape = ort.GetTensorShape(tensor_info);
@@ -961,32 +914,38 @@ std::cout << "Loc7" << std::endl;
           }
           m.add(name, migraphx::argument(param_shapes[name], const_cast<void*>(ort.GetTensorData<void>(input_tensor))));
         }
-
-        if (map_output_index.count(param_index) > 0)
+        // It is a output argument
+        else
         {
-          std::cout << "mgx_output: param_index = " << param_index << std::endl;
-          std::cout << "ort_output_index = " << map_output_index[param_index] << std::endl;
+          auto compute_output_index = [] (const std::string& name) -> int {
+            std::string out_name_prefix = "#output_";
+            auto pos = name.find(out_name_prefix);
+            if (pos == std::string::npos)
+            {
+              return -1;
+            }
+            
+            std::string index_str = name.substr(pos + out_name_prefix.length());
+            return std::stoi(index_str);
+          };
 
-          std::size_t output_index = map_output_index[param_index];
-          prog_output_indices.push_back(output_index);
-          auto prog_output_shapes = prog.get_output_shapes();
-          std::cout << "output_num = " << prog_output_shapes.size();
-          auto mgx_output_shape = prog_output_shapes[output_index];
-          auto lens = mgx_output_shape.lengths();
-          std::vector<int64_t> ort_output_shape(lens.begin(), lens.end());
-          std::cout << "output_shape = ";
-          for (auto v : ort_output_shape)
+          int output_index = compute_output_index(name);
+          std::cout << "output_index = " << output_index << std::endl;
+          if (output_index != -1)
           {
-            std::cout << v << "\t";
-          }
-          std::cout << std::endl;
-          OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_output_shape.data(), ort_output_shape.size());
-          void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+            prog_output_indices.push_back(output_index);
+            auto mgx_output_shape = prog_output_shapes[output_index];
+            auto lens = mgx_output_shape.lengths();
+            std::vector<int64_t> ort_output_shape(lens.begin(), lens.end());
+            OrtValue* output_tensor = ort.KernelContext_GetOutput(context, output_index, ort_output_shape.data(), ort_output_shape.size());
+            void* output_data = ort.GetTensorMutableData<void>(output_tensor);
 
-          // argument shape
-          auto mgx_arg_shape = param_shapes[name];
-          m.add(name, migraphx::argument(mgx_arg_shape, output_data));
-        } 
+            // argument shape
+            auto mgx_arg_shape = param_shapes[name];
+            m.add(name, migraphx::argument(mgx_arg_shape, output_data));
+          }
+        }
+        
         param_index++;
       }
 
@@ -1019,10 +978,7 @@ std::cout << "Loc7" << std::endl;
       return Status::OK();
     };
 
-std::cout << "Loc5.7" << std::endl;
-
     node_compute_funcs.push_back(compute_info);
-std::cout << "Loc5.8" << std::endl;
   }
 
   return Status::OK();
