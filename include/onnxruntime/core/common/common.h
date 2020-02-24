@@ -36,7 +36,7 @@
 #include "core/common/make_unique.h"
 #include "core/common/status.h"
 
-#ifdef USE_MIMALLOC
+#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
 #include <mimalloc.h>
 #endif
 
