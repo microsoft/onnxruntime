@@ -91,6 +91,7 @@ jobs:
          test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .NetFramework x86'
+        enabled: false
 
   - script: |
      @echo "Running runtest.bat"
