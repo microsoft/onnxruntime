@@ -25,7 +25,7 @@ public:
 
         m_inputTensorDescs[1].ForceUnsignedDataType();
 
-        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();;
+        auto outputTensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<DimensionType> dataDimensions = outputTensorShapeDescription.GetInputTensorShape(0);
         std::vector<DimensionType> indicesDimensions = outputTensorShapeDescription.GetInputTensorShape(1);
         ML_CHECK_VALID_ARGUMENT(dataDimensions.size() <= OperatorHelper::NchwDimensionCount);
