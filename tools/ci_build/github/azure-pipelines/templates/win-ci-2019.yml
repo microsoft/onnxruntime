@@ -30,8 +30,6 @@ jobs:
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    PlatformTarget: ${{ parameters.BuildArch }}
-    RuntimeIdentifier: win-${{ parameters.BuildArch }}
 
   steps:
     - powershell: |
@@ -69,7 +67,7 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(BuildCommand) --update --config RelWithDebInfo'
+        arguments: '$(BuildCommand) --update --config RelWithDebInfo --enable_lto'
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -143,7 +141,7 @@ jobs:
          python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
          set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
          @echo %PATH%
-         python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo
+         python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config RelWithDebInfo --enable_lto
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         displayName: 'Run tests'
 
