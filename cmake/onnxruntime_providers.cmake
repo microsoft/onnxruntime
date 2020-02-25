@@ -434,11 +434,18 @@ if (onnxruntime_USE_DML)
     if(NOT onnxruntime_target_platform STREQUAL "Win32" AND NOT onnxruntime_target_platform STREQUAL "x64")
       message(FATAL_ERROR "Target platform ${onnxruntime_target_platform} is not supported by DML")
     endif()
+
+    if(onnxruntime_target_platform STREQUAL "Win32")
+      set(directml_arch_folder x86)
+    else()
+      set(directml_arch_folder x64)
+    endif()
+
     foreach(file "DirectML.dll" "DirectML.pdb" "DirectML.Debug.dll" "DirectML.Debug.pdb")
       add_custom_command(TARGET onnxruntime_providers_dml
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
+          "${DML_PACKAGE_DIR}/bin/${directml_arch_folder}/${file}" $<TARGET_FILE_DIR:onnxruntime_providers_dml>)
     endforeach()
   endif()
 
