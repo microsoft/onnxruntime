@@ -109,8 +109,10 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_no
 
 ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node, const logging::Logger& logger) const {
   const auto* node_function = fused_node->GetFunctionBody();
+  const std::string& name = fused_node->Name();
 
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", fused_node->Name());
+  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", name);
+
 
   const onnxruntime::Graph& node_subgraph = node_function->Body();
   onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{},
@@ -123,7 +125,7 @@ ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnx
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    SaveModel(model_proto, "openvino_model.onnx");
+    SaveModel(model_proto, name + ".onnx");
   }
 
   return model_proto;
