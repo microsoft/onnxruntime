@@ -131,6 +131,8 @@ jobs:
 - template: test_win.yml
   parameters:
     AgentPool : 'Win-GPU-2019'
+    Skipx86Tests: 'true'
+
 - template: test_linux.yml
   parameters:
     AgentPool : $(AgentPoolLinux)

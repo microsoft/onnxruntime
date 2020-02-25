@@ -30,8 +30,6 @@ jobs:
     DotNetExe: 'dotnet.exe'
     CUDA_VERSION: ${{ parameters.CudaVersion }}
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    PlatformTarget: ${{ parameters.BuildArch }}
-    RuntimeIdentifier: win-${{ parameters.BuildArch }}
 
   steps:
     - powershell: |
