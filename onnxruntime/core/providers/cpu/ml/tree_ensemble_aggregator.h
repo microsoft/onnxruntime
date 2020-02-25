@@ -72,11 +72,11 @@ class _Aggregator {
 
   // 1 output
 
-  inline void ProcessTreeNodePrediction1(T* predictions, TreeNodeElement<T>* root,
-                                         unsigned char* has_predictions) const {}
+  inline void ProcessTreeNodePrediction1(T* /*predictions*/, TreeNodeElement<T>* /*root*/,
+                                         unsigned char* /*has_predictions*/) const {}
 
-  inline void MergePrediction1(T* predictions, unsigned char* has_predictions,
-                               T* predictions2, unsigned char* has_predictions2) const {}
+  inline void MergePrediction1(T* /*predictions*/, unsigned char* /*has_predictions*/,
+                               T* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
 
   inline void FinalizeScores1(T* Z, T& val,
                               unsigned char& has_scores,
@@ -87,12 +87,11 @@ class _Aggregator {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(T* predictions, TreeNodeElement<T>* root,
-                                 unsigned char* has_predictions) const {}
+  void ProcessTreeNodePrediction(T* /*predictions*/, TreeNodeElement<T>* /*root*/,
+                                 unsigned char* /*has_predictions*/) const {}
 
-  void MergePrediction(int64_t n,
-                       T* predictions, unsigned char* has_predictions,
-                       T* predictions2, unsigned char* has_predictions2) const {}
+  void MergePrediction(int64_t /*n*/, T* /*predictions*/, unsigned char* /*has_predictions*/,
+                       T* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
 
   void FinalizeScores(std::vector<T>& scores,
                       std::vector<unsigned char>& has_scores,
@@ -501,7 +500,7 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
   // 1 output
 
   inline void FinalizeScores1(T* Z, T& val,
-                              unsigned char& has_score,
+                              unsigned char& /*has_score*/,
                               int64_t* Y = 0) const {
     std::vector<T> scores(2);
     unsigned char has_scores[2] = {1, 0};
@@ -533,7 +532,7 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
 
   void FinalizeScores(std::vector<T>& scores,
                       std::vector<unsigned char>& has_scores,
-                      T* Z, int add_second_class,
+                      T* Z, int /*add_second_class*/,
                       int64_t* Y = 0) const {
     T maxweight = 0;
     int64_t maxclass = -1;
