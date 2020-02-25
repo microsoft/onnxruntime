@@ -1525,6 +1525,8 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddInput<MLFloat16>("Moment_2", {3}, data.m2_half);
   test.AddInput<MLFloat16>("FP16_W", {3}, data.w_half);
   test.AddInput<float>("loss_scale", {1}, {1.0f});
+  // grad clipping should not take effect
+  test.AddInput<float>("grad_norm", {1}, {0.01f});
   test.AddInput<bool>("DoUpdate", {1}, {false});
 
   // Verify AdamOptimizer outputs
@@ -2472,8 +2474,8 @@ TEST(GradientCheckerTest, LayerNormGrad) {
 }
 #endif
 
-TEST(GradientUtilsTest, GradientAccumulatorFloat32) {
-  OpTester test("GradientAccumulator", 9, onnxruntime::kOnnxDomain);
+TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
+  OpTester test("InPlaceAccumulator", 9, onnxruntime::kOnnxDomain);
 
   test.AddInput<float>("old_sum", {3}, {1, 2, 3});
   test.AddInput<float>("value", {3}, {4, 5, 6});
@@ -2484,8 +2486,8 @@ TEST(GradientUtilsTest, GradientAccumulatorFloat32) {
 }
 
 #ifdef USE_CUDA
-TEST(GradientUtilsTest, GradientAccumulatorFloat16) {
-  OpTester test("GradientAccumulator", 9, onnxruntime::kOnnxDomain);
+TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
+  OpTester test("InPlaceAccumulator", 9, onnxruntime::kOnnxDomain);
 
   std::vector<float> old_sum = {1.0f, 2.0f, 3.0f};
   std::vector<float> value = {4.0f, 5.0f, 6.0f};
@@ -2498,7 +2500,7 @@ TEST(GradientUtilsTest, GradientAccumulatorFloat16) {
   test.AddInput<MLFloat16>("value", {3}, value_half);
   test.AddOutput<float>("new_sum", {3}, new_sum);
 
-  // Didn't implement mixed precision GradientAccumulator in CPU
+  // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 #endif

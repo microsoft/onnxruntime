@@ -52,8 +52,12 @@ class TrainingSession : public InferenceSession {
     struct DistributedConfiguration {
       // The rank of the node.
       int world_rank{0};
-      // The number of nodes.
+      // The local rank.
+      int local_rank{0};
+      // The total number of ranks.
       int world_size{1};
+      // The number of local ranks on a node.
+      int local_size{1};
     };
     // The distributed training configuration.
     DistributedConfiguration distributed_config{};
@@ -119,6 +123,8 @@ class TrainingSession : public InferenceSession {
       bool use_nccl{};
       // Whether to partition the optimizer state.
       bool partition_optimizer{};
+      // Selects the reduction algorithm for Adasum.
+      AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
     };
     // The optimizer configuration.
     // If not provided, no optimizer is added.

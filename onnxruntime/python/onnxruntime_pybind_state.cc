@@ -233,6 +233,8 @@ struct TrainingParameters {
   float loss_scale = 0.0f;
   int world_rank = -1;
   int world_size = 1;
+  int local_rank = -1;
+  int local_size = 1;
   int gradient_accumulation_steps = 1;
 };
 
@@ -415,6 +417,9 @@ static void ConfigureSessionForTraining(
     std::cout << "mpi_context.world_rank: " << mpi_context.world_rank << std::endl;
     std::cout << "mpi_context.local_rank: " << mpi_context.local_rank << std::endl;
     std::cout << "mpi_context.world_size: " << mpi_context.world_size << std::endl;
+    std::cout << "mpi_context.local_size: " << mpi_context.local_size << std::endl;
+    parameters.local_size = mpi_context.local_size;
+    parameters.local_rank = mpi_context.local_rank;
   }
 #endif
 
@@ -429,6 +434,8 @@ static void ConfigureSessionForTraining(
 
   config.distributed_config.world_rank = parameters.world_rank;
   config.distributed_config.world_size = parameters.world_size;
+  config.distributed_config.local_rank = parameters.local_rank;
+  config.distributed_config.local_size = parameters.local_size;
 
   if (parameters.use_mixed_precision) {
     training::TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};

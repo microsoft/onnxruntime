@@ -19,6 +19,7 @@ namespace hvd = horovod::common;
 
 common::Status ConvertStatus(const hvd::Status& status);
 hvd::Status ConvertStatus(const common::Status& status);
+const hvd::ReduceOp GetReduceOp(const int64_t reduce_op_enum);
 
 class ORTTensor : public hvd::Tensor {
 

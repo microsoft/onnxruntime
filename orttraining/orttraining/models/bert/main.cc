@@ -94,6 +94,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -196,7 +197,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.max_num_checkpoints = flags["max_num_checkpoints"].as<size_t>();
 
     params.use_nccl = flags["use_nccl"].as<bool>();
-
+    params.use_adasum = flags["use_adasum"].as<bool>();
     params.use_profiler = flags.count("use_profiler") > 0;
     ort_params.max_num_profiling_events = flags["max_profile_records"].as<size_t>();
 
@@ -358,6 +359,9 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_HOROVOD
   params.mpi_context = setup_horovod();
+  params.use_adasum = params.use_adasum && (params.mpi_context.world_size > 1);
+  if (params.use_adasum)
+    std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
 
   params.loss_func_info = LossFunctionInfo(OpDef("BertLoss", kOnnxDomain),
@@ -573,7 +577,7 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   setup_training_params(params);
-
+  
   // setup logger
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},

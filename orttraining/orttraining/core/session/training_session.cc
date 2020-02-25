@@ -29,6 +29,10 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #endif
 
+#ifdef USE_HOROVOD
+#include "orttraining/core/graph/horovod_adapters.h"
+#endif
+
 namespace onnxruntime {
 namespace training {
 
@@ -60,7 +64,6 @@ Status SetupOptimizerParams(
     if (fp16_weight_name_it != fp32_weight_names_to_fp16_node_args.end()) {
       opt_node_config.fp16_weight_arg = fp16_weight_name_it->second;
     }
-
     opt_node_configs.emplace(weight_name, std::move(opt_node_config));
   }
 
@@ -69,11 +72,18 @@ Status SetupOptimizerParams(
   opt_graph_config.loss_scale_input_name = loss_scale_input_name;
   opt_graph_config.world_rank = config.distributed_config.world_rank;
   opt_graph_config.world_size = config.distributed_config.world_size;
+  opt_graph_config.local_size = config.distributed_config.local_size;
+  opt_graph_config.local_rank = config.distributed_config.local_rank;
   opt_graph_config.gradient_accumulation_steps = config.gradient_accumulation_steps;
   opt_graph_config.allreduce_in_fp16 = optimizer_config.do_all_reduce_in_fp16;
   opt_graph_config.use_nccl = optimizer_config.use_nccl;
+  opt_graph_config.adasum_reduction_type = optimizer_config.adasum_reduction_type;
+#if USE_HOROVOD
+  opt_graph_config.horovod_reduce_op = opt_graph_config.adasum_reduction_type == AdasumReductionType::None ?
+                                                                                 static_cast<int64_t>(hvd::ReduceOp::SUM) :
+                                                                                 static_cast<int64_t>(hvd::ReduceOp::ADASUM);
+#endif
   opt_graph_config.partition_optimizer = optimizer_config.partition_optimizer;
-
   opt_node_configs_result = std::move(opt_node_configs);
   opt_graph_config_result = std::move(opt_graph_config);
 

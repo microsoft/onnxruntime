@@ -10,6 +10,24 @@
 
 namespace onnxruntime {
 namespace training {
+Status LambOptimizerBuilder::Build(
+    const std::vector<ArgDef>& weight_argdefs,
+    const std::vector<ArgDef>& gradient_argdefs,
+    const ArgDef* gradient_norm_argdef,
+    const ArgDef* gradient_norm_finite_argdef,
+    const std::vector<OptimizerNodeConfig>& opt_configs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs) const {
+  return Build(weight_argdefs, gradient_argdefs,
+        gradient_norm_argdef, gradient_norm_finite_argdef,
+        opt_configs, graph_defs,
+        new_external_initializers, output_weight_argdefs,
+        output_gradient_argdefs,
+        // gradient clipping is enabled by default for Lamb.
+        true /*enable_grad_clipping*/);
+}
 
 Status LambOptimizerBuilder::Build(
     const std::vector<ArgDef>& weight_argdefs,
@@ -20,7 +38,8 @@ Status LambOptimizerBuilder::Build(
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs) const {
+    std::vector<ArgDef>& output_gradient_argdefs,
+    bool enable_grad_clipping) const {
   ORT_ENFORCE(weight_argdefs.size() <= size_t(1024),
     "The current LambOptimizer can only update up to 1024 weight tensors, but",
     "the actual number of weight tensors is ", weight_argdefs.size());
@@ -44,11 +63,13 @@ Status LambOptimizerBuilder::Build(
     input_argdefs.emplace_back(ArgDef());
   }
 
-  // Global gradient norm ArgDef.
-  if (gradient_norm_argdef) {
+  // Gradient norm
+  if (gradient_norm_argdef && enable_grad_clipping) {
     input_argdefs.push_back(*gradient_norm_argdef);
+  } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
+    ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
   } else {
-    input_argdefs.emplace_back(ArgDef());
+    input_argdefs.push_back(ArgDef());
   }
 
   // Learning rate ArgDef.

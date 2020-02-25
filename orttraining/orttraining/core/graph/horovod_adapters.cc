@@ -63,6 +63,18 @@ const hvd::DataType ORTTensor::dtype() const {
   }
 }
 
+const hvd::ReduceOp GetReduceOp(const int64_t reduce_op_enum) {
+  if (reduce_op_enum == hvd::horovod_reduce_op_average()) {
+    return hvd::ReduceOp::AVERAGE;
+  } else if (reduce_op_enum == hvd::horovod_reduce_op_sum()) {
+    return hvd::ReduceOp::SUM;
+  } else if (reduce_op_enum == hvd::horovod_reduce_op_adasum()) {
+    return hvd::ReduceOp::ADASUM;
+  } else {
+    throw std::logic_error("Invalid horovod reduce op.");
+  }
+};
+
 const hvd::TensorShape ORTTensor::shape() const {
   hvd::TensorShape shape;
   const std::vector<int64_t> original_shape = tensor_->Shape().GetDims();

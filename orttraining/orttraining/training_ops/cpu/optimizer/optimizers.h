@@ -35,13 +35,5 @@ class AdamOptimizer final : public OpKernel {
   float lambda_;
   float epsilon_;
 };
-
-template <typename T>
-class ZeroGradient final : public OpKernel {
- public:
-  ZeroGradient(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const override;
-};
-
 }  // namespace contrib
 }  // namespace onnxruntime

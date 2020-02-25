@@ -53,6 +53,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
         cxxopts::value<int>()->default_value("1"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
+      ("use_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
       ("allreduce_in_fp16", "Whether to do AllReduce in fp16. If false, AllReduce will be done in fp32", cxxopts::value<bool>()->default_value("true"))
       ("loss_scale", "Loss scaling, positive power of 2 values can improve fp16 convergence. "
         "Set it 0 to uses dynamic scaling; Other none-zero value will used as static scale",
@@ -100,6 +101,8 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "warmup_ratio is not in valid range [0.0, 1.0]");
     }
     params.lr_params.warmup_ratio = ratio;
+
+    params.use_adasum = flags["use_adasum"].as<bool>();
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
@@ -385,6 +388,9 @@ int main(int argc, char* argv[]) {
 
 #ifdef USE_HOROVOD
   params.mpi_context = setup_horovod();
+  params.use_adasum = params.use_adasum && (params.mpi_context.world_size > 1);
+  if (params.use_adasum)
+    std::cout << "Use Adsum for allreduce." << std::endl;
 #endif
 
   // start training session

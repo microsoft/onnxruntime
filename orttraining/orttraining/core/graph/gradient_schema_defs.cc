@@ -402,6 +402,12 @@ void RegisterGradientSchemas() {
           OpSchema::Optional)
       .Input(
           8,
+         "global_gradient_norm",
+          "Global gradient norm.",
+          "T_GRAD_NORM",
+          OpSchema::Optional)
+      .Input(
+          9,
           "update_signal",
           "This signal indicates if weight tensors should be updated.",
           "T_BOOL",
@@ -487,17 +493,22 @@ void RegisterGradientSchemas() {
           {"tensor(float16)"},
           "Constrain input types to float16 tensors.")
       .TypeConstraint(
+          "T_GRAD_NORM",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
           "T_BOOL",
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GradientAccumulator)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
       .SinceVersion(9)
-      .SetDoc("accumulator for gradient")
+      .SetDoc("in-place accumulator for tensors")
       .Input(0, "old_sum", "historical result of accumulator", "T")
       .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")
+      .Input(2, "update_signal", "This signal indicates if tensor should be updated", "T_BOOL", OpSchema::Optional)
       .Output(0, "new_sum", "updated result of accumulator", "T")
       .TypeConstraint(
           "T",
@@ -507,6 +518,10 @@ void RegisterGradientSchemas() {
           "T_GRAD",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.")
+     .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
@@ -598,6 +613,7 @@ void RegisterGradientSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(HorovodAllReduce)
       .SetDomain(kOnnxDomain)
       .SinceVersion(9)
+      .Attr("reduce_op", "Reduce operation supported by Horovod. Valid values are: AVERAGE(0), SUM(1) or ADASUM(2)", AttributeProto::INT, int64_t(1))
       .Input(0, "input", "tensor to be reduced", "T")
       .Output(0, "output", "reduced tensor", "T")
       .Output(1, "ready", "true when reduced tensor is ready", "B")

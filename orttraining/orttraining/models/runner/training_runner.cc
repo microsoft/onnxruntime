@@ -75,6 +75,8 @@ Status TrainingRunner::Initialize() {
 
   config.distributed_config.world_rank = params_.mpi_context.world_rank;
   config.distributed_config.world_size = params_.mpi_context.world_size;
+  config.distributed_config.local_size = params_.mpi_context.local_size;
+  config.distributed_config.local_rank = params_.mpi_context.local_rank;
 
   if (params_.use_mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
@@ -103,7 +105,7 @@ Status TrainingRunner::Initialize() {
     opt.do_all_reduce_in_fp16 = params_.allreduce_in_fp16;
     opt.use_nccl = params_.use_nccl;
     opt.partition_optimizer = params_.partition_optimizer;
-
+    opt.adasum_reduction_type = params_.GetAdasumReductionType();
     config.optimizer_config = opt;
   }
 
@@ -226,6 +228,11 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
     auto it = opt_graph_outputs_.find(OptimizerOutputKey::GradientAllIsFinite);
     ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Gradient norm's IsFinite output is missing in the optimizer output");
     fetch_names.push_back(it->second);
+    if (params_.use_adasum) {
+      it = opt_graph_outputs_.find(OptimizerOutputKey::DeltaAllIsFinite);
+      ORT_RETURN_IF(it == opt_graph_outputs_.end(), "Adasum delta's IsFinite output is missing in the optimizer output");
+      fetch_names.push_back(it->second);
+    }
   }
 
   VectorString fetch_grad_accumulator_output;

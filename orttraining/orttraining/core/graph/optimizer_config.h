@@ -11,6 +11,14 @@
 namespace onnxruntime {
 namespace training {
 
+// This enum specifies different Adasum reduction algorithms.
+// More will be added in the future based on the device, topology and etc.
+enum AdasumReductionType {
+  None,
+  CpuReduction,
+  GpuHierarchical,
+};
+
 // configuration per optimizer node
 struct OptimizerNodeConfig {
   std::string name{};
@@ -26,13 +34,17 @@ struct OptimizerNodeConfig {
 // configuration for optimizer portion of graph
 struct OptimizerGraphConfig {
   int world_rank{0};
+  int local_rank{0};
   int world_size{1};
+  int local_size{1};
   bool use_mixed_precision{false};
   bool allreduce_in_fp16{false};
   bool use_nccl{false};
   bool partition_optimizer{false};
   int gradient_accumulation_steps{1};
+  int64_t horovod_reduce_op{1};
   std::string loss_scale_input_name{};  // empty string means no loss scaling factor is applied
+  AdasumReductionType adasum_reduction_type{AdasumReductionType::None};
 };
 
 }  // namespace training

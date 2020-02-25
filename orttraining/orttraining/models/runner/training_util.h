@@ -153,7 +153,6 @@ class LossScaler {
   std::string GetLossScaleInputName() const { return loss_scale_input_name_; }
 
   float GetLossScale() const { return loss_scale_; }
-
   void UpdateLossScale(bool is_all_finite) {
     if (!is_dynamic_scale_) {
       return;

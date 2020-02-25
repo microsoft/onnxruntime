@@ -112,14 +112,18 @@ class GraphAugmenter {
    public:
     void AddNodeDefs(const std::vector<NodeDef>& node_defs) {
       for (auto node_def : node_defs) {
-        // Copy constant node value to graph_initializers_
-        if (node_def.op_type == kConstant) {
-          TensorProto initializer = node_def.attributes.at("value").t();
-          initializer.set_name(node_def.output_args[0].name);
-          graph_initializers_.push_back(initializer);
-        } else {
-          node_defs_.push_back(node_def);
-        }
+        AddNodeDef(node_def);
+      }
+    }
+
+    void AddNodeDef(const NodeDef& node_def) {
+      // Copy constant node value to graph_initializers_
+      if (node_def.op_type == kConstant) {
+        TensorProto initializer = node_def.attributes.at("value").t();
+        initializer.set_name(node_def.output_args[0].name);
+        graph_initializers_.push_back(initializer);
+      } else {
+        node_defs_.push_back(node_def);
       }
     }
 

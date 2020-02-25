@@ -14,6 +14,7 @@ enum class OptimizerOutputKey : int {
   GradientAccumulation,
   GradientAllIsFinite,
   GlobalGradientNorm,
+  DeltaAllIsFinite,
 };
 
 struct OptimizerOutputKeyHash {

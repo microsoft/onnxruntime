@@ -335,7 +335,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
     ORT_RETURN_IF_ERROR(AddL2NormNcclAllReduce(global_grad_norm_argdef, graph_defs));
 
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, global_grad_norm_argdef, graph_defs, global_grad_norm_finite_argdef));
+        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 

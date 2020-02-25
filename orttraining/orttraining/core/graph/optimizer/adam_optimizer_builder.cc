@@ -7,17 +7,36 @@
 
 namespace onnxruntime {
 namespace training {
+Status AdamOptimizerBuilder::Build(
+    const std::vector<ArgDef>& weight_argdefs,
+    const std::vector<ArgDef>& gradient_argdefs,
+    const ArgDef* gradient_norm_argdef,
+    const ArgDef* gradient_norm_finite_argdef,
+    const std::vector<OptimizerNodeConfig>& opt_configs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    std::vector<ONNX_NAMESPACE::TensorProto>& new_external_initializers,
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs) const {
+  return Build(weight_argdefs, gradient_argdefs,
+        gradient_norm_argdef, gradient_norm_finite_argdef,
+        opt_configs, graph_defs,
+        new_external_initializers, output_weight_argdefs,
+        output_gradient_argdefs,
+        // gradient clipping is disabled by default for Adam.
+        false /*enable_grad_clipping*/);
+}
 
 Status AdamOptimizerBuilder::Build(
     const std::vector<ArgDef>& weight_argdefs,
     const std::vector<ArgDef>& gradient_argdefs,
-    const ArgDef* /*gradient_norm_argdef*/,
+    const ArgDef* gradient_norm_argdef,
     const ArgDef* gradient_norm_finite_argdef,
     const std::vector<OptimizerNodeConfig>& opt_configs,
     GraphAugmenter::GraphDefs& graph_defs,
     std::vector<TensorProto>& new_external_initializers,
     std::vector<ArgDef>& output_weight_argdefs,
-    std::vector<ArgDef>& output_gradient_argdefs) const {
+    std::vector<ArgDef>& output_gradient_argdefs,
+    bool enable_grad_clipping) const {
   for (size_t i = 0; i < weight_argdefs.size(); ++i) {
     const std::string& weight_name = weight_argdefs[i].name;
     const std::string& gradient_name = gradient_argdefs[i].name;
@@ -99,9 +118,16 @@ Status AdamOptimizerBuilder::Build(
         input_args.push_back(ArgDef());
         output_args.push_back(ArgDef());
       }
-
       if (!opt_configs[i].loss_scale_input_name.empty()) {
-        input_args.push_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+        input_args.emplace_back(ArgDef(opt_configs[i].loss_scale_input_name, graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)));
+      } else {
+        input_args.emplace_back(ArgDef());
+      }
+
+      if (gradient_norm_argdef && enable_grad_clipping) {
+        input_args.push_back(*gradient_norm_argdef);
+      } else if (gradient_norm_argdef == nullptr && enable_grad_clipping) {
+        ORT_THROW("Gradient clipping is enabled but gradient norm is not given.");
       } else {
         input_args.push_back(ArgDef());
       }

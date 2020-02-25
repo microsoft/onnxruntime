@@ -90,9 +90,10 @@ class OptimizerGraphBuilder {
 
   Status AddFiniteGradientCheck(
       const NodeArgNameGeneratorFn& nodearg_name_generator,
-      const ArgDef& grad_norm_argdef,
+      const std::vector<ArgDef>& grad_norm_argdefs,
       GraphAugmenter::GraphDefs& graph_defs,
-      ArgDef& grad_norm_finite_argdef);
+      ArgDef& grad_norm_finite_argdef,
+      const std::string& node_name = "all_gradients_finite");
 
   Status AddDirectWeightUpdate(
       const OptimizerBuilderRegistry& opt_builder_registry,
@@ -103,6 +104,20 @@ class OptimizerGraphBuilder {
       const std::vector<OptimizerNodeConfig>& opt_configs,
       GraphAugmenter::GraphDefs& graph_defs,
       std::unordered_set<std::string>& optimizer_state_initializer_names);
+
+  // This function can be overriden by child classes to have different logic
+  // for building optimizers.
+  virtual Status BuildOptimizerNode(
+      const std::unique_ptr<OptimizerBuilder>& opt_builder,
+      const std::vector<ArgDef>& weight_argdefs,
+      const std::vector<ArgDef>& gradient_argdefs,
+      const ArgDef* global_gradient_norm_argdef,
+      const ArgDef* global_gradient_norm_finite_argdef,
+      const std::vector<OptimizerNodeConfig>& opt_configs,
+      GraphAugmenter::GraphDefs& graph_defs,
+      std::vector<TensorProto>& new_initializers,
+      std::vector<ArgDef>& output_weight_argdefs,
+      std::vector<ArgDef>& output_gradient_argdefs);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OptimizerGraphBuilder);
 

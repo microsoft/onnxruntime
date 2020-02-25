@@ -98,32 +98,5 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<float>()),
     AdamOptimizer<float>);
-
-ONNX_CPU_OPERATOR_KERNEL(
-    GradientAccumulator,
-    9,
-    KernelDefBuilder()
-        .Alias(0, 0)  // accumulate gradients in-place
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Add<float>);
-
-template <typename T>
-Status ZeroGradient<T>::Compute(OpKernelContext* context) const {
-  const Tensor& old_gradient = *context->Input<Tensor>(0);
-  Tensor& zero_gradient = *context->Output(0, old_gradient.Shape());
-
-  std::memset(zero_gradient.template MutableData<T>(), 0, zero_gradient.Shape().Size() * sizeof(T));
-  return Status::OK();
-}
-
-ONNX_CPU_OPERATOR_KERNEL(
-    ZeroGradient,
-    9,
-    KernelDefBuilder()
-        .Alias(0, 0)  // reset gradients in-place
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),
-    ZeroGradient<float>);
-
 }  // namespace contrib
 }  // namespace onnxruntime

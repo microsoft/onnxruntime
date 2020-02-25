@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <thread>
 
 #include "horovod_kernels.h"
 #include "ready_event.h"
-#include "orttraining/core/graph/horovod_adapters.h"
-#include <thread>
 
 namespace onnxruntime {
 namespace cuda {
@@ -34,9 +33,7 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
   auto hvd_output = std::make_shared<ORTTensor>(context->Output(0, input_tensor->Shape()));
   Tensor* ready_tensor = context->Output(1, {});
   bool* ready = ready_tensor->MutableData<bool>();
-
   *ready = false;
-
   ORT_RETURN_IF_ERROR(
       ConvertStatus(
           EnqueueTensorAllreduce(
@@ -46,7 +43,8 @@ Status HorovodAllReduce::ComputeInternal(OpKernelContext* context) const {
                 // TODO: handle failures during Allreduce
                 // https://aiinfra.visualstudio.com/Lotus/_workitems/edit/3936
                 *ready = true;
-              })));
+              },
+              reduce_op_)));
 
   return Status::OK();
 }

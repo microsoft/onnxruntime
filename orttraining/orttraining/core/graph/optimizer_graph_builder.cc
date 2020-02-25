@@ -56,7 +56,7 @@ ArgDef BuildGradientAccumulationNode(const NodeArgNameGeneratorFn& nodearg_name_
   }
   if (add_accumulate_buffer_as_initializers)
     graph_defs.AddInitializers({CreateTensorProto<float>(gradient_accumulate_buffer.name, 0.f, dims)});
-  graph_defs.AddNodeDefs({NodeDef("GradientAccumulator",
+  graph_defs.AddNodeDefs({NodeDef("InPlaceAccumulator",
                                   {gradient_accumulate_buffer, gradient},
                                   {gradient_accumulator_output},
                                   NodeAttributes(),
@@ -174,6 +174,27 @@ Status AddZeroGradientNodes(const NodeArgNameGeneratorFn& nodearg_name_generator
   return Status::OK();
 }
 
+Status OptimizerGraphBuilder::BuildOptimizerNode(
+    const std::unique_ptr<OptimizerBuilder>& opt_builder,
+    const std::vector<ArgDef>& weight_argdefs,
+    const std::vector<ArgDef>& gradient_argdefs,
+    const ArgDef* global_gradient_norm_argdef,
+    const ArgDef* global_gradient_norm_finite_argdef,
+    const std::vector<OptimizerNodeConfig>& opt_configs,
+    GraphAugmenter::GraphDefs& graph_defs,
+    std::vector<TensorProto>& new_initializers,
+    std::vector<ArgDef>& output_weight_argdefs,
+    std::vector<ArgDef>& output_gradient_argdefs) {
+  ORT_RETURN_IF_ERROR(opt_builder->Build(
+    weight_argdefs, gradient_argdefs,
+    global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
+    opt_configs, graph_defs,
+    new_initializers,
+    output_weight_argdefs, output_gradient_argdefs));
+
+  return Status::OK();
+}
+
 Status OptimizerGraphBuilder::AddDirectWeightUpdate(
     const OptimizerBuilderRegistry& opt_builder_registry,
     std::vector<ArgDef>& weight_argdefs,    // update argdefs in place
@@ -201,7 +222,8 @@ Status OptimizerGraphBuilder::AddDirectWeightUpdate(
   ORT_RETURN_IF_NOT(
       opt_builder, "Failed to get Optimizer builder for ", opt_configs[0].name);
 
-  ORT_RETURN_IF_ERROR(opt_builder->Build(
+  ORT_RETURN_IF_ERROR(BuildOptimizerNode(
+      opt_builder,
       weight_argdefs, gradient_argdefs,
       global_gradient_norm_argdef, global_gradient_norm_finite_argdef,
       opt_configs, graph_defs,
@@ -261,16 +283,17 @@ Status OptimizerGraphBuilder::AddGradientNorm(
 
 Status OptimizerGraphBuilder::AddFiniteGradientCheck(
     const NodeArgNameGeneratorFn& nodearg_name_generator,
-    const ArgDef& grad_norm_argdef,
+    const std::vector<ArgDef>& grad_norm_argdefs,
     GraphAugmenter::GraphDefs& graph_defs,
-    ArgDef& grad_norm_finite_argdef) {
+    ArgDef& grad_norm_finite_argdef,
+    const std::string& node_name) {
   const TypeProto* const grad_norm_finite_type =
-      graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    graph_defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_BOOL);
   grad_norm_finite_argdef =
-      ArgDef{nodearg_name_generator("all_gradients_finite"), grad_norm_finite_type};
+    ArgDef{nodearg_name_generator(node_name), grad_norm_finite_type};
 
   graph_defs.AddNodeDefs({NodeDef{"IsAllFinite",
-                                  {grad_norm_argdef},
+                                  grad_norm_argdefs,
                                   {grad_norm_finite_argdef},
                                   NodeAttributes(),
                                   grad_norm_finite_argdef.name}});
@@ -410,7 +433,7 @@ Status OptimizerGraphBuilder::BuildInternal(
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, global_grad_norm_argdef, graph_defs, global_grad_norm_finite_argdef));
+        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 

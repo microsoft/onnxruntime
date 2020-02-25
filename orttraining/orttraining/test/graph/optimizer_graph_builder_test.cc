@@ -17,6 +17,7 @@
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 #include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
+#include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
 #include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/gtest_utils.h"
@@ -39,7 +40,7 @@ constexpr const char* const k_reduce_scatter_op_name = "NcclReduceScatter";
 constexpr const char* const k_is_all_finite_op_name = "IsAllFinite";
 constexpr const char* const k_gradient_norm_op_name = "ReduceAllL2";
 constexpr const char* const k_unscale_op_name = "MixedPrecisionScale";
-constexpr const char* const k_gradient_accumulator_op_name = "GradientAccumulator";
+constexpr const char* const k_inplace_accumulator_op_name = "InPlaceAccumulator";
 constexpr const char* const k_zero_gradient_op_name = "ZeroGradient";
 
 Status SetUpBaseGraph(Graph& graph);
@@ -139,7 +140,7 @@ static void TestDefaultOptimizerGraphBuilder(OptimizerGraphConfig config, Graph&
   // verify gradient accumulation operations exist
   if (config.gradient_accumulation_steps > 1) {
     ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
-    ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
     ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
   }
@@ -204,7 +205,7 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
   // verify gradient accumulation operations exist
   if (config.gradient_accumulation_steps > 1) {
     ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
-    ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
     ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
   }
@@ -222,6 +223,41 @@ static void TestAllreduceOptimizerGraphBuilder(OptimizerGraphConfig config, Grap
   } else {
     ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
   }
+
+  // verify optimizers exist
+  ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
+}
+
+static void TestAdasumOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& graph) {
+  AdasumOptimizerGraphBuilder optimizer_graph_builder(
+      GetOptimizerBuilderRegistry(), config, GetOptInfoMap());
+
+  OptimizerOutputKeyMap<std::string> opt_graph_outputs;
+  std::unordered_set<std::string> opt_initializer_names;
+  ASSERT_STATUS_OK(optimizer_graph_builder.Build(graph, opt_initializer_names, opt_graph_outputs));
+
+  auto op_counts = CountOpsInGraph(graph, false);
+
+  // verify gradient accumulation operations exist
+  if (config.gradient_accumulation_steps > 1) {
+    ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
+    ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size() * 2);
+    ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
+    ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
+  }
+
+  // verify mixed precision operations exist
+  if (config.use_mixed_precision) {
+    ASSERT_GT(GetOpCount(op_counts, k_gradient_norm_op_name), 0);
+    ASSERT_GT(GetOpCount(op_counts, k_is_all_finite_op_name), 0);
+  }
+
+  // verify allreduce operations exist
+  ASSERT_GT(GetOpCount(op_counts, k_unscale_op_name), 0);
+  ASSERT_GT(GetOpCount(op_counts, k_horovod_all_reduce_op_name), 0);
+
+  // verify in place adder operations exist
+  ASSERT_GT(GetOpCount(op_counts, k_inplace_accumulator_op_name), 0);
 
   // verify optimizers exist
   ASSERT_EQ(GetOpCount(op_counts, k_optimizer_op_name), k_weight_names.size());
@@ -266,6 +302,47 @@ TEST_F(OptimizerGraphBuilderTest, Allreduce_Horovod_WithGradientAccumulation_Wit
   config.loss_scale_input_name = k_loss_scaling_factor_name;
   TestAllreduceOptimizerGraphBuilder(config, graph_);
 }
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = false;
+  TestAdasumOptimizerGraphBuilder(config, graph_);
+}
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_NoMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = false;
+  TestAdasumOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_NoGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.gradient_accumulation_steps = 1;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAdasumOptimizerGraphBuilder(config, graph_);
+}
+
+TEST_F(OptimizerGraphBuilderTest, Adasum_Horovod_WithGradientAccumulation_WithMixedPrecision) {
+  OptimizerGraphConfig config;
+  config.world_size = 4;
+  config.use_nccl = false;
+  config.adasum_reduction_type = AdasumReductionType::GpuHierarchical;
+  config.gradient_accumulation_steps = 10;
+  config.use_mixed_precision = true;
+  config.loss_scale_input_name = k_loss_scaling_factor_name;
+  TestAdasumOptimizerGraphBuilder(config, graph_);
+}
+
 #endif  // USE_HOROVOD
 
 #ifdef USE_NCCL
@@ -320,7 +397,7 @@ static void TestZeROOptimizerGraphBuilder(OptimizerGraphConfig config, Graph& gr
   // verify gradient accumulation operations exist
   if (config.gradient_accumulation_steps > 1) {
     ASSERT_EQ(GetOpCount(op_counts, k_unscale_op_name), k_weight_names.size());
-    ASSERT_EQ(GetOpCount(op_counts, k_gradient_accumulator_op_name), k_weight_names.size());
+    ASSERT_EQ(GetOpCount(op_counts, k_inplace_accumulator_op_name), k_weight_names.size());
     ASSERT_EQ(GetOpCount(op_counts, k_zero_gradient_op_name), k_weight_names.size());
     ASSERT_GT(opt_graph_outputs.count(OptimizerOutputKey::GradientAccumulation), 0);
   }

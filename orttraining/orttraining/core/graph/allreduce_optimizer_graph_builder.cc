@@ -6,14 +6,6 @@
 namespace onnxruntime {
 namespace training {
 
-static bool IsHorovodAvailable() {
-#ifdef USE_HOROVOD
-  return true;
-#else
-  return false;
-#endif
-}
-
 static bool IsNcclAvailable() {
 #ifdef USE_NCCL
   return true;
@@ -59,7 +51,7 @@ static NodeDef& GetGlobalHorovodBarrierNode(
   return *std::find_if(nodes.begin(), nodes.end(), [&](const NodeDef& def) { return def.name == global_barrier_name; });
 }
 
-static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs) {
+static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugmenter::GraphDefs& graph_defs, int64_t reduce_op) {
   const std::string& gradient_name = gradient_argdef.name;
   ArgDef reduce_output(gradient_name + "_AllReduce_Out", gradient_argdef.type_proto);
   ArgDef reduce_ready(gradient_name + "_AllReduce_Ready");
@@ -70,7 +62,7 @@ static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugm
   graph_defs.AddNodeDefs({NodeDef("HorovodAllReduce",
                                   {gradient_argdef},
                                   {reduce_output, reduce_ready},
-                                  NodeAttributes(),
+                                  {ONNX_NAMESPACE::MakeAttribute("reduce_op", static_cast<int64_t>(reduce_op))},
                                   gradient_name + "_AllReduce")});
 
   // Add ready check to global horovod barrier.
@@ -89,10 +81,11 @@ static ArgDef BuildHorovodAllReduceNode(const ArgDef& gradient_argdef, GraphAugm
   return local_barrier_output;
 }
 
-static Status AddHorovodAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
-                                              GraphAugmenter::GraphDefs& graph_defs) {
+Status AllreduceOptimizerGraphBuilder::AddHorovodAllReduceForGradients(std::vector<ArgDef>& gradient_argdefs,  // update argdefs in place
+                                              GraphAugmenter::GraphDefs& graph_defs,
+                                              const int64_t horovod_reduce_op) {
   for (size_t i = 0; i < gradient_argdefs.size(); ++i) {
-    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs);
+    gradient_argdefs[i] = BuildHorovodAllReduceNode(gradient_argdefs[i], graph_defs, horovod_reduce_op);
   }
   return Status::OK();
 }
@@ -182,6 +175,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
   };
 
   const bool overlap_compute_allreduce = !opt_graph_config_.use_nccl;
+  const int64_t horovod_reduce_op = opt_graph_config_.horovod_reduce_op;
 
   // add gradient scaling
   ArgDef fused_gradient_argdef;
@@ -194,10 +188,11 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
 
   // add Allreduce for gradients
   ArgDef reduced_fused_gradient_argdef;
+
   if (opt_graph_config_.use_nccl) {
     ORT_RETURN_IF_ERROR(AddNcclAllReduceForGradients(gradient_argdefs, fused_gradient_argdef, graph_defs, reduced_fused_gradient_argdef));
   } else {
-    ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs));
+    ORT_RETURN_IF_ERROR(AddHorovodAllReduceForGradients(gradient_argdefs, graph_defs, horovod_reduce_op));
   }
 
   // check if all gradients are finite
@@ -210,7 +205,7 @@ Status AllreduceOptimizerGraphBuilder::BuildInternal(
     optimizer_graph_outputs[OptimizerOutputKey::GlobalGradientNorm] = global_grad_norm_argdef.name;
 
     ORT_RETURN_IF_ERROR(AddFiniteGradientCheck(
-        nodearg_name_generator, global_grad_norm_argdef, graph_defs, global_grad_norm_finite_argdef));
+        nodearg_name_generator, {global_grad_norm_argdef}, graph_defs, global_grad_norm_finite_argdef));
     optimizer_graph_outputs[OptimizerOutputKey::GradientAllIsFinite] = global_grad_norm_finite_argdef.name;
   }
 

@@ -16,7 +16,6 @@
 
 namespace onnxruntime {
 namespace training {
-
 class TrainingRunner {
  public:
   struct Parameters {
@@ -83,6 +82,8 @@ class TrainingRunner {
     bool use_nccl = false;
     // Whether to partition the optimizer state across nodes for distributed training.
     bool partition_optimizer = false;
+    // Use Adasum for allreduce
+    bool use_adasum = false;
     // Use Gist on CPU.
     bool use_gist = false;
     // Whether we collect execution profile trace during this run.
@@ -112,6 +113,19 @@ class TrainingRunner {
 
     bool EnableTensorboard() const {
       return !is_perf_test && !log_dir.empty() && mpi_context.world_rank == 0;
+    }
+
+    AdasumReductionType GetAdasumReductionType() const {
+      // TODO support more algos when they become available.
+      if (!use_adasum) {
+        return AdasumReductionType::None;
+      }
+      else if (!use_cuda) {
+        return AdasumReductionType::CpuReduction;
+      }
+      else {
+        return AdasumReductionType::GpuHierarchical;
+      }
     }
 
     // checkpoint configuration

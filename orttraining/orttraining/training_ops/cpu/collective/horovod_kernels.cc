@@ -2,12 +2,11 @@
 // Licensed under the MIT License.
 
 #include "horovod_kernels.h"
-#include "orttraining/core/graph/horovod_adapters.h"
+#include "orttraining/models/runner/training_util.h"
 #include <thread>
 
 namespace onnxruntime {
 namespace contrib {
-
 ONNX_CPU_OPERATOR_KERNEL(
     HorovodAllReduce,
     9,
@@ -30,7 +29,7 @@ Status HorovodAllReduce::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(ConvertStatus(horovod::common::CheckInitialized()));
 
   auto device_id = context->GetDeviceId();
-  auto allocator = Info().GetAllocator(device_id, OrtMemTypeDefault);
+  auto allocator = training::TrainingUtil::GetCpuAllocator();
 
   const Tensor* input_tensor = context->Input<Tensor>(0);
   auto hvd_input = std::make_shared<ORTTensor>(input_tensor);
@@ -50,7 +49,7 @@ Status HorovodAllReduce::Compute(OpKernelContext* context) const {
           // TODO: handle failures during Allreduce
           // https://aiinfra.visualstudio.com/Lotus/_workitems/edit/3936
           *ready = true;
-        })
+        }, reduce_op_)
     )
   );
 

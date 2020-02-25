@@ -3,12 +3,12 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "adam.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-template <typename T1, typename T3, typename T4, typename T_GRAD>
+template <typename T1, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 __global__ void _AdamOptimizer(
     const T1* eta,
     const T3* weights,
@@ -16,6 +16,7 @@ __global__ void _AdamOptimizer(
     const T4* moment_1,
     const T4* moment_2,
     const T3* loss_scale,
+    const T_GRAD_NORM* grad_norm,
     const T4 alpha,
     const T4 beta,
     const T4 lambda,
@@ -27,11 +28,10 @@ __global__ void _AdamOptimizer(
     half* fp16_weights_out,
     CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  T4 g_scale = loss_scale ? T4(*loss_scale) : T4(1.f);
+  const T4 actual_scale = _ComputeGradScale<T3, T_GRAD_NORM, T4>(loss_scale, grad_norm);
 
   // Gradient scaling/clipping.
-  const T4 g = T4(grads[id]) / g_scale;
-
+  const T4 g = T4(grads[id]) / actual_scale;
   // A shared constant.
   const T4 one = T4(1.0f);
 
@@ -64,7 +64,7 @@ __global__ void _AdamOptimizer(
   moment_2_out[id] = m2o;
 }
 
-template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD>
+template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM>
 void AdamOptimizerImpl(
     const T1* eta,
     const T2 /*update_count*/,
@@ -73,6 +73,7 @@ void AdamOptimizerImpl(
     const T4* moment_1,
     const T4* moment_2,
     const T3* loss_scale,
+    const T_GRAD_NORM* grad_norm,
     T4 alpha,
     T4 beta,
     T4 lambda,
@@ -85,14 +86,14 @@ void AdamOptimizerImpl(
     size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-
-  _AdamOptimizer<T1, T3, T4, T_GRAD><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _AdamOptimizer<T1, T3, T4, T_GRAD, T_GRAD_NORM><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
       eta,
       weights,
       grads,
       moment_1,
       moment_2,
       loss_scale,
+      grad_norm,
       alpha,
       beta,
       lambda,
@@ -105,7 +106,7 @@ void AdamOptimizerImpl(
       N);
 }
 
-#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD)              \
+#define SPECIALIZED_AdamOptimizerImpl(T1, T2, T3, T4, T_GRAD, T_GRAD_NORM) \
   template void AdamOptimizerImpl(                                         \
       const T1* eta,                                                       \
       const T2 update_count,                                               \
@@ -114,6 +115,7 @@ void AdamOptimizerImpl(
       const T4* moment_1,                                                  \
       const T4* moment_2,                                                  \
       const T3* loss_scale,                                                \
+      const T_GRAD_NORM* grad_norm,                                        \
       T4 alpha,                                                            \
       T4 beta,                                                             \
       T4 lambda,                                                           \
@@ -125,12 +127,15 @@ void AdamOptimizerImpl(
       half* fp16_weights_out,                                              \
       size_t count);
 
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half)
-SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, float, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, float, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, half, float)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half)
+SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float)
 
 }  // namespace cuda
 }  // namespace onnxruntime

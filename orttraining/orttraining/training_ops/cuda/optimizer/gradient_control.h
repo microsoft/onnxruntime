@@ -17,15 +17,15 @@ class ZeroGradient final : public CudaKernel {
 };
 
 template <typename T, typename T_GRAD>
-class AccumulateGradient final : public CudaKernel {
+class InPlaceAccumulator final : public CudaKernel {
  public:
-  AccumulateGradient(const OpKernelInfo& info) : CudaKernel(info) {}
+  InPlaceAccumulator(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
 // Implementation can be found in cuda file, optimizers_impl.cu
 template <typename T, typename T_GRAD>
-void AccumulateGradientImpl(
+void InPlaceAccumulatorImpl(
     const T* gradient_buffer,
     const T_GRAD* gradient,
     T* accumulated_gradient,
