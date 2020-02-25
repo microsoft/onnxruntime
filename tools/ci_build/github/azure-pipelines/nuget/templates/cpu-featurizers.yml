@@ -83,6 +83,8 @@ jobs:
 
    # XXX: Only windows now
 - template: test_win.yml
+  parameters:
+    AgentPool : 'Win-CPU-2019'
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
