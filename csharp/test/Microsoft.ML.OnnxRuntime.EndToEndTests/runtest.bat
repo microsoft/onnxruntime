@@ -17,6 +17,11 @@ IF NOT "%4"=="" (
     echo "Usage: runtest.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion"
 )
 
+IF "%TargetArch%"=="x64" (
+  SET RuntimeIdentifier=win-x64
+  SET PlatformTarget=x64
+)
+
 IF "%TargetArch%"=="x86" (
   SET dn="C:\Program Files (x86)\dotnet\dotnet"
   SET RuntimeIdentifier=win-x86
@@ -28,8 +33,13 @@ ECHO Target Framework is %TargetFramework%
 REM Update if CUDA lib paths if set
 SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%\bin;%PATH%
 
+IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages RMDIR /S /Q test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages
+IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\bin RMDIR /S /Q test\Microsoft.ML.OnnxRuntime.EndToEndTests\bin
+IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj
+
 @echo %CurrentOnnxRuntimeVersion%
-%dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
+%dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
+%dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
 
 IF NOT errorlevel 0 (
     @echo "Failed to restore nuget packages for the test project"
