@@ -6,7 +6,6 @@ steps:
    powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
    powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
    set PATH=%CD%;%PATH%
-<<<<<<< HEAD
    SETLOCAL EnableDelayedExpansion   
    FOR /R %%i IN (*.nupkg) do (
        set filename=%%~ni
@@ -38,7 +37,7 @@ steps:
            popd
            move %%~ni.zip %%~ni.nupkg
        )
-   ) 
+   )
    popd
    copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
   displayName: 'Bundle Native NuGet and other binaries'
