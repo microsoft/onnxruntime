@@ -11,6 +11,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="ONNX Runtime create nuget spec script",
                                      usage='')
     # Main arguments
+    parser.add_argument("--nuget_package", required=True, help="Nuget pacakge name to be validated.")
     parser.add_argument("--nuget_path", required=True, help="Path containing the Nuget to be validated. Must only contain only one Nuget within this.")
     parser.add_argument("--platforms_supported", required=True, help="Comma separated list (no space). Ex: linux-x64,win-x86,osx-x64")
     parser.add_argument("--verify_nuget_signing", required=True, help="Flag inidicating if Nuget package signing is to be verified. Only accepets 'true' or 'false'")
@@ -69,15 +70,17 @@ def check_if_nuget_is_signed(nuget_path):
 def main():   
     args = parse_arguments()
 
-    files = os.listdir(args.nuget_path)
-    nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
-    if (len(nuget_packages_found_in_path) != 1):
-        print('Nuget packages found in path: ')
-        print(nuget_packages_found_in_path)
-        raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
-    
-    nuget_file_name = nuget_packages_found_in_path[0]
-    full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
+    if (args.nuget_package == '*'):
+        files = os.listdir(args.nuget_path)
+        nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
+        if (len(nuget_packages_found_in_path) != 1):
+            print('Nuget packages found in path: ')
+            print(nuget_packages_found_in_path)
+            raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
+        nuget_file_name = nuget_packages_found_in_path[0]
+        full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
+    else:
+        full_nuget_path = os.path.join(args.nuget_path, args.nuget_package)
     
     exit_code = 0
             

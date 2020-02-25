@@ -182,7 +182,7 @@ jobs:
         displayName: 'Create NuGet Package'
 
       - task: PublishPipelineArtifact@0
-        displayName: 'Publish Pipeline Artifact: drop-nuget'
+        displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'

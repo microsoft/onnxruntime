@@ -55,14 +55,14 @@
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h"
-          Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.DirectML'"
+          Condition="'$(OrtPackageId)' != 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'"
           PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\providers\dml\dml_provider_factory.h"
-          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
+          Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'"
           PackagePath="\build\native\include"
           Pack="true"
           CopyToOutputDirectory="Never"
@@ -89,7 +89,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.dll"
           Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.dll')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
@@ -98,7 +98,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.lib"
           Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.lib')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
@@ -107,7 +107,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb"
           Condition="Exists('$(NativeBuildOutputDir)\windows.ai.machinelearning.pdb')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
@@ -116,7 +116,7 @@
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.winmd"
           Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.winmd')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\metadata"
           Pack="true"
@@ -125,7 +125,7 @@
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.h"
           Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
           Pack="true"
@@ -134,7 +134,7 @@
     />
     <None Include="$(OnnxRuntimeBuildDirectory)\$(Configuration)\Windows.AI.MachineLearning.Native.h"
           Condition="Exists('$(OnnxRuntimeBuildDirectory)\$(Configuration)\windows.ai.machinelearning.native.h')
-                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
+                     And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
           Pack="true"
@@ -143,7 +143,7 @@
     />
     <None Include="$(NativeBuildOutputDir)\DirectML.dll"
           Condition="Exists('$(NativeBuildOutputDir)\DirectML.dll')
-                     And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'"
+                     And '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu.DirectML'"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
           CopyToOutputDirectory="Always"
