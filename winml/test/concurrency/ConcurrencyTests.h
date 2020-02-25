@@ -23,9 +23,10 @@ WINML_TEST(ConcurrencyTests, MultiThreadSession)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentModels)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentSessions)
 WINML_TEST(ConcurrencyTests, EvalAsyncDifferentBindings)
+WINML_TEST_CLASS_END()
+
 // indices for imagenet label
 static constexpr uint32_t s_IndexTabbyCat = 281;
 static constexpr uint32_t s_IndexTench = 0;
 // maximum number of threads to run concurrent jobs
 static constexpr uint32_t s_max_threads = 30;
-WINML_TEST_CLASS_END()
