@@ -571,6 +571,8 @@ RuntimeTreeEnsembleCommonP<T>::ProcessTreeNodeLeave(
                      ? root->truenode
                      : root->falsenode;
           break;
+        case NODE_MODE::LEAF:
+          break;
       }
     }
   }
