@@ -100,10 +100,8 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface)
 
 if (onnxruntime_USE_FEATURIZERS)
-  #add_dependencies(onnxruntime_providers onnxruntime_featurizers onnxruntime_featurizers_comp)
   add_dependencies(onnxruntime_providers onnxruntime_featurizers)
   onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_featurizers)
-  #target_link_libraries(onnxruntime_providers onnxruntime_featurizers onnxruntime_featurizers_comp)
   target_link_libraries(onnxruntime_providers onnxruntime_featurizers)
 endif()
 
