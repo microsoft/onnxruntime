@@ -7,6 +7,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/rewrite_rule.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -14,19 +15,19 @@ namespace onnxruntime {
 // transformers. Each inference session can further register additional ones.
 class GraphTransformerManager {
  public:
-  explicit GraphTransformerManager(unsigned steps) : steps_(steps) {
-  }
+  explicit GraphTransformerManager() {}
+
+  // Initialize this instance
+  common::Status Init(unsigned steps);
 
   // Register a transformer with a level.
-  common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);  
+  common::Status Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level);
 
   // Apply all transformers registered for the given level on the given graph
   common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
 
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);  
-
-  const unsigned steps_;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
 
   // Older GCC versions don't support std::hash with enum types
   // Therefore, std::hash<T> appears to be undefined when T is an enum Type. This is fixed in version 6.1
@@ -37,6 +38,10 @@ class GraphTransformerManager {
       return static_cast<size_t>(t);
     }
   };
+
+  mutable onnxruntime::OrtMutex graph_transformer_mutex_;  // to ensure only one thread can invoke Initialize
+  unsigned steps_;                                         // GUARDED_BY(graph_transformer_mutex_)
+  bool has_been_initialized_ = false;                      // GUARDED_BY(graph_transformer_mutex_)
 
   std::unordered_map<TransformerLevel, std::vector<std::unique_ptr<GraphTransformer>>, EnumHashKey> level_to_transformer_map_;
   std::unordered_map<std::string, GraphTransformer*> transformers_info_;
