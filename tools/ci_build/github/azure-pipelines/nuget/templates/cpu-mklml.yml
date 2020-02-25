@@ -173,3 +173,5 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - template: test_all_os.yml
+  parameters:
+    Skipx86Tests: 'true'

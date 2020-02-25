@@ -50,6 +50,30 @@ file(GLOB onnxruntime4j_native_src
     )
 # Build the JNI library
 add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+
+# Tell the JNI code about the requested providers
+if (onnxruntime_USE_CUDA)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_CUDA=1)
+endif()
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_DNNL=1)
+endif()
+if (onnxruntime_USE_NGRAPH)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NGRAPH=1)
+endif()
+if (onnxruntime_USE_OPENVINO)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_OPENVINO=1)
+endif()
+if (onnxruntime_USE_TENSORRT)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_TENSORRT=1)
+endif()
+if (onnxruntime_USE_NNAPI)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NNAPI=1)
+endif()
+if (onnxruntime_USE_NUPHAR)
+  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NUPHAR=1)
+endif()
+
 # depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
