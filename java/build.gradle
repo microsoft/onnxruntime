@@ -21,10 +21,10 @@ wrapper {
 }
 
 spotless {
-	//java {
-	//	removeUnusedImports()
-	//	googleJavaFormat()
-	//}
+	java {
+		removeUnusedImports()
+		googleJavaFormat()
+	}
 	format 'gradle', {
 		target '**/*.gradle'
 		trimTrailingWhitespace()
@@ -39,6 +39,8 @@ def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+
 compileJava {
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
 }
@@ -47,7 +49,8 @@ sourceSets.test {
 	// add test resource files
 	resources.srcDirs += [
 		"${rootProject.projectDir}/../csharp/testdata",
-		"${rootProject.projectDir}/../onnxruntime/test/testdata"
+		"${rootProject.projectDir}/../onnxruntime/test/testdata",
+		"${rootProject.projectDir}/../java/testdata"
 	]
 	if (cmakeBuildDir != null) {
 		// add compiled native libs

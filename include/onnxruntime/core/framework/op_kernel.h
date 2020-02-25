@@ -133,8 +133,8 @@ class OpKernelContext {
   }
 
   /**
-   * return an allocator on device 0, with memtype of OrtMemTypeDefault
-   *
+   Return an allocator on device 0, with memtype of OrtMemTypeDefault.
+   @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
   Status GetTempSpaceAllocator(AllocatorPtr* output) const;
 

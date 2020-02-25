@@ -6,6 +6,7 @@ steps:
    powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
    powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
    set PATH=%CD%;%PATH%
+<<<<<<< HEAD
    SETLOCAL EnableDelayedExpansion   
    FOR /R %%i IN (*.nupkg) do (
        set filename=%%~ni
@@ -22,6 +23,9 @@ steps:
            move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
            move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
            move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
+           move win-x86\runtimes\win-x86\native\windows.ai.machinelearning.dll %%~ni\runtimes\win-x86\native\windows.ai.machinelearning.dll
+           move win-x86\runtimes\win-x86\native\windows.ai.machinelearning.lib %%~ni\runtimes\win-x86\native\windows.ai.machinelearning.lib
+           move win-x86\runtimes\win-x86\native\windows.ai.machinelearning.pdb %%~ni\runtimes\win-x86\native\windows.ai.machinelearning.pdb           
            move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
            unzip osx-x64.zip -d osx-x64
            dir osx-x64 /s
