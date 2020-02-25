@@ -146,7 +146,7 @@ def create_backend_test(testname=None):
                                       '^test_maxpool_2d_ceil_cpu',
 									  '^test_maxpool_2d_dilations_cpu']
 
-        if c2.supports_device('INTEL_CPU_FP32'):
+        if c2.supports_device('OPENVINO_CPU_FP32'):
             current_failing_tests += ['^test_operator_permute2_cpu']
 
         filters = current_failing_tests + \

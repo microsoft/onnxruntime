@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #include <map>
@@ -24,7 +24,7 @@
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 namespace backend_utils {
 
 
@@ -94,7 +94,7 @@ std::shared_ptr<InferenceEngine::CNNNetwork> CreateCNNNetwork(const ONNX_NAMESPA
 }
 
 
-InferenceEngine::Precision ConvertPrecisionONNXToIntel(
+InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(
     const ONNX_NAMESPACE::TypeProto& onnx_type) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
   if (*type_string == "float" || *type_string == "tensor(float)") {
@@ -127,7 +127,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<In
   int input_idx = 0;
   for (auto iter = inputInfo.begin(); iter != inputInfo.end(); ++iter, ++input_idx) {
     // Get the onnx index for the corresponding input (ignoring initializers)
-    auto precision = ConvertPrecisionONNXToIntel(model_proto.graph().input(input_idx).type());
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().input(input_idx).type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for input tensor
@@ -157,7 +157,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto, std::shared_ptr<In
   auto outputInfo = network->getOutputsInfo();
   int output_idx = 0;
   for (auto iter = outputInfo.begin(); iter != outputInfo.end(); ++iter, ++output_idx) {
-    auto precision = ConvertPrecisionONNXToIntel(model_proto.graph().output(output_idx).type());
+    auto precision = ConvertPrecisionONNXToOpenVINO(model_proto.graph().output(output_idx).type());
     iter->second->setPrecision(precision);
 
     // Choose the appropriate OpenVINO layout for output tensor
@@ -223,6 +223,6 @@ std::vector<OrtValue*> GetOutputTensors(Ort::CustomOpApi& ort, OrtKernelContext*
   return output_tensors;
 }
 
-} // namespace ov_utils
-} // namespace intel_ep
+} // namespace backend_utils
+} // namespace openvino_ep
 } // namespace onnxruntime

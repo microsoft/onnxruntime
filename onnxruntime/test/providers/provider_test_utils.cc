@@ -517,8 +517,8 @@ std::vector<MLValue> OpTester::ExecuteModel(
   if (!status.IsOK()) {
     if (expect_result == ExpectResult::kExpectFailure) {
       EXPECT_TRUE(!status.IsOK());
-      // Disable expected_failure_string checks for Intel EP's
-      if (provider_type != kIntelExecutionProvider) {
+      // Disable expected_failure_string checks for OpenVINO EP
+      if (provider_type != kOpenVINOExecutionProvider) {
         EXPECT_THAT(status.ErrorMessage(),
                   testing::HasSubstr(expected_failure_string));
       }
@@ -552,10 +552,10 @@ std::vector<MLValue> OpTester::ExecuteModel(
       }
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
-        // Disable expected_failure_string checks for MKL-DNN ,nGraph and Intel EP's
+        // Disable expected_failure_string checks for MKL-DNN ,nGraph and OpenVINO EP's
         if (provider_type != kDnnlExecutionProvider &&
             provider_type != kNGraphExecutionProvider &&
-            provider_type != kIntelExecutionProvider) {
+            provider_type != kOpenVINOExecutionProvider) {
           EXPECT_THAT(status.ErrorMessage(),
                       testing::HasSubstr(expected_failure_string));
         }
@@ -693,8 +693,8 @@ void OpTester::Run(
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider, kCudaExecutionProvider,
         kDnnlExecutionProvider, kNGraphExecutionProvider,
-        kNupharExecutionProvider, kTensorrtExecutionProvider,
-        kIntelExecutionProvider, kDmlExecutionProvider,
+        kOpenVINOExecutionProvider, kNupharExecutionProvider,
+        kTensorrtExecutionProvider, kDmlExecutionProvider,
         kAclExecutionProvider,
     };
 
@@ -751,12 +751,12 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kNGraphExecutionProvider)
           execution_provider = DefaultNGraphExecutionProvider();
+	      else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+	        execution_provider = DefaultOpenVINOExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)
           execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
-	      else if (provider_type == onnxruntime::kIntelExecutionProvider)
-	        execution_provider = DefaultIntelExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
@@ -775,8 +775,8 @@ void OpTester::Run(
           // if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kNGraphExecutionProvider ||
+	            provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-	            provider_type == onnxruntime::kIntelExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();

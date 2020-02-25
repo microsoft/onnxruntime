@@ -61,11 +61,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
- } else if (provider_name == onnxruntime::kIntelExecutionProvider) {
-#ifdef USE_INTEL
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Intel(session_options, "CPU"));
+ } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+#ifdef USE_OPENVINO
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(session_options, "CPU"));
 #else
-    ORT_THROW("Intel is not supported in this build\n");
+    ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI

@@ -82,8 +82,8 @@ TEST(GemmOpTest, GemmBroadcast) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 12.0f, 13.0f,
                          -9.0f, -8.0f, -7.0f});
-  #if defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider}); //Intel: Temporarily disabled due to accuracy issues
+  #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); // OpenVINO : Temporarily disabled due to accuracy issues
   #else
     test.Run();
   #endif
@@ -107,8 +107,8 @@ TEST(GemmOpTest, GemmTrans) {
   test.AddOutput<float>("Y", {2, 3},
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
-  #if defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kIntelExecutionProvider}); //Intel: Temporarily disabled due to accuracy issues
+  #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); // OpenVINO: Temporarily disabled due to accuracy issues
   #else
     test.Run();
   #endif
@@ -130,8 +130,8 @@ TEST(GemmOpTest, GemmAlphaBeta) {
   test.AddOutput<float>("Y", {2, 3},
                         {7.0f, 7.0f, 7.0f,
                          -3.0f, -3.0f, -3.0f});
-  #if defined(INTEL_CONFIG_GPU_FP16) || defined(INTEL_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider}); //Intel: Temporarily disabled due to accuracy issues
+  #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider}); // OpenVINO: Temporarily disabled due to accuracy issues
   #else
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); //TensorRT: Seg fault in parser
   #endif

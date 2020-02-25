@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #include "onnxruntime_c_api.h"
@@ -10,7 +10,7 @@ extern "C" {
 /**
  * \param device_id cuda device id, starts from zero.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Intel,
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO,
     _In_ OrtSessionOptions* options, const char* device_id);
 
 #ifdef __cplusplus

@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -6,10 +6,10 @@
 #include <memory>
 #include <inference_engine.hpp>
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/intel/ibackend.h"
+#include "core/providers/openvino/ibackend.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 
 bool IsDebugEnabled();
 
@@ -32,5 +32,5 @@ class VADMBackend : public IBackend {
   std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
   size_t num_inf_reqs_;
 };
-}  // namespace intel_ep
+}  // namespace openvino_ep
 }  // namespace onnxruntime

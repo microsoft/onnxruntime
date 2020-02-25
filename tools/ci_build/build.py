@@ -125,8 +125,8 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--use_gemmlowp", action='store_true', help="Build with gemmlowp for quantized gemm.")
     parser.add_argument("--use_featurizers", action='store_true', help="Build with ML Featurizer support.")
     parser.add_argument("--use_ngraph", action='store_true', help="Build with nGraph.")
-    parser.add_argument("--use_intel", nargs="?", const="CPU_FP32",
-                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16"], help="Build with Intel EP for specific hardware.")
+    parser.add_argument("--use_openvino", nargs="?", const="CPU_FP32",
+                        choices=["CPU_FP32","GPU_FP32","GPU_FP16","VAD-M_FP16","MYRIAD_FP16"], help="Build with OpenVINO EP for specific hardware.")
     parser.add_argument("--use_dnnlibrary", action='store_true', help="Build with DNNLibrary.")
     parser.add_argument("--use_preinstalled_eigen", action='store_true', help="Use pre-installed eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed eigen.")
@@ -306,13 +306,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
                  "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
-                 "-Donnxruntime_USE_INTEL=" + ("ON" if args.use_intel else "OFF"),
-                 "-Donnxruntime_USE_INTEL_MYRIAD=" + ("ON" if args.use_intel == "MYRIAD_FP16" else "OFF"),
-                 "-Donnxruntime_USE_INTEL_GPU_FP32=" + ("ON" if args.use_intel == "GPU_FP32" else "OFF"),
-                 "-Donnxruntime_USE_INTEL_GPU_FP16=" + ("ON" if args.use_intel == "GPU_FP16" else "OFF"),
-                 "-Donnxruntime_USE_INTEL_CPU_FP32=" + ("ON" if args.use_intel == "CPU_FP32" else "OFF"),
-                 "-Donnxruntime_USE_INTEL_VAD_M=" + ("ON" if args.use_intel == "VAD-M_FP16" else "OFF"),
-                 "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_intel else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
+                 "-Donnxruntime_USE_OPENVINO_BINARY=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_SOURCE=OFF",
                  "-Donnxruntime_USE_NNAPI=" + ("ON" if args.use_dnnlibrary else "OFF"),
                  "-Donnxruntime_USE_OPENMP=" + ("ON" if args.use_openmp and not args.use_dnnlibrary and not args.use_mklml and not args.use_ngraph else "OFF"),
@@ -766,7 +766,7 @@ def nuphar_run_python_tests(build_dir, configs):
         run_subprocess([sys.executable, 'onnxruntime_test_python_nuphar.py'], cwd=cwd, dll_path=dll_path)
 
 
-def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl, use_tensorrt, use_nuphar, use_intel, nightly_build = False):
+def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use_dnnl, use_tensorrt, use_nuphar, use_openvino, nightly_build = False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
@@ -780,12 +780,12 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
             args.append('--use_cuda')
         elif use_ngraph:
             args.append('--use_ngraph')
+        elif use_openvino:
+            args.append('--use_openvino')
         elif use_dnnl:
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
-        elif use_intel:
-            args.append('--use_intel')
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
@@ -1003,8 +1003,8 @@ def main():
             if args.use_ngraph:
               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'ngraph', args.enable_multi_device_test, True, 1)
 
-            if args.use_intel:
-               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'intel', args.enable_multi_device_test, False, 1, 1)
+            if args.use_openvino:
+               run_onnx_tests(build_dir, configs, onnx_test_data_dir, 'openvino', args.enable_multi_device_test, False, 1, 1)
 
               # TODO: parallel executor test fails on MacOS
             if args.use_nuphar:
@@ -1031,7 +1031,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_dnnl, args.use_tensorrt, args.use_nuphar, args.use_intel, nightly_build)
+            build_python_wheel(source_dir, build_dir, configs, args.use_cuda, args.use_ngraph, args.use_dnnl, args.use_tensorrt, args.use_nuphar, args.use_openvino, nightly_build)
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)

@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #include <inference_engine.hpp>
@@ -12,29 +12,29 @@
 #include "backend_utils.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 
 BackendManager::BackendManager(const onnxruntime::Node* fused_node, const logging::Logger& logger) {
   device_id_ = "CPU";
   precision_ = InferenceEngine::Precision::FP32;
   std::string precision_str_ = "FP32";
 
-#ifdef INTEL_CONFIG_CPU_FP32
+#ifdef OPENVINO_CONFIG_CPU_FP32
 #endif
-#ifdef INTEL_CONFIG_GPU_FP32
+#ifdef OPENVINO_CONFIG_GPU_FP32
   device_id_ = "GPU";
 #endif
-#ifdef INTEL_CONFIG_GPU_FP16
+#ifdef OPENVINO_CONFIG_GPU_FP16
   device_id_ = "GPU";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str_ = "FP16";
 #endif
-#ifdef INTEL_CONFIG_MYRIAD
+#ifdef OPENVINO_CONFIG_MYRIAD
   device_id_ = "MYRIAD";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str_ = "FP16";
 #endif
-#ifdef INTEL_CONFIG_VAD_M
+#ifdef OPENVINO_CONFIG_VAD_M
   device_id_ = "HDDL";
   precision_ = InferenceEngine::Precision::FP16;
   precision_str_ = "FP16";
@@ -64,10 +64,10 @@ BackendManager::BackendManager(const onnxruntime::Node* fused_node, const loggin
   model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
 
   if (ModelHasSymbolicInputDims(fused_node)) {
-    LOGS_DEFAULT(INFO) << "[Intel-EP] Model has symbolic input dims. Defering backend initialization";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     has_dynamic_input_shape_ = true;
   } else {
-    LOGS_DEFAULT(INFO) << "[Intel-EP] Model has concreate input dims. Initializing backend";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concreate input dims. Initializing backend";
     has_dynamic_input_shape_ = false;
     concrete_backend_ = BackendFactory::MakeBackend(model_proto_, input_indexes_, device_id_, precision_);
   }
@@ -122,8 +122,8 @@ ONNX_NAMESPACE::ModelProto BackendManager::GetModelProtoFromFusedNode(const onnx
 
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
-  if (intel_ep::backend_utils::IsDebugEnabled()) {
-    SaveModel(model_proto, "intel_model.onnx");
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    SaveModel(model_proto, "openvino_model.onnx");
   }
 
   return model_proto;
@@ -184,7 +184,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
-      LOGS_DEFAULT(INFO) << "[Intel-EP] "
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                          << "Creating concrete backend for key: " << key;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes, input_indexes_, device_id_, precision_);
@@ -202,5 +202,5 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
 void BackendManager::ShutdownBackendManager() {
 }
 
-}  // namespace intel_ep
+}  // namespace openvino_ep
 }  // namespace onnxruntime

@@ -29,7 +29,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
       testv9.AddAttribute("axes", axes);
     testv9.AddInput<T>("data", input_dims, input_vals);
     testv9.AddOutput<T>("output", output_dims, output_vals);
-    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kIntelExecutionProvider});//IntelEP: Disabled temporarily
+    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); // OpenVINO EP: Disabled temporarily
   }
 
   // V10

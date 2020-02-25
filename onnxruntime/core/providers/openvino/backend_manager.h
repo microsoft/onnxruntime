@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -13,7 +13,7 @@
 #include "ibackend.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 
 // Singleton class that manages all the backends
 class BackendManager {
@@ -36,5 +36,5 @@ class BackendManager {
   std::vector<int> input_indexes_;
 };
 
-}  // namespace intel_ep
+}  // namespace openvino_ep
 }  // namespace onnxruntime

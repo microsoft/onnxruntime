@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -9,8 +9,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/allocatormgr.h"
 #include "backend_manager.h"
-// #include "intel_graph.h"
-//#include "intel_custom_op.h"
 #include <map>
 
 namespace ngraph {
@@ -21,30 +19,28 @@ class Backend;
 
 namespace onnxruntime {
 
-constexpr const char* INTEL = "Intel";
-
 // Information needed to construct OpenVINO execution providers.
-struct IntelExecutionProviderInfo {
+struct OpenVINOExecutionProviderInfo {
   const char* device{"CPU_FP32"};
 
-  explicit IntelExecutionProviderInfo(const char* dev) : device(dev) {
+  explicit OpenVINOExecutionProviderInfo(const char* dev) : device(dev) {
   }
-  IntelExecutionProviderInfo() {
+  OpenVINOExecutionProviderInfo() {
   }
 };
 
-struct IntelEPFunctionState {
+struct OpenVINOEPFunctionState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc destroy_func = nullptr;
   AllocatorHandle allocator_handle = nullptr;
-  std::shared_ptr<intel_ep::BackendManager> backend_manager;
+  std::shared_ptr<openvino_ep::BackendManager> backend_manager;
 };
 
 // Logical device representation.
-class IntelExecutionProvider : public IExecutionProvider {
+class OpenVINOExecutionProvider : public IExecutionProvider {
  public:
-  explicit IntelExecutionProvider(const IntelExecutionProviderInfo& info);
-  ~IntelExecutionProvider() = default;
+  explicit OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info);
+  ~OpenVINOExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -62,7 +58,7 @@ class IntelExecutionProvider : public IExecutionProvider {
   }
   //const onnxruntime::Node* fused_node_copy;
  private:
-  IntelExecutionProviderInfo info_;
+  OpenVINOExecutionProviderInfo info_;
 };
 
 }  // namespace onnxruntime

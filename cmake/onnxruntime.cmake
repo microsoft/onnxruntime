@@ -74,11 +74,11 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_CUDA}
     ${PROVIDERS_DNNL}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_DML}
-    ${PROVIDERS_INTEL}
     ${PROVIDERS_ACL}
     ${onnxruntime_winml}
     onnxruntime_optimizer

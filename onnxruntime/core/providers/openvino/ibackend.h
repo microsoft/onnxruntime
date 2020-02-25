@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -9,7 +9,7 @@
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 
 class IBackend{
   public:
@@ -21,5 +21,5 @@ class BackendFactory {
   static std::shared_ptr<IBackend> MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string type, InferenceEngine::Precision precision);
 };
 
-} // namespace intel_ep
+} // namespace openvino_ep
 } // namespace onnxruntime

@@ -97,8 +97,8 @@ void RunMatMulTest(int32_t opset_version = 7)
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
 
-    //Intel EP: Disabled temporarily matmul broadcasting not fully supported
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});// Disable TensorRT because of unsupported data type
+    // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});// Disable TensorRT because of unsupported data type
   }
 }
 

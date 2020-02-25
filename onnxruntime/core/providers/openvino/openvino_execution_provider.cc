@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/common/common.h"
@@ -8,7 +8,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "intel_execution_provider.h"
+#include "openvino_execution_provider.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
@@ -33,12 +33,12 @@
 
 namespace onnxruntime {
 
-constexpr const char* Intel = "Intel";
+constexpr const char* OpenVINO = "OpenVINO";
 
-IntelExecutionProvider::IntelExecutionProvider(const IntelExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kIntelExecutionProvider} {
+OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
   ORT_UNUSED_PARAMETER(info);
-  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(Intel, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
+  DeviceAllocatorRegistrationInfo device_info({OrtMemTypeDefault, [](int) { return std::make_unique<CPUAllocator>(std::make_unique<OrtMemoryInfo>(OpenVINO, OrtDeviceAllocator)); }, std::numeric_limits<size_t>::max()});
   InsertAllocator(CreateAllocator(device_info));
 }
 
@@ -91,7 +91,7 @@ bool IsDimensionSupported(const Node* node, std::string device) {
   return true;
 }
 
-//Ops which are not supported by Intel EP
+//Ops which are not supported by OpenVINO EP
 bool IsUnsupportedOp(std::string name, std::string device) {
   std::set<std::string> unsupported_ops_cpu = {
       "Where",
@@ -450,7 +450,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
         //  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64:
         return true;
       default:
-        if (intel_ep::backend_utils::IsDebugEnabled())
+        if (openvino_ep::backend_utils::IsDebugEnabled())
           std::cout << "Initializer Data Type is not supported" << std::endl;
         return false;
     }
@@ -475,7 +475,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
       if(supported_types_cpu.find(dtype) != supported_types_cpu.end())
         return true;
       else{
-        if (intel_ep::backend_utils::IsDebugEnabled())
+        if (openvino_ep::backend_utils::IsDebugEnabled())
           std::cout << "I/O data type is not supported" << std::endl;
         return false;
       }
@@ -485,7 +485,7 @@ static bool IsTypeSupported(const NodeArg* node_arg, bool is_initializer, const 
       if(supported_types_gpu.find(dtype) != supported_types_gpu.end())
         return true;
       else{
-        if (intel_ep::backend_utils::IsDebugEnabled())
+        if (openvino_ep::backend_utils::IsDebugEnabled())
           std::cout << "I/O data type is not supported" << std::endl;
         return false;
       }
@@ -500,17 +500,17 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
   const auto& node = graph_viewer.GetNode(node_idx);
   const auto& optype = node->OpType();
 
-  if (intel_ep::backend_utils::IsDebugEnabled())
+  if (openvino_ep::backend_utils::IsDebugEnabled())
     std::cout << "Node " << optype << std::endl;
   const auto& domain = node->Domain();
 
   std::string device_id = "CPU";
 
-#if defined(INTEL_CONFIG_GPU_FP32) || defined(INTEL_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   device_id = "GPU";
 #endif
 
-#if defined(INTEL_CONFIG_MYRIAD) || defined(INTEL_CONFIG_VAD_M)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   device_id = "VPU";
 #endif
 
@@ -525,7 +525,7 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
 
   //Check 0
   if (IsUnsupportedOp(optype, device_id)) {
-    if (intel_ep::backend_utils::IsDebugEnabled())
+    if (openvino_ep::backend_utils::IsDebugEnabled())
       std::cout << "Node is in the unsupported list" << std::endl;
     return false;
   }
@@ -573,14 +573,14 @@ static bool IsNodeSupported(const std::map<std::string, std::set<std::string>>& 
     }
   });
   if (has_unsupported_dimension) {
-    if (intel_ep::backend_utils::IsDebugEnabled())
+    if (openvino_ep::backend_utils::IsDebugEnabled())
       std::cout << "Dimension check failed" << std::endl;
     return false;
   }
 
   //Check 3a
   if (domain == kOnnxDomain && IsUnsupportedOpMode(node, graph_viewer, device_id)) {
-    if (intel_ep::backend_utils::IsDebugEnabled())
+    if (openvino_ep::backend_utils::IsDebugEnabled())
       std::cout << "Failed in unsupported op mode" << std::endl;
     return false;
   }
@@ -601,7 +601,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
   static size_t op_counter = 0;
 
   auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
-  meta_def->name = "Intel-EP-subgraph_" + std::to_string(++op_counter);
+  meta_def->name = "OpenVINO-EP-subgraph_" + std::to_string(++op_counter);
   meta_def->domain = kNGraphDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
@@ -771,7 +771,7 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                       const std::vector<const KernelRegistry*>& kernel_registries) const {
   ORT_UNUSED_PARAMETER(kernel_registries);
 
@@ -829,7 +829,7 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     for (const auto& this_cluster : ng_clusters) {
       std::vector<std::string> cluster_inputs, cluster_outputs;
 
-      //If subgraph only has Identity node, Intel EP doesn't support it.
+      //If subgraph only has Identity node, OpenVINO EP doesn't support it.
       if(this_cluster.size() == 1){
         const auto& node = graph_viewer.GetNode(this_cluster[0]);
         if(node->OpType() == "Identity")
@@ -846,16 +846,16 @@ IntelExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   return result;
 }
 
-common::Status IntelExecutionProvider::Compile(
+common::Status OpenVINOExecutionProvider::Compile(
     const std::vector<onnxruntime::Node*>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
-    std::shared_ptr<intel_ep::BackendManager> backend_manager = std::make_shared<intel_ep::BackendManager>(fused_node, *GetLogger());
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger());
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {
-          IntelEPFunctionState* p = new IntelEPFunctionState();
+          OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
           p->allocate_func = context->allocate_func;
           p->destroy_func = context->release_func;
           p->allocator_handle = context->allocator_handle;
@@ -864,7 +864,7 @@ common::Status IntelExecutionProvider::Compile(
           return 0;
         };
     compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      auto function_state = static_cast<IntelEPFunctionState*>(state);
+      auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
         function_state->backend_manager->Compute(*api, context);
       } catch (const char* msg) {
@@ -876,7 +876,7 @@ common::Status IntelExecutionProvider::Compile(
     compute_info.release_state_func =
         [](FunctionState state) {
           if (state) {
-            IntelEPFunctionState* function_state = static_cast<IntelEPFunctionState*>(state);
+            OpenVINOEPFunctionState* function_state = static_cast<OpenVINOEPFunctionState*>(state);
             delete function_state;
           }
         };

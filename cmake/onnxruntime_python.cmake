@@ -77,7 +77,7 @@ set(onnxruntime_pybind11_state_libs
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
-    ${PROVIDERS_INTEL}
+    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_DML}
@@ -231,7 +231,7 @@ if (onnxruntime_USE_NGRAPH)
 endif()
 
 #TODO: This is temporary till we build OV from binary
-if (onnxruntime_USE_INTEL)
+if (onnxruntime_USE_OPENVINO)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

@@ -320,8 +320,8 @@ TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  //Intel EP: Disabled temporarily
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kIntelExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
+  // OpenVINO EP: Disabled temporarily
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
 
 }
 

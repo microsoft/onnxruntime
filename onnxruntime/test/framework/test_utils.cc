@@ -28,11 +28,11 @@ IExecutionProvider* TestTensorrtExecutionProvider() {
 }
 #endif
 
-#ifdef USE_INTEL
-IExecutionProvider* TestIntelExecutionProvider() {
-  static IntelExecutionProviderInfo info;
-  static IntelExecutionProvider intel_provider(info);
-  return &intel_provider;
+#ifdef USE_OPENVINO
+IExecutionProvider* TestOpenVINOExecutionProvider() {
+  static OpenVINOExecutionProviderInfo info;
+  static OpenVINOExecutionProvider openvino_provider(info);
+  return &openvino_provider;
 }
 #endif
 

@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #include <map>
@@ -17,12 +17,11 @@
 #include "vadm_backend.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 
 using namespace backend_utils;
 
 #define NGRAPH_EP_LRU_CACHE_DEFAULT_SIZE 500
-// const std::string VADMBackend::log_tag = "[Intel-EP] ";
 
 VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto, std::vector<int> input_indexes, std::string device_id, InferenceEngine::Precision precision)
     : input_indexes_{input_indexes}{
@@ -173,5 +172,5 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
-}  // namespace intel_ep
+}  // namespace openvino_ep
 }  // namespace onnxruntime

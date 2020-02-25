@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright(C) 2020 Intel Corporation
 // Licensed under the MIT License
 
 #include <map>
@@ -17,7 +17,7 @@
 #include "basic_backend.h"
 
 namespace onnxruntime {
-namespace intel_ep {
+namespace openvino_ep {
 
 using namespace backend_utils;
 
@@ -111,5 +111,5 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
 }
 
-}  // namespace intel_ep
+}  // namespace openvino_ep
 }  // namespace onnxruntime

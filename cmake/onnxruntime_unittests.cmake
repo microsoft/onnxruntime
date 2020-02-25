@@ -7,7 +7,7 @@ if (onnxruntime_USE_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
-if (onnxruntime_USE_INTEL)
+if (onnxruntime_USE_OPENVINO)
     list(APPEND TEST_INC_DIR ${OPENVINO_INCLUDE_DIR})
 endif()
 
@@ -232,8 +232,8 @@ if(onnxruntime_USE_NGRAPH)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_ngraph)
 endif()
 
-if(onnxruntime_USE_INTEL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_intel)
+if(onnxruntime_USE_OPENVINO)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
 endif()
 
 if(onnxruntime_USE_NNAPI)
@@ -280,8 +280,8 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
+    ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_INTEL}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -351,8 +351,8 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
   if (onnxruntime_USE_TVM)
     list(APPEND all_tests ${onnxruntime_test_tvm_src})
   endif()
-  if (onnxruntime_USE_INTEL)
-    list(APPEND all_tests ${onnxruntime_test_intel_src})
+  if (onnxruntime_USE_OPENVINO)
+    list(APPEND all_tests ${onnxruntime_test_openvino_src})
   endif()
   # we can only have one 'main', so remove them all and add back the providers test_main as it sets
   # up everything we need for all tests

@@ -41,9 +41,9 @@ elif '--use_dnnl' in sys.argv:
 elif '--use_nuphar' in sys.argv:
     package_name = 'onnxruntime-nuphar'
     sys.argv.remove('--use_nuphar')
-elif '--use_intel' in sys.argv:
-    package_name = 'onnxruntime-intel'
-    sys.argv.remove('--use_intel')
+elif '--use_openvino' in sys.argv:
+    package_name = 'onnxruntime-openvino'
+    sys.argv.remove('--use_openvino')
 
 if '--nightly_build' in sys.argv:
     package_name = 'ort-nightly'
@@ -123,7 +123,7 @@ if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.1', 'libmklml_intel.so', 'libiomp5.so', 'mimalloc.so']
   # nGraph Libs
   libs.extend(['libngraph.so', 'libcodegen.so', 'libcpu_backend.so', 'libmkldnn.so', 'libtbb_debug.so', 'libtbb_debug.so.2', 'libtbb.so', 'libtbb.so.2'])
-  # Intel Libs (Temporary. Can remove when we are building from binary)
+  # OpenVINO Libs (Temporary. Can remove when we are building from binary)
   libs.extend(['libinference_engine.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
