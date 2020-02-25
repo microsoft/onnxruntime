@@ -116,7 +116,7 @@ class _Aggregator {
       val += has_scores[jt] ? scores[jt] : 0;
       scores[jt] = val;
     }
-    write_scores(scores, post_transform_, Z, add_second_class);
+    this->write_scores(scores, post_transform_, Z, add_second_class);
   }
 
   inline void ComputeSoftmax(std::vector<T>& values) const {
@@ -156,7 +156,7 @@ class _Aggregator {
       value /= this_sum;
   }
 
-  void write_scores(std::vector<T>& scores, ::onnxruntime::ml::POST_EVAL_TRANSFORM post_transform,
+  void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform,
                     T* Z, int add_second_class) const {
     if (scores.size() >= 2) {
       switch (post_transform) {
@@ -279,7 +279,7 @@ class _AggregatorSum : public _Aggregator<T> {
       for (; it != scores.end(); ++it, ++it2)
         *it += *it2;
     }
-    write_scores(scores, this->post_transform_, Z, add_second_class);
+    this->write_scores(scores, this->post_transform_, Z, add_second_class);
   }
 };
 
@@ -316,7 +316,7 @@ class _AggregatorAverage : public _AggregatorSum<T> {
       for (; it != scores.end(); ++it)
         *it /= this->n_trees_;
     }
-    write_scores(scores, this->post_transform_, Z, add_second_class);
+    this->write_scores(scores, this->post_transform_, Z, add_second_class);
   }
 };
 
@@ -538,7 +538,7 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
     }
 
     *Y = _set_score_binary(write_additional_scores, &(scores[0]), has_scores);
-    write_scores(scores, this->post_transform_, Z, write_additional_scores);
+    this->write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 
   // N outputs
@@ -592,7 +592,7 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
       *Y = _set_score_binary(write_additional_scores, &(scores[0]), &(has_scores[0]));
     }
 
-    write_scores(scores, this->post_transform_, Z, write_additional_scores);
+    this->write_scores(scores, this->post_transform_, Z, write_additional_scores);
   }
 };
 
