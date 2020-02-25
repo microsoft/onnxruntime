@@ -46,7 +46,7 @@ class Model {
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
-  explicit Model(std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto,
+  explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger);
 
@@ -133,14 +133,14 @@ class Model {
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
-  static common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto,
+  static common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger);
 
  private:
   // Model data.
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
+  ONNX_NAMESPACE::ModelProto model_proto_;
 
   // This is a duplication of <model_proto_.metadata_props()>.
   // It gives better accessibility.

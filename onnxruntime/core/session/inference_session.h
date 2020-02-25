@@ -364,7 +364,7 @@ class InferenceSession {
     * @param protobuf object corresponding to the model file. This is primarily to support large models.
     * @return OK if success.
     */
-  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto);
+  common::Status Load(ONNX_NAMESPACE::ModelProto&& p_model_proto);
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model);
 
@@ -441,7 +441,7 @@ class InferenceSession {
 
   SessionOptions session_options_;
 
-  std::unique_ptr<onnxruntime::GraphTransformerManager> graph_transformation_mgr_;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
   // will be run regardless of the level set.
@@ -510,20 +510,20 @@ class InferenceSession {
   InterOpDomains interop_domains_;
 #endif
   // used to support platform telemetry
-  static std::atomic<uint32_t> global_session_id_;                  // a monotonically increasing session id
-  uint32_t session_id_;                                             // the current session's id
+  static std::atomic<uint32_t> global_session_id_;  // a monotonically increasing session id
+  uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
     Telemetry() : time_sent_last_(), time_sent_last_evalutation_start_() {}
-    uint32_t total_runs_since_last_ = 0;                                           // the total number of Run() calls since the last report
-    long long total_run_duration_since_last_ = 0;                                  // the total duration (us) of Run() calls since the last report
-    std::string event_name_;                                                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
 
-    TimePoint time_sent_last_;                                                     // the TimePoint of the last report
+    TimePoint time_sent_last_;  // the TimePoint of the last report
     TimePoint time_sent_last_evalutation_start_;
-                                                                                   // Event Rate per provider < 20 peak events per second
-    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;    // duration in (us).  send a report every 10 mins
-    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50; // duration in (us). send a EvaluationStop Event every 50 ms;
+    // Event Rate per provider < 20 peak events per second
+    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;     // duration in (us).  send a report every 10 mins
+    constexpr static long long kDurationBetweenSendingEvaluationStart = 1000 * 50;  // duration in (us). send a EvaluationStop Event every 50 ms;
 
     bool isEvaluationStart = false;
   } telemetry_;
@@ -534,6 +534,8 @@ class InferenceSession {
 #endif
 
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
+  ONNX_NAMESPACE::ModelProto model_proto_;
+
+  bool model_proto_parsed_ = false;
 };
 }  // namespace onnxruntime
