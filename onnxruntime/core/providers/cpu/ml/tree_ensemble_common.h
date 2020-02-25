@@ -483,7 +483,7 @@ void RuntimeTreeEnsembleCommonP<T>::compute_agg(const Tensor* X, Tensor* Z, Tens
     while (root->is_not_leave) {                                     \
       val = x_data[root->feature_id];                                \
       root = (val CMP root->value ||                                 \
-              (root->is_missing_track_true && _isnan_(val)))         \
+              (root->is_missing_track_true && std::isnan(val)))         \
                  ? root->truenode                                    \
                  : root->falsenode;                                  \
     }                                                                \
@@ -506,7 +506,7 @@ RuntimeTreeEnsembleCommonP<T>::ProcessTreeNodeLeave(
           while (root->is_not_leave) {
             val = x_data[root->feature_id];
             root = (val <= root->value ||
-                    (root->is_missing_track_true && _isnan_(val)))
+                    (root->is_missing_track_true && std::isnan(val)))
                        ? root->truenode
                        : root->falsenode;
           }
@@ -542,32 +542,32 @@ RuntimeTreeEnsembleCommonP<T>::ProcessTreeNodeLeave(
       threshold = root->value;
       switch (root->mode) {
         case NODE_MODE::BRANCH_LEQ:
-          root = val <= threshold || (root->is_missing_track_true && _isnan_(val))
+          root = val <= threshold || (root->is_missing_track_true && std::isnan(val))
                      ? root->truenode
                      : root->falsenode;
           break;
         case NODE_MODE::BRANCH_LT:
-          root = val < threshold || (root->is_missing_track_true && _isnan_(val))
+          root = val < threshold || (root->is_missing_track_true && std::isnan(val))
                      ? root->truenode
                      : root->falsenode;
           break;
         case NODE_MODE::BRANCH_GTE:
-          root = val >= threshold || (root->is_missing_track_true && _isnan_(val))
+          root = val >= threshold || (root->is_missing_track_true && std::isnan(val))
                      ? root->truenode
                      : root->falsenode;
           break;
         case NODE_MODE::BRANCH_GT:
-          root = val > threshold || (root->is_missing_track_true && _isnan_(val))
+          root = val > threshold || (root->is_missing_track_true && std::isnan(val))
                      ? root->truenode
                      : root->falsenode;
           break;
         case NODE_MODE::BRANCH_EQ:
-          root = val == threshold || (root->is_missing_track_true && _isnan_(val))
+          root = val == threshold || (root->is_missing_track_true && std::isnan(val))
                      ? root->truenode
                      : root->falsenode;
           break;
         case NODE_MODE::BRANCH_NEQ:
-          root = val != threshold || (root->is_missing_track_true && _isnan_(val))
+          root = val != threshold || (root->is_missing_track_true && std::isnan(val))
                      ? root->truenode
                      : root->falsenode;
           break;

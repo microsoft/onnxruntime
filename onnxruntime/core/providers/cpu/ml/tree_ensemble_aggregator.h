@@ -10,18 +10,6 @@
 namespace onnxruntime {
 namespace ml {
 
-#if defined(_WIN32) || defined(WIN32)
-
-inline bool _isnan_(float x) { return _isnanf(x); }
-inline bool _isnan_(double x) { return _isnan(x); }
-
-#else
-
-inline bool _isnan_(float x) { return ::isnanf(x); }
-inline bool _isnan_(double x) { return ::isnan(x); }
-
-#endif
-
 struct TreeNodeElementId {
   int tree_id;
   int node_id;
