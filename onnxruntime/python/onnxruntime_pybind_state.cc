@@ -179,7 +179,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj, const DataTransf
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
 
   if (numpy_type != NPY_OBJECT) {
-    //if it is not cpu tenosr, need to copy to host
+    //if it is not cpu tensor, need to copy to host
     if (rtensor.Location().device.Type() != OrtDevice::CPU) {
       if (!data_transfer_manager)
         throw std::runtime_error("GetPyObjFromTensor: data transfer manager is needed when convert non-CPU tensor to numpy array");

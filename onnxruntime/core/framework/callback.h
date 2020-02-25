@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 struct OrtCallback {
@@ -63,9 +64,7 @@ class ScopedOrtCallbackInvoker {
   }
 
  private:
-  ScopedOrtCallbackInvoker(const ScopedOrtCallbackInvoker&) = delete;
-  ScopedOrtCallbackInvoker& operator=(const ScopedOrtCallbackInvoker&) = delete;
-
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ScopedOrtCallbackInvoker);
   OrtCallback callback_;
 };
 }  // namespace onnxruntime

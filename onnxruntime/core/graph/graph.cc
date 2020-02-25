@@ -1073,7 +1073,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
     auto& input_args = node.MutableInputDefs();
     auto& output_args = node.MutableOutputDefs();
 
-    if (output_args.size() > 0) {
+    if (!output_args.empty()) {
       for (const auto* output_arg : output_args) {
         if (output_arg->Exists()) {
           node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});

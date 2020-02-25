@@ -13,11 +13,12 @@
 #include "core/framework/ml_value.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(const bool& terminate_flag = false, const bool& only_execute_path_to_fetches = false)
+  SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
       : terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,

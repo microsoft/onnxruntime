@@ -139,6 +139,7 @@ Status SessionState::GetInitializedTensors(
     const std::unordered_set<std::string>& interested_weights,
     bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
   NameMLValMap result;
+  result.reserve(interested_weights.size());
   for (const auto& weight_name : interested_weights) {
     int idx;
     const auto status = GetOrtValueNameIdxMap().GetIdx(weight_name, idx);
@@ -227,7 +228,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) + static_cast<int>(node->ImplicitInputDefs().size());
     //allocate output
     for (int i = 0; i < static_cast<int>(node->OutputDefs().size()); ++i) {
-      int ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
       if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
         continue;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;

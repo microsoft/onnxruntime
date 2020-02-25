@@ -44,6 +44,69 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 
 namespace onnxruntime {
 
+static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
+                                      size_t& total_output_sizes, const std::string& node_name) {
+  // Calculate total output sizes for this operation.
+  total_output_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
+    const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
+    if (p_output->IsTensor()) {
+      const auto& tensor = p_output->Get<Tensor>();
+      size_t tensor_size = tensor.SizeInBytes();
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = tensor.Shape();
+      std::cout << node_name << " output[" << i << "]"
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
+#endif
+      total_output_sizes += tensor_size;
+    }
+  }
+
+}
+
+static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
+                                     const onnxruntime::OpKernel* p_op_kernel,
+                                     size_t& input_activation_sizes, size_t& input_parameter_sizes,
+                                     const std::string& node_name) {
+  // Calculate total input sizes for this operation.
+  input_activation_sizes = 0;
+  input_parameter_sizes = 0;
+  ORT_UNUSED_PARAMETER(node_name);
+  const int input_count = op_kernel_context->InputCount();
+  for (auto i = 0; i < input_count; i++) {
+    const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
+    if (p_input->IsTensor()) {
+      const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
+      const Tensor* p_tensor = nullptr;
+      bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
+      if (!is_param) {
+        p_tensor = &(p_input->Get<Tensor>());
+      }
+      size_t tensor_size = p_tensor->SizeInBytes();
+
+#if defined(TRACE_EXECUTION)
+      const TensorShape& tensor_shape = p_tensor->Shape();
+      size_t element_size = p_tensor->DataType()->Size();
+      std::cout << node_name << " input[" << i << "]"
+                << " is_param=" << is_param
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << element_size
+                << "\n";
+#endif
+      if (is_param) {
+        input_parameter_sizes += tensor_size;
+      } else {
+        input_activation_sizes += tensor_size;
+      }
+    }
+  }
+}
+
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan& seq_exec_plan,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
@@ -192,36 +255,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (is_profiler_enabled) {
       // Calculate total input sizes for this operation.
-      input_activation_sizes = 0;
-      input_parameter_sizes = 0;
-      const int input_count = op_kernel_context.InputCount();
-      for (auto i = 0; i < input_count; i++) {
-        const OrtValue* p_input = op_kernel_context.GetInputMLValue(i);
-        if (p_input->IsTensor()) {
-          const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
-          const Tensor* p_tensor = nullptr;
-          bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
-          if (!is_param) {
-            p_tensor = &(p_input->Get<Tensor>());
-          }
-          size_t tensor_size = p_tensor->SizeInBytes();
-#if defined(TRACE_EXECUTION)
-          TensorShape tensor_shape = p_tensor->Shape();
-          size_t element_size = p_tensor->DataType()->Size();
-          std::cout << node_name << " input[" << i << "]"
-                    << " is_param=" << is_param
-                    << " size=" << tensor_size
-                    << " shape=" << tensor_shape.ToString()
-                    << " element_size=" << element_size
-                    << "\n";
-#endif
-          if (is_param) {
-            input_parameter_sizes += tensor_size;
-          } else {
-            input_activation_sizes += tensor_size;
-          }
-        }
-      }
+      CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
+                               input_activation_sizes,input_parameter_sizes, node_name);
     }
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -251,23 +286,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.
-      total_output_sizes = 0;
-      for (auto i = 0; i < op_kernel_context.OutputCount(); i++) {
-        const OrtValue* p_output = op_kernel_context.GetOutputMLValue(i);
-        if (p_output->IsTensor()) {
-          const auto& tensor = p_output->Get<Tensor>();
-          size_t tensor_size = tensor.SizeInBytes();
-#if defined(TRACE_EXECUTION)
-          const TensorShape& tensor_shape = tensor.Shape();
-          std::cout << node_name << " output[" << i << "]"
-                    << " size=" << tensor_size
-                    << " shape=" << tensor_shape.ToString()
-                    << " element_size=" << tensor.DataType()->Size()
-                    << "\n";
-#endif
-          total_output_sizes += tensor_size;
-        }
-      }
+      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name);
 
 #if defined(TRACE_EXECUTION)
       // Trace execution step.

@@ -188,7 +188,7 @@ class PlannerImpl {
   }
 
   // Reuse/Alias/Share between two OrtValue indexes
-  void Reuse(OrtValueIndex reused, OrtValueIndex reused_for, const AllocKind alloc_kind) {
+  void Reuse(OrtValueIndex reused, OrtValueIndex reused_for, AllocKind alloc_kind) {
     ORT_ENFORCE(reused != reused_for);
     // find original buffer underlying ml-value we want to reuse:
     OrtValueIndex original = Buffer(reused);
@@ -560,8 +560,7 @@ class PlannerImpl {
       // At the i-th iteration, we build the allocation plan for the i-th
       // NodeArg in pnode's output list. Allocation plan remains untouched for
       // optional-missing outputs (aka values with empty names).
-      const size_t num_outputs = output_defs.size();
-      for (size_t output_arg_def_index = 0; output_arg_def_index < num_outputs; ++output_arg_def_index) {
+      for (size_t output_arg_def_index = 0, end = output_defs.size(); output_arg_def_index < end; ++output_arg_def_index) {
         const auto& node_output = output_defs[output_arg_def_index];
         if (!node_output->Exists()) continue;
         // OrtValue index of the considered output NodeArg.
