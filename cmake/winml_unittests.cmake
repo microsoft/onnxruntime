@@ -115,7 +115,7 @@ target_compile_definitions(winml_test_scenario PRIVATE BUILD_GOOGLE_TEST)
 
 target_link_libraries(winml_test_scenario PRIVATE windowsapp.lib)
 target_link_options(winml_test_scenario PRIVATE /NODEFAULTLIB:kernel32.lib /NODEFAULTLIB:user32.lib /NODEFAULTLIB:gdi32.lib /NODEFAULTLIB:winspool.lib /NODEFAULTLIB:shell32.lib /NODEFAULTLIB:ole32.lib /NODEFAULTLIB:oleaut32.lib /NODEFAULTLIB:uuid.lib /NODEFAULTLIB:comdlg32.lib /NODEFAULTLIB:advapi32.lib)
-target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll  /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
+target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:d2d1.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-file-l1-2-2.dll /DELAYLOAD:api-ms-win-core-synch-l1-2-1.dll)
 if (onnxruntime_USE_DML)
   target_link_options(winml_test_scenario PRIVATE /DELAYLOAD:directml.dll)
 endif()
