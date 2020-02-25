@@ -50,6 +50,7 @@ jobs:
   pool: 'Win-CPU-2019'
   dependsOn:
   - Windows_CI_Dev
+  - Windows_CI_Dev_x86
   condition: succeeded()
   steps:
 
