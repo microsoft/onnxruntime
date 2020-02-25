@@ -7,6 +7,8 @@ include(winml_cppwinrt.cmake)
 
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
+get_sdk_include_folder(${sdk_folder} ${sdk_version} sdk_include_folder)
+set(dxcore_header "${sdk_include_folder}/um/dxcore.h")
 set(target_folder ONNXRuntime/winml)
 set(winml_adapter_dir ${REPO_ROOT}/winml/adapter)
 set(winml_api_root ${REPO_ROOT}/winml/api)
@@ -545,8 +547,11 @@ if (onnxruntime_USE_DML)
   set(delayload_dml "/DELAYLOAD:directml.dll")
 endif(onnxruntime_USE_DML)
 
+target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll ${delayload_dml})
 
-target_link_options(winml_dll PRIVATE /DEF:${WINML_DIR}/windows.ai.machinelearning.def ${os_component_link_flags} /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll /DELAYLOAD:api-ms-win-core-threadpool-legacy-l1-1-0.dll /DELAYLOAD:api-ms-win-core-processtopology-obsolete-l1-1-0.dll /DELAYLOAD:api-ms-win-core-kernel32-legacy-l1-1-0.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:directml.dll /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll ${delayload_dml})
+if (EXISTS ${dxcore_header})
+  target_link_options(winml_dll PRIVATE /DELAYLOAD:ext-ms-win-dxcore-l1-*.dll)
+endif()
 
 set_target_properties(winml_dll
   PROPERTIES
