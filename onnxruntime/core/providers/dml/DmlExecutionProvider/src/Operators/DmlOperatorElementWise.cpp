@@ -41,7 +41,42 @@ public:
         opDesc.InputTensor = inputDescs.data();
         opDesc.OutputTensor = outputDescs.data();
 
-        SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
+        SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc }, kernelInfo);
+    }
+};
+
+template <>
+class DmlOperatorElementwiseUnary<DML_ELEMENT_WISE_ABS_OPERATOR_DESC> : public DmlOperator
+{
+public:
+    DmlOperatorElementwiseUnary(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        assert(inputDescs[0].Type == DML_TENSOR_TYPE_BUFFER);
+        if (IsSigned(reinterpret_cast<const DML_BUFFER_TENSOR_DESC*>(inputDescs[0].Desc)->DataType))
+        {
+            DML_ELEMENT_WISE_ABS_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = inputDescs.data();
+            opDesc.OutputTensor = outputDescs.data();
+
+            SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<DML_ELEMENT_WISE_ABS_OPERATOR_DESC>::Type, &opDesc }, kernelInfo);
+        }
+        else
+        {
+            // Dml doesn't support UINT datatypes redirect to Identity because abs doesn't do anything to UINT
+            DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = inputDescs.data();
+            opDesc.OutputTensor = outputDescs.data();
+
+            SetDmlOperatorDesc({ ApiTraits::OperatorDescTraits<DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC>::Type, &opDesc }, kernelInfo);
+        }
     }
 };
 
