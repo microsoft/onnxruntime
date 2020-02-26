@@ -446,8 +446,8 @@ __global__ void LambMultiTensorReductionImpl(ChunkGroup<4> chunk_group) {
   constexpr int warp_size = 32;
 #pragma unroll
   for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-    //w_sum += __shfl_down_sync(0xFFFFFFFF, w_sum, stride);
-    //d_sum += __shfl_down_sync(0xFFFFFFFF, d_sum, stride);
+    w_sum += __shfl_down(0xFFFFFFFF, w_sum, stride);
+    d_sum += __shfl_down(0xFFFFFFFF, d_sum, stride);
   }
 
   const int warp_count_in_block = blockDim.x / warp_size;

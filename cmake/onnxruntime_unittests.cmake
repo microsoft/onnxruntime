@@ -188,6 +188,12 @@ if (onnxruntime_ENABLE_TRAINING)
       )
     list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
   endif()
+  if (onnxruntime_USE_HIP)
+    file(GLOB_RECURSE orttraining_test_trainingops_hip_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/hip/*"
+      )
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_hip_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_DNNL)

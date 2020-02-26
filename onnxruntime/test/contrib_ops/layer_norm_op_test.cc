@@ -89,9 +89,11 @@ class LayerNormOpTester : public OpTester {
 #endif
     std::vector<MLValue> cpu_fetches;
     std::vector<MLValue> cuda_fetches;
+    std::vector<MLValue> hip_fetches;
     std::vector<MLValue> subgraph_fetches;
     ComputeWithCPU(cpu_fetches);
     ComputeWithCUDA(cuda_fetches);
+    ComputeWithHIP(hip_fetches);
     ComputeOriSubgraphWithCPU(subgraph_fetches);
 
     // Compare CPU with original subgraph on the output(0) - Y
@@ -113,11 +115,23 @@ class LayerNormOpTester : public OpTester {
         }
       }
     }
+
+    // Compare GPU with original subgraph on the output(0) - Y
+    if (DefaultHipExecutionProvider()) {
+      ASSERT_TRUE(hip_fetches.size() >= subgraph_fetches.size());
+      for (size_t i = 0; i < subgraph_fetches.size(); i++) {
+        if (hip_fetches[i].IsTensor() && subgraph_fetches[i].IsTensor()) {
+          VLOGS_DEFAULT(1) << "Checking tensor " << i;
+          CheckTensor(subgraph_fetches[i].Get<Tensor>(), hip_fetches[i].Get<Tensor>(), 1e-3, 1e-3);
+        }
+      }
+    }
   }
 
  private:
   void ComputeWithCPU(std::vector<MLValue>& cpu_fetches);
   void ComputeWithCUDA(std::vector<MLValue>& cuda_fetches);
+  void ComputeWithHIP(std::vector<MLValue>& hip_fetches);
   void ComputeOriSubgraphWithCPU(std::vector<MLValue>& subgraph_fetches);
 
  private:
@@ -203,6 +217,43 @@ void LayerNormOpTester::ComputeWithCUDA(std::vector<MLValue>& cuda_fetches) {
   EXPECT_TRUE((status = cuda_session_object.Load(str2)).IsOK()) << status;
   EXPECT_TRUE((status = cuda_session_object.Initialize()).IsOK()) << status;
   EXPECT_TRUE((status = cuda_session_object.Run(run_options, feeds, output_names, &cuda_fetches)).IsOK()) << status;
+}
+
+void LayerNormOpTester::ComputeWithHIP(std::vector<MLValue>& hip_fetches) {
+  if (DefaultHipExecutionProvider() == nullptr) {
+    return;
+  }
+
+  auto p_model = BuildGraph();
+  auto& graph = p_model->MainGraph();
+
+  Status status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status;
+
+  // Hookup the inputs and outputs
+  std::unordered_map<std::string, MLValue> feeds;
+  std::vector<std::string> output_names;
+  FillFeedsAndOutputNames(feeds, output_names);
+
+  SessionOptions so;
+  so.session_logid = op_;
+  so.session_log_verbosity_level = 1;
+
+  RunOptions run_options;
+  run_options.run_tag = op_;
+  run_options.run_log_verbosity_level = 1;
+
+  auto hip_execution_provider = DefaultHipExecutionProvider();
+  InferenceSession hip_session_object{so};
+  EXPECT_TRUE(hip_session_object.RegisterExecutionProvider(std::move(hip_execution_provider)).IsOK());
+
+  std::string s;
+  p_model->ToProto().SerializeToString(&s);
+  std::istringstream str2(s);
+
+  EXPECT_TRUE((status = hip_session_object.Load(str2)).IsOK()) << status;
+  EXPECT_TRUE((status = hip_session_object.Initialize()).IsOK()) << status;
+  EXPECT_TRUE((status = hip_session_object.Run(run_options, feeds, output_names, &hip_fetches)).IsOK()) << status;
 }
 
 void LayerNormOpTester::ComputeOriSubgraphWithCPU(std::vector<MLValue>& subgraph_fetches) {

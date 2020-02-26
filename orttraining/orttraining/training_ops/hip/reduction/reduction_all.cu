@@ -51,7 +51,7 @@ __global__ void _MultiTensorReduceImpl(ChunkGroup<1> chunk_group, TOut* output) 
   constexpr int warp_size = 32;
 #pragma unroll
   for (int stride = warp_size / 2; stride > 0; stride /= 2) {
-    //w_sum += __shfl_down_sync(0xFFFFFFFF, w_sum, stride);
+    w_sum += __shfl_down(0xFFFFFFFF, w_sum, stride);
   }
 
   const int warp_count_in_block = blockDim.x / warp_size;
