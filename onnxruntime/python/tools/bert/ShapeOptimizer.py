@@ -254,10 +254,6 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
                  input_ids:str, segment_ids:str, input_mask:str,
                  enable_shape_opt:bool, enable_reshape_opt:bool,
                  output_names:List[str] = None, batch_size=1, sequence_length=128, verbose=False):
-        if len(self.graph().input) != 3:
-            logger.info('Skip shape optimization since graph input number is not 3')
-            return
-
         # Skip if shape optimization has been done before.
         for tensor in self.model.graph.initializer:
             if tensor.name.startswith(CONSTANT_SHAPE_NAME_PREFIX):
@@ -275,6 +271,10 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         remaining_outputs = [output.name for output in self.model.graph.output]
 
         if enable_shape_opt or enable_reshape_opt:
+            if len(self.get_graph_inputs_excluding_initializers()) != 3:
+                logger.info('Skip shape optimization since graph input number is not 3')
+                return
+
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_file_name = 'temp_{}.onnx'.format(datetime.now().strftime("%m_%d-%H_%M_%S"))
                 dir = "." if verbose else temp_dir

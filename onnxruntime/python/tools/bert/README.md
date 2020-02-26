@@ -85,11 +85,11 @@ If your model is not in the list, the optimized model might not work. You are we
 
 ## Model Verification
 
-When a bert model it optimized, some optimization uses approximiation in calculation so the output might be slightly different. It is recommended to use your evaluation set to measure the precision and recall. We expect the accuracy shall be on par after optimization.
+When a BERT model is optimized, some optimization uses approximation in calculation so the output might be slightly different. It is recommended to use your evaluation set to measure the precision and recall. We expect the accuracy shall be on par after optimization.
 
 If your BERT model has three inputs, a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
 
-Example of verifying models optimized for cpu and gpu:
+Example of verifying models optimized for CPU and GPU:
 
 ```console
 pip install onnxruntime
@@ -106,7 +106,7 @@ To use onnxruntime-gpu 1.1.*, it is required to install CUDA and cuDNN and add t
 
 The script for model verification will create a sub-directory like batch_1_seq_128 on the directory of optimized model. You can copy the original or optimized model to the sub-directory, and use onnxruntime_perf_test.exe to test performance of C API.
 
-If model inference uses python API, bert_perf_test.py can be used to check the performance of different settings. Below are examples:
+bert_perf_test.py can be used to check the model inference performance of python API. Below are examples:
 
 ```console
 pip install onnxruntime
@@ -117,7 +117,4 @@ pip install onnxruntime-gpu
 python bert_perf_test.py --model optimized_model_gpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --use_gpu --inclusive
 ```
 
-
-
-
-
+After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
