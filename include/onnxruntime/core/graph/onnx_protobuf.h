@@ -26,9 +26,6 @@
 #pragma warning(disable : 4800) /*'type' : forcing value to bool 'true' or 'false' (performance warning)*/
 #pragma warning(disable : 4996) /*The compiler encountered a deprecated declaration.*/
 #endif
-#ifdef OPTIONAL
-#undef OPTIONAL
-#endif
 #include "onnx/defs/schema.h"
 #include "onnx/onnx_pb.h"
 #ifdef __GNUC__
