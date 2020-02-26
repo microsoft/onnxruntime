@@ -51,7 +51,7 @@
 #endif
 
 #define WINML_SKIP_TEST(message) \
-  GTEST_SKIP() << message;
+  WINML_SUPRESS_UNREACHABLE_BELOW(GTEST_SKIP() << message)
 
 #define WINML_EXPECT_NO_THROW(statement) EXPECT_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) EXPECT_TRUE(statement)
@@ -69,7 +69,7 @@
 
 #ifndef USE_DML
 #define GPUTEST \
-  WINML_SUPRESS_UNREACHABLE_BELOW(WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)"))
+  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
 #define GPUTEST_ENABLED alwaysFalse()
 #else
 #define GPUTEST                                                                         \

@@ -29,11 +29,11 @@ using namespace WEX::TestExecution;
   }
 
 #define WINML_SKIP_TEST(message)                                                                 \
-  do {                                                                                           \
+  WINML_SUPRESS_UNREACHABLE_BELOW(                                                               \
     Log::Result(TestResults::Skipped,                                                            \
                 std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str()); \
     return;                                                                                      \
-  } while (0)
+  )
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) VERIFY_IS_TRUE(statement)
@@ -50,7 +50,7 @@ using namespace WEX::TestExecution;
 
 #ifndef USE_DML
 #define GPUTEST \
-  WINML_SUPRESS_UNREACHABLE_BELOW(WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)"))
+  WINML_SKIP_TEST("GPU tests disabled because this is a WinML only build (no DML)")
 #define GPUTEST_ENABLED alwaysFalse()
 #else
 #define GPUTEST                                                                             \
