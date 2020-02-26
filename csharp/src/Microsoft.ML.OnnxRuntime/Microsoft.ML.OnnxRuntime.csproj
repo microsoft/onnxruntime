@@ -217,13 +217,11 @@
 
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE"/>
-    <PropertiesFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\props.xml"/>
     <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets.xml"/>
   </ItemGroup>
 
   <Target Name="CopyMiscFiles" BeforeTargets="Pack">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')"/>
-    <Copy SourceFiles="@(PropertiesFile)" DestinationFiles="@(PropertiesFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).props')"/>
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\\Microsoft.ML.OnnxRuntime\$(PackageId).targets')"/>
 
   </Target>
