@@ -44,6 +44,65 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
+- job: 'Linux_CI_Dev'
+  workspace:
+    clean: all
+  pool: $(AgentPoolLinux)
+  steps:    
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/linux-set-variables-and-download.yml
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker build --pull -t onnxruntime-centos6 --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.centos6 .
+        workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
+    - task: CmdLine@2
+      inputs:
+        script: |
+          docker run --rm --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build -e NIGHTLY_BUILD onnxruntime-centos6 /bin/bash -c "/usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync  --parallel --use_featurizers --build_shared_lib --use_openmp --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest --enable_onnx_tests && cd /build/Release && make install DESTDIR=/build/linux-x64"
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cd $(Build.BinariesDirectory)/linux-x64
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata 
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - template: ../../templates/clean-agent-build-directory-step.yml
+
+- template: ../../templates/mac-ci.yml
+  parameters:
+    AgentPool : $(AgentPoolMacOS)
+    JobName: 'MacOS_CI_Dev'
+    BuildCommand: 'python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_featurizers --build_shared_lib --use_openmp --enable_onnx_tests --config RelWithDebInfo'
+    DoNugetPack : 'true'
+    NuPackScript: |
+     set -e -x
+     mkdir $(Build.BinariesDirectory)/osx-x64
+     find $(Build.BinariesDirectory)
+     cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime.dylib $(Build.BinariesDirectory)/osx-x64/
+     dsymutil $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib -o $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib.dSYM
+     strip -S -x $(Build.BinariesDirectory)/osx-x64/libonnxruntime.dylib
+     find $(Build.BinariesDirectory)/osx-x64 -ls
+     cwd=`pwd`
+     cd $(Build.BinariesDirectory)
+     zip -r osx-x64.zip osx-x64
+     cp $(Build.BinariesDirectory)/osx-x64.zip $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)/testdata
+     cp $(Build.BinariesDirectory)/RelWithDebInfo/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
+     cd $cwd
+
 - job: NuGet_Packaging
   workspace:
     clean: all
@@ -51,6 +110,8 @@ jobs:
   dependsOn:
   - Windows_CI_Dev
   - Windows_CI_Dev_x86
+  - Linux_CI_Dev
+  - MacOS_CI_Dev
   condition: succeeded()
   steps:
 
@@ -60,9 +121,25 @@ jobs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-    # XXX: This currently bundles only Windows.
-    # Add linux when linux build is fixed.
-  - template: bundle_featurizers_dlls.yml
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Win-x86'
+    inputs:
+      artifactName: 'drop-win-x86-zip'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Linux'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - MacOS'
+    inputs:
+      artifactName: 'drop-osx'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+  - template: bundle_dlls.yml
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
@@ -82,10 +159,7 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-   # XXX: Only windows now
-- template: test_win.yml
-  parameters:
-    AgentPool : 'Win-CPU-2019'
+  - template: test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
@@ -100,6 +174,8 @@ jobs:
   condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
   dependsOn:
   - NuGet_Test_Win
+  - NuGet_Test_Linux
+  - NuGet_Test_MacOS
   steps:
   - task: NuGetCommand@2
     displayName: 'NuGet push to ORT-NIGHTLY'
