@@ -235,17 +235,13 @@ static bool IsUnsupportedOpMode(const Node* node, const onnxruntime::GraphViewer
       if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
         return true;
     }
-  } else if (optype == "Dropout" || optype == "Identity") {
+  } else if (optype == "Dropout") {
     auto graph_inputs = graph_viewer.GetInputs();
     for (const auto& input : node->InputDefs()) {
       auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
       if (it != graph_inputs.end()) {
         return true;
       }
-    }
-    if (optype == "Identity") {
-      if (GetInputCount(node, initializers) == 0)
-        return true;
     }
   } else if (optype == "Max" || optype == "Min" || optype == "Mean" || optype == "Sum") {
     if (GetInputCount(node, initializers) == 1)
@@ -756,9 +752,10 @@ static void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
       cluster_inputs.push_back(in_arg);
     }
   }
-
-  for (const auto& in_arg : const_inputs) {
-    cluster_inputs.push_back(in_arg);
+  if(!cluster_inputs.empty()){
+    for (const auto& in_arg : const_inputs) {
+      cluster_inputs.push_back(in_arg);
+    }
   }
 
   std::copy(external_output_args.begin(), external_output_args.end(), std::back_inserter(cluster_outputs));
@@ -810,6 +807,14 @@ OpenVINOExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
     if (inputs.empty()) {
       return result;
+    }
+
+    //If subgraph only has Identity node, OpenVINO EP doesn't support it.
+    const auto& nodes = graph_viewer.GetNodesInTopologicalOrder();
+    if(nodes.size() == 1){
+      const auto& node = graph_viewer.GetNode(nodes[0]);
+      if(node->OpType() == "Identity")
+        return result;
     }
 
     //Initializers need to be part of meta_def->inputs
