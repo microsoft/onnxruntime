@@ -2,7 +2,7 @@ parameters:
   NugetPath: ''
   PlatformsSupported: ''
   VerifyNugetSigning: ''
-  NugetPackage: ''
+  NugetPackage: '*'
 
 steps:
     - task: UsePythonVersion@0

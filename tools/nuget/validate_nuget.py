@@ -70,17 +70,14 @@ def check_if_nuget_is_signed(nuget_path):
 def main():   
     args = parse_arguments()
 
-    if (args.nuget_package == '*'):
-        files = os.listdir(args.nuget_path)
-        nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
-        if (len(nuget_packages_found_in_path) != 1):
-            print('Nuget packages found in path: ')
-            print(nuget_packages_found_in_path)
-            raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
-        nuget_file_name = nuget_packages_found_in_path[0]
-        full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
-    else:
-        full_nuget_path = os.path.join(args.nuget_path, args.nuget_package)
+    files = glob.glob(os.path.join(nuget_path, args.nuget_package))
+    nuget_packages_found_in_path = [i for i in files if i.endswith('.nupkg')]
+    if (len(nuget_packages_found_in_path) != 1):
+        print('Nuget packages found in path: ')
+        print(nuget_packages_found_in_path)
+        raise Exception('No Nuget packages / more than one Nuget packages found in the given path.')
+    nuget_file_name = nuget_packages_found_in_path[0]
+    full_nuget_path = os.path.join(args.nuget_path, nuget_file_name)
     
     exit_code = 0
             
