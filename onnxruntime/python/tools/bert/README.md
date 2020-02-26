@@ -4,8 +4,8 @@ This tool showcases how to fuse a BERT ONNX model either exported from PyTorch o
 
 Note that OnnxRuntime can fuse the Bert ONNX model exported from PyTorch automatically. You don't need this tool to fuse the model. It is only required for Bert Model converted from Tensorflow. 
 
-## Export an BERT model from PyTorch
-For example, after using https://github.com/huggingface/transformers to train a BERT model in PyTorch 1.3, you can use the following function to export ONNX model. 
+## Export a BERT model from PyTorch
+For example, after using https://github.com/huggingface/transformers/tree/master/examples/run_glue.py to train a BERT model in PyTorch 1.3, you can use the following function to export ONNX model. 
 
 Please specify do_constant_folding=True. That's required for this tool.
 
@@ -32,7 +32,7 @@ def export_onnx(args, model, output_path):
                                     'output' : {0 : 'batch_size'}})
 ```
 
-## Convert an BERT model from Tensorflow
+## Convert a BERT model from Tensorflow
 
 The tf2onnx and keras2onnx tools can be used to convert model that trained by Tensorflow.
 
@@ -45,12 +45,12 @@ For tf2onnx, please refer to this notebook: https://github.com/onnx/tensorflow-o
 
 Example of using the script bert_model_optimization.py to convert a BERT-large model to run in V100 GPU:
 ```console
-python bert_model_optimization.py --input input_model.onnx --output optimized_model.onnx --num_heads 24 --hidden_size 1024 --sequence_length 128 --input_int32 --float16
+python bert_model_optimization.py --input original_model.onnx --output optimized_model_gpu.onnx --num_heads 24 --hidden_size 1024 --sequence_length 128 --input_int32 --float16 --gpu_only
 ```
 
-## Options
+### Options
 
-See below for description of all the options:
+See below for description of all the options of bert_model_optimization.py:
 
 - **input**: input model path
 - **output**: output model path
@@ -70,7 +70,7 @@ See below for description of all the options:
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
 
-## Supported Models
+### Supported Models
 
 Right now, this tool assumes input model has 3 inputs for input IDs, segment IDs, and attention mask. A model with less or addtional inputs might not be optimized.
 
@@ -82,3 +82,42 @@ Here is list of models that have been tested using this tool:
 - **TFBertForSequenceClassification** as in [transformers example](https://github.com/huggingface/transformers/blob/master/examples/run_tf_glue.py) exported by keras2onnx 1.6.0.
 
 If your model is not in the list, the optimized model might not work. You are welcome to update the scripts to support new models.
+
+## Model Verification
+
+When a bert model it optimized, some optimization uses approximiation in calculation so the output might be slightly different. It is recommended to use your evaluation set to measure the precision and recall. We expect the accuracy shall be on par after optimization.
+
+If your BERT model has three inputs, a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
+
+Example of verifying models optimized for cpu and gpu:
+
+```console
+pip install onnxruntime
+python compare_bert_results.py --baseline_model original_model.onnx --optimized_model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100
+
+pip uninstall onnxruntime
+pip install onnxruntime-gpu
+python compare_bert_results.py --baseline_model original_model.onnx --optimized_model optimized_model_gpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --use_gpu
+```
+
+To use onnxruntime-gpu 1.1.*, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable.
+
+## Performance Test
+
+The script for model verification will create a sub-directory like batch_1_seq_128 on the directory of optimized model. You can copy the original or optimized model to the sub-directory, and use onnxruntime_perf_test.exe to test performance of C API.
+
+If model inference uses python API, bert_perf_test.py can be used to check the performance of different settings. Below are examples:
+
+```console
+pip install onnxruntime
+python bert_perf_test.py --model optimized_model_cpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --inclusive
+
+pip uninstall onnxruntime
+pip install onnxruntime-gpu
+python bert_perf_test.py --model optimized_model_gpu.onnx --batch_size 1 --sequence_length 128 --samples 100 --test_times 10 --use_gpu --inclusive
+```
+
+
+
+
+
