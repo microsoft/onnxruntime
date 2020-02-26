@@ -1374,6 +1374,21 @@ Return true if all elements are true and false otherwise.
         "Tind",
         {"tensor(int32)", "tensor(int64)"},
         "Constrain indices to integer types");
+    
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FastGeluGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("FastGeluGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dY", "The gradient tensor from output.", "T")
+      .Input(1, "X", "The input tensor. ", "T")
+      .Output(0, "dX", "Gradient of the input.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 }
 }  // namespace training
 }  // namespace onnxruntime

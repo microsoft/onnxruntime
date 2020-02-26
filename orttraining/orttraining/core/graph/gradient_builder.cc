@@ -895,5 +895,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
       NodeDef(OpDef{"SliceGrad", kMSDomain, 1}, inputs, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
+              {GO(0), I(0)},
+              {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

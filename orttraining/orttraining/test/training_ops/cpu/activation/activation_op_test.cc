@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/activation/activations.h"
+#include <math.h>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-
-using namespace onnxruntime::test;
 
 namespace onnxruntime {
 namespace test {
@@ -46,6 +46,28 @@ TEST(GeluGradTest, Basic) {
       [](float dy, float x) {
         return dy * (0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2))) +
                      x * std::exp(-0.5f * x * x) * static_cast<float>(M_2_SQRTPI) * static_cast<float>(M_SQRT1_2) * 0.5f);
+      },
+      {}, 1, kMSDomain);
+}
+
+TEST(FastGeluGradTest, Basic) {
+  std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  std::vector<float> dY(7, 1.0f);
+
+  const float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
+  const float kGamma = 0.044715f;
+  const float kBeta = kAlpha * kGamma * 3.0f;
+
+  TestGradientOpWithTwoInputs(
+      "FastGeluGrad",
+      dY,
+      x_vals,
+      [&](float dy, float x) {
+        float x_cube = x * x * x;
+        float tanh_value = std::tanh(kAlpha * (x + kGamma * x_cube));
+        float sech_sqr_value = 1 - tanh_value * tanh_value;
+        float result = dy * 0.5f * (tanh_value + (sech_sqr_value * (kAlpha * x + kBeta * x_cube)) + 1.0f);
+        return result;
       },
       {}, 1, kMSDomain);
 }

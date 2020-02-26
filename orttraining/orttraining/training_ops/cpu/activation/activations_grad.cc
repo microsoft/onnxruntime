@@ -15,5 +15,22 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     GeluGrad<float>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    FastGeluGrad,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    FastGeluGrad<float>);
+
+template<typename T>
+constexpr T FastGeluGrad<T>::kAlpha;
+
+template<typename T>
+constexpr T FastGeluGrad<T>::kBeta;
+
+template<typename T>
+constexpr T FastGeluGrad<T>::kGamma;
+
 }  // namespace contrib
 }  // namespace onnxruntime

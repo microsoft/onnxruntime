@@ -1125,6 +1125,10 @@ TEST(GradientCheckerTest, GeluGrad) {
   UnaryOpGradientTest("Gelu", kMSDomain, 1);
 }
 
+TEST(GradientCheckerTest, FastGeluGrad) {
+  UnaryOpGradientTest("FastGelu", kMSDomain, 1);
+}
+
 struct AdamOptimizerInputOutput {
   AdamOptimizerInputOutput() {
     eta_half.resize(eta.size());

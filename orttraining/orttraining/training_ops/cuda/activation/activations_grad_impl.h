@@ -8,9 +8,11 @@ namespace onnxruntime {
 namespace cuda {
 
 typedef onnxruntime::cuda::CtxNull CtxGeluGrad;
+typedef onnxruntime::cuda::CtxNull CtxFastGeluGrad;
 
 #define ACTIVATION_GRAD_OPS() \
-  ACTIVATION_GRAD_OP_NAME(GeluGrad)
+  ACTIVATION_GRAD_OP_NAME(GeluGrad) \
+  ACTIVATION_GRAD_OP_NAME(FastGeluGrad)
 
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                           \
