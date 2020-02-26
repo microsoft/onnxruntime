@@ -116,7 +116,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   const std::string fp16_enable_env = env_instance.GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
-  }  
+  }
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {}
@@ -184,8 +184,8 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map,
 // Remove nodes with empty shape (for example [1, 0]) because TensorRT 7 doens't support empty shape
 SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph) {
   // Here only NonZero and NonMaxSuppression related empty shape nodes are removed, particularly for Faster-rcnn and Mask-rcnn models.
-  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around	
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();  
+  // TODO: Remove the code if TensorRT fixed the issue in the future release, or find a better generic way here to work around
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   const std::string exclude_dim_name1 = "NonZero";
   const std::string exclude_dim_name2 = "NonMaxSuppression";
   SubGraphCollection_t parser_nodes_vector = {{{}, false}};
@@ -202,8 +202,8 @@ SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph
           std::string dim_name = dim.dim_param();
           if (!dim_name.empty()) {
             if ((dim_name.find(exclude_dim_name1) != std::string::npos) || (dim_name.find(exclude_dim_name2) != std::string::npos)) {
-          	  exclude_node = true;
-          	  break;
+              exclude_node = true;
+              break;
             }
           }
         }
@@ -216,9 +216,9 @@ SubGraphCollection_t RemoveEmptyShapeNodes(const onnxruntime::GraphViewer& graph
 
     // Remove the node with empty input shape
     if (!exclude_node) {
-  	  parser_nodes_vector.back().first.push_back(index);
+      parser_nodes_vector.back().first.push_back(index);
     } else if (!parser_nodes_vector.back().first.empty()) {
-  	  parser_nodes_vector.push_back({{},false});
+      parser_nodes_vector.push_back({{}, false});
     }
   }
 
@@ -407,6 +407,18 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
+        // Check if input tensors have shapes
+        if (iterations > 1) {
+          for (const auto* input_arg : graph_build.GetInputs()) {
+            if (input_arg->Shape() == nullptr) {
+              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                                 "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
+                                                     "Please run shape inference on the onnx model first. Details can be found in " +
+                                                     "https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md#shape-inference-for-tensorrt-subgraphs"));
+            }
+          }
+        }
+
         // Serialize modelproto to string
         const onnxruntime::GraphViewer graph_viewer(graph_build);
 
@@ -453,10 +465,10 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     std::unordered_map<int, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
-	int counter = 0, id = 0;
+    int counter = 0, id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
-		// Construct subgraph from node list
+        // Construct subgraph from node list
         std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, counter, graph);
 
         // Create node to inputs/outputs/index maps
@@ -468,23 +480,23 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
         }
 
         if (meta_def != nullptr) {
-          for (const auto& input: meta_def->inputs) {
+          for (const auto& input : meta_def->inputs) {
             input_to_nodes_map[input].insert(node_name);
           }
-          for (const auto& output: meta_def->outputs) {
+          for (const auto& output : meta_def->outputs) {
             node_to_outputs_map[node_name].insert(output);
           }
         }
 
         // Remove TensorRT nodes from node index list
-        for (const auto& index: group.first) {
+        for (const auto& index : group.first) {
           non_trt_node_index.erase(node_index[index]);
         }
       }
     }
 
     // Add non TensorRT nodes to the maps
-    for (const auto& index: non_trt_node_index) {
+    for (const auto& index : non_trt_node_index) {
       const auto& node = graph.GetNode(index);
       std::string node_name = node->Name();
       if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
@@ -503,13 +515,13 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Create adjacency list
     int graph_size = node_to_index_map.size();
-    std::list<int> *adjacency_map = new std::list<int>[graph_size];
-    for (const auto& node: node_to_outputs_map) {
+    std::list<int>* adjacency_map = new std::list<int>[graph_size];
+    for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
         if (loc != input_to_nodes_map.end()) {
           int parent_node_index = node_to_index_map.find(node.first)->second;
-          for (auto child_node: loc->second) {
+          for (auto child_node : loc->second) {
             int child_node_index = node_to_index_map.find(child_node)->second;
             adjacency_map[parent_node_index].push_back(child_node_index);
           }
@@ -518,8 +530,8 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Check cycle in the graph
-    bool *visited = new bool[graph_size];
-    bool *st = new bool[graph_size];
+    bool* visited = new bool[graph_size];
+    bool* st = new bool[graph_size];
     for (int i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
@@ -529,19 +541,19 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     bool has_cycle = false;
     for (int i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
-    	has_cycle = true;
-    	break;
+        has_cycle = true;
+        break;
       }
     }
 
-	// Remove TensorRT subgraph from the supported node list if it's part of the cycle
+    // Remove TensorRT subgraph from the supported node list if it's part of the cycle
     if (has_cycle) {
       for (int i = 0; i < static_cast<int>(cycles.size()); ++i) {
         auto loc = index_to_node_map.find(cycles[i]);
         if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
           int trt_node_index = std::stoi(loc->second.substr(10));
           supported_nodes_vector.erase(supported_nodes_vector.begin() + trt_node_index);
-	  	  trt_cycle = true;
+          trt_cycle = true;
           break;
         }
       }
@@ -587,7 +599,7 @@ TensorrtExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
-  
+
   return result;
 }
 
@@ -660,6 +672,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], nb_dims);
         trt_profile->setShapeValues(input->getName(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], nb_dims);
       } else {  // Execution tensor
+        bool is_dynamic_shape = false;
         for (int j = 0, end = nb_dims; j < end; ++j) {
           // For dynamic shape subgraph, a dummy engine is created at compile phase.
           // Real engine will be created at compute phase based on input data
@@ -667,12 +680,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
             dims_min.d[j] = 1;
             dims_opt.d[j] = 1;
             dims_max.d[j] = 1;
+            is_dynamic_shape = true;
           }
         }
-        // TRT6: Optimization profile need to be provided for all inputs if any of them has dynamic shape
-        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-        trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+
+        if (is_dynamic_shape) {
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+        }
       }
     }
 
@@ -764,8 +780,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       *p = {context->allocate_func, context->release_func, context->allocator_handle, parsers_[context->node_name].get(),
             engines_[context->node_name].get(), contexts_[context->node_name].get(), builders_[context->node_name].get(),
             networks_[context->node_name].get(), input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_, 
-			&max_workspace_size_};
+            input_shape_ranges_[context->node_name], output_shapes_[context->node_name], &tensorrt_mu_, &fp16_enable_,
+            &max_workspace_size_};
       *state = p.release();
       return 0;
     };
@@ -790,14 +806,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
       int total_bindings = num_binding_inputs + num_binding_outputs;
       std::vector<void*> buffers(total_bindings);
 
-      bool dynamic_shape = false;
-      auto trt_context = trt_state->context;
-      if (!trt_context->allInputDimensionsSpecified() || !trt_context->allInputShapesSpecified()) {
-        dynamic_shape = true;
-      }
-
       // Update shape ranges
       bool dimension_update = false;
+      auto trt_context = trt_state->context;
       auto trt_builder = trt_state->builder;
       nvinfer1::IOptimizationProfile* trt_profile = nullptr;
       for (int i = 0, end = num_binding_inputs; i < end; ++i) {
@@ -857,20 +868,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<onnxruntime:
             }
           }
         }
-
-        // TensorRT6 requires optimization profile to be defined for all inputs if any input dimension is symbolic
-        if (dimension_update && dynamic_shape) {
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
-          trt_profile->setDimensions(input->getName(), nvinfer1::OptProfileSelector::kMAX, dims_max);
-        }
       }
 
       // Regenerate engine and context
       // Only one profile is generated, so no need to explicitly set optimization profile
       if (dimension_update) {
         auto trt_config = unique_pointer<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-		trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+        trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
         trt_config->addOptimizationProfile(trt_profile);
         if (*(trt_state->fp16_enable_ptr) && trt_builder->platformHasFastFp16()) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
