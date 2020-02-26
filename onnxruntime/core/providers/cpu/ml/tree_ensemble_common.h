@@ -678,22 +678,22 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::init(
 template <typename ITYPE, typename OTYPE>
 void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(const Tensor* X, Tensor* Z, Tensor* label) const {
   if (classlabels_strings_.size() == 0) {
-    compute_agg(
+    this->compute_agg(
         X, Z, label,
         _AggregatorClassifier<ITYPE, OTYPE>(
-            roots_.size(), class_count_,
-            post_transform_, &(base_values_),
+            this->roots_.size(), class_count_,
+            this->post_transform_, &(this->base_values_),
             &(classlabels_int64s_), binary_case_,
             weights_are_all_positive_));
   } else {
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
     std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
     Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), allocator);
-    compute_agg(
+    this->compute_agg(
         X, Z, &label_int64,
         _AggregatorClassifier<ITYPE, OTYPE>(
-            roots_.size(), class_count_,
-            post_transform_, &(base_values_),
+            this->roots_.size(), class_count_,
+            this->post_transform_, &(this->base_values_),
             &(class_labels_), binary_case_,
             weights_are_all_positive_));
     const int64_t* plabel = label_int64.template Data<int64_t>();
