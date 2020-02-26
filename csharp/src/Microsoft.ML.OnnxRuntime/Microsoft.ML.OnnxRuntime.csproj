@@ -106,7 +106,7 @@
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
@@ -124,7 +124,7 @@
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\metadata"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Always"
           Visible="false"
     />
@@ -133,7 +133,7 @@
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />
@@ -142,7 +142,7 @@
                      And ('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.DirectML'
                      Or '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime')"
           PackagePath="\build\native\include"
-          Pack="true"
+          Pack="false"
           CopyToOutputDirectory="Never"
           Visible="false"
     />

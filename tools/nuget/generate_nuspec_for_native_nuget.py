@@ -13,9 +13,10 @@ def parse_arguments():
     parser.add_argument("--package_version", required=True, help="ORT package version. Eg: 1.0.0")
     parser.add_argument("--target_architecture", required=True, help="Eg: x64")
     parser.add_argument("--build_config", required=True, help="Eg: RelWithDebInfo")
-    parser.add_argument("--native_build_path", required=True, help="Native build directory.")            
-    parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")        
-    parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")        
+    parser.add_argument("--ort_build_path", required=True, help="ORT build directory.")
+    parser.add_argument("--native_build_path", required=True, help="Native build output directory..")
+    parser.add_argument("--sources_path", required=True, help="OnnxRuntime source code root.")
+    parser.add_argument("--commit_id", required=True, help="The last commit id included in this package.")
     parser.add_argument("--is_release_build", required=False, default=None, type=str, help="Flag indicating if the build is a release build. Accepted values: true/false.")        
 
     return parser.parse_args()
@@ -131,13 +132,27 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
     
-    # Process windows.ai.machinelearning dll, and pdb
+    # Process windows.ai.machinelearning lib, dll, and pdb
+    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.native_build_path, 'windows.ai.machinelearning.lib')):
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'windows.ai.machinelearning.lib') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
+
     if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.native_build_path, 'windows.ai.machinelearning.dll')):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'windows.ai.machinelearning.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
         
     if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.native_build_path, 'windows.ai.machinelearning.pdb')):        
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'windows.ai.machinelearning.pdb') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
-    
+
+    # Process windows.ai.machinelearning.winmd
+    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.winmd')):
+        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.winmd') + '" target="build\\native\\metadata" />')
+
+    # Process windows.ai.machinelearning headers
+    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.h')):
+        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.h') + '" target="build\\native\\include\\Windows.AI.MachineLearning.h" />')
+
+    if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.native.h')):
+        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.native.h') + '" target="build\\native\\include\\Windows.AI.MachineLearning.Native.h" />')
+
     # Process dnll.dll    
     if os.path.exists(os.path.join(args.native_build_path, 'dnnl.dll')):
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'dnnl.dll') + '" target="runtimes\\win-' + args.target_architecture + '\\native" />')
