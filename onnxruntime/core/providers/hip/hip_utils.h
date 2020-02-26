@@ -25,23 +25,6 @@ enum class SimpleBroadcast : int32_t {
 template <typename T>
 void Fill(T* output, T value, int64_t count);
 
-// constexpr int32_t MAX_ARRAY_SIZE = 8;
-// template <typename T>
-// struct TArray {
-//   TArray() {
-//     size_ = 0;
-//     memset(data_, 0, sizeof(data_));
-//   }
-
-//   TArray(int32_t size) {
-//     size_ = size;
-//     memset(data_, 0, sizeof(data_));
-//   }
-
-//   T data_[MAX_ARRAY_SIZE];
-//   int32_t size_;
-// };
-
 /*
   This is a utility wrapper for arbitrary type array
   Commonly used for passing small list of metadata during hip kernel launch

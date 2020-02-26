@@ -37,29 +37,13 @@ template <typename T>
 
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width, unsigned int mask = 0xffffffff)
 {
-#if CUDA_VERSION >= 9000
-
-  return __shfl_sync(mask, value, srcLane, width);
-
-#else
-
   return __shfl(value, srcLane, width);
-
-#endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = warpSize, unsigned int mask = 0xffffffff)
 {
-#if CUDA_VERSION >= 9000
-
-  return __shfl_xor_sync(mask, value, laneMask, width);
-
-#else
-
   return __shfl_xor(value, laneMask, width);
-
-#endif
 }
 
 template <typename U>
@@ -384,11 +368,9 @@ void HostApplyLayerNorm(
     double epsilon,
     const T* gamma,
     const T* beta) {
-  const dim3 threads(32, 4, 1);
-  //const hipDeviceProp_t& prop = DeviceProp::GetDeviceProps();
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
-  //  const uint64_t maxGridY = 32;
+  const dim3 threads(warp_size, 4, 1);
   const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
