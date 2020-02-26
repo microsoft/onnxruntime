@@ -15,6 +15,4 @@
 #include "Windows.AI.MachineLearning.Native.h"
 #include "Windows.AI.MachineLearning.Native.Internal.h"
 
-#pragma warning(disable : 4100)
-
 #include "Errors.h"
