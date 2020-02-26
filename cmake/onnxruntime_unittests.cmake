@@ -176,7 +176,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc)
 if(onnxruntime_RUN_ONNX_TESTS)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_io_types.cc)
-endif() 
+endif()
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -241,7 +241,7 @@ if(onnxruntime_USE_NNAPI)
 endif()
 
 if(onnxruntime_USE_FEATURIZERS)
-   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers onnxruntime_featurizers_comp)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers) # onnxruntime_featurizers_comp)
 endif()
 
 if(onnxruntime_USE_DML)
@@ -451,7 +451,7 @@ add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")  
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")
 else()
   if(HAS_UNUSED_PARAMETER)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
@@ -459,7 +459,7 @@ else()
   if(HAS_UNUSED_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
   endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)    
+  if(HAS_UNUSED_BUT_SET_VARIABLE)
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
   endif()
 endif()
