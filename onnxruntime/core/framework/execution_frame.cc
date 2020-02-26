@@ -452,6 +452,14 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       }
       case AllocKind::kReuse: {
         int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+        
+        // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
+        // is not allocated (its upstream op is not executed due to the option).
+        // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it. 
+        OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
+        if (!reuse_value.IsAllocated()) {
+         ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, nnz));
+        }
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
             ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
         break;

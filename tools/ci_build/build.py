@@ -582,7 +582,7 @@ def adb_push(source_dir, src, dest, **kwargs):
 def adb_shell(*args, **kwargs):
     return run_subprocess(['adb', 'shell', *args], **kwargs)
 
-def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_python_tests, enable_tvm = False, enable_tensorrt = False):
+def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enable_tvm = False, enable_tensorrt = False):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
@@ -622,7 +622,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
 
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
-        if enable_python_tests:
+        if args.enable_pybind:
             # Disable python tests for TensorRT because many tests are not supported yet
             if enable_tensorrt :
                 return
@@ -644,7 +644,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
                 run_subprocess([sys.executable, os.path.join(source_dir,'onnxruntime','test','onnx','gen_test_models.py'),
                                 '--output_dir','test_models'], cwd=cwd)
-                run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
+                if not args.skip_onnx_tests:
+                    run_subprocess([os.path.join(cwd,'onnx_test_runner'), 'test_models'], cwd=cwd)
                 if config != 'Debug':
                     run_subprocess([sys.executable, 'onnx_backend_test_series.py'], cwd=cwd, dll_path=dll_path)
 
@@ -1004,7 +1005,6 @@ def main():
 
     if args.test :
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs,
-                              args.enable_pybind and not args.skip_onnx_tests,
                               args.use_tvm, args.use_tensorrt)
         # run the onnx model tests if requested explicitly.
         if args.enable_onnx_tests and not args.skip_onnx_tests:

@@ -195,6 +195,56 @@ def dtype_torch_to_numpy(torch_dtype):
     elif torch_dtype == torch.int16 or torch_dtype == torch.short: 
         return np.int16
 
+def WrapForInputMatch(model, input_names):
+    import inspect
+    sig = inspect.signature(model.forward)
+    ordered_list_keys = list(sig.parameters.keys())
+
+    if len(ordered_list_keys) < len(input_names):
+        # this is likely the case where input arguments are packed.
+        # For example when model_loss_cls is used.
+        # TODO: to unpack the input argument.
+        return model
+    elif len(ordered_list_keys) == len(input_names):
+        # in this case, we do not require name match. we will if train_step supports dictionary input
+        return model
+
+    if not all(x in ordered_list_keys for x in input_names):
+        # model desc has name(s) not matching the model signature. We cannot do anything in this case. 
+        # better to warning the user.
+        return model
+
+    # if input_names match the first ordered_list_keys, there is not need for wrapping
+    match = True
+    for i, input_name in enumerate(input_names):
+        if input_name != ordered_list_keys[i]:
+            match = False
+            break
+
+    if match:
+        return model
+
+    class WrapModel(torch.nn.Module):
+        def __init__(self, model, input_names):
+            super(WrapModel, self).__init__()
+            self.model_ = model
+            self.input_names_ = input_names
+
+        def forward(self, *inputs):
+            # *inputs is given by torch trace. It is in the order of input_names.
+            # model_ takes input in a order (which can be obtained via inspect.signature(model.forward)) different than input_names.
+            sig = inspect.signature(self.model_.forward)
+            ordered_list_keys = list(sig.parameters.keys())
+
+            input_dict = {}
+            for key in sig.parameters.keys():
+                if key in self.input_names_:
+                    input_dict[key] = inputs[self.input_names_.index(key)]
+
+            return self.model_(**input_dict)
+
+    model = WrapModel(model, input_names)
+    return model
 
 def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     # example: {input0:{0:'batch'}, input1:{0:'batch'}}
@@ -233,6 +283,11 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     if loss_fn:
         model = model_loss_cls(model, loss_fn)
 
+    # pytorch onnx exporter/trace does not try to match argument names.
+    # e.g. for models with optional inputs, it requires all inputs be present.
+    # this is a problem because the model graph depends on inputs provided.
+    model = WrapForInputMatch(model, input_names)
+
     torch.onnx._export(model, tuple(sample_inputs), f,
                        input_names=input_names, 
                        output_names=output_names,
@@ -245,6 +300,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device):
     model = onnx.load_model_from_string(f.getvalue())
 
     model = FuseSofmaxNLLToSoftmaxCE(model)
+
     return model
 
 def generate_node_arg_name(graph, base_name):

@@ -21,7 +21,6 @@ class Session:
     This is the main class used to run a model.
     """
     def __init__(self, sess):
-        self._sess_options = sess
         self._enable_fallback = True
 
     def _reset_session(self):
@@ -37,7 +36,7 @@ class Session:
 
     def get_session_options(self):
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
-        return self._session_options
+        return self._sess_options
 
     def get_inputs(self):
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
@@ -176,7 +175,7 @@ class InferenceSession(Session):
 
         self._sess.load_model(providers)
         
-        self._session_options = self._sess.session_options
+        self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._overridable_initializers = self._sess.overridable_initializers

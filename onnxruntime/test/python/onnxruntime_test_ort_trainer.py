@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import unittest
+import pytest
 import sys
 import copy
 from numpy.testing import assert_allclose, assert_array_equal
@@ -12,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 
+from helper import get_name
 from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
 
 def ort_trainer_learning_rate_description():
@@ -51,7 +53,7 @@ def runBertTrainingTest(gradient_accumulation_steps, use_mixed_precision, allred
     learning_rate_description = ort_trainer_learning_rate_description()
     device = torch.device("cuda", 0)
 
-    onnx_model = onnx.load("/bert_ort/liqun/onnxruntime/onnxruntime/test/testdata/bert_toy_postprocessed.onnx")
+    onnx_model = onnx.load(get_name("bert_toy_postprocessed.onnx"))
 
     model = ORTTrainer(onnx_model, None, model_desc, "LambOptimizer",
                        map_optimizer_attributes,

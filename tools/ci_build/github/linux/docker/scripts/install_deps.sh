@@ -97,10 +97,10 @@ cd /tmp/src
 unzip gradle-6.2-bin.zip
 mv /tmp/src/gradle-6.2 /usr/local/gradle
 
-
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps\.sh/install_protobuf\.sh}
 fi
+
 
 #Don't update 'wheel' to the latest version. see: https://github.com/pypa/auditwheel/issues/102
 ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
