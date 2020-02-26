@@ -159,7 +159,7 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - template: test_all_os.yml
+- template: test_all_os.yml
 
 - job: Publish_NuGet_Package_And_Report
   workspace:
