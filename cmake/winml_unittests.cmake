@@ -138,7 +138,7 @@ add_winml_test(
   LIBS winml_test_common
 )
 target_include_directories(winml_test_concurrency PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
-target_precompiled_header(winml_test_concurrency precomp.h)
+target_precompiled_header(winml_test_concurrency testPch.h)
 target_compile_definitions(winml_test_concurrency PRIVATE BUILD_GOOGLE_TEST)
 
 # During build time, copy any modified collaterals.
