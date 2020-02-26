@@ -144,7 +144,7 @@ def generate_files(list, args):
 
     # Process windows.ai.machinelearning.winmd
     if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.winmd')):
-        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.winmd') + '" target="build\\native\\metadata" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.winmd') + '" target="build\\native\\metadata\\windows.ai.machinelearning.winmd" />')
 
     # Process windows.ai.machinelearning headers
     if (args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML' or args.package_name == 'Microsoft.ML.OnnxRuntime') and os.path.exists(os.path.join(args.ort_build_path, args.build_config, 'windows.ai.machinelearning.h')):
