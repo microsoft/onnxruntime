@@ -9,8 +9,9 @@ namespace onnxruntime {
 
 class MatMulComputeHelper {
  public:
-  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
-                 bool transa = false, bool transb = false) {
+  // When provided, prepackedN and prepackedK are the original dimensions of B matrix for MatMulPrepacked operation.
+  Status Compute(const TensorShape& left_shape, TensorShape right_shape,
+                 bool transa = false, bool transb = false, int64_t prepackedN = -1, int64_t prepackedK = -1) {
     // Following numpy.matmul for shape inference:
     // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
     // The behavior depends on the arguments in the following way.
@@ -18,6 +19,16 @@ class MatMulComputeHelper {
     // * If either argument is N - D, N > 2, it is treated as a stack of matrices residing in the last two indexes and broadcast accordingly.
     // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions.After matrix multiplication the prepended 1 is removed.
     // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions.After matrix multiplication the appended 1 is removed.
+
+    if (prepackedN >= 0 && prepackedK >= 0) {
+      auto actual_right_dims = right_shape.GetDims();
+      right_mat_size_ = actual_right_dims.back();
+      actual_right_dims.back() = prepackedK;
+      actual_right_dims.push_back(prepackedN);
+      right_shape = std::move(actual_right_dims);
+    } else {
+      right_mat_size_ = 0; // Will be inferred from N and K later on.
+    }
 
     size_t left_num_dims = left_shape.NumDimensions();
     size_t right_num_dims = right_shape.NumDimensions();
@@ -149,7 +160,9 @@ class MatMulComputeHelper {
     }
 
     left_mat_size_ = M_ * K_;
-    right_mat_size_ = K_ * N_;
+    if (right_mat_size_ == 0) {
+      right_mat_size_ = K_ * N_;
+    }
     output_mat_size_ = M_ * N_;
 
     // stride in mats and dims for broadcasting

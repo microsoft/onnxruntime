@@ -7,6 +7,7 @@
 #include "core/graph/op.h"
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets-ml.h"
+#include "core/graph/ort_ops/ort_defs.h"
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -61,6 +62,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSFeaturizersDomain, 1, 1);
+      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kOnnxRuntimeDomain, 1, 1);
 #ifdef USE_DML
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
@@ -77,6 +79,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
+      RegisterOrtSchemas();
     });
 
     // Register MemCpy schema;

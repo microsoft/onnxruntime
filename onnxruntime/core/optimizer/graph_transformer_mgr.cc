@@ -41,12 +41,6 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
 }
 
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer, TransformerLevel level) {
-  const auto& name = transformer->Name();
-  if (transformers_info_.find(name) != transformers_info_.end()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
-  }
-
-  transformers_info_[name] = transformer.get();
   level_to_transformer_map_[level].push_back(std::move(transformer));
   return Status::OK();
 }

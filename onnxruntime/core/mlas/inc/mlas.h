@@ -67,6 +67,13 @@ MlasGetPreferredBufferAlignment(
     void
     );
 
+
+int32_t
+MLASCALL
+MlasGetMaximumThreadCount(
+    MLAS_THREADPOOL* ThreadPool
+    );
+
 //
 // Activation routines.
 //
@@ -108,6 +115,68 @@ MlasActivation(
 //
 // Matrix/matrix multiply routines.
 //
+
+struct MLAS_GEMM_PARAMETERS {
+    bool OriginalBPossiblyUsed = false;
+    bool PrePackedBPossiblyUsed = false;
+
+    //
+    // Original dimensions of B matrix.
+    //
+    size_t K;
+    size_t N;
+
+    //
+    // Parameters for packed representation.
+    //
+    size_t PackedSize; // Size of packed B matrix, including padding.
+    uint32_t PackedStrideN;
+    uint32_t PackedStrideK;
+};
+
+
+size_t
+MLASCALL
+MlasGemmPackMatrix(
+    const MLAS_GEMM_PARAMETERS& GemmParams,
+    const float* Source,
+    CBLAS_TRANSPOSE Trans,
+    size_t ld,
+    float* Dest,
+    size_t DestSize);
+
+MLAS_GEMM_PARAMETERS
+MLASCALL
+MlasGemmPrepare(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    int MaximumThreadCount,
+    bool PrePackingBAllowed
+);
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    const MLAS_GEMM_PARAMETERS* parameters,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const float* B,
+    size_t ldb,
+    const float* PrePackedB,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
 void
 MLASCALL

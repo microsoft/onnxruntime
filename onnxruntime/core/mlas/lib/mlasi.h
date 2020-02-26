@@ -661,6 +661,7 @@ MlasExecuteThreaded(
 
 inline
 int32_t
+MLASCALL
 MlasGetMaximumThreadCount(
     MLAS_THREADPOOL* ThreadPool
     )

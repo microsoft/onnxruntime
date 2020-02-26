@@ -30,6 +30,8 @@ Abstract:
 #include "core/platform/threadpool.h"
 #endif
 
+#include "core/mlas/lib/mlasi.h"
+
 #include "core/common/make_unique.h"
 
 #if !defined(_countof)
@@ -202,6 +204,72 @@ public:
 };
 
 template <typename T>
+void TestPackedGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const T* A,
+    size_t lda,
+    const T* B,
+    size_t ldb,
+    float beta,
+    T* C,
+    T* CReference,
+    size_t ldc,
+    MatrixGuardBuffer<T>& PackedBufferB
+    )
+{
+    std::vector<T> CBackup(M*N);
+    std::copy_n(C, M*N, CBackup.begin());
+    MLAS_GEMM_PARAMETERS GemmParams = MlasGemmPrepare(TransA, TransB, M, N, K, MlasGetMaximumThreadCount(threadpool), true);
+    GemmParams.PrePackedBPossiblyUsed = true;
+    GemmParams.OriginalBPossiblyUsed = false;
+
+    const size_t packedSize = GemmParams.PackedSize;
+    T* PackedB = PackedBufferB.GetBuffer(packedSize);
+    (void)MlasGemmPackMatrix(GemmParams, B, TransB, ldb, PackedB, packedSize);
+    MlasGemm(TransA, TransB, &GemmParams, M, N, K, alpha, A, lda, nullptr, ldb, PackedB, beta, C, ldc, threadpool);
+
+    for (size_t f = 0; f < M * N; f++) {
+        // Sensitive to comparing positive/negative zero.
+        if (C[f] != CReference[f]) {
+            printf("mismatch (packed) TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
+        }
+    }
+
+    std::copy_n(CBackup.begin(), M*N, C);
+    MlasGemm(TransA, TransB, &GemmParams, M, N, K, alpha, A, lda, B, ldb, nullptr, beta, C, ldc, threadpool);
+    for (size_t f = 0; f < M * N; f++) {
+        if (C[f] != CReference[f]) {
+            printf("mismatch (packed) TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
+        }
+    }
+}
+
+template <>
+void TestPackedGemm<double>(
+    CBLAS_TRANSPOSE /*TransA*/,
+    CBLAS_TRANSPOSE /*TransB*/,
+    size_t /*M*/,
+    size_t /*N*/,
+    size_t /*K*/,
+    float /*alpha*/,
+    const double* /*A*/,
+    size_t /*lda*/,
+    const double* /*B*/,
+    size_t /*ldb*/,
+    float /*beta*/,
+    double* /*C*/,
+    double* /*CReference*/,
+    size_t /*ldc*/,
+    MatrixGuardBuffer<double>& /*PackedBufferB*/
+    )
+{}
+
+template <typename T>
 class MlasFgemmTest : public MlasTestBase
 {
 private:
@@ -255,7 +323,11 @@ private:
                 printf("mismatch TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
             }
         }
+
+        std::fill_n(C, M * N, -0.5f);
+        TestPackedGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, CReference, ldc, PackedBufferB);
     }
+
 
     void
     ReferenceGemm(
@@ -368,6 +440,7 @@ private:
 
     MatrixGuardBuffer<T> BufferA;
     MatrixGuardBuffer<T> BufferB;
+    MatrixGuardBuffer<T> PackedBufferB;
     MatrixGuardBuffer<T> BufferC;
     MatrixGuardBuffer<T> BufferCReference;
 

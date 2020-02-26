@@ -32,7 +32,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // on the EPs we constant fold for.
     auto ep_type = node->GetExecutionProviderType();
     bool cpu_ep = ep_type == kCpuExecutionProvider;
-    if (!cpu_ep && node->Domain() != kOnnxDomain) {
+    if (!cpu_ep && node->Domain() != kOnnxDomain && node->Domain() != kOnnxRuntimeDomain) {
       continue;
     }
 

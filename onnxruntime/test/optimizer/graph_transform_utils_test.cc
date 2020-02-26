@@ -41,7 +41,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l2_transformer = "ConvActivationFusion";
   std::vector<std::string> custom_list = {l1_rule1, l1_transformer, l2_transformer};
 
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, custom_list);
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, 1, {}, custom_list);
   ASSERT_TRUE(transformers.size() == 2);
   auto l1_rule_transformer_name = optimizer_utils::GenerateRuleBasedTransformerName(TransformerLevel::Level1);
   RuleBasedGraphTransformer* rule_transformer = nullptr;
@@ -52,7 +52,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   }
   ASSERT_TRUE(rule_transformer && rule_transformer->RulesCount() == 1);
 
-  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, custom_list);
+  transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, 1, {}, custom_list);
 #ifndef DISABLE_CONTRIB_OPS
   ASSERT_TRUE(transformers.size() == 1);
 #else

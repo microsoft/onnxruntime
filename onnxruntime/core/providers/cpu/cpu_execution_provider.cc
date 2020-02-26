@@ -1121,6 +1121,23 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxRuntimeDomain, 1, float, MatMulPrepacked);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxRuntimeDomain, 1, float, PackForGemm);
+
+Status RegisterOnnxRuntimeOperatorKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxRuntimeDomain, 1, float,
+                                                                      MatMulPrepacked)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxRuntimeDomain, 1, float,
+                                                                      PackForGemm)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
+  }
+  return Status::OK();
+}
+
 // Forward declarations of ml op kernels
 namespace ml {
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMLDomain, 1, float, ArrayFeatureExtractor);
@@ -1270,6 +1287,7 @@ Status RegisterOnnxMLOperatorKernels(KernelRegistry& kernel_registry) {
 
 static Status RegisterCPUKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(RegisterOnnxOperatorKernels(kernel_registry));
+  ORT_RETURN_IF_ERROR(RegisterOnnxRuntimeOperatorKernels(kernel_registry));
   ORT_RETURN_IF_ERROR(::onnxruntime::ml::RegisterOnnxMLOperatorKernels(kernel_registry));
 #ifndef DISABLE_CONTRIB_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::RegisterCpuContribKernels(kernel_registry));

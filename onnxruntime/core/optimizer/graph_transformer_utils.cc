@@ -27,6 +27,7 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/matmul_prepacking.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -38,7 +39,8 @@ std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
 }
 
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel level,
-                                                               const std::vector<std::string>& rules_to_enable) {
+                                                               const std::vector<std::string>& rules_to_enable,
+                                                               int max_num_threads) {
   std::vector<std::unique_ptr<RewriteRule>> rules;
   switch (level) {
     case TransformerLevel::Level1:
@@ -58,6 +60,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
       break;
 
     case TransformerLevel::Level3:
+        rules.push_back(onnxruntime::make_unique<MatMulPrepacking>(max_num_threads));
       break;
 
     default:
@@ -80,9 +83,10 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel 
 }
 
 std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(TransformerLevel level,
+                                                                             int max_num_threads,
                                                                              const std::vector<std::string>& rules_to_enable,
                                                                              const std::unordered_set<std::string>& compatible_execution_providers) {
-  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_enable);
+  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_enable, max_num_threads);
   if (rewrite_rules_to_register.empty()) {
     return nullptr;
   }
@@ -98,6 +102,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(Tra
 }
 
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
+                                                                    int max_num_threads,
                                                                     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const std::vector<std::string>& transformers_and_rules_to_enable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
@@ -111,14 +116,14 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
+      rule_transformer = GenerateRuleBasedGraphTransformer(level, max_num_threads, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
 
     case TransformerLevel::Level2: {
       std::unordered_set<std::string> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
 
       // create rule based transformer consisting of all the level2 rewrite rules
-      rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, cpu_execution_providers);
+      rule_transformer = GenerateRuleBasedGraphTransformer(level, max_num_threads, transformers_and_rules_to_enable, cpu_execution_providers);
 
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
@@ -140,12 +145,19 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     } break;
 
     case TransformerLevel::Level3: {
+      std::unordered_set<std::string> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(cpu_execution_providers));
+
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
+
 #endif
+
+      // create rule based transformer consisting of all the level3 rewrite rules
+      rule_transformer = GenerateRuleBasedGraphTransformer(level, max_num_threads, transformers_and_rules_to_enable, cpu_execution_providers);
     } break;
 
     default:

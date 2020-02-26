@@ -18,12 +18,14 @@ namespace optimizer_utils {
    If rules_to_enable is not empty, it returns the intersection of predefined rules and rules_to_enable.
    TODO: This is visible for testing at the moment, but we should rather make it private. */
 std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(TransformerLevel level,
-                                                               const std::vector<std::string>& rules_to_enable = {});
+                                                               const std::vector<std::string>& rules_to_enable = {},
+                                                               int max_num_threads = 1);
 
 /** Generates all predefined (both rule-based and non-rule-based) transformers for this level.
-    If transformers_and_rules_to_enable is not empty, it returns the intersection between the predefined transformers/rules 
+    If transformers_and_rules_to_enable is not empty, it returns the intersection between the predefined transformers/rules
     and the transformers_and_rules_to_enable. */
 std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerLevel level,
+                                                                    int max_num_threads,
                                                                     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
                                                                     const std::vector<std::string>& rules_and_transformers_to_enable = {});
 
