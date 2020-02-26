@@ -33,16 +33,16 @@ The build will generate output in `$REPO_ROOT/build/$OS/$CONFIGURATION/java/buil
 
 * `docs/javadoc/` - HTML javadoc
 * `reports/` - detailed test results and other reports
-* `libs/onnxruntime.jar` - JAR with classes, depends on `onnxruntime-jni.jar` and `onnxruntime-lib.jar `
-* `libs/onnxruntime-jni.jar`- JAR with JNI shared library
-* `libs/onnxruntime-lib.jar` - JAR with onnxruntime shared library
-* `libs/onnxruntime-all.jar` - the 3 preceding jars all combined: JAR with classes, JNI shared library, and onnxruntime shared library
+* `libs/onnxruntime-<version-number>.jar` - JAR with classes, depends on `onnxruntime-<version-number>-jni.jar` and `onnxruntime-<version-number>-lib.jar `
+* `libs/onnxruntime-<version-number>-jni.jar`- JAR with JNI shared library
+* `libs/onnxruntime-<version-number>-lib.jar` - JAR with onnxruntime shared library
+* `libs/onnxruntime-<version-number>-all.jar` - the 3 preceding jars all combined: JAR with classes, JNI shared library, and onnxruntime shared library
 
 The reason the shared libraries are split out like that is that users can mix and match to suit their use case:
 
-* To support a single OS/Architecture without any dependencies, use `libs/onnxruntime-all.jar`.
-* To support cross-platform: bundle a single `libs/onnxruntime.jar` and with all of the respective `libs/onnxruntime-jni.jar` and `libs/onnxruntime-lib.jar` for all of the desired OS/Architectures.
-* To support use case where an onnxruntime shared library will reside in the system's library search path: bundle a single `libs/onnxruntime.jar` and with all of the `libs/onnxruntime-jni.jar`. The onnxruntime shared library should be loaded using one of the other methods described in the "Advanced Loading" section below.
+* To support a single OS/Architecture without any dependencies, use `libs/onnxruntime-<version-number>-all.jar`.
+* To support cross-platform: bundle a single `libs/onnxruntime-<version-number>.jar` and with all of the respective `libs/onnxruntime-<version-number>-jni.jar` and `libs/onnxruntime-<version-number>-lib.jar` for all of the desired OS/Architectures.
+* To support use case where an onnxruntime shared library will reside in the system's library search path: bundle a single `libs/onnxruntime-<version-number>.jar` and with all of the `libs/onnxruntime-<version-number>-jni.jar`. The onnxruntime shared library should be loaded using one of the other methods described in the "Advanced Loading" section below.
 
 #### Build System Overview 
 
