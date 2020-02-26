@@ -1,5 +1,5 @@
-#include "precomp.h"
-#include "threadPool.h"
+#include "testPch.h"
+#include "ThreadPool.h"
 #include <ctime>
 
 ThreadPool::ThreadPool(unsigned int initial_pool_size): m_threads(), m_destruct_pool(false) {
