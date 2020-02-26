@@ -845,7 +845,6 @@ void OpTester::Run(
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
             valid = false;
-            std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
             for (auto& custom_session_registry : custom_session_registries_) {
               if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
                                                       node, execution_provider->Type())) {
@@ -855,7 +854,10 @@ void OpTester::Run(
             }
 
             if (!valid)
+            {
+              std::cerr << "No kernel registered from EP: " << provider_type << "for node: " << node.OpType() << std::endl;
               break;
+            }
           }
         }
 
