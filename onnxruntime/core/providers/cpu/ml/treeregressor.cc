@@ -26,24 +26,23 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info)
   int64_t n_targets;
   ORT_ENFORCE(info.GetAttr<int64_t>("n_targets", &n_targets).IsOK());
 
-  T cst = 0;
   tree_ensemble_.init(info.GetAttrOrDefault<std::string>("aggregate_function", "SUM"),
-                      vector_from_float(info.GetAttrsOrDefault<float>("base_values"), cst),
+                      info.GetAttrsOrDefault<float>("base_values"),
                       n_targets,
                       info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids"),
                       info.GetAttrsOrDefault<int64_t>("nodes_featureids"),
-                      vector_from_float(info.GetAttrsOrDefault<float>("nodes_hitrates"), cst),
+                      info.GetAttrsOrDefault<float>("nodes_hitrates"),
                       info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true"),
                       info.GetAttrsOrDefault<std::string>("nodes_modes"),
                       info.GetAttrsOrDefault<int64_t>("nodes_nodeids"),
                       info.GetAttrsOrDefault<int64_t>("nodes_treeids"),
                       info.GetAttrsOrDefault<int64_t>("nodes_truenodeids"),
-                      vector_from_float(info.GetAttrsOrDefault<float>("nodes_values"), cst),
+                      info.GetAttrsOrDefault<float>("nodes_values"),
                       info.GetAttrOrDefault<std::string>("post_transform", "NONE"),
                       info.GetAttrsOrDefault<int64_t>("target_ids"),
                       info.GetAttrsOrDefault<int64_t>("target_nodeids"),
                       info.GetAttrsOrDefault<int64_t>("target_treeids"),
-                      vector_from_float(info.GetAttrsOrDefault<float>("target_weights"), cst));
+                      info.GetAttrsOrDefault<float>("target_weights"));
 }
 
 template <typename T>

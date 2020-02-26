@@ -40,8 +40,8 @@ struct TreeNodeElement {
   T value;
   T hitrates;
   NODE_MODE mode;
-  TreeNodeElement* truenode;
-  TreeNodeElement* falsenode;
+  TreeNodeElement<T>* truenode;
+  TreeNodeElement<T>* falsenode;
   MissingTrack missing_tracks;
   std::vector<SparseValue<T>> weights;
 
@@ -49,21 +49,21 @@ struct TreeNodeElement {
   bool is_missing_track_true;
 };
 
-template <typename T>
+template <typename ITYPE, typename OTYPE>
 class _Aggregator {
  protected:
   size_t n_trees_;
   int64_t n_targets_or_classes_;
   POST_EVAL_TRANSFORM post_transform_;
-  const std::vector<T>* base_values_;
-  T origin_;
+  const std::vector<OTYPE>* base_values_;
+  OTYPE origin_;
   bool use_base_values_;
 
  public:
   inline _Aggregator(size_t n_trees,
                      const int64_t& n_targets_or_classes,
                      POST_EVAL_TRANSFORM post_transform,
-                     const std::vector<T>* base_values) : n_trees_(n_trees), n_targets_or_classes_(n_targets_or_classes), post_transform_(post_transform), base_values_(base_values) {
+                     const std::vector<OTYPE>* base_values) : n_trees_(n_trees), n_targets_or_classes_(n_targets_or_classes), post_transform_(post_transform), base_values_(base_values) {
     origin_ = base_values_->size() == 1 ? (*base_values_)[0] : 0.f;
     use_base_values_ = base_values_->size() == static_cast<size_t>(n_targets_or_classes_);
   }
@@ -72,32 +72,32 @@ class _Aggregator {
 
   // 1 output
 
-  inline void ProcessTreeNodePrediction1(T* /*predictions*/, TreeNodeElement<T>* /*root*/,
+  inline void ProcessTreeNodePrediction1(OTYPE* /*predictions*/, TreeNodeElement<OTYPE>* /*rooOTYPE*/,
                                          unsigned char* /*has_predictions*/) const {}
 
-  inline void MergePrediction1(T* /*predictions*/, unsigned char* /*has_predictions*/,
-                               T* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
+  inline void MergePrediction1(OTYPE* /*predictions*/, unsigned char* /*has_predictions*/,
+                               OTYPE* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
 
-  inline void FinalizeScores1(T* Z, T& val,
+  inline void FinalizeScores1(OTYPE* Z, OTYPE& val,
                               unsigned char& has_scores,
                               int64_t*) const {
     val = has_scores ? (val + origin_) : origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? ComputeProbit(static_cast<float>(val)) : val;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(val))) : val;
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(T* /*predictions*/, TreeNodeElement<T>* /*root*/,
+  void ProcessTreeNodePrediction(OTYPE* /*predictions*/, TreeNodeElement<OTYPE>* /*rooOTYPE*/,
                                  unsigned char* /*has_predictions*/) const {}
 
-  void MergePrediction(int64_t /*n*/, T* /*predictions*/, unsigned char* /*has_predictions*/,
-                       T* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
+  void MergePrediction(int64_t /*n*/, OTYPE* /*predictions*/, unsigned char* /*has_predictions*/,
+                       OTYPE* /*predictions2*/, unsigned char* /*has_predictions2*/) const {}
 
-  void FinalizeScores(std::vector<T>& scores,
+  void FinalizeScores(std::vector<OTYPE>& scores,
                       std::vector<unsigned char>& has_scores,
-                      T* Z, int add_second_class,
+                      OTYPE* Z, int add_second_class,
                       int64_t*) const {
-    T val;
+    OTYPE val;
     for (int64_t jt = 0; jt < n_targets_or_classes_; ++jt) {
       val = use_base_values_ ? (*base_values_)[jt] : 0.f;
       val += has_scores[jt] ? scores[jt] : 0;
@@ -106,32 +106,32 @@ class _Aggregator {
     this->write_scores(scores, post_transform_, Z, add_second_class);
   }
 
-  inline void ComputeSoftmax(std::vector<T>& values) const {
+  inline void ComputeSoftmax(std::vector<OTYPE>& values) const {
     // compute exp with negative number to be numerically stable
-    T v_max = -std::numeric_limits<T>::max();
-    for (T value : values) {
+    OTYPE v_max = -std::numeric_limits<OTYPE>::max();
+    for (OTYPE value : values) {
       if (value > v_max)
         v_max = value;
     }
-    T this_sum = 0.f;
-    for (T& value : values) {
+    OTYPE this_sum = 0.f;
+    for (OTYPE& value : values) {
       value = std::exp(value - v_max);
       this_sum += value;
     }
-    for (T& value : values)
+    for (OTYPE& value : values)
       value /= this_sum;
   }
 
-  inline void ComputeSoftmaxZero(std::vector<T>& values) const {
+  inline void ComputeSoftmaxZero(std::vector<OTYPE>& values) const {
     // compute exp with negative number to be numerically stable
-    T v_max = -std::numeric_limits<T>::max();
-    for (T value : values) {
+    OTYPE v_max = -std::numeric_limits<OTYPE>::max();
+    for (OTYPE value : values) {
       if (value > v_max)
         v_max = value;
     }
-    T exp_neg_v_max = std::exp(-v_max);
-    T this_sum = 0.f;
-    for (T& value : values) {
+    OTYPE exp_neg_v_max = std::exp(-v_max);
+    OTYPE this_sum = 0.f;
+    for (OTYPE& value : values) {
       if (value > 0.0000001f || value < -0.0000001f) {
         value = std::exp(value - v_max);
         this_sum += value;
@@ -139,38 +139,38 @@ class _Aggregator {
         value *= exp_neg_v_max;
       }
     }
-    for (T& value : values)
+    for (OTYPE& value : values)
       value /= this_sum;
   }
 
-  void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform,
-                    T* Z, int add_second_class) const {
+  void write_scores(std::vector<OTYPE>& scores, POST_EVAL_TRANSFORM post_transform,
+                    OTYPE* Z, int add_second_class) const {
     if (scores.size() >= 2) {
       switch (post_transform) {
         case POST_EVAL_TRANSFORM::PROBIT:
           for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
-            *Z = static_cast<T>(ComputeProbit(static_cast<float>(*it)));
+            *Z = static_cast<OTYPE>(ComputeProbit(static_cast<float>(*it)));
           break;
         case POST_EVAL_TRANSFORM::LOGISTIC:
           for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
-            *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
+            *Z = static_cast<OTYPE>(ComputeLogistic(static_cast<float>(*it)));
           break;
         case POST_EVAL_TRANSFORM::SOFTMAX:
           this->ComputeSoftmax(scores);
-          memcpy(Z, scores.data(), scores.size() * sizeof(T));
+          memcpy(Z, scores.data(), scores.size() * sizeof(OTYPE));
           break;
         case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
           this->ComputeSoftmaxZero(scores);
-          memcpy(Z, scores.data(), scores.size() * sizeof(T));
+          memcpy(Z, scores.data(), scores.size() * sizeof(OTYPE));
           break;
         default:
         case POST_EVAL_TRANSFORM::NONE:
-          memcpy(Z, scores.data(), scores.size() * sizeof(T));
+          memcpy(Z, scores.data(), scores.size() * sizeof(OTYPE));
           break;
       }
     } else if (scores.size() == 1) {  //binary case
       if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-        scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
+        scores[0] = static_cast<OTYPE>(ComputeProbit(static_cast<float>(scores[0])));
         *Z = scores[0];
       } else {
         switch (add_second_class) {
@@ -185,16 +185,16 @@ class _Aggregator {
           case 2:
           case 3:  //2 = mixed weights, winning class is positive
             if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-              scores.push_back(static_cast<T>(ComputeLogistic(static_cast<float>(scores[0]))));
-              scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
+              scores.push_back(static_cast<OTYPE>(ComputeLogistic(static_cast<float>(scores[0]))));
+              scores[0] = static_cast<OTYPE>(ComputeLogistic(static_cast<float>(-scores[0])));
             } else {
               scores.push_back(scores[0]);
               scores[0] = -scores[0];
             }
             break;
-            *Z = scores[0];
-            *(Z + 1) = scores[1];
         }
+        *Z = scores[0];
+        *(Z + 1) = scores[1];
       }
     }
   }
@@ -204,41 +204,41 @@ class _Aggregator {
 // regression
 /////////////
 
-template <typename T>
-class _AggregatorSum : public _Aggregator<T> {
+template <typename ITYPE, typename OTYPE>
+class _AggregatorSum : public _Aggregator<ITYPE, OTYPE> {
   // has_score is not used.
  public:
-  inline _AggregatorSum<T>(size_t n_trees,
-                           const int64_t& n_targets_or_classes,
-                           POST_EVAL_TRANSFORM post_transform,
-                           const std::vector<T>* base_values) : _Aggregator<T>(n_trees, n_targets_or_classes,
-                                                                               post_transform, base_values) {}
+  inline _AggregatorSum(size_t n_trees,
+                        const int64_t& n_targets_or_classes,
+                        POST_EVAL_TRANSFORM post_transform,
+                        const std::vector<OTYPE>* base_values) : _Aggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
+                                                                                           post_transform, base_values) {}
 
   const char* name() const { return "_AggregatorSum"; }
 
   // 1 output
 
-  inline void ProcessTreeNodePrediction1(T* predictions,
-                                         TreeNodeElement<T>* root,
+  inline void ProcessTreeNodePrediction1(OTYPE* predictions,
+                                         TreeNodeElement<OTYPE>* root,
                                          unsigned char*) const {
     *predictions += root->weights[0].value;
   }
 
-  inline void MergePrediction1(T* predictions, unsigned char*,
-                               const T* predictions2, const unsigned char*) const {
+  inline void MergePrediction1(OTYPE* predictions, unsigned char*,
+                               const OTYPE* predictions2, const unsigned char*) const {
     *predictions += *predictions2;
   }
 
-  inline void FinalizeScores1(T* Z, T& val,
+  inline void FinalizeScores1(OTYPE* Z, OTYPE& val,
                               unsigned char&,
                               int64_t*) const {
     val += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<T>(ComputeProbit(static_cast<float>(val))) : val;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(val))) : val;
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(T* predictions, TreeNodeElement<T>* root,
+  void ProcessTreeNodePrediction(OTYPE* predictions, TreeNodeElement<OTYPE>* root,
                                  unsigned char* has_predictions) const {
     for (auto it = root->weights.begin(); it != root->weights.end(); ++it) {
       predictions[it->i] += it->value;
@@ -246,8 +246,8 @@ class _AggregatorSum : public _Aggregator<T> {
     }
   }
 
-  void MergePrediction(int64_t n, T* predictions, unsigned char* has_predictions,
-                       const T* predictions2, const unsigned char* has_predictions2) const {
+  void MergePrediction(int64_t n, OTYPE* predictions, unsigned char* has_predictions,
+                       const OTYPE* predictions2, const unsigned char* has_predictions2) const {
     for (int64_t i = 0; i < n; ++i) {
       if (has_predictions2[i]) {
         predictions[i] += predictions2[i];
@@ -256,9 +256,9 @@ class _AggregatorSum : public _Aggregator<T> {
     }
   }
 
-  void FinalizeScores(std::vector<T>& scores,
+  void FinalizeScores(std::vector<OTYPE>& scores,
                       std::vector<unsigned char>&,
-                      T* Z, int add_second_class,
+                      OTYPE* Z, int add_second_class,
                       int64_t*) const {
     if (this->use_base_values_) {
       auto it = scores.begin();
@@ -270,28 +270,28 @@ class _AggregatorSum : public _Aggregator<T> {
   }
 };
 
-template <typename T>
-class _AggregatorAverage : public _AggregatorSum<T> {
+template <typename ITYPE, typename OTYPE>
+class _AggregatorAverage : public _AggregatorSum<ITYPE, OTYPE> {
  public:
-  inline _AggregatorAverage<T>(size_t n_trees,
-                               const int64_t& n_targets_or_classes,
-                               POST_EVAL_TRANSFORM post_transform,
-                               const std::vector<T>* base_values) : _AggregatorSum<T>(n_trees, n_targets_or_classes,
-                                                                                      post_transform, base_values) {}
+  inline _AggregatorAverage(size_t n_trees,
+                            const int64_t& n_targets_or_classes,
+                            POST_EVAL_TRANSFORM post_transform,
+                            const std::vector<OTYPE>* base_values) : _AggregatorSum<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
+                                                                                                  post_transform, base_values) {}
 
   const char* name() const { return "_AggregatorAverage"; }
 
-  inline void FinalizeScores1(T* Z, T& val,
+  inline void FinalizeScores1(OTYPE* Z, OTYPE& val,
                               unsigned char&,
                               int64_t*) const {
     val /= this->n_trees_;
     val += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? ComputeProbit(static_cast<float>(val)) : val;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(val))) : val;
   }
 
-  void FinalizeScores(std::vector<T>& scores,
+  void FinalizeScores(std::vector<OTYPE>& scores,
                       std::vector<unsigned char>&,
-                      T* Z, int add_second_class,
+                      OTYPE* Z, int add_second_class,
                       int64_t*) const {
     if (this->use_base_values_) {
       auto it = scores.begin();
@@ -307,20 +307,20 @@ class _AggregatorAverage : public _AggregatorSum<T> {
   }
 };
 
-template <typename T>
-class _AggregatorMin : public _Aggregator<T> {
+template <typename ITYPE, typename OTYPE>
+class _AggregatorMin : public _Aggregator<ITYPE, OTYPE> {
  public:
-  inline _AggregatorMin<T>(size_t n_trees,
-                           const int64_t& n_targets_or_classes,
-                           POST_EVAL_TRANSFORM post_transform,
-                           const std::vector<T>* base_values) : _Aggregator<T>(n_trees, n_targets_or_classes,
-                                                                               post_transform, base_values) {}
+  inline _AggregatorMin(size_t n_trees,
+                        const int64_t& n_targets_or_classes,
+                        POST_EVAL_TRANSFORM post_transform,
+                        const std::vector<OTYPE>* base_values) : _Aggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
+                                                                                           post_transform, base_values) {}
 
   const char* name() const { return "_AggregatorMin"; }
 
   // 1 output
 
-  inline void ProcessTreeNodePrediction1(T* predictions, TreeNodeElement<T>* root,
+  inline void ProcessTreeNodePrediction1(OTYPE* predictions, TreeNodeElement<OTYPE>* root,
                                          unsigned char* has_predictions) const {
     *predictions = (!(*has_predictions) || root->weights[0].value < *predictions)
                        ? root->weights[0].value
@@ -328,8 +328,8 @@ class _AggregatorMin : public _Aggregator<T> {
     *has_predictions = 1;
   }
 
-  inline void MergePrediction1(T* predictions, unsigned char* has_predictions,
-                               const T* predictions2, const unsigned char* has_predictions2) const {
+  inline void MergePrediction1(OTYPE* predictions, unsigned char* has_predictions,
+                               const OTYPE* predictions2, const unsigned char* has_predictions2) const {
     if (*has_predictions2) {
       *predictions = *has_predictions && (*predictions < *predictions2)
                          ? *predictions
@@ -340,7 +340,7 @@ class _AggregatorMin : public _Aggregator<T> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(T* predictions, TreeNodeElement<T>* root,
+  void ProcessTreeNodePrediction(OTYPE* predictions, TreeNodeElement<OTYPE>* root,
                                  unsigned char* has_predictions) const {
     for (auto it = root->weights.begin(); it != root->weights.end(); ++it) {
       predictions[it->i] = (!has_predictions[it->i] || it->value < predictions[it->i])
@@ -350,8 +350,8 @@ class _AggregatorMin : public _Aggregator<T> {
     }
   }
 
-  void MergePrediction(int64_t n, T* predictions, unsigned char* has_predictions,
-                       const T* predictions2, const unsigned char* has_predictions2) const {
+  void MergePrediction(int64_t n, OTYPE* predictions, unsigned char* has_predictions,
+                       const OTYPE* predictions2, const unsigned char* has_predictions2) const {
     for (int64_t i = 0; i < n; ++i) {
       if (has_predictions2[i]) {
         predictions[i] = has_predictions[i] && (predictions[i] < predictions2[i])
@@ -363,20 +363,20 @@ class _AggregatorMin : public _Aggregator<T> {
   }
 };
 
-template <typename T>
-class _AggregatorMax : public _Aggregator<T> {
+template <typename ITYPE, typename OTYPE>
+class _AggregatorMax : public _Aggregator<ITYPE, OTYPE> {
  public:
-  inline _AggregatorMax<T>(size_t n_trees,
-                           const int64_t& n_targets_or_classes,
-                           POST_EVAL_TRANSFORM post_transform,
-                           const std::vector<T>* base_values) : _Aggregator<T>(n_trees, n_targets_or_classes,
-                                                                               post_transform, base_values) {}
+  inline _AggregatorMax<ITYPE, OTYPE>(size_t n_trees,
+                                      const int64_t& n_targets_or_classes,
+                                      POST_EVAL_TRANSFORM post_transform,
+                                      const std::vector<OTYPE>* base_values) : _Aggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
+                                                                                                         post_transform, base_values) {}
 
   const char* name() const { return "_AggregatorMax"; }
 
   // 1 output
 
-  inline void ProcessTreeNodePrediction1(T* predictions, TreeNodeElement<T>* root,
+  inline void ProcessTreeNodePrediction1(OTYPE* predictions, TreeNodeElement<OTYPE>* root,
                                          unsigned char* has_predictions) const {
     *predictions = (!(*has_predictions) || root->weights[0].value > *predictions)
                        ? root->weights[0].value
@@ -384,8 +384,8 @@ class _AggregatorMax : public _Aggregator<T> {
     *has_predictions = 1;
   }
 
-  inline void MergePrediction1(T* predictions, unsigned char* has_predictions,
-                               const T* predictions2, const unsigned char* has_predictions2) const {
+  inline void MergePrediction1(OTYPE* predictions, unsigned char* has_predictions,
+                               const OTYPE* predictions2, const unsigned char* has_predictions2) const {
     if (*has_predictions2) {
       *predictions = *has_predictions && (*predictions > *predictions2)
                          ? *predictions
@@ -396,7 +396,7 @@ class _AggregatorMax : public _Aggregator<T> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(T* predictions, TreeNodeElement<T>* root,
+  void ProcessTreeNodePrediction(OTYPE* predictions, TreeNodeElement<OTYPE>* root,
                                  unsigned char* has_predictions) const {
     for (auto it = root->weights.begin(); it != root->weights.end(); ++it) {
       predictions[it->i] = (!has_predictions[it->i] || it->value > predictions[it->i])
@@ -406,8 +406,8 @@ class _AggregatorMax : public _Aggregator<T> {
     }
   }
 
-  void MergePrediction(int64_t n, T* predictions, unsigned char* has_predictions,
-                       T* predictions2, unsigned char* has_predictions2) const {
+  void MergePrediction(int64_t n, OTYPE* predictions, unsigned char* has_predictions,
+                       OTYPE* predictions2, unsigned char* has_predictions2) const {
     for (int64_t i = 0; i < n; ++i) {
       if (has_predictions2[i]) {
         predictions[i] = has_predictions[i] && (predictions[i] > predictions2[i])
@@ -423,8 +423,8 @@ class _AggregatorMax : public _Aggregator<T> {
 // classification
 /////////////////
 
-template <typename T>
-class _AggregatorClassifier : public _AggregatorSum<T> {
+template <typename ITYPE, typename OTYPE>
+class _AggregatorClassifier : public _AggregatorSum<ITYPE, OTYPE> {
  private:
   const std::vector<int64_t>* class_labels_;
   bool binary_case_;
@@ -436,13 +436,13 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
   inline _AggregatorClassifier(size_t n_trees,
                                const int64_t& n_targets_or_classes,
                                POST_EVAL_TRANSFORM post_transform,
-                               const std::vector<T>* base_values,
+                               const std::vector<OTYPE>* base_values,
                                const std::vector<int64_t>* class_labels,
                                bool binary_case,
                                bool weights_are_all_positive,
                                int64_t positive_label = 1,
-                               int64_t negative_label = 0) : _AggregatorSum<T>(n_trees, n_targets_or_classes,
-                                                                               post_transform, base_values),
+                               int64_t negative_label = 0) : _AggregatorSum<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
+                                                                                          post_transform, base_values),
                                                              class_labels_(class_labels),
                                                              binary_case_(binary_case),
                                                              weights_are_all_positive_(weights_are_all_positive),
@@ -451,12 +451,12 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
 
   const char* name() const { return "_AggregatorClassifier"; }
 
-  void get_max_weight(const std::vector<T>& classes,
+  void get_max_weight(const std::vector<OTYPE>& classes,
                       const std::vector<unsigned char>& has_scores,
-                      int64_t& maxclass, T& maxweight) const {
+                      int64_t& maxclass, OTYPE& maxweight) const {
     maxclass = -1;
     maxweight = 0;
-    typename std::vector<T>::const_iterator it;
+    typename std::vector<OTYPE>::const_iterator it;
     typename std::vector<unsigned char>::const_iterator itb;
     for (it = classes.begin(), itb = has_scores.begin();
          it != classes.end(); ++it, ++itb) {
@@ -468,11 +468,11 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
   }
 
   inline int64_t _set_score_binary(int& write_additional_scores,
-                                   const T* classes,
+                                   const OTYPE* classes,
                                    const unsigned char* has_scores) const {
-    T pos_weight = has_scores[1]
-                       ? classes[1]
-                       : (has_scores[0] ? classes[0] : 0);  // only 1 class
+    OTYPE pos_weight = has_scores[1]
+                           ? classes[1]
+                           : (has_scores[0] ? classes[0] : 0);  // only 1 class
     if (binary_case_) {
       if (weights_are_all_positive_) {
         if (pos_weight > 0.5) {
@@ -499,10 +499,10 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
 
   // 1 output
 
-  inline void FinalizeScores1(T* Z, T& val,
+  inline void FinalizeScores1(OTYPE* Z, OTYPE& val,
                               unsigned char& /*has_score*/,
                               int64_t* Y = 0) const {
-    std::vector<T> scores(2);
+    std::vector<OTYPE> scores(2);
     unsigned char has_scores[2] = {1, 0};
 
     int write_additional_scores = -1;
@@ -530,11 +530,11 @@ class _AggregatorClassifier : public _AggregatorSum<T> {
 
   // N outputs
 
-  void FinalizeScores(std::vector<T>& scores,
+  void FinalizeScores(std::vector<OTYPE>& scores,
                       std::vector<unsigned char>& has_scores,
-                      T* Z, int /*add_second_class*/,
+                      OTYPE* Z, int /*add_second_class*/,
                       int64_t* Y = 0) const {
-    T maxweight = 0;
+    OTYPE maxweight = 0;
     int64_t maxclass = -1;
 
     int write_additional_scores = -1;

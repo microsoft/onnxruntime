@@ -14,7 +14,7 @@ class TreeEnsembleRegressor final : public OpKernel {
   ~TreeEnsembleRegressor();
 
  private:
-  RuntimeTreeEnsembleCommonP<T> tree_ensemble_;
+  TreeEnsembleCommon<T, float> tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime
