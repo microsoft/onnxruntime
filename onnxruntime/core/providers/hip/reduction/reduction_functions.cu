@@ -86,20 +86,16 @@ __global__ void reduce_all_kernel(const int size, const TIn * data, TOut* output
     }
   }
 
-#if __hip_ARCH__ >= 700
-  __syncwarp();
-#else
   __syncthreads();
-#endif
 
   // Warp-level reduction (storage change: register -> register).
   // The values in a warp will be summed up to a scalar. After warp-level
   // reduction, each block holds num_warps_in_block values in the shared memory.
   TOut value_ = value;
-//#pragma unroll
-  //for (int stride = NUM_THREADS_PER_WARP / 2; stride > 0; stride /= 2) {
-  //  value_ += __shfl_down_sync(ALL_ONE_MASK, value_, stride);
-  //}
+#pragma unroll
+  for (int stride = NUM_THREADS_PER_WARP / 2; stride > 0; stride /= 2) {
+   value_ += __shfl_down(ALL_ONE_MASK, value_, stride);
+  }
 
   // Return early if only one warp is used for reduction.
   // Given a fixed amount of threads, we perfer threads over warps over blocks so that we never have cases such as
