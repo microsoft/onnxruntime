@@ -121,14 +121,16 @@ __device__ void cuWelfordMuSigma2(
       U curr = static_cast<U>(lvals[l]);
       cuWelfordOnlineSum<U>(curr, mu, sigma2, count);
     }
+
     // intra-warp reductions
-    for (int l = 0; l <= 4; ++l) {
-      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      U muB = WARP_SHFL(mu, srcLaneB, warp_size);
-      U countB = WARP_SHFL(count, srcLaneB, warp_size);
-      U sigma2B = WARP_SHFL(sigma2, srcLaneB, warp_size);
+    #pragma unroll
+    for (int stride = warp_size / 2; stride > 0; stride /= 2) {
+      U muB = __shfl_down(mu, stride);
+      U countB = __shfl_down(count, stride);
+      U sigma2B = __shfl_down(sigma2, stride);
       cuChanOnlineSum<U>(muB, sigma2B, countB, mu, sigma2, count, warp_size);
     }
+
     // threadIdx.x == 0 has correct values for each warp
     // inter-warp reductions
     if (blockDim.y > 1) {
@@ -217,11 +219,11 @@ __device__ void cuWelfordMuSigma2(
       cuWelfordOnlineSum(curr, mu, sigma2, count);
     }
     // intra-warp reductions
-    for (int l = 0; l <= 4; ++l) {
-      int srcLaneB = (threadIdx.x + (1 << l)) & 31;
-      float muB = WARP_SHFL(mu, srcLaneB, warp_size);
-      float countB = WARP_SHFL(count, srcLaneB, warp_size);
-      float sigma2B = WARP_SHFL(sigma2, srcLaneB, warp_size);
+    #pragma unroll
+    for (int stride = warp_size / 2; stride > 0; stride /= 2) {
+      float muB = __shfl_down(mu, stride);
+      float countB = __shfl_down(count, stride);
+      float sigma2B = __shfl_down(sigma2, stride);
       cuChanOnlineSum(muB, sigma2B, countB, mu, sigma2, count, warp_size);
     }
     // threadIdx.x == 0 has correct values for each warp
@@ -367,14 +369,11 @@ void HostApplyLayerNorm(
     double epsilon,
     const T* gamma,
     const T* beta) {
-  const dim3 threads(32, 4, 1);
-  //const hipDeviceProp_t& prop = DeviceProp::GetDeviceProps();
   const uint64_t maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
-  //  const uint64_t maxGridY = 32;
+  const dim3 threads(warp_size, 4, 1);
   const dim3 blocks(1, std::min((uint64_t)n1, maxGridY), 1);
-  int nshared =
-      threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
+  int nshared = threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
   hipLaunchKernelGGL(cuApplyLayerNorm, dim3(blocks), dim3(threads), nshared, 0, 
       output,
       mean,
@@ -716,7 +715,8 @@ void HostLayerNormGradient(
     U* part_grad_gamma,
     U* part_grad_beta,
     const int part_size) {
-  const dim3 threads2(32, 4, 1);
+  const int warp_size = prop.warpSize;
+  const dim3 threads2(warp_size, 4, 1);
   const dim3 blocks2((n2 + threads2.x - 1) / threads2.x, part_size, 1);
   const int nshared2_a = 2 * sizeof(U) * threads2.y * threads2.y * (threads2.x + 1);
   const int nshared2_b = threads2.x * threads2.y * sizeof(U);
@@ -731,7 +731,7 @@ void HostLayerNormGradient(
       part_grad_gamma,
       part_grad_beta);
 
-  const dim3 threads3(32, 8, 1);
+  const dim3 threads3(warp_size, 8, 1);
   const dim3 blocks3((n2 + threads2.x - 1) / threads2.x, 1, 1);
   const int nshared3 = threads3.x * threads3.y * sizeof(U);
   hipLaunchKernelGGL(cuComputeGradGammaBeta, dim3(blocks3), dim3(threads3), nshared3, 0, 
@@ -743,10 +743,9 @@ void HostLayerNormGradient(
       grad_beta);
 
   // compute grad_input
-  //const hipDeviceProp_t& prop = DeviceProp::GetDeviceProps();
   const uint64_t maxGridY = prop.maxGridSize[1];
   const dim3 blocks1(1, std::min((uint64_t)n1, maxGridY), 1);
-  const dim3 threads1(32, 4, 1);
+  const dim3 threads1(warp_size, 4, 1);
   int nshared =
       threads1.y > 1 ? threads1.y * threads1.x * sizeof(U) : 0;
   hipLaunchKernelGGL(cuComputeGradInput, dim3(blocks1), dim3(threads1), nshared, 0, 
