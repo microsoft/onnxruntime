@@ -11,7 +11,6 @@
 #include <cstdlib>
 
 using namespace winrt::Windows::AI::MachineLearning;
-using namespace winrt::Windows::Foundation;
 using namespace winrt;
 
 namespace
@@ -56,7 +55,7 @@ struct EvaluationUnit
     LearningModel model;
     LearningModelSession session;
     LearningModelBinding binding;
-    IAsyncOperation<LearningModelEvaluationResult> operation;
+    winrt::Windows::Foundation::IAsyncOperation<LearningModelEvaluationResult> operation;
     LearningModelEvaluationResult result;
 
     EvaluationUnit() : model(nullptr), session(nullptr), binding(nullptr), result(nullptr) {}
